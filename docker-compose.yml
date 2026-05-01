@@ -1,0 +1,48 @@
+# docker-compose.yml — Local development stack
+version: '3.9'
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: atlas_db
+      POSTGRES_USER: atlas_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+
+  backend:
+    build: ./backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
+    env_file: .env
+    ports:
+      - '8000:8000'
+    depends_on: [db, redis]
+
+  celery:
+    build: ./backend
+    command: celery -A atlas worker -l info
+    volumes:
+      - ./backend:/app
+    env_file: .env
+    depends_on: [db, redis]
+
+  frontend:
+    build: ./frontend
+    command: npm run dev -- --host
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - '5173:5173'
+
+volumes:
+  postgres_data:
