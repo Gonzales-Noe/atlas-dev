@@ -1,0 +1,24 @@
+$kind: http-request
+name: Login - Get JWT Token
+method: POST
+url: '{{base_url}}/api/token/'
+order: 1000
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "username": "faculty_user",
+      "password": "TestPassword123!"
+    }
+scripts:
+  - type: afterResponse
+    language: text/javascript
+    code: |-
+      const response = pm.response.json();
+      if (response.access) {
+        pm.collectionVariables.set("jwt_token", response.access);
+        console.log("JWT token saved to collection variable 'jwt_token'");
+      }
