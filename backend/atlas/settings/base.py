@@ -63,7 +63,7 @@ ASGI_APPLICATION = 'atlas.asgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'atlas_dev'),
+        'NAME': os.environ.get('DB_NAME', 'dev_atlas'),
         'USER': os.environ.get('DB_USER', 'postgres'),
         'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
         'HOST': os.environ.get('DB_HOST', 'localhost'),

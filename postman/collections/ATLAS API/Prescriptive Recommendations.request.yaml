@@ -1,0 +1,62 @@
+$kind: http-request
+name: Prescriptive Recommendations
+method: POST
+url: '{{base_url}}/api/analytics/prescriptive-recommendations/'
+order: 3000
+auth:
+  type: bearer
+  credentials:
+    - key: token
+      value: '{{jwt_token}}'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: '{{prescriptive_body}}'
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      // --- JWT Auth ---
+      const authResponse = await pm.sendRequest({
+        url: "http://localhost:8000/api/token/",
+        method: "POST",
+        header: { "Content-Type": "application/json" },
+        body: {
+          mode: "raw",
+          raw: JSON.stringify({
+            username: "faculty_user",
+            password: "TestPassword123!"
+          })
+        }
+      });
+
+      const authJson = authResponse.json();
+      if (authJson.access) {
+        pm.collectionVariables.set("jwt_token", authJson.access);
+        console.log("JWT token refreshed:", authJson.access.substring(0, 20) + "...");
+      } else {
+        console.error("Login failed:", JSON.stringify(authJson));
+      }
+
+      // --- Dynamic Body ---
+      // Change these collection variables to update the request input:
+      //   sheet_id    - Google Sheet ID
+      //   range       - Cell range e.g. "Assessment 1 Scores!B1:C21"
+      //   ilo_mapping - JSON string e.g. '{"0":"ILO 1: ...","1":"ILO 3: ..."}'
+      const sheet_id = pm.collectionVariables.get("sheet_id") || "12sKoxZ1n6Vv_Uu-R9IcQWscfi2P9OftN7Jv9kBmArrw";
+      const range = pm.collectionVariables.get("range") || "Assessment 1 Scores!B1:C21";
+      const iloRaw = pm.collectionVariables.get("ilo_mapping") || '{"0":"ILO 1: Understand software testing processes","1":"ILO 3: Apply design patterns to system architecture"}';
+
+      let ilo_mapping;
+      try {
+        ilo_mapping = JSON.parse(iloRaw);
+      } catch (e) {
+        console.error("Invalid ilo_mapping JSON:", iloRaw);
+        ilo_mapping = {};
+      }
+
+      const body = JSON.stringify({ sheet_id, range, ilo_mapping });
+      pm.collectionVariables.set("prescriptive_body", body);
+      console.log("Request body set:", body);
