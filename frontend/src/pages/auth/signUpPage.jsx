@@ -1,20 +1,19 @@
 // src/pages/auth/SignUpPage.jsx
-// Matches: Landing Page | Sign Up
-// Two-column layout: red mascot panel (left) + registration form (right)
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import Button           from '@mui/material/Button';
+import TextField        from '@mui/material/TextField';
+import Divider          from '@mui/material/Divider';
+import Checkbox         from '@mui/material/Checkbox';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Alert            from '@mui/material/Alert';
+import CircularProgress from '@mui/material/CircularProgress';
+import { useAuth }      from '../../store/authStore';
+import { ROUTES }       from '../../config/route';
 
-import { useState }     from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import Button           from '@mui/material/Button'
-import TextField        from '@mui/material/TextField'
-import Divider          from '@mui/material/Divider'
-import Checkbox         from '@mui/material/Checkbox'
-import FormControlLabel from '@mui/material/FormControlLabel'
-import Alert            from '@mui/material/Alert'
-import CircularProgress from '@mui/material/CircularProgress'
-import AuthLayout       from '../../components/AuthLayout'
-import AtlasLogo        from '../../components/AtlasLogo'
-import { useAuth }      from '../../store/authStore'
-import { ROUTES }       from '../../config/routes'
+// Import your assets
+import atlasLogo from '../../assets/atlas-logo.png';
+import atlasMascot from '../../assets/atlas.png';
 
 // Google icon SVG
 function GoogleIcon() {
@@ -25,236 +24,203 @@ function GoogleIcon() {
       <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
       <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
     </svg>
-  )
+  );
 }
 
 export default function SignUpPage() {
-  const navigate              = useNavigate()
-  const { register }          = useAuth()
-  const [agreed, setAgreed]   = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [error, setError]     = useState('')
-  const [form, setForm]       = useState({
+  const navigate              = useNavigate();
+  const { register }          = useAuth();
+  const [agreed, setAgreed]   = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState('');
+  
+  // State for progressive form disclosure
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [isMenuOpen, setIsMenuOpen]       = useState(false); // Mobile menu state
+  
+  const [form, setForm] = useState({
     full_name:        '',
     email:            '',
     institution_name: '',
     password:         '',
-  })
+  });
+
+  // Reusable Nav Classes
+  const navLinkClasses = "text-gray-800 hover:text-[#A52028] transition-colors font-semibold tracking-wide text-sm md:text-base px-2 py-1";
+  const mobileNavLinkClasses = "block text-lg font-semibold text-gray-800 hover:text-[#A52028] transition-colors py-3 px-6";
 
   function handleChange(e) {
-    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
-    setError('')
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+    setError('');
   }
 
   async function handleEmailSignUp(e) {
-    e.preventDefault()
-    if (!agreed) { setError('Please agree to the Terms and Conditions.'); return }
+    e.preventDefault();
+    if (!agreed) { setError('Please agree to the Terms and Conditions.'); return; }
     if (!form.email || !form.password || !form.institution_name || !form.full_name) {
-      setError('Please fill in all fields.'); return
+      setError('Please fill in all fields.'); return;
     }
-    setLoading(true)
+    setLoading(true);
     try {
-      await register(form)
-      setSuccess(true)
+      await register(form);
+      setSuccess(true);
     } catch (err) {
-      setError(err.message)
+      setError(err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
   function handleGoogleSignUp() {
-    // TODO: trigger Google OAuth flow via Django allauth or dj-rest-auth
-    // For now, show a coming soon message
-    setError('Google sign-in will be available soon. Please use email for now.')
-  }
-
-  if (success) {
-    return (
-      <AuthLayout bubbleText="Registration sent! 🎉">
-        <div style={{ textAlign: 'center' }}>
-          <AtlasLogo size={36} />
-          <h2
-            style={{
-              fontFamily: '"DM Serif Display", serif',
-              fontSize: '1.6rem',
-              color: '#1A1A1A',
-              margin: '20px 0 12px',
-            }}
-          >
-            Application Submitted!
-          </h2>
-          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
-            Your institution registration has been received. The ATLAS team will
-            review and provide your credentials within <strong>2–3 business days</strong>.
-          </Alert>
-          <Button
-            variant="outlined"
-            color="primary"
-            fullWidth
-            component={Link}
-            to={ROUTES.SIGN_IN}
-            sx={{ borderRadius: 2 }}
-          >
-            Back to Sign In
-          </Button>
-        </div>
-      </AuthLayout>
-    )
+    setError('Google sign-in will be available soon. Please use email for now.');
   }
 
   return (
-    <AuthLayout bubbleText="Let's get your institution set up! 🏫">
-      <div className="auth-form-enter">
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <AtlasLogo size={36} />
-          <h2
-            style={{
-              fontFamily: '"DM Serif Display", serif',
-              fontSize: '1.5rem',
-              color: '#1A1A1A',
-              margin: '16px 0 6px',
-              fontWeight: 400,
-            }}
-          >
-            Get ATLAS for Your Institution
-          </h2>
-          <p style={{ color: '#888', fontSize: '0.83rem', margin: 0, lineHeight: 1.5 }}>
-            Tell us about your institution and we'll get your platform set up.
-            Approved institutions receive credentials within 2–3 business days.
-          </p>
+    <div className="min-h-screen bg-gray-100 font-sans flex flex-col">
+      
+      {/* 1. Navigation Bar (Mirrored from Landing Page) */}
+      <nav className="bg-transparent z-50">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
+          <div className="flex items-center flex-shrink-0">
+            <Link to="/">
+              <img src={atlasLogo} alt="ATLAS Logo" className="h-9 md:h-10 object-contain" />
+            </Link>
+          </div>
+          <div className="hidden md:flex space-x-6 lg:space-x-10 items-center">
+            <Link to="/" className={navLinkClasses}>HOME</Link>
+            <Link to={ROUTES.SIGN_UP} className={`${navLinkClasses} text-[#A52028]`}>SIGN UP</Link>
+            <Link to="/pricing" className={navLinkClasses}>PRICING</Link>
+            <Link to="/contact" className={navLinkClasses}>CONTACT</Link>
+          </div>
+          <div className="md:hidden">
+            <button 
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="text-gray-700 hover:text-[#A52028] focus:outline-none p-2"
+            >
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                {isMenuOpen 
+                  ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l18 18" />
+                  : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                }
+              </svg>
+            </button>
+          </div>
         </div>
-
-        {/* Error */}
-        {error && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            {error}
-          </Alert>
+        {isMenuOpen && (
+          <div className="md:hidden bg-white border-b border-gray-100 shadow-md absolute w-full">
+            <div className="space-y-1 pb-4 pt-2">
+              <Link to="/" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClasses}>HOME</Link>
+              <Link to={ROUTES.SIGN_UP} onClick={() => setIsMenuOpen(false)} className={`${mobileNavLinkClasses} text-[#A52028] bg-red-50`}>SIGN UP</Link>
+              <Link to="/pricing" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClasses}>PRICING</Link>
+              <Link to="/contact" onClick={() => setIsMenuOpen(false)} className={mobileNavLinkClasses}>CONTACT</Link>
+            </div>
+          </div>
         )}
+      </nav>
 
-        {/* Google sign-up */}
-        <Button
-          fullWidth
-          variant="outlined"
-          onClick={handleGoogleSignUp}
-          startIcon={<GoogleIcon />}
-          sx={{
-            borderColor: '#E0E0E0',
-            color: '#333',
-            borderRadius: 2,
-            py: 1.2,
-            mb: 2,
-            fontSize: '0.9rem',
-            fontWeight: 500,
-            '&:hover': { borderColor: '#BDBDBD', background: '#FAFAFA' },
-          }}
-        >
-          Continue with Google
-        </Button>
+      {/* 2. Main Content Split Layout */}
+      <main className="flex-1 flex items-center justify-center p-4 md:p-8">
+        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
+          
+          {/* LEFT SIDE: Form Container */}
+          <div className="w-full md:w-1/2 p-8 md:p-12 flex flex-col justify-center">
+            
+            {success ? (
+              <div className="text-center animate-fade-in">
+                <img src={atlasLogo} alt="ATLAS Logo" className="h-12 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold text-[#A52028] mb-4">Application Submitted!</h2>
+                <Alert severity="success" sx={{ mb: 4, borderRadius: 2 }}>
+                  Your institution registration has been received. The ATLAS team will review and provide credentials within <strong>2–3 business days</strong>.
+                </Alert>
+                <Button variant="outlined" color="primary" fullWidth component={Link} to={ROUTES.SIGN_IN} sx={{ borderRadius: 2 }}>
+                  Back to Sign In
+                </Button>
+              </div>
+            ) : (
+              <div className="animate-fade-in">
+                {/* Header */}
+                <div className="text-center mb-8">
+                  <img src={atlasLogo} alt="ATLAS Logo" className="h-12 mx-auto mb-4" />
+                  <h2 className="text-2xl font-bold text-[#A52028] mb-2">Get ATLAS for Your Institution</h2>
+                  <p className="text-gray-500 text-sm">
+                    Tell us about your institution and we'll get your platform set up. 
+                    Approved institutions receive credentials within 2–3 business days.
+                  </p>
+                </div>
 
-        {/* Divider */}
-        <Divider sx={{ mb: 2, color: '#BDBDBD', fontSize: '0.78rem', letterSpacing: '0.04em' }}>
-          OR
-        </Divider>
+                {error && <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }}>{error}</Alert>}
 
-        {/* Form */}
-        <form onSubmit={handleEmailSignUp} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <TextField
-            name="full_name"
-            label="Full Name"
-            placeholder="Juan Dela Cruz"
-            value={form.full_name}
-            onChange={handleChange}
-            fullWidth
-            size="small"
-            required
-            InputProps={{ sx: { borderRadius: 2 } }}
-          />
-          <TextField
-            name="institution_name"
-            label="Institution Name"
-            placeholder="Batangas State University"
-            value={form.institution_name}
-            onChange={handleChange}
-            fullWidth
-            size="small"
-            required
-            InputProps={{ sx: { borderRadius: 2 } }}
-          />
-          <TextField
-            name="email"
-            label="Institutional Email"
-            type="email"
-            placeholder="you@batstate-u.edu.ph"
-            value={form.email}
-            onChange={handleChange}
-            fullWidth
-            size="small"
-            required
-            InputProps={{ sx: { borderRadius: 2 } }}
-          />
-          <TextField
-            name="password"
-            label="Password"
-            type="password"
-            placeholder="At least 8 characters"
-            value={form.password}
-            onChange={handleChange}
-            fullWidth
-            size="small"
-            required
-            InputProps={{ sx: { borderRadius: 2 } }}
-          />
+                {/* Google Button */}
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  onClick={handleGoogleSignUp}
+                  startIcon={<GoogleIcon />}
+                  sx={{ borderColor: '#E0E0E0', color: '#333', borderRadius: 2, py: 1.2, mb: 3, textTransform: 'none', fontWeight: 600 }}
+                >
+                  Continue with Google
+                </Button>
 
-          <Button
-            type="submit"
-            variant="contained"
-            color="primary"
-            fullWidth
-            disabled={loading}
-            sx={{ borderRadius: 2, py: 1.2, fontSize: '0.95rem', mt: 0.5 }}
-          >
-            {loading
-              ? <CircularProgress size={20} sx={{ color: '#fff' }} />
-              : 'Continue with Email'
-            }
-          </Button>
-        </form>
+                <Divider sx={{ mb: 3, color: '#888', fontSize: '0.8rem' }}>OR</Divider>
 
-        {/* Sign in link */}
-        <p style={{ textAlign: 'center', fontSize: '0.85rem', color: '#888', marginTop: 16 }}>
-          Already have an account?{' '}
-          <Link
-            to={ROUTES.SIGN_IN}
-            style={{ color: '#8B0000', fontWeight: 600, textDecoration: 'none' }}
-          >
-            Sign In
-          </Link>
-        </p>
+                {/* Progressive Form */}
+                {!showEmailForm ? (
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={() => setShowEmailForm(true)}
+                    sx={{ backgroundColor: '#A52028', color: '#fff', borderRadius: 2, py: 1.2, textTransform: 'none', fontWeight: 600, '&:hover': { backgroundColor: '#8B1A20' } }}
+                  >
+                    Continue with Email
+                  </Button>
+                ) : (
+                  <form onSubmit={handleEmailSignUp} className="space-y-4 animate-fade-in-down">
+                    <TextField name="full_name" label="Full Name" value={form.full_name} onChange={handleChange} fullWidth size="small" required InputProps={{ sx: { borderRadius: 2 } }} />
+                    <TextField name="institution_name" label="Institution Name" value={form.institution_name} onChange={handleChange} fullWidth size="small" required InputProps={{ sx: { borderRadius: 2 } }} />
+                    <TextField name="email" label="Institutional Email" type="email" value={form.email} onChange={handleChange} fullWidth size="small" required InputProps={{ sx: { borderRadius: 2 } }} />
+                    <TextField name="password" label="Password" type="password" value={form.password} onChange={handleChange} fullWidth size="small" required InputProps={{ sx: { borderRadius: 2 } }} />
+                    <Button type="submit" variant="contained" fullWidth disabled={loading} sx={{ backgroundColor: '#A52028', borderRadius: 2, py: 1.2, mt: 2, textTransform: 'none', fontWeight: 600, '&:hover': { backgroundColor: '#8B1A20' } }}>
+                      {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Submit Registration'}
+                    </Button>
+                  </form>
+                )}
 
-        {/* Terms */}
-        <FormControlLabel
-          control={
-            <Checkbox
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              size="small"
-              sx={{ color: '#8B0000', '&.Mui-checked': { color: '#8B0000' } }}
+                {/* Sign In Link */}
+                <p className="text-center text-sm text-gray-500 mt-6 mb-4">
+                  Already have an account? <Link to={ROUTES.SIGN_IN} className="text-[#A52028] font-bold">Sign In</Link>
+                </p>
+
+                {/* Terms */}
+                <div className="flex justify-center">
+                  <FormControlLabel
+                    control={<Checkbox checked={agreed} onChange={(e) => setAgreed(e.target.checked)} size="small" sx={{ color: '#A52028', '&.Mui-checked': { color: '#A52028' } }} />}
+                    label={<span className="text-xs text-gray-500 text-center inline-block">I agree to the <span className="text-[#A52028] font-bold">Terms and Condition of Use <br/> and Privacy Policy</span></span>}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SIDE: Red Panel with Mascot */}
+          <div className="hidden md:flex w-1/2 bg-[#A52028] flex-col items-center justify-center relative p-12">
+            
+            {/* Simple CSS Speech Bubble */}
+            <div className="bg-white text-[#A52028] font-bold text-lg px-8 py-4 rounded-3xl mb-8 relative shadow-lg">
+              Let's get your institution set up! 🏫
+              {/* The little tail of the speech bubble */}
+              <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-t-[15px] border-t-white border-r-[10px] border-r-transparent"></div>
+            </div>
+
+            <img 
+              src={atlasMascot} 
+              alt="ATLAS Mascot" 
+              className="w-full max-w-[300px] object-contain drop-shadow-2xl"
             />
-          }
-          label={
-            <span style={{ fontSize: '0.78rem', color: '#666', lineHeight: 1.4 }}>
-              I agree to the{' '}
-              <a href="#" style={{ color: '#8B0000', fontWeight: 600 }}>
-                Terms and Condition of Use and Privacy Policy
-              </a>
-            </span>
-          }
-          sx={{ mt: 1, alignItems: 'flex-start' }}
-        />
-      </div>
-    </AuthLayout>
-  )
+          </div>
+
+        </div>
+      </main>
+    </div>
+  );
 }
