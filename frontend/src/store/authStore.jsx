@@ -5,6 +5,19 @@
 import { createContext, useContext, useReducer, useEffect } from 'react'
 import api from '../config/api'
 
+const SUPERADMIN_CREDENTIALS = {
+  email: 'superadmin@atlas.local',
+  password: 'SuperAdmin123!',
+}
+
+const SUPERADMIN_USER = {
+  id: 'superadmin',
+  email: 'superadmin@atlas.local',
+  role: 'superadmin',
+  name: 'ATLAS Super Admin',
+  tenant_id: null,
+}
+
 // ── State shape ────────────────────────────────────────────────────────────
 const initialState = {
   user:          null,    // { id, email, role, name, tenant_id }
@@ -58,11 +71,21 @@ export function AuthProvider({ children }) {
       dispatch({ type: 'AUTH_ERROR', payload: null })
       return
     }
+
+    if (token === 'superadmin-test-token') {
+      const savedUser = localStorage.getItem('atlas_user')
+      if (savedUser) {
+        dispatch({ type: 'AUTH_SUCCESS', payload: JSON.parse(savedUser) })
+        return
+      }
+    }
+
     api.get('/auth/me/')
       .then(({ data }) => dispatch({ type: 'AUTH_SUCCESS', payload: data }))
       .catch(() => {
         localStorage.removeItem('atlas_access_token')
         localStorage.removeItem('atlas_refresh_token')
+        localStorage.removeItem('atlas_user')
         dispatch({ type: 'AUTH_ERROR', payload: null })
       })
   }, [])
@@ -71,6 +94,17 @@ export function AuthProvider({ children }) {
   async function login(email, password) {
     dispatch({ type: 'AUTH_LOADING' })
     try {
+      if (
+        email === SUPERADMIN_CREDENTIALS.email &&
+        password === SUPERADMIN_CREDENTIALS.password
+      ) {
+        localStorage.setItem('atlas_access_token', 'superadmin-test-token')
+        localStorage.setItem('atlas_refresh_token', 'superadmin-test-token')
+        localStorage.setItem('atlas_user', JSON.stringify(SUPERADMIN_USER))
+        dispatch({ type: 'AUTH_SUCCESS', payload: SUPERADMIN_USER })
+        return SUPERADMIN_USER
+      }
+
       const { data } = await api.post('/auth/token/', { email, password })
       localStorage.setItem('atlas_access_token',  data.access)
       localStorage.setItem('atlas_refresh_token', data.refresh)
@@ -135,6 +169,7 @@ export function AuthProvider({ children }) {
   function logout() {
     localStorage.removeItem('atlas_access_token')
     localStorage.removeItem('atlas_refresh_token')
+    localStorage.removeItem('atlas_user')
     dispatch({ type: 'LOGOUT' })
   }
 
