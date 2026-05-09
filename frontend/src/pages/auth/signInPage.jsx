@@ -92,6 +92,9 @@ export default function SignInPage() {
             {error}
           </Alert>
         )}
+        <Alert severity="info" sx={{ mb: 2, borderRadius: 2 }}>
+          Super Admin access is available with <strong>superadmin@atlas.local</strong> / <strong>SuperAdmin123!</strong>
+        </Alert>
 
         {/* Email / password form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
