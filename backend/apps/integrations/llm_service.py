@@ -115,8 +115,9 @@ class LLMService:
                 system=system
             )
             
-            # extract text
-            if 'content' in response and len(response['content']) > 0:
-                return response['content'][0].text
+            # extract text (content blocks are dicts: {"type": "text", "text": "..."})
+            for block in response.get('content', []):
+                if block.get('type') == 'text' and block.get('text'):
+                    return block['text']
             return ""
 
