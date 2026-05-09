@@ -79,7 +79,7 @@ print(f"\n✓ Uploaded {total_chunks} chunks")
 # ── 3. Semantic Search ────────────────────────────────────────────────────────
 queries = [
     "What is Outcomes-Based Education?",
-    "What are the criteria for a university typology?",
+    "What are requirements for syllabus",
     "How is program excellence measured?",
 ]
 
