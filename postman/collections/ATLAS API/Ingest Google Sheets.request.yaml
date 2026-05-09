@@ -1,0 +1,46 @@
+$kind: http-request
+name: Ingest Google Sheets
+method: POST
+url: '{{base_url}}/api/analytics/ingest/'
+order: 2000
+auth:
+  type: bearer
+  credentials:
+    - key: token
+      value: '{{jwt_token}}'
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sheet_id": "your_google_sheet_id_here",
+      "range": "Sheet1!A1:Z1000"
+    }
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      const baseUrl = pm.environment.get("base_url") || pm.collectionVariables.get("base_url");
+
+      const response = await pm.sendRequest({
+        url: baseUrl + "/api/token/",
+        method: "POST",
+        header: { "Content-Type": "application/json" },
+        body: {
+          mode: "raw",
+          raw: JSON.stringify({
+            username: "faculty_user",
+            password: "TestPassword123!"
+          })
+        }
+      });
+
+      const json = response.json();
+      if (json.access) {
+        pm.collectionVariables.set("jwt_token", json.access);
+        console.log("JWT token refreshed:", json.access.substring(0, 20) + "...");
+      } else {
+        console.error("Login failed:", JSON.stringify(json));
+      }

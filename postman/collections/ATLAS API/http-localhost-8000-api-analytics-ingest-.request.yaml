@@ -1,0 +1,44 @@
+$kind: http-request
+name: http://localhost:8000/api/analytics/ingest/
+url: http://localhost:8000/api/analytics/ingest/
+method: POST
+headers:
+  - key: Content-Type
+    value: application/json
+body:
+  type: json
+  content: |-
+    {
+      "sheet_id": "12sKoxZ1n6Vv_Uu-R9IcQWscfi2P9OftN7Jv9kBmArrw",
+      "range": "Assessment 1 Scores!A1:C21"
+    }
+auth:
+  type: bearer
+  credentials:
+    - key: token
+      value: '{{jwt_token}}'
+order: 2715414260876057
+scripts:
+  - type: beforeRequest
+    language: text/javascript
+    code: |-
+      const response = await pm.sendRequest({
+        url: "http://localhost:8000/api/token/",
+        method: "POST",
+        header: { "Content-Type": "application/json" },
+        body: {
+          mode: "raw",
+          raw: JSON.stringify({
+            username: "faculty_user",
+            password: "TestPassword123!"
+          })
+        }
+      });
+
+      const json = response.json();
+      if (json.access) {
+        pm.collectionVariables.set("jwt_token", json.access);
+        console.log("JWT token refreshed:", json.access.substring(0, 20) + "...");
+      } else {
+        console.error("Login failed:", JSON.stringify(json));
+      }

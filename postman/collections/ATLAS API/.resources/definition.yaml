@@ -1,0 +1,20 @@
+$kind: collection
+name: ATLAS API
+description: ATLAS backend API collection - authentication and analytics
+variables:
+  - key: base_url
+    value: 'http://localhost:8000'
+  - key: jwt_token
+    value: ''
+  - key: sheet_id
+    value: '12sKoxZ1n6Vv_Uu-R9IcQWscfi2P9OftN7Jv9kBmArrw'
+    description: Google Sheet ID for prescriptive recommendations
+  - key: range
+    value: 'Assessment 1 Scores!B1:C21'
+    description: 'Cell range e.g. "Sheet1!A1:Z100"'
+  - key: ilo_mapping
+    value: '{"0":"ILO 1: Understand software testing processes","1":"ILO 3: Apply design patterns to system architecture"}'
+    description: 'JSON string mapping column index to ILO description e.g. {"0":"ILO 1: ...","1":"ILO 3: ..."}'
+  - key: prescriptive_body
+    value: ''
+    description: Auto-built by beforeRequest script - do not edit manually

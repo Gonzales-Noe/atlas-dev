@@ -15,7 +15,17 @@ django-redis==5.4.0             # Django Redis cache backend
 
 # ── LLM & AI ────────────────────────────────────────────────
 anthropic==0.30.0               # Anthropic Claude SDK
+openai>=1.0.0                   # OpenAI SDK (OpenAI/OpenRouter compatible)
+groq>=0.9.0                     # Groq Python SDK
+# ── Document Processing ────────────────────────────────────
+python-docx==0.8.11             # DOCX file parsing
+pypdf==4.0.0                    # PDF parsing
+PyPDF2==3.0.1                   # PDF manipulation
 
+# ── Text Processing & Embeddings ───────────────────────────
+tiktoken==0.7.0                 # Token counting for Anthropic
+langchain-text-splitters>=0.2.0 # Semantic-aware recursive chunking
+langchain-experimental>=0.0.60  # SemanticChunker for topic-boundary splitting
 # ── Google APIs ─────────────────────────────────────────────
 google-api-python-client==2.140.0
 google-auth==2.35.0
@@ -27,6 +37,7 @@ pgvector==0.3.2                 # pgvector Python client
 
 # ── Utilities ───────────────────────────────────────────────
 python-decouple==3.8            # .env variable loading
+python-dotenv>=1.0.0            # .env loading for manage.py
 Pillow==10.4.0                  # image handling
 whitenoise==6.7.0               # static file serving
 django-cors-headers==4.4.0      # CORS headers for frontend
