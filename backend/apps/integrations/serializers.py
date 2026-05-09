@@ -35,6 +35,29 @@ class FileUploadSerializer(serializers.Serializer):
         choices=['pdf', 'docx'],
         required=True
     )
+    # Optional document metadata for filtered retrieval
+    discipline = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text="Discipline category, e.g. 'Engineering', 'Education'",
+    )
+    program = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text="Academic program, e.g. 'BSCS', 'BSED'",
+    )
+    doc_type = serializers.CharField(
+        max_length=50,
+        required=False,
+        allow_blank=True,
+        default='',
+        help_text="Document type, e.g. 'CHED_Handbook', 'Syllabus_Template'",
+    )
+    # Legacy field kept for backward compatibility
     course_id = serializers.CharField(
         max_length=50,
         required=False,
@@ -83,3 +106,7 @@ class SemanticSearchSerializer(serializers.Serializer):
 
     query = serializers.CharField(required=True, max_length=4000)
     top_k = serializers.IntegerField(required=False, default=5, min_value=1, max_value=20)
+    # Optional metadata pre-filters (passed through to rag_service.semantic_search)
+    discipline = serializers.CharField(required=False, allow_blank=True, default='')
+    program = serializers.CharField(required=False, allow_blank=True, default='')
+    doc_type = serializers.CharField(required=False, allow_blank=True, default='')
