@@ -1,8 +1,6 @@
 // src/features/Faculty/Assessment.jsx
 import { useEffect, useState } from 'react'
-import {
-  Box, Button, Card, CardContent, CardHeader, Grid, Stack, TextField, Typography, Alert, List, ListItem, ListItemText,
-} from '@mui/material'
+import { Box, Button, Card, CardContent, Stack, TextField, Typography, Alert, List, ListItem, ListItemText } from '@mui/material'
 import QuizIcon from '@mui/icons-material/Quiz'
 import FacultyLayout from './FacultyLayout'
 
@@ -26,73 +24,59 @@ export default function FacultyAssessment() {
   const canGenerate = Boolean(course?.courseName && syllabusReady && moduleList.length > 0)
 
   function handleGenerate() {
-    if (!assessmentPrompt.trim()) {
-      setSuccessMessage('Please provide an assessment prompt or learning objective.')
-      return
-    }
+    if (!assessmentPrompt.trim()) { setSuccessMessage('Please provide a prompt.'); return }
     const generated = moduleList.slice(0, 3).map((module, index) => ({
       id: index + 1,
       title: `Assessment item for ${module.title}`,
       instructions: `Based on ${module.outcome}, ask students to demonstrate understanding of ${module.title}.`,
     }))
     setAssessmentItems(generated)
-    setSuccessMessage('Assessment items generated. Review them and adjust as needed.')
+    setSuccessMessage('Assessment items generated.')
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const cardStyles = { borderRadius: '20px', border: '1px solid #E2E8F0', boxShadow: 'none', mb: 3 };
 
   return (
     <FacultyLayout>
-      <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
-            Assessment Generator
-          </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
-            Create formative and summative assessment items aligned with your course modules.
-          </Typography>
-        </Box>
-
-        {!course?.courseName && <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>Add a course from the dashboard before generating assessments.</Alert>}
-        {!syllabusReady && course?.courseName && <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>Create a syllabus first to unlock assessment generation.</Alert>}
-        {course?.courseName && syllabusReady && moduleList.length === 0 && <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>Add at least one module first before generating assessment items.</Alert>}
-        {successMessage && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMessage}</Alert>}
-
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Assessment Prompt" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                <Stack spacing={2}>
-                  <TextField value={assessmentPrompt} onChange={(e) => setAssessmentPrompt(e.target.value)} multiline rows={6} placeholder="Enter a prompt or learning objective for the assessment..." fullWidth size="small" disabled={!canGenerate} />
-                  <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5 }}>
-                    Generate Assessment Items
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <Card sx={{ ...cardStyles, minHeight: 320 }}>
-              <CardHeader title="Generated Items" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                {assessmentItems.length === 0 ? (
-                  <Typography sx={{ color: '#64748B' }}>No assessment items generated yet.</Typography>
-                ) : (
-                  <List sx={{ bgcolor: '#F8FAFC', borderRadius: 2 }}>
-                    {assessmentItems.map((item) => (
-                      <ListItem key={item.id} alignItems="flex-start" sx={{ borderBottom: '1px solid #E2E8F0', '&:last-child': { borderBottom: 'none' } }}>
-                        <ListItemText primary={<Typography sx={{ fontWeight: 700, color: '#0F172A' }}>{item.title}</Typography>} secondary={<Typography sx={{ color: '#475569', fontSize: '0.85rem', mt: 0.5 }}>{item.instructions}</Typography>} />
-                      </ListItem>
-                    ))}
-                  </List>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+      <Box sx={{ mb: 4, textAlign: 'center', pt: 2 }}>
+        <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+          Assessment Generator
+        </Typography>
+        <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          Create formative and summative items aligned with modules.
+        </Typography>
       </Box>
+
+      {successMessage && <Alert severity="success" sx={{ mb: 3, borderRadius: '12px' }}>{successMessage}</Alert>}
+
+      <Card sx={cardStyles}>
+        <CardContent sx={{ p: 4 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#0F172A', mb: 3 }}>Assessment Prompt</Typography>
+          <Stack spacing={2}>
+            <TextField value={assessmentPrompt} onChange={(e) => setAssessmentPrompt(e.target.value)} multiline rows={4} placeholder="Enter a learning objective for the assessment..." fullWidth disabled={!canGenerate} InputProps={{ sx: { borderRadius: '16px', backgroundColor: '#F8FAFC' } }} />
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#0F172A', '&:hover': { background: '#1E293B' }, borderRadius: '12px', textTransform: 'none', py: 1.2, px: 4, fontWeight: 700 }}>
+                Generate Items
+              </Button>
+            </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {assessmentItems.length > 0 && (
+        <Card sx={cardStyles}>
+          <CardContent sx={{ p: 4 }}>
+            <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', color: '#0F172A', mb: 3 }}>Generated Items</Typography>
+            <List sx={{ bgcolor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+              {assessmentItems.map((item) => (
+                <ListItem key={item.id} sx={{ borderBottom: '1px solid #E2E8F0', '&:last-child': { borderBottom: 'none' }, py: 2 }}>
+                  <ListItemText primary={<Typography sx={{ fontWeight: 700, color: '#0F172A' }}>{item.title}</Typography>} secondary={<Typography sx={{ color: '#475569', fontSize: '0.9rem', mt: 0.5 }}>{item.instructions}</Typography>} />
+                </ListItem>
+              ))}
+            </List>
+          </CardContent>
+        </Card>
+      )}
     </FacultyLayout>
   )
 }

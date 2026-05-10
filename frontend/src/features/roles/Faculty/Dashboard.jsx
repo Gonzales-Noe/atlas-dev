@@ -1,205 +1,241 @@
 // src/features/Faculty/Dashboard.jsx
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  Box, Button, Card, CardContent, CardHeader, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Stack, TextField, Typography, Alert, Chip,
+  Box, Button, Card, Dialog, DialogActions, DialogContent, DialogTitle, Grid, Stack, TextField, Typography, IconButton, InputBase, Menu, MenuItem, Alert
 } from '@mui/material'
-import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import UploadFileIcon from '@mui/icons-material/UploadFile'
-import CreateIcon from '@mui/icons-material/Create'
-import QuizIcon from '@mui/icons-material/Quiz'
-import AnalyticsIcon from '@mui/icons-material/Analytics'
+import AddIcon from '@mui/icons-material/Add'
+import SearchIcon from '@mui/icons-material/Search'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import SchoolIcon from '@mui/icons-material/School'
+import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted'
 import FacultyLayout from './FacultyLayout'
-import { ROUTES } from '../../../config/route'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../../store/authStore'
+import { ROUTES } from '../../../config/route'
 
-const defaultCourse = { instructorName: '', courseName: '', courseCode: '', yearLevel: '', semester: '', section: '' }
-
-function loadCourse() {
-  try { return JSON.parse(localStorage.getItem('atlas_faculty_course')) || null } 
-  catch { return null }
+const defaultCourse = {
+  instructorName: '',
+  courseName: '',
+  courseCode: '',
+  yearLevel: '',
+  semester: '',
+  section: '',
 }
 
-function saveCourse(course) { localStorage.setItem('atlas_faculty_course', JSON.stringify(course)) }
-function hasSyllabus() { return localStorage.getItem('atlas_faculty_syllabus_created') === 'true' }
+function loadCourses() {
+  try {
+    const courses = JSON.parse(localStorage.getItem('atlas_faculty_courses'))
+    if (courses && Array.isArray(courses)) return courses;
+    
+    // Fallback migration
+    const singleCourse = JSON.parse(localStorage.getItem('atlas_faculty_course'))
+    if (singleCourse && singleCourse.courseName) {
+      const arr = [{ ...singleCourse, id: Date.now() }];
+      localStorage.setItem('atlas_faculty_courses', JSON.stringify(arr));
+      return arr;
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCourses(courses) {
+  localStorage.setItem('atlas_faculty_courses', JSON.stringify(courses))
+}
+
+function setActiveCourse(course) {
+  localStorage.setItem('atlas_faculty_course', JSON.stringify(course))
+}
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const [courses, setCourses] = useState([])
   const [onboardingOpen, setOnboardingOpen] = useState(false)
-  const [course, setCourse] = useState(loadCourse() || defaultCourse)
-  const [showSuccess, setShowSuccess] = useState(false)
-  const [formState, setFormState] = useState(course)
-  const [promptOpen, setPromptOpen] = useState(false)
-
-  const syllabusReady = useMemo(() => hasSyllabus(), [course])
+  const [formState, setFormState] = useState(defaultCourse)
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [selectedCourseId, setSelectedCourseId] = useState(null)
+  const [successMsg, setSuccessMsg] = useState('')
 
   useEffect(() => {
-    if (!course || !course.courseName) { setOnboardingOpen(true) }
-  }, [course])
+    setCourses(loadCourses())
+  }, [])
 
-  function handleOnboardingSubmit() {
-    const nextCourse = { ...formState }
-    saveCourse(nextCourse)
-    setCourse(nextCourse)
-    setShowSuccess(true)
-    setOnboardingOpen(false)
+  function handleCreateCourse() {
+    if (!formState.courseName) return;
+    
+    const newCourse = { ...formState, id: Date.now(), createdAt: new Date().toLocaleDateString() };
+    const updatedCourses = [newCourse, ...courses];
+    
+    saveCourses(updatedCourses);
+    setCourses(updatedCourses);
+    setActiveCourse(newCourse); 
+    
+    setFormState(defaultCourse);
+    setOnboardingOpen(false);
+    setSuccessMsg(`Created ${newCourse.courseName}!`);
+    setTimeout(() => setSuccessMsg(''), 3000);
   }
 
-  function handleAction(action) {
-    if (action === 'syllabus') navigate(ROUTES.FACULTY.SYLLABUS)
-    if (action === 'module') navigate(ROUTES.FACULTY.MODULE)
-    if (action === 'assessment') navigate(ROUTES.FACULTY.ASSESSMENT)
+  function handleEnterCourse(course) {
+    setActiveCourse(course);
+    navigate(ROUTES.FACULTY.SYLLABUS);
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const handleMenuClick = (event, id) => {
+    event.stopPropagation(); 
+    setAnchorEl(event.currentTarget);
+    setSelectedCourseId(id);
+  }
+
+  const handleMenuClose = (event) => {
+    if(event) event.stopPropagation();
+    setAnchorEl(null);
+    setSelectedCourseId(null);
+  }
 
   return (
     <FacultyLayout>
       <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
-            Faculty Dashboard
-          </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
-            Welcome back, {user?.name || course.instructorName || 'Faculty'} — manage your course, syllabus, modules, assessments, and grading from one place.
-          </Typography>
-        </Box>
-
-        {showSuccess && (
-          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }} iconMapping={{ success: <CheckCircleIcon /> }}>
-            Your course was added successfully. Choose what to do next.
-          </Alert>
+        {successMsg && (
+          <Alert severity="success" sx={{ mb: 3, borderRadius: '12px' }}>{successMsg}</Alert>
         )}
 
+        {/* Top Toolbar (Toggle Removed) */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 5, flexWrap: 'wrap', gap: 2 }}>
+          
+          {/* iOS Style Search Bar (Now on the left) */}
+          <Box sx={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '24px', px: 2, py: 0.8, boxShadow: '0 2px 8px rgba(0,0,0,0.04)', minWidth: 300 }}>
+            <SearchIcon sx={{ color: '#94A3B8', mr: 1 }} fontSize="small" />
+            <InputBase placeholder="Search your courses..." sx={{ flex: 1, fontSize: '0.95rem', color: '#1E293B' }} />
+          </Box>
+
+          {/* View Toggles (On the right) */}
+          <Box sx={{ display: 'flex', backgroundColor: '#FFFFFF', borderRadius: '16px', p: 0.5, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+            <IconButton size="small" sx={{ color: '#8B0000', backgroundColor: '#FFF1F2', borderRadius: '12px' }}>
+              <ViewModuleIcon fontSize="small" />
+            </IconButton>
+            <IconButton size="small" sx={{ color: '#94A3B8', borderRadius: '12px' }}>
+              <FormatListBulletedIcon fontSize="small" />
+            </IconButton>
+          </Box>
+        </Box>
+
+        <Typography variant="h5" sx={{ fontWeight: 800, color: '#0F172A', mb: 3 }}>
+          Recent courses
+        </Typography>
+
+        {/* Course Grid */}
         <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Onboarding" titleTypographyProps={{ fontWeight: 700, color: '#A52028' }} />
-              <CardContent>
-                <Typography sx={{ color: '#475569', mb: 3 }}>
-                  Add your first course and start building your syllabus, modules, and assessments.
-                </Typography>
-                <Button variant="contained" onClick={() => setOnboardingOpen(true)} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', px: 3 }}>
-                  Add / Update Course
-                </Button>
-              </CardContent>
+          
+          {/* Create New Course Card */}
+          <Grid item xs={12} sm={6} md={4} lg={3}>
+            <Card 
+              onClick={() => setOnboardingOpen(true)}
+              sx={{ 
+                borderRadius: '24px', 
+                border: '2px dashed #CBD5E1', 
+                backgroundColor: 'transparent', 
+                boxShadow: 'none', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                minHeight: 240, 
+                cursor: 'pointer', 
+                transition: 'all 0.2s ease', 
+                '&:hover': { backgroundColor: 'rgba(203, 213, 225, 0.2)', borderColor: '#94A3B8' } 
+              }}
+            >
+              <Box sx={{ width: 56, height: 56, borderRadius: '50%', backgroundColor: '#8B0000', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, boxShadow: '0 4px 12px rgba(139,0,0,0.3)' }}>
+                <AddIcon fontSize="medium" />
+              </Box>
+              <Typography sx={{ fontWeight: 700, color: '#475569', fontSize: '1.05rem' }}>
+                Create new course
+              </Typography>
             </Card>
           </Grid>
 
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Quick Actions" titleTypographyProps={{ fontWeight: 700, color: '#A52028' }} />
-              <CardContent>
-                <Stack spacing={2}>
-                  <Button variant="contained" startIcon={<UploadFileIcon />} onClick={() => handleAction('syllabus')} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none' }}>
-                    Create Syllabus
-                  </Button>
-                  <Button variant="outlined" startIcon={<CreateIcon />} disabled={!syllabusReady} onClick={() => handleAction('module')} sx={{ borderRadius: 2, textTransform: 'none', color: '#A52028', borderColor: '#A52028' }}>
-                    Build Module
-                  </Button>
-                  <Button variant="outlined" startIcon={<QuizIcon />} disabled={!syllabusReady} onClick={() => handleAction('assessment')} sx={{ borderRadius: 2, textTransform: 'none', color: '#A52028', borderColor: '#A52028' }}>
-                    Generate Assessment
-                  </Button>
-                  <Button variant="outlined" startIcon={<AnalyticsIcon />} onClick={() => navigate(ROUTES.FACULTY.ANALYTICS)} sx={{ borderRadius: 2, textTransform: 'none', color: '#475569', borderColor: '#CBD5E1' }}>
-                    View Analytics
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={4}>
-            <Card sx={{ ...cardStyles, minHeight: 200 }}>
-              <CardHeader title="Course Details" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                <Typography sx={{ fontWeight: 700, mb: 1, color: '#0F172A' }}>{course.courseName || 'No course added yet'}</Typography>
-                <Typography sx={{ color: '#64748B', mb: 0.5 }}>Course Code: {course.courseCode || '—'}</Typography>
-                <Typography sx={{ color: '#64748B', mb: 0.5 }}>Year Level: {course.yearLevel || '—'}</Typography>
-                <Typography sx={{ color: '#64748B', mb: 0.5 }}>Semester: {course.semester || '—'}</Typography>
-                <Typography sx={{ color: '#64748B', mb: 0.5 }}>Section: {course.section || '—'}</Typography>
-                {course.courseName && (
-                  <Chip label="Course ready" size="small" sx={{ mt: 2, background: '#DCFCE7', color: '#166534', fontWeight: 600 }} />
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={4}>
-            <Card sx={{ ...cardStyles, minHeight: 200 }}>
-              <CardHeader title="Syllabus Status" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                <Typography sx={{ color: '#64748B', mb: 2 }}>
-                  {syllabusReady ? 'Syllabus is ready. You can now build modules and assessments.' : 'Create a syllabus first to unlock module and assessment workflows.'}
-                </Typography>
-                <Chip
-                  label={syllabusReady ? 'Completed' : 'Pending'}
-                  size="small"
-                  sx={{
-                    background: syllabusReady ? '#DCFCE7' : '#FEF9C3',
-                    color: syllabusReady ? '#166534' : '#854D0E',
-                    fontWeight: 600
-                  }}
-                />
-              </CardContent>
-            </Card>
-          </Grid>
-
-          <Grid item xs={12} md={4}>
-            <Card sx={{ ...cardStyles, minHeight: 200 }}>
-              <CardHeader title="Next Step" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                <Typography sx={{ color: '#64748B', mb: 3 }}>
-                  Start with course onboarding, create your syllabus, then continue with modules and assessment generation.
-                </Typography>
-                <Button variant="contained" disabled={!course.courseName} onClick={() => setPromptOpen(true)} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none' }}>
-                  Choose Action
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
+          {/* Render Saved Courses */}
+          {courses.map((course) => (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={course.id}>
+              <Card 
+                onClick={() => handleEnterCourse(course)}
+                sx={{ 
+                  borderRadius: '24px', 
+                  backgroundColor: '#FFFFFF', 
+                  boxShadow: '0 8px 32px rgba(0,0,0,0.06)', 
+                  minHeight: 240, 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  p: 3, 
+                  cursor: 'pointer', 
+                  position: 'relative',
+                  transition: 'transform 0.2s ease, box-shadow 0.2s ease', 
+                  '&:hover': { transform: 'translateY(-4px)', boxShadow: '0 12px 48px rgba(0,0,0,0.1)' } 
+                }}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 'auto' }}>
+                  <Box sx={{ width: 48, height: 48, borderRadius: '16px', backgroundColor: '#FFF1F2', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <SchoolIcon sx={{ color: '#8B0000' }} />
+                  </Box>
+                  <IconButton size="small" sx={{ color: '#94A3B8' }} onClick={(e) => handleMenuClick(e, course.id)}>
+                    <MoreVertIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+                
+                <Box>
+                  <Typography sx={{ fontWeight: 800, color: '#0F172A', mb: 0.5, fontSize: '1.15rem', lineHeight: 1.3 }}>
+                    {course.courseName}
+                  </Typography>
+                  <Typography sx={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 500 }}>
+                    {course.createdAt || 'Just now'} • {course.courseCode || 'No code'}
+                  </Typography>
+                </Box>
+              </Card>
+            </Grid>
+          ))}
         </Grid>
 
-        <Dialog open={onboardingOpen} onClose={() => setOnboardingOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700 }}>Welcome to ATLAS</DialogTitle>
-          <DialogContent>
-            <Typography sx={{ mb: 2, color: '#64748B' }}>
-              What would you like us to call you, and what course are you teaching?
-            </Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <TextField label="Your name" value={formState.instructorName} onChange={(e) => setFormState({ ...formState, instructorName: e.target.value })} fullWidth size="small" />
-              <TextField label="Course Name" value={formState.courseName} onChange={(e) => setFormState({ ...formState, courseName: e.target.value })} fullWidth size="small" />
-              <TextField label="Course Code" value={formState.courseCode} onChange={(e) => setFormState({ ...formState, courseCode: e.target.value })} fullWidth size="small" />
-              <TextField label="Year Level" value={formState.yearLevel} onChange={(e) => setFormState({ ...formState, yearLevel: e.target.value })} fullWidth size="small" />
-              <TextField label="Semester" value={formState.semester} onChange={(e) => setFormState({ ...formState, semester: e.target.value })} fullWidth size="small" />
-              <TextField label="Section" value={formState.section} onChange={(e) => setFormState({ ...formState, section: e.target.value })} fullWidth size="small" />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ p: 3 }}>
-            <Button onClick={() => setOnboardingOpen(false)} sx={{ color: '#64748B' }}>Cancel</Button>
-            <Button variant="contained" sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2 }} onClick={handleOnboardingSubmit}>
-              Save Course
-            </Button>
-          </DialogActions>
-        </Dialog>
+        {/* Action Menu */}
+        <Menu 
+          anchorEl={anchorEl} 
+          open={Boolean(anchorEl)} 
+          onClose={handleMenuClose}
+          PaperProps={{ sx: { borderRadius: '16px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', mt: 1, minWidth: 150 } }}
+        >
+          <MenuItem onClick={handleMenuClose} sx={{ fontWeight: 500, fontSize: '0.9rem', color: '#1E293B' }}>Edit details</MenuItem>
+          <MenuItem onClick={handleMenuClose} sx={{ fontWeight: 500, fontSize: '0.9rem', color: '#1E293B' }}>Duplicate</MenuItem>
+          <MenuItem onClick={handleMenuClose} sx={{ fontWeight: 500, fontSize: '0.9rem', color: '#C62828' }}>Delete course</MenuItem>
+        </Menu>
 
-        <Dialog open={promptOpen} onClose={() => setPromptOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700 }}>Choose your next action</DialogTitle>
+        {/* Create Course Dialog */}
+        <Dialog open={onboardingOpen} onClose={() => setOnboardingOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '24px', p: 1 } }}>
+          <DialogTitle sx={{ fontWeight: 800, fontSize: '1.4rem', color: '#0F172A' }}>Create New Course</DialogTitle>
           <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              <Button variant="contained" sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, py: 1.5 }} onClick={() => { handleAction('syllabus'); setPromptOpen(false) }}>
-                Create Syllabus
-              </Button>
-              <Button variant="outlined" sx={{ borderRadius: 2, py: 1.5, borderColor: '#A52028', color: '#A52028' }} disabled={!syllabusReady} onClick={() => { handleAction('module'); setPromptOpen(false) }}>
-                Build Module
-              </Button>
-              <Button variant="outlined" sx={{ borderRadius: 2, py: 1.5, borderColor: '#A52028', color: '#A52028' }} disabled={!syllabusReady} onClick={() => { handleAction('assessment'); setPromptOpen(false) }}>
-                Generate Assessment
-              </Button>
+            <Typography sx={{ mb: 3, color: '#64748B', fontSize: '0.95rem' }}>
+              Set up the foundation for your new course environment.
+            </Typography>
+            <Stack spacing={2.5}>
+              <TextField label="Instructor Name" value={formState.instructorName} onChange={(e) => setFormState({ ...formState, instructorName: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} />
+              <TextField label="Course Name" value={formState.courseName} onChange={(e) => setFormState({ ...formState, courseName: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} required />
+              <TextField label="Course Code" value={formState.courseCode} onChange={(e) => setFormState({ ...formState, courseCode: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} />
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField label="Year Level" value={formState.yearLevel} onChange={(e) => setFormState({ ...formState, yearLevel: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField label="Semester" value={formState.semester} onChange={(e) => setFormState({ ...formState, semester: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} />
+                </Grid>
+              </Grid>
+              <TextField label="Section" value={formState.section} onChange={(e) => setFormState({ ...formState, section: e.target.value })} fullWidth size="small" InputProps={{ sx: { borderRadius: '12px' } }} />
             </Stack>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setPromptOpen(false)} sx={{ color: '#64748B' }}>Close</Button>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button onClick={() => setOnboardingOpen(false)} sx={{ color: '#64748B', fontWeight: 600, textTransform: 'none' }}>Cancel</Button>
+            <Button variant="contained" sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: '12px', textTransform: 'none', px: 3, fontWeight: 700 }} onClick={handleCreateCourse}>
+              Create Course
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>
