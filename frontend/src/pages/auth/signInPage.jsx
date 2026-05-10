@@ -145,11 +145,12 @@ export default function SignInPage() {
                 </p>
               </div>
 
-              {error && <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }}>{error}</Alert>}
+              {/* {error && <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }}>{error}</Alert>}
               <Alert severity="info" sx={{ mb: 4, borderRadius: 2 }}>
                 Super Admin access: <strong>superadmin@atlas.local</strong> / <strong>SuperAdmin123!</strong><br />
-                Faculty access: <strong>faculty@atlas.local</strong> / <strong>Faculty123!</strong>
-              </Alert>
+                Faculty access: <strong>faculty@atlas.local</strong> / <strong>Faculty123!</strong><br />
+                Admin access: <strong>admin@atlas.local</strong> / <strong>Admin123!</strong>
+              </Alert> */}
 
               {/* Email / password form */}
               <form onSubmit={handleSubmit} className="space-y-4">
