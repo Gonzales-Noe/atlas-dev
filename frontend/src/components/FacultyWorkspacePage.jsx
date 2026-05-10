@@ -18,6 +18,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
@@ -34,6 +35,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import MenuIcon from '@mui/icons-material/Menu'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
@@ -55,19 +57,21 @@ const WORKSPACE_TABS = [
 ]
 
 const SYLLABUS_SECTIONS = [
-  { key: 'overview',        label: 'Overview' },
-  { key: 'description',     label: 'Description & Rationale' },
-  { key: 'contact',         label: 'Contact Hours & Assessment' },
-  { key: 'tlas',            label: 'TLAs' },
-  { key: 'ilo',             label: 'Learning Outcomes' },
-  { key: 'assessment_map',  label: 'Assessment Map' },
-  { key: 'references',      label: 'References' },
-  { key: 'attributes',      label: 'Graduate Attributes' },
+  { key: 'header',          label: 'Header Info' },
+  { key: 'direction',       label: 'University Direction' },
+  { key: 'specs',           label: 'Course Specifications' },
+  { key: 'overview',        label: 'Course Overview' },
+  { key: 'strategies',      label: 'Assessment & Strategies' },
+  { key: 'outcomes',        label: 'Expected Outcomes' },
+  { key: 'references',      label: 'References & Frameworks' },
   { key: 'policies',        label: 'Course Policies' },
-  { key: 'generate',        label: '+ Generate' },
+  { key: 'tla_activities',  label: 'TLA Activities' },
+  { key: 'schedules',       label: 'Schedules & Mappings' },
 ]
 
 const PROVIDERS = ['ollama', 'gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
+const AI_PROVIDERS = ['gemini', 'anthropic', 'groq', 'gpt']
+const AI_EXCLUDED_SECTIONS = new Set(['header', 'specs', 'schedules'])
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
   'assignment', 'project', 'activity', 'performance task',
@@ -87,26 +91,62 @@ const DEFAULT_GRADING_ROWS = [
   { rating: 'Incomplete',          grade: 'INC',  range: '\u2014' },
 ]
 
-const EMPTY_TASK = { code: '', task: '', ird: '', weight: '', ilo1: '', ilo2: '', ilo3: '', domain: '' }
-const EMPTY_ATTR = { code: '', title: '', description: '' }
-const EMPTY_POLICY = { title: '', content: '' }
+const EMPTY_TASK    = { code: '', task: '', ird: '', weight: '', ilo_values: [], c: '', p: '', a: '' }
+const EMPTY_ATTR    = { code: '', title: '', description: '' }
+const EMPTY_POLICY  = { title: '', content: '' }
+const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', so: '', delivery: '' }
+
+const SCHEDULE_WEEKS = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
+
+const TABLE_TH = {
+  padding: '6px 10px', borderBottom: '2px solid #e0e0e0', borderRight: '1px solid #eee',
+  backgroundColor: BG, color: '#555', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap',
+}
+const TABLE_TD = {
+  padding: '3px 5px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f5f5f5', verticalAlign: 'top',
+}
 
 const EMPTY_SYLLABUS = {
+  // 1. Header & Institutional Info
+  university_name: 'Republic of the Philippines\nBatangas State University (The National Engineering University)\nBatStateU-Lipa Campus',
+  college: 'College of Informatics and Computing Sciences',
+  program: 'Bachelor of Science in Information Technology',
+  document_title: 'Course Information Syllabus (CIS)',
+  // 2. University Direction
+  vision: '', mission: '',
+  // 3. Course Specifications
   course_title: '', course_code: '', course_category: '', prerequisites: '',
-  semester_year: '', credit_hours: '', instructor_name: '', reference_cmo: '',
-  date_prepared: '', revision_no: '', period_of_study: '',
-  vision: '', mission: '', description: '',
-  lecture_hours: '', lab_hours: '', assessment_criteria: '',
-  tlas: '',
+  semester_year: '', credit_hours: '', instructor_name: '',
+  contact_info: '', education: '',
+  reference_cmo: '', date_prepared: '', revision_no: '', revision_date: '', period_of_study: '',
+  // 4. Course Overview
+  description: '', lecture_hours: '', lab_hours: '',
+  // 5. Assessment & Strategies
+  assessment_criteria: '', tlas: '',
+  // 6. Expected Outcomes
   ilos: [''],
-  assessment_tasks: [{ ...EMPTY_TASK }],
+  assessment_tasks: [{ ...EMPTY_TASK, ilo_values: [''] }],
+  // 7. References & Frameworks
   references: [''],
-  igas:            [{ ...EMPTY_ATTR }],
-  student_outcomes:[{ ...EMPTY_ATTR }],
-  cdio_skills:     [{ ...EMPTY_ATTR }],
-  sdg_skills:      [{ ...EMPTY_ATTR }],
-  grading_rows: DEFAULT_GRADING_ROWS.map(r => ({ ...r })),
-  policies: [{ title: 'Class Policies', content: '' }],
+  igas:             [{ ...EMPTY_ATTR }],
+  student_outcomes: [{ ...EMPTY_ATTR }],
+  cdio_skills:      [{ ...EMPTY_ATTR }],
+  sdg_skills:       [{ ...EMPTY_ATTR }],
+  // 8. Course Policies
+  grading_rows:   DEFAULT_GRADING_ROWS.map(r => ({ ...r })),
+  policies:       [{ title: 'Class Policies', content: '' }],
+  other_policies: '',
+  // 9. TLA Activities
+  tla_chapters: [{ ...EMPTY_CHAPTER }],
+  // 10. Schedules & Mappings
+  schedule_methods:  [{ name: 'Major Examinations', values: Array(16).fill('') }],
+  so_headers:        [''],
+  so_cpa_rows:       [{ so_vals: [''], c: '', p: '', a: '' }],
+  iga_headers:       [''],
+  iga_rows:          [{ vals: [''] }],
+  cdio_headers:      [''],
+  sdg_headers:       [''],
+  cdio_sdg_rows:     [{ cdio_vals: [''], sdg_vals: [''] }],
 }
 
 // ── Shared sub-components ─────────────────────────────────────────────────
@@ -182,9 +222,9 @@ function detectFileType(file) {
   return ''
 }
 
-function inlineInput(value, onChange, minWidth = 80) {
+function inlineInput(value, onChange, minWidth = 80, onFocus) {
   return (
-    <TextField size="small" value={value} onChange={onChange}
+    <TextField size="small" value={value} onChange={onChange} onFocus={onFocus}
       sx={{
         minWidth,
         '& .MuiOutlinedInput-root': {
@@ -243,6 +283,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [saveError, setSaveError]       = useState('')
   const [saveSuccess, setSaveSuccess]   = useState(false)
 
+  // ── AI footer state ─────────────────────────────────────────────────────
+  // aiField: null | { section, label, fieldType, field, arrField, arrIndex, arrObjKey }
+  const [aiField, setAiField]         = useState(null)
+  const [aiProvider, setAiProvider]   = useState('gemini')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError]         = useState('')
+
+  // ── Syllabus upload (parse) state ────────────────────────────────────────
+  const syllabusUploadRef                   = useRef(null)
+  const [syllabusUploading, setSyllabusUploading]     = useState(false)
+  const [syllabusUploadError, setSyllabusUploadError] = useState('')
+  const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
+
   function setSyl(field, value) {
     setIsDirty(true)
     setSaveSuccess(false)
@@ -269,6 +322,230 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setSyllabusData(s => ({ ...s, [field]: s[field].filter((_, j) => j !== i) }))
   }
 
+  // Normalize raw syllabus data — migrates old formats and initialises all structured fields
+  function normalizeSyllabusData(raw) {
+    if (!raw) return { ...EMPTY_SYLLABUS }
+    const iloCount = Math.max(1, (raw.ilos || ['']).length)
+
+    // 1. assessment_tasks: old ilo1/ilo2/domain → ilo_values / c / p / a
+    const normTasks = (tasks) => (tasks || []).map(t => {
+      if (Array.isArray(t.ilo_values)) return t
+      const iloVals = Array.from({ length: iloCount }, (_, i) => t[`ilo${i + 1}`] || '')
+      return { code: t.code || '', task: t.task || '', ird: t.ird || '', weight: t.weight || '',
+               ilo_values: iloVals, c: '', p: '', a: t.domain || '' }
+    })
+
+    // 2. tla_chapters: old {chapter,description} → new column model
+    const normChapters = (chapters) => (chapters || []).map(ch => {
+      if ('topics' in ch) return ch
+      return { chapter: ch.chapter || '', topics: ch.description || '', weeks: '', outcomes: '', ilo: '', so: '', delivery: '' }
+    })
+
+    // 3. SO/CPA mapping rows (one per ILO)
+    const soHeaders = raw.so_headers || ['']
+    const normSoCpa = Array.from({ length: iloCount }, (_, i) => {
+      const ex = (raw.so_cpa_rows || [])[i] || {}
+      return {
+        so_vals: Array.from({ length: soHeaders.length }, (_, j) => (ex.so_vals || [])[j] || ''),
+        c: ex.c || '', p: ex.p || '', a: ex.a || '',
+      }
+    })
+
+    // 4. IGA mapping rows
+    const igaHeaders = raw.iga_headers || ['']
+    const normIga = Array.from({ length: iloCount }, (_, i) => {
+      const ex = (raw.iga_rows || [])[i] || {}
+      return { vals: Array.from({ length: igaHeaders.length }, (_, j) => (ex.vals || [])[j] || '') }
+    })
+
+    // 5. CDIO/SDG mapping rows
+    const cdioHeaders = raw.cdio_headers || ['']
+    const sdgHeaders  = raw.sdg_headers  || ['']
+    const normCdioSdg = Array.from({ length: iloCount }, (_, i) => {
+      const ex = (raw.cdio_sdg_rows || [])[i] || {}
+      return {
+        cdio_vals: Array.from({ length: cdioHeaders.length }, (_, j) => (ex.cdio_vals || [])[j] || ''),
+        sdg_vals:  Array.from({ length: sdgHeaders.length  }, (_, j) => (ex.sdg_vals  || [])[j] || ''),
+      }
+    })
+
+    // 6. Assessment schedule methods
+    const normSchedule = (raw.schedule_methods || []).length
+      ? raw.schedule_methods.map(m => ({
+          name: m.name || '',
+          values: Array.from({ length: 16 }, (_, j) => (m.values || [])[j] || ''),
+        }))
+      : [{ name: 'Major Examinations', values: Array(16).fill('') }]
+
+    const normTasksResult = normTasks(raw.assessment_tasks || [])
+    const normChaptersResult = normChapters(raw.tla_chapters || [])
+
+    return {
+      ...EMPTY_SYLLABUS, ...raw,
+      assessment_tasks: normTasksResult.length
+        ? normTasksResult
+        : [{ ...EMPTY_TASK, ilo_values: Array(iloCount).fill('') }],
+      tla_chapters: normChaptersResult.length ? normChaptersResult : [{ ...EMPTY_CHAPTER }],
+      schedule_methods: normSchedule,
+      so_headers:    soHeaders,    so_cpa_rows:   normSoCpa,
+      iga_headers:   igaHeaders,   iga_rows:      normIga,
+      cdio_headers:  cdioHeaders,  sdg_headers:   sdgHeaders,
+      cdio_sdg_rows: normCdioSdg,
+    }
+  }
+
+  // Add an ILO and extend every assessment task and mapping row in sync
+  function addIlo() {
+    setIsDirty(true); setSaveSuccess(false)
+    setSyllabusData(s => {
+      const soLen   = (s.so_headers   || ['']).length
+      const igaLen  = (s.iga_headers  || ['']).length
+      const cdioLen = (s.cdio_headers || ['']).length
+      const sdgLen  = (s.sdg_headers  || ['']).length
+      return {
+        ...s,
+        ilos: [...s.ilos, ''],
+        assessment_tasks: s.assessment_tasks.map(t => ({
+          ...t, ilo_values: [...(t.ilo_values || []), ''],
+        })),
+        so_cpa_rows:   [...(s.so_cpa_rows   || []), { so_vals: Array(soLen).fill(''),   c: '', p: '', a: '' }],
+        iga_rows:      [...(s.iga_rows      || []), { vals: Array(igaLen).fill('') }],
+        cdio_sdg_rows: [...(s.cdio_sdg_rows || []), { cdio_vals: Array(cdioLen).fill(''), sdg_vals: Array(sdgLen).fill('') }],
+      }
+    })
+  }
+
+  // Remove an ILO and remove the matching row from all mapping tables
+  function removeIlo(i) {
+    if (syllabusData.ilos.length <= 1) return
+    setIsDirty(true); setSaveSuccess(false)
+    setSyllabusData(s => ({
+      ...s,
+      ilos: s.ilos.filter((_, j) => j !== i),
+      assessment_tasks: s.assessment_tasks.map(t => ({
+        ...t, ilo_values: (t.ilo_values || []).filter((_, j) => j !== i),
+      })),
+      so_cpa_rows:   (s.so_cpa_rows   || []).filter((_, j) => j !== i),
+      iga_rows:      (s.iga_rows      || []).filter((_, j) => j !== i),
+      cdio_sdg_rows: (s.cdio_sdg_rows || []).filter((_, j) => j !== i),
+    }))
+  }
+
+  // Set a single ILO value cell inside an assessment task
+  function setSylTaskIlo(taskIdx, iloIdx, value) {
+    setIsDirty(true); setSaveSuccess(false)
+    setSyllabusData(s => ({
+      ...s,
+      assessment_tasks: s.assessment_tasks.map((t, i) => {
+        if (i !== taskIdx) return t
+        const iloVals = [...(t.ilo_values || [])]
+        iloVals[iloIdx] = value
+        return { ...t, ilo_values: iloVals }
+      }),
+    }))
+  }
+
+  // Add a column to a mapping table (updates both headers array and every row's values array)
+  function addMappingCol(headersField, rowsField, rowValKey) {
+    setIsDirty(true); setSaveSuccess(false)
+    setSyllabusData(s => ({
+      ...s,
+      [headersField]: [...(s[headersField] || ['']), ''],
+      [rowsField]: (s[rowsField] || []).map(row => ({
+        ...row,
+        [rowValKey]: [...(row[rowValKey] || []), ''],
+      })),
+    }))
+  }
+
+  // Remove a column from a mapping table
+  function removeMappingCol(headersField, rowsField, rowValKey, colIdx) {
+    if ((syllabusData[headersField] || ['']).length <= 1) return
+    setIsDirty(true); setSaveSuccess(false)
+    setSyllabusData(s => ({
+      ...s,
+      [headersField]: (s[headersField] || []).filter((_, j) => j !== colIdx),
+      [rowsField]: (s[rowsField] || []).map(row => ({
+        ...row,
+        [rowValKey]: (row[rowValKey] || []).filter((_, j) => j !== colIdx),
+      })),
+    }))
+  }
+
+  // ── AI helper: read / write the selected field ──────────────────────────
+  function getAiCurrentValue() {
+    if (!aiField) return ''
+    const { fieldType, field, arrField, arrIndex, arrObjKey } = aiField
+    if (fieldType === 'simple')   return syllabusData[field] || ''
+    if (fieldType === 'array')    return syllabusData[arrField]?.[arrIndex] || ''
+    if (fieldType === 'arrayObj') return syllabusData[arrField]?.[arrIndex]?.[arrObjKey] || ''
+    return ''
+  }
+
+  function applyAiText(text) {
+    if (!aiField) return
+    const { fieldType, field, arrField, arrIndex, arrObjKey } = aiField
+    if (fieldType === 'simple')   setSyl(field, text)
+    if (fieldType === 'array')    setSylArr(arrField, arrIndex, text)
+    if (fieldType === 'arrayObj') setSylArrObj(arrField, arrIndex, arrObjKey, text)
+  }
+
+  async function handleAiGenerate(mode) {
+    if (!aiField || !course) return
+    setAiGenerating(true); setAiError('')
+    try {
+      const currentValue = getAiCurrentValue()
+      const { data } = await api.post('/curriculum/generate-syllabus-field/', {
+        course_id: courseId,
+        section: aiField.section,
+        field_label: aiField.label,
+        existing_content: mode === 'continue' ? currentValue : '',
+        mode,
+        provider: aiProvider,
+        top_k: 5,
+      }, { timeout: 120000 })
+      const generated = data.generated_text || ''
+      // 'continue' appends to existing; 'generate' replaces
+      if (mode === 'continue' && currentValue) {
+        applyAiText(currentValue + '\n' + generated)
+      } else {
+        applyAiText(generated)
+      }
+    } catch (err) {
+      setAiError(extractApiError(err))
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
+  async function handleSyllabusUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('course_id', courseId)
+    try {
+      // Do NOT set Content-Type manually — let the browser set it with the correct boundary
+      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
+        headers: { 'Content-Type': undefined },
+        timeout: 120000,
+      })
+      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
+        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
+        setIsDirty(true)
+        setSyllabusUploadSuccess(true)
+      } else {
+        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
+      }
+    } catch (err) {
+      setSyllabusUploadError(extractApiError(err))
+    } finally {
+      setSyllabusUploading(false)
+      if (syllabusUploadRef.current) syllabusUploadRef.current.value = ''
+    }
+  }
+
   // ── API ─────────────────────────────────────────────────────────────────
   const workspaceApi = useApi(
     courseId ? `/curriculum/faculty-course-workspace/${courseId}/` : null,
@@ -289,8 +566,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
     const saved = apiData.syllabus?.syllabus_content
     if (saved && typeof saved === 'object') {
-      // Merge saved content with EMPTY_SYLLABUS defaults so new keys are always present
-      setSyllabusData({ ...EMPTY_SYLLABUS, ...saved })
+      // Merge saved content with EMPTY_SYLLABUS defaults so new keys are always present, then normalize
+      setSyllabusData(normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...saved }))
       setIsDirty(false)
       return
     }
@@ -301,49 +578,79 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const mapAttr = arr => (arr || []).length
       ? arr.map(g => ({ code: g.code || '', title: g.title || '', description: g.description || '' }))
       : [{ ...EMPTY_ATTR }]
-    setSyllabusData({
-      course_title:       course.course_title       || '',
-      course_code:        course.course_code        || '',
-      course_category:    course.course_category    || '',
-      prerequisites:      course.prerequisites      || '',
-      semester_year:      course.semester_year      || '',
-      credit_hours:       toStr(course.credit_hours),
-      instructor_name:    course.instructor_name    || '',
-      reference_cmo:      course.reference_cmo      || '',
-      date_prepared:      course.date_prepared      || '',
-      revision_no:        toStr(course.revision_no),
-      period_of_study:    course.period_of_study    || '',
-      vision:             course.vision             || '',
-      mission:            course.mission            || '',
-      description:        course.description        || '',
-      lecture_hours:      toStr(course.lecture_hours),
-      lab_hours:          toStr(course.lab_hours),
+    const courseIlos = (course.ilos || []).length ? course.ilos.map(String) : ['']
+    const iloCount   = courseIlos.length
+    setSyllabusData(normalizeSyllabusData({
+      // Header defaults (kept from EMPTY_SYLLABUS)
+      university_name:  EMPTY_SYLLABUS.university_name,
+      college:          EMPTY_SYLLABUS.college,
+      program:          EMPTY_SYLLABUS.program,
+      document_title:   EMPTY_SYLLABUS.document_title,
+      // University Direction
+      vision:           course.vision             || '',
+      mission:          course.mission            || '',
+      // Course Specifications
+      course_title:     course.course_title       || '',
+      course_code:      course.course_code        || '',
+      course_category:  course.course_category    || '',
+      prerequisites:    course.prerequisites      || '',
+      semester_year:    course.semester_year      || '',
+      credit_hours:     toStr(course.credit_hours),
+      instructor_name:  course.instructor_name    || '',
+      contact_info:     course.contact_info       || '',
+      education:        course.education          || '',
+      reference_cmo:    course.reference_cmo      || '',
+      date_prepared:    course.date_prepared      || '',
+      revision_no:      toStr(course.revision_no),
+      revision_date:    course.revision_date      || '',
+      period_of_study:  course.period_of_study    || '',
+      // Course Overview
+      description:      course.description        || '',
+      lecture_hours:    toStr(course.lecture_hours),
+      lab_hours:        toStr(course.lab_hours),
+      // Assessment & Strategies
       assessment_criteria: course.assessment_criteria || '',
-      tlas:               course.tlas               || '',
-      ilos:               (course.ilos || []).length ? course.ilos.map(String) : [''],
-      assessment_tasks:   (course.assessment_tasks || []).length
-        ? course.assessment_tasks.map(t => ({
-            code: t.code || '', task: t.task || '', ird: t.ird || '',
-            weight: toStr(t.weight), ilo1: toStr(t.ilo1), ilo2: toStr(t.ilo2), ilo3: toStr(t.ilo3),
-            domain: t.domain || '',
-          }))
-        : [{ ...EMPTY_TASK }],
+      tlas:             course.tlas               || '',
+      // Expected Outcomes
+      ilos: courseIlos,
+      assessment_tasks: (course.assessment_tasks || []).length
+        ? course.assessment_tasks   // normalizeSyllabusData will convert old format
+        : [{ ...EMPTY_TASK, ilo_values: Array(iloCount).fill('') }],
+      // References & Frameworks
       references:       (course.references || []).length ? course.references.map(String) : [''],
       igas:             mapAttr(course.igas),
       student_outcomes: mapAttr(course.student_outcomes),
       cdio_skills:      mapAttr(course.cdio_skills),
       sdg_skills:       mapAttr(course.sdg_skills),
+      // Course Policies
       grading_rows:     DEFAULT_GRADING_ROWS.map(r => ({ ...r })),
       policies:         (course.policies || []).length
         ? course.policies.map(p => ({ title: p.title || '', content: p.content || '' }))
         : [{ title: 'Class Policies', content: '' }],
-    })
+      other_policies:   course.other_policies     || '',
+      // TLA Activities (normalizeSyllabusData migrates old {chapter,description} → new column model)
+      tla_chapters:    (course.tla_chapters || []).length ? course.tla_chapters : [{ ...EMPTY_CHAPTER }],
+      // Schedules & Mappings — pass raw; normalizeSyllabusData will initialise all structured fields
+      schedule_methods:  course.schedule_methods  || undefined,
+      so_headers:        course.so_headers        || undefined,
+      so_cpa_rows:       course.so_cpa_rows       || undefined,
+      iga_headers:       course.iga_headers       || undefined,
+      iga_rows:          course.iga_rows          || undefined,
+      cdio_headers:      course.cdio_headers      || undefined,
+      sdg_headers:       course.sdg_headers       || undefined,
+      cdio_sdg_rows:     course.cdio_sdg_rows     || undefined,
+    }))
     setIsDirty(false)
   }, [workspaceApi.data])
 
   // Auto-clear transient notifications
   useEffect(() => { if (!saveError) return; const t = setTimeout(() => setSaveError(''), 3000); return () => clearTimeout(t) }, [saveError])
   useEffect(() => { if (!actionError) return; const t = setTimeout(() => setActionError(''), 3000); return () => clearTimeout(t) }, [actionError])
+  useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
+  useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
+
+  // Clear AI field selection when the syllabus section tab changes
+  useEffect(() => { setAiField(null) }, [syllabusSub])
 
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
@@ -483,52 +790,80 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
     if (workspaceApi.error) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
 
-    // ── Overview ────────────────────────────────────────────────────────────
-    if (syllabusSub === 'overview') {
+    // ── 1. Header & Institutional Info ──────────────────────────────────────
+    if (syllabusSub === 'header') {
+      return (
+        <>
+          <SectionCard title="University / Campus Details">
+            <LField label="University / Campus" multiline minRows={3}
+              value={syllabusData.university_name || ''} onChange={e => setSyl('university_name', e.target.value)} />
+          </SectionCard>
+          <SectionCard title="College & Program">
+            <Box sx={{ display: 'grid', gap: 1.75 }}>
+              <LField label="College"        value={syllabusData.college        || ''} onChange={e => setSyl('college',       e.target.value)} />
+              <LField label="Program"        value={syllabusData.program        || ''} onChange={e => setSyl('program',       e.target.value)} />
+              <LField label="Document Title" value={syllabusData.document_title || ''} onChange={e => setSyl('document_title', e.target.value)} />
+            </Box>
+          </SectionCard>
+        </>
+      )
+    }
+
+    // ── 2. University Direction ──────────────────────────────────────────────
+    if (syllabusSub === 'direction') {
+      return (
+        <>
+          <SectionCard title="Vision">
+            <LField label="Vision Statement" multiline minRows={3}
+              value={syllabusData.vision} onChange={e => setSyl('vision', e.target.value)}
+              onFocus={() => setAiField({ section: 'direction', label: 'Vision Statement', fieldType: 'simple', field: 'vision' })} />
+          </SectionCard>
+          <SectionCard title="Mission">
+            <LField label="Mission Statement" multiline minRows={3}
+              value={syllabusData.mission} onChange={e => setSyl('mission', e.target.value)}
+              onFocus={() => setAiField({ section: 'direction', label: 'Mission Statement', fieldType: 'simple', field: 'mission' })} />
+          </SectionCard>
+        </>
+      )
+    }
+
+    // ── 3. Course Specifications ─────────────────────────────────────────────
+    if (syllabusSub === 'specs') {
       return (
         <SectionCard title="Course Information">
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
-            <LField label="Course Title"       value={syllabusData.course_title}    onChange={e => setSyl('course_title', e.target.value)} />
-            <LField label="Course Code"        value={syllabusData.course_code}     onChange={e => setSyl('course_code', e.target.value)} />
-            <LField label="Course Category"    value={syllabusData.course_category} onChange={e => setSyl('course_category', e.target.value)} />
-            <LField label="Pre-requisite(s)"   value={syllabusData.prerequisites}   onChange={e => setSyl('prerequisites', e.target.value)} />
-            <LField label="Semester / Year"    value={syllabusData.semester_year}   onChange={e => setSyl('semester_year', e.target.value)} />
-            <LField label="Credit Hours"       value={syllabusData.credit_hours}    onChange={e => setSyl('credit_hours', e.target.value)} />
-            <LField label="Course Instructor"  value={syllabusData.instructor_name} onChange={e => setSyl('instructor_name', e.target.value)} />
-            <LField label="Reference CMO"      value={syllabusData.reference_cmo}   onChange={e => setSyl('reference_cmo', e.target.value)} />
-            <LField label="Date Prepared"      value={syllabusData.date_prepared}   onChange={e => setSyl('date_prepared', e.target.value)} />
-            <LField label="Revision No."       value={syllabusData.revision_no}     onChange={e => setSyl('revision_no', e.target.value)} />
-            <LField label="Period of Study"    value={syllabusData.period_of_study} onChange={e => setSyl('period_of_study', e.target.value)}
+            <LField label="Course Title"     value={syllabusData.course_title    || ''} onChange={e => setSyl('course_title',    e.target.value)} />
+            <LField label="Course Code"      value={syllabusData.course_code     || ''} onChange={e => setSyl('course_code',     e.target.value)} />
+            <LField label="Course Category"  value={syllabusData.course_category || ''} onChange={e => setSyl('course_category', e.target.value)} />
+            <LField label="Pre-requisite(s)" value={syllabusData.prerequisites   || ''} onChange={e => setSyl('prerequisites',   e.target.value)} />
+            <LField label="Semester / Year"  value={syllabusData.semester_year   || ''} onChange={e => setSyl('semester_year',   e.target.value)} />
+            <LField label="Credit Hours"     value={syllabusData.credit_hours    || ''} onChange={e => setSyl('credit_hours',    e.target.value)} />
+            <LField label="Reference CMO"    value={syllabusData.reference_cmo   || ''} onChange={e => setSyl('reference_cmo',   e.target.value)} />
+            <LField label="Date Prepared"    value={syllabusData.date_prepared   || ''} onChange={e => setSyl('date_prepared',   e.target.value)} />
+            <LField label="Revision No."     value={syllabusData.revision_no     || ''} onChange={e => setSyl('revision_no',     e.target.value)} />
+            <LField label="Revision Date"    value={syllabusData.revision_date   || ''} onChange={e => setSyl('revision_date',   e.target.value)} />
+            <LField label="Period of Study"  value={syllabusData.period_of_study || ''} onChange={e => setSyl('period_of_study', e.target.value)}
+              sx={{ gridColumn: 'span 2' }} />
+          </Box>
+          <Box sx={{ mt: 1.75, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
+            <LField label="Course Instructor"   value={syllabusData.instructor_name || ''} onChange={e => setSyl('instructor_name', e.target.value)} />
+            <LField label="Contact Information" value={syllabusData.contact_info    || ''} onChange={e => setSyl('contact_info',    e.target.value)} />
+            <LField label="Education / Degree"  value={syllabusData.education       || ''} onChange={e => setSyl('education',       e.target.value)}
               sx={{ gridColumn: 'span 2' }} />
           </Box>
         </SectionCard>
       )
     }
 
-    // ── Description & Rationale ─────────────────────────────────────────────
-    if (syllabusSub === 'description') {
+    // ── 4. Course Overview ───────────────────────────────────────────────────
+    if (syllabusSub === 'overview') {
       return (
         <>
-          <SectionCard title="Vision">
-            <LField label="Vision Statement" multiline minRows={3}
-              value={syllabusData.vision} onChange={e => setSyl('vision', e.target.value)} />
-          </SectionCard>
-          <SectionCard title="Mission">
-            <LField label="Mission Statement" multiline minRows={3}
-              value={syllabusData.mission} onChange={e => setSyl('mission', e.target.value)} />
-          </SectionCard>
           <SectionCard title="Course Rationale and Description">
             <LField label="Description" multiline minRows={6}
-              value={syllabusData.description} onChange={e => setSyl('description', e.target.value)} />
+              value={syllabusData.description} onChange={e => setSyl('description', e.target.value)}
+              onFocus={() => setAiField({ section: 'overview', label: 'Course Description', fieldType: 'simple', field: 'description' })} />
           </SectionCard>
-        </>
-      )
-    }
-
-    // ── Contact Hours & Assessment ───────────────────────────────────────────
-    if (syllabusSub === 'contact') {
-      return (
-        <>
           <SectionCard title="Contact Hours">
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
               <LField label="Lecture Hours" type="number"
@@ -537,110 +872,119 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 value={syllabusData.lab_hours} onChange={e => setSyl('lab_hours', e.target.value)} />
             </Box>
           </SectionCard>
+        </>
+      )
+    }
+
+    // ── 5. Assessment & Strategies ───────────────────────────────────────────
+    if (syllabusSub === 'strategies') {
+      return (
+        <>
           <SectionCard title="Criteria for Assessment">
             <LField label="Assessment Criteria" multiline minRows={6}
-              value={syllabusData.assessment_criteria} onChange={e => setSyl('assessment_criteria', e.target.value)} />
+              value={syllabusData.assessment_criteria} onChange={e => setSyl('assessment_criteria', e.target.value)}
+              onFocus={() => setAiField({ section: 'strategies', label: 'Assessment Criteria', fieldType: 'simple', field: 'assessment_criteria' })} />
+          </SectionCard>
+          <SectionCard title="Teaching, Learning, and Assessment Strategies">
+            <LField label="TLA Strategies" multiline minRows={8}
+              value={syllabusData.tlas} onChange={e => setSyl('tlas', e.target.value)}
+              onFocus={() => setAiField({ section: 'strategies', label: 'TLA Strategies', fieldType: 'simple', field: 'tlas' })} />
           </SectionCard>
         </>
       )
     }
 
-    // ── TLAs ────────────────────────────────────────────────────────────────
-    if (syllabusSub === 'tlas') {
-      return (
-        <SectionCard title="Teaching, Learning, and Assessment Strategies">
-          <LField label="TLA Strategies" multiline minRows={10}
-            value={syllabusData.tlas} onChange={e => setSyl('tlas', e.target.value)} />
-        </SectionCard>
-      )
-    }
-
-    // ── Learning Outcomes (ILOs) ─────────────────────────────────────────────
-    if (syllabusSub === 'ilo') {
-      return (
-        <SectionCard title="Intended Learning Outcomes (ILO)"
-          action={<AddRowBtn label="Add ILO" onClick={() => addSylItem('ilos', '')} />}>
-          <Stack spacing={1.5}>
-            {syllabusData.ilos.map((ilo, i) => (
-              <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
-                <Chip label={'ILO' + (i + 1)} size="small"
-                  sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, flexShrink: 0, height: 22, fontSize: '0.7rem', mt: 0.8 }} />
-                <LField label={`ILO ${i + 1}`} multiline minRows={2}
-                  value={ilo} onChange={e => setSylArr('ilos', i, e.target.value)} />
-                <RemoveBtn onClick={() => removeSylItem('ilos', i)} disabled={syllabusData.ilos.length <= 1} />
-              </Box>
-            ))}
-          </Stack>
-        </SectionCard>
-      )
-    }
-
-    // ── Assessment Map ───────────────────────────────────────────────────────
-    if (syllabusSub === 'assessment_map') {
-      const cols = [
+    // ── 6. Expected Outcomes ─────────────────────────────────────────────────
+    if (syllabusSub === 'outcomes') {
+      const iloCount = syllabusData.ilos.length
+      const fixedCols = [
         { key: 'code',   label: 'Code',            width: 70 },
         { key: 'task',   label: 'Assessment Task',  width: 160 },
         { key: 'ird',    label: 'I/R/D',            width: 60 },
         { key: 'weight', label: 'Weight (%)',        width: 72 },
-        { key: 'ilo1',   label: 'ILO1',             width: 55 },
-        { key: 'ilo2',   label: 'ILO2',             width: 55 },
-        { key: 'ilo3',   label: 'ILO3',             width: 55 },
-        { key: 'domain', label: 'Domain',            width: 80 },
       ]
+      const domainCols = [
+        { key: 'c', label: 'C', width: 45 },
+        { key: 'p', label: 'P', width: 45 },
+        { key: 'a', label: 'A', width: 45 },
+      ]
+      const emptyTaskForIlos = { code: '', task: '', ird: '', weight: '', ilo_values: Array(iloCount).fill(''), c: '', p: '', a: '' }
       return (
-        <SectionCard title="Assessment Method and Distribution Map"
-          action={<AddRowBtn label="Add Row" onClick={() => addSylItem('assessment_tasks', EMPTY_TASK)} />}>
-          <Box sx={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-              <thead>
-                <tr style={{ backgroundColor: BG }}>
-                  {cols.map(c => (
-                    <th key={c.key} style={{ padding: '6px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'left', color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>{c.label}</th>
-                  ))}
-                  <th style={{ padding: '6px 4px', borderBottom: '2px solid #e0e0e0' }} />
-                </tr>
-              </thead>
-              <tbody>
-                {syllabusData.assessment_tasks.map((t, i) => (
-                  <tr key={i}>
-                    {cols.map(c => (
-                      <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid #f0f0f0' }}>
-                        {inlineInput(t[c.key], e => setSylArrObj('assessment_tasks', i, c.key, e.target.value), c.width)}
-                      </td>
+        <>
+          <SectionCard title="Intended Learning Outcomes (ILO)"
+            action={<AddRowBtn label="Add ILO" onClick={addIlo} />}>
+            <Stack spacing={1.5}>
+              {syllabusData.ilos.map((ilo, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <Chip label={'ILO' + (i + 1)} size="small"
+                    sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, flexShrink: 0, height: 22, fontSize: '0.7rem', mt: 0.8 }} />
+                  <LField label={`ILO ${i + 1}`} multiline minRows={2}
+                    value={ilo} onChange={e => setSylArr('ilos', i, e.target.value)}
+                    onFocus={() => setAiField({ section: 'outcomes', label: `ILO ${i + 1}`, fieldType: 'array', arrField: 'ilos', arrIndex: i })} />
+                  <RemoveBtn onClick={() => removeIlo(i)} disabled={syllabusData.ilos.length <= 1} />
+                </Box>
+              ))}
+            </Stack>
+          </SectionCard>
+
+          <SectionCard title="Assessment Method and Distribution Map"
+            action={<AddRowBtn label="Add Row" onClick={() => addSylItem('assessment_tasks', emptyTaskForIlos)} />}>
+            <Box sx={{ overflowX: 'auto' }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ backgroundColor: BG }}>
+                    {fixedCols.map(c => (
+                      <th key={c.key} style={{ padding: '6px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'left', color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>{c.label}</th>
                     ))}
-                    <td style={{ padding: '4px 4px', borderBottom: '1px solid #f0f0f0' }}>
-                      <RemoveBtn onClick={() => removeSylItem('assessment_tasks', i)} disabled={syllabusData.assessment_tasks.length <= 1} />
-                    </td>
+                    {Array.from({ length: iloCount }, (_, i) => (
+                      <th key={`iloh${i}`} style={{ padding: '6px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'left', color: '#555', fontWeight: 700, whiteSpace: 'nowrap' }}>ILO{i + 1}</th>
+                    ))}
+                    <th colSpan={3} style={{ padding: '6px 8px', borderBottom: '2px solid #e0e0e0', textAlign: 'center', color: '#555', fontWeight: 700 }}>Domain</th>
+                    <th style={{ padding: '6px 4px', borderBottom: '2px solid #e0e0e0' }} />
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Box>
-        </SectionCard>
+                  <tr style={{ backgroundColor: BG }}>
+                    {Array.from({ length: fixedCols.length + iloCount }, (_, i) => (
+                      <th key={i} style={{ borderBottom: '1px solid #e8e8e8' }} />
+                    ))}
+                    {domainCols.map(c => (
+                      <th key={c.key} style={{ padding: '2px 8px', borderBottom: '1px solid #e8e8e8', textAlign: 'center', color: '#777', fontWeight: 600, fontSize: '0.72rem' }}>{c.label}</th>
+                    ))}
+                    <th style={{ borderBottom: '1px solid #e8e8e8' }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {syllabusData.assessment_tasks.map((t, i) => (
+                    <tr key={i}>
+                      {fixedCols.map(c => (
+                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid #f0f0f0' }}>
+                          {inlineInput(t[c.key] || '', e => setSylArrObj('assessment_tasks', i, c.key, e.target.value), c.width)}
+                        </td>
+                      ))}
+                      {Array.from({ length: iloCount }, (_, j) => (
+                        <td key={`ilo${j}`} style={{ padding: '4px 5px', borderBottom: '1px solid #f0f0f0' }}>
+                          {inlineInput((t.ilo_values || [])[j] || '', e => setSylTaskIlo(i, j, e.target.value), 55)}
+                        </td>
+                      ))}
+                      {domainCols.map(c => (
+                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid #f0f0f0' }}>
+                          {inlineInput(t[c.key] || '', e => setSylArrObj('assessment_tasks', i, c.key, e.target.value), c.width)}
+                        </td>
+                      ))}
+                      <td style={{ padding: '4px 4px', borderBottom: '1px solid #f0f0f0' }}>
+                        <RemoveBtn onClick={() => removeSylItem('assessment_tasks', i)} disabled={syllabusData.assessment_tasks.length <= 1} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Box>
+          </SectionCard>
+        </>
       )
     }
 
-    // ── References ───────────────────────────────────────────────────────────
+    // ── 7. References & Educational Frameworks ───────────────────────────────
     if (syllabusSub === 'references') {
-      return (
-        <SectionCard title="Books and Other References"
-          action={<AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
-          <Stack spacing={1.25}>
-            {syllabusData.references.map((ref, i) => (
-              <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <Typography variant="body2" sx={{ color: MAROON, fontWeight: 700, minWidth: 22, flexShrink: 0 }}>{i + 1}.</Typography>
-                <LField label={`Reference ${i + 1}`} value={ref}
-                  onChange={e => setSylArr('references', i, e.target.value)} />
-                <RemoveBtn onClick={() => removeSylItem('references', i)} disabled={syllabusData.references.length <= 1} />
-              </Box>
-            ))}
-          </Stack>
-        </SectionCard>
-      )
-    }
-
-    // ── Graduate Attributes ──────────────────────────────────────────────────
-    if (syllabusSub === 'attributes') {
       const attrGroups = [
         { label: 'Institutional Graduate Attributes (IGA)', field: 'igas' },
         { label: 'Student Outcomes (SO)',                   field: 'student_outcomes' },
@@ -649,21 +993,36 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ]
       return (
         <>
+          <SectionCard title="Books and Other References"
+            action={<AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
+            <Stack spacing={1.25}>
+              {syllabusData.references.map((ref, i) => (
+                <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                  <Typography variant="body2" sx={{ color: MAROON, fontWeight: 700, minWidth: 22, flexShrink: 0 }}>{i + 1}.</Typography>
+                  <LField label={`Reference ${i + 1}`} value={ref}
+                    onChange={e => setSylArr('references', i, e.target.value)}
+                    onFocus={() => setAiField({ section: 'references', label: `Reference ${i + 1}`, fieldType: 'array', arrField: 'references', arrIndex: i })} />
+                  <RemoveBtn onClick={() => removeSylItem('references', i)} disabled={syllabusData.references.length <= 1} />
+                </Box>
+              ))}
+            </Stack>
+          </SectionCard>
           {attrGroups.map(({ label, field }) => (
             <SectionCard key={field} title={label}
               action={<AddRowBtn label="Add" onClick={() => addSylItem(field, EMPTY_ATTR)} />}>
               <Stack spacing={1.5}>
-                {syllabusData[field].map((item, i) => (
+                {(syllabusData[field] || [{ ...EMPTY_ATTR }]).map((item, i) => (
                   <Box key={i} sx={{ border: '1px solid rgba(0,0,0,0.07)', borderRadius: 1.5, p: 1.5 }}>
                     <Box sx={{ display: 'flex', gap: 1.25, mb: 1, alignItems: 'center' }}>
                       <LField label="Code" value={item.code}
                         onChange={e => setSylArrObj(field, i, 'code', e.target.value)} sx={{ maxWidth: 110 }} />
                       <LField label="Title" value={item.title}
                         onChange={e => setSylArrObj(field, i, 'title', e.target.value)} />
-                      <RemoveBtn onClick={() => removeSylItem(field, i)} disabled={syllabusData[field].length <= 1} />
+                      <RemoveBtn onClick={() => removeSylItem(field, i)} disabled={(syllabusData[field] || []).length <= 1} />
                     </Box>
                     <LField label="Description" multiline minRows={2} value={item.description}
-                      onChange={e => setSylArrObj(field, i, 'description', e.target.value)} />
+                      onChange={e => setSylArrObj(field, i, 'description', e.target.value)}
+                      onFocus={() => setAiField({ section: 'references', label: `${label} – Item ${i + 1} Description`, fieldType: 'arrayObj', arrField: field, arrIndex: i, arrObjKey: 'description' })} />
                   </Box>
                 ))}
               </Stack>
@@ -673,11 +1032,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       )
     }
 
-    // ── Course Policies ──────────────────────────────────────────────────────
+    // ── 8. Course Policies ───────────────────────────────────────────────────
     if (syllabusSub === 'policies') {
       return (
         <>
-          <SectionCard title="Grading System">
+          <SectionCard title="A. Grading System">
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                 <thead>
@@ -688,7 +1047,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </tr>
                 </thead>
                 <tbody>
-                  {syllabusData.grading_rows.map((row, i) => (
+                  {(syllabusData.grading_rows && syllabusData.grading_rows.length
+                    ? syllabusData.grading_rows
+                    : DEFAULT_GRADING_ROWS
+                  ).map((row, i) => (
                     <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#fff' : BG }}>
                       {['rating', 'grade', 'range'].map(k => (
                         <td key={k} style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
@@ -702,7 +1064,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           </SectionCard>
 
-          <SectionCard title="Class Policies"
+          <SectionCard title="B. Class Policies"
             action={<AddRowBtn label="Add Policy" onClick={() => addSylItem('policies', EMPTY_POLICY)} />}>
             <Stack spacing={2}>
               {syllabusData.policies.map((p, i) => (
@@ -713,44 +1075,378 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <RemoveBtn onClick={() => removeSylItem('policies', i)} disabled={syllabusData.policies.length <= 1} />
                   </Box>
                   <LField label="Policy Content" multiline minRows={4} value={p.content}
-                    onChange={e => setSylArrObj('policies', i, 'content', e.target.value)} />
+                    onChange={e => setSylArrObj('policies', i, 'content', e.target.value)}
+                    onFocus={() => setAiField({ section: 'policies', label: `Policy: ${p.title || `Item ${i + 1}`}`, fieldType: 'arrayObj', arrField: 'policies', arrIndex: i, arrObjKey: 'content' })} />
                 </Box>
               ))}
             </Stack>
+          </SectionCard>
+
+          <SectionCard title="C. Other Course Policies and Requirements">
+            <LField label="Other Policies" multiline minRows={6}
+              value={syllabusData.other_policies || ''} onChange={e => setSyl('other_policies', e.target.value)}
+              onFocus={() => setAiField({ section: 'policies', label: 'Other Course Policies', fieldType: 'simple', field: 'other_policies' })} />
           </SectionCard>
         </>
       )
     }
 
-    // ── Generate ─────────────────────────────────────────────────────────────
+    // ── 9. TLA Activities ────────────────────────────────────────────────────
+    if (syllabusSub === 'tla_activities') {
+      const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
+      return (
+        <SectionCard title="Teaching, Learning, and Assessment (TLA) Activities"
+          action={<AddRowBtn label="Add Row" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
+              <thead>
+                <tr>
+                  <th style={TABLE_TH}>Ch.</th>
+                  <th style={{ ...TABLE_TH, minWidth: 220 }}>Topics / Reading List</th>
+                  <th style={{ ...TABLE_TH, minWidth: 55 }}>Wks</th>
+                  <th style={{ ...TABLE_TH, minWidth: 200 }}>Topic Outcomes</th>
+                  <th style={{ ...TABLE_TH, minWidth: 60 }}>ILO</th>
+                  <th style={{ ...TABLE_TH, minWidth: 60 }}>SO</th>
+                  <th style={{ ...TABLE_TH, minWidth: 150 }}>Delivery Method</th>
+                  <th style={{ ...TABLE_TH, borderRight: 'none' }} />
+                </tr>
+              </thead>
+              <tbody>
+                {chapters.map((ch, i) => (
+                  <tr key={i}>
+                    <td style={TABLE_TD}>{inlineInput(ch.chapter,  e => setSylArrObj('tla_chapters', i, 'chapter',  e.target.value), 50)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.topics,   e => setSylArrObj('tla_chapters', i, 'topics',   e.target.value), 220)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.weeks,    e => setSylArrObj('tla_chapters', i, 'weeks',    e.target.value), 50)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.outcomes, e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value), 200)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.ilo,      e => setSylArrObj('tla_chapters', i, 'ilo',      e.target.value), 55)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.so,       e => setSylArrObj('tla_chapters', i, 'so',       e.target.value), 55)}</td>
+                    <td style={TABLE_TD}>{inlineInput(ch.delivery, e => setSylArrObj('tla_chapters', i, 'delivery', e.target.value), 150)}</td>
+                    <td style={{ ...TABLE_TD, borderRight: 'none' }}>
+                      <RemoveBtn onClick={() => removeSylItem('tla_chapters', i)} disabled={chapters.length <= 1} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        </SectionCard>
+      )
+    }
+
+    // ── 10. Schedules & Mappings ─────────────────────────────────────────────
     return (
-      <SectionCard title="Generate Syllabus">
-        <Stack spacing={1.75}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          <LField type="number" label="Number of Weeks" value={syllabusParams.num_weeks}
-            onChange={e => setSyllabusParams(p => ({ ...p, num_weeks: e.target.value }))} />
-          <LField type="number" label="Knowledge References (top-k)" value={syllabusParams.top_k}
-            onChange={e => setSyllabusParams(p => ({ ...p, top_k: e.target.value }))} />
-          <LField select label="Model Provider" value={syllabusParams.provider}
-            onChange={e => setSyllabusParams(p => ({ ...p, provider: e.target.value }))}>
-            {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
-          </LField>
-          <LField label="Extra Instructions" multiline minRows={3} value={syllabusParams.extra_instructions}
-            onChange={e => setSyllabusParams(p => ({ ...p, extra_instructions: e.target.value }))} />
-          <GenButton onClick={handleGenerateSyllabus} disabled={actionLoading}>
-            {actionLoading ? 'Generating...' : 'Generate Syllabus'}
-          </GenButton>
-          {resultText && (
-            <>
-              <Divider sx={{ my: 1 }} />
-              <Typography variant="caption" sx={{ color: '#666', fontWeight: 600 }}>Generated Output</Typography>
-              <TextField multiline minRows={12} fullWidth value={resultText}
-                onChange={e => setResultText(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', fontFamily: 'monospace' } }} />
-            </>
-          )}
-        </Stack>
-      </SectionCard>
+      <>
+        {/* ── Assessment Schedule ── */}
+        <SectionCard title="Assessment Schedule"
+          action={<AddRowBtn label="Add Method" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(16).fill('') })} />}>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ ...TABLE_TH, minWidth: 180, verticalAlign: 'middle' }}>Distribution</th>
+                  <th colSpan={16} style={{ ...TABLE_TH, textAlign: 'center', borderRight: 'none' }}>Week No.</th>
+                  <th rowSpan={2} style={{ ...TABLE_TH, borderRight: 'none' }} />
+                </tr>
+                <tr>
+                  {SCHEDULE_WEEKS.map(w => (
+                    <th key={w} style={{ ...TABLE_TH, minWidth: 36, textAlign: 'center' }}>{w}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(syllabusData.schedule_methods || []).map((row, ri) => (
+                  <tr key={ri}>
+                    <td style={TABLE_TD}>
+                      {inlineInput(row.name, e => setSylArrObj('schedule_methods', ri, 'name', e.target.value), 175)}
+                    </td>
+                    {SCHEDULE_WEEKS.map((_, ci) => (
+                      <td key={ci} style={{ ...TABLE_TD, textAlign: 'center' }}>
+                        {inlineInput(
+                          (row.values || [])[ci] || '',
+                          e => {
+                            setIsDirty(true); setSaveSuccess(false)
+                            setSyllabusData(s => ({
+                              ...s,
+                              schedule_methods: s.schedule_methods.map((m, i) => {
+                                if (i !== ri) return m
+                                const vals = [...(m.values || Array(16).fill(''))]
+                                vals[ci] = e.target.value
+                                return { ...m, values: vals }
+                              }),
+                            }))
+                          },
+                          36,
+                        )}
+                      </td>
+                    ))}
+                    <td style={{ ...TABLE_TD, borderRight: 'none' }}>
+                      <RemoveBtn onClick={() => removeSylItem('schedule_methods', ri)}
+                        disabled={(syllabusData.schedule_methods || []).length <= 1} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        </SectionCard>
+
+        {/* ── ILO–SO and ILO–CPA Mapping ── */}
+        <SectionCard title="ILO–SO and ILO–CPA Mapping"
+          action={
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+              <AddRowBtn label="+ SO Col" onClick={() => addMappingCol('so_headers', 'so_cpa_rows', 'so_vals')} />
+              <Button size="small" onClick={() => removeMappingCol('so_headers', 'so_cpa_rows', 'so_vals', (syllabusData.so_headers || ['']).length - 1)}
+                disabled={(syllabusData.so_headers || ['']).length <= 1}
+                sx={{ minWidth: 0, px: 0.75, py: 0, fontSize: '0.72rem', color: '#999', textTransform: 'none', '&:hover': { color: MAROON } }}>
+                − SO Col
+              </Button>
+            </Box>
+          }>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ ...TABLE_TH, verticalAlign: 'middle' }}>ILOs</th>
+                  <th colSpan={(syllabusData.so_headers || ['']).length}
+                    style={{ ...TABLE_TH, textAlign: 'center' }}>
+                    STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)
+                  </th>
+                  <th colSpan={3} style={{ ...TABLE_TH, textAlign: 'center', borderRight: 'none' }}>
+                    Domain
+                  </th>
+                </tr>
+                <tr>
+                  {(syllabusData.so_headers || ['']).map((h, ci) => (
+                    <th key={ci} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
+                      <input value={h || ''} placeholder="SO #"
+                        onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, so_headers: s.so_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid #ccc',
+                          background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: '#444', outline: 'none', padding: '1px 2px' }} />
+                    </th>
+                  ))}
+                  {['C', 'P', 'A'].map(k => (
+                    <th key={k} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 50 }}>{k}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {syllabusData.ilos.map((_, ri) => {
+                  const row = (syllabusData.so_cpa_rows || [])[ri] || { so_vals: [], c: '', p: '', a: '' }
+                  return (
+                    <tr key={ri}>
+                      <td style={{ ...TABLE_TD, fontWeight: 600, color: MAROON, whiteSpace: 'nowrap', paddingLeft: 10, minWidth: 52 }}>ILO{ri + 1}</td>
+                      {(syllabusData.so_headers || ['']).map((_, ci) => (
+                        <td key={ci} style={{ ...TABLE_TD, textAlign: 'center', minWidth: 70 }}>
+                          {inlineInput(
+                            (row.so_vals || [])[ci] || '',
+                            e => {
+                              setIsDirty(true); setSaveSuccess(false)
+                              setSyllabusData(s => ({
+                                ...s,
+                                so_cpa_rows: s.so_cpa_rows.map((r, i) => {
+                                  if (i !== ri) return r
+                                  const vals = [...(r.so_vals || [])]
+                                  vals[ci] = e.target.value
+                                  return { ...r, so_vals: vals }
+                                }),
+                              }))
+                            },
+                            50,
+                          )}
+                        </td>
+                      ))}
+                      {['c', 'p', 'a'].map(k => (
+                        <td key={k} style={{ ...TABLE_TD, textAlign: 'center' }}>
+                          {inlineInput(row[k] || '', e => {
+                            setIsDirty(true); setSaveSuccess(false)
+                            setSyllabusData(s => ({
+                              ...s,
+                              so_cpa_rows: s.so_cpa_rows.map((r, i) => i === ri ? { ...r, [k]: e.target.value } : r),
+                            }))
+                          }, 50)}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </Box>
+        </SectionCard>
+
+        {/* ── ILO–IGA Mapping ── */}
+        <SectionCard title="ILO–IGA Mapping"
+          action={
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+              <AddRowBtn label="+ IGA Col" onClick={() => addMappingCol('iga_headers', 'iga_rows', 'vals')} />
+              <Button size="small" onClick={() => removeMappingCol('iga_headers', 'iga_rows', 'vals', (syllabusData.iga_headers || ['']).length - 1)}
+                disabled={(syllabusData.iga_headers || ['']).length <= 1}
+                sx={{ minWidth: 0, px: 0.75, py: 0, fontSize: '0.72rem', color: '#999', textTransform: 'none', '&:hover': { color: MAROON } }}>
+                − IGA Col
+              </Button>
+            </Box>
+          }>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ ...TABLE_TH, verticalAlign: 'middle' }}>ILOs</th>
+                  <th colSpan={(syllabusData.iga_headers || ['']).length}
+                    style={{ ...TABLE_TH, textAlign: 'center', borderRight: 'none' }}>
+                    INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)
+                  </th>
+                </tr>
+                <tr>
+                  {(syllabusData.iga_headers || ['']).map((h, ci) => (
+                    <th key={ci} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
+                      <input value={h || ''} placeholder="IGA #"
+                        onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, iga_headers: s.iga_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid #ccc',
+                          background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: '#444', outline: 'none', padding: '1px 2px' }} />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {syllabusData.ilos.map((_, ri) => {
+                  const row = (syllabusData.iga_rows || [])[ri] || { vals: [] }
+                  return (
+                    <tr key={ri}>
+                      <td style={{ ...TABLE_TD, fontWeight: 600, color: MAROON, whiteSpace: 'nowrap', paddingLeft: 10, minWidth: 52 }}>ILO{ri + 1}</td>
+                      {(syllabusData.iga_headers || ['']).map((_, ci) => (
+                        <td key={ci} style={{ ...TABLE_TD, textAlign: 'center', minWidth: 70 }}>
+                          {inlineInput(
+                            (row.vals || [])[ci] || '',
+                            e => {
+                              setIsDirty(true); setSaveSuccess(false)
+                              setSyllabusData(s => ({
+                                ...s,
+                                iga_rows: s.iga_rows.map((r, i) => {
+                                  if (i !== ri) return r
+                                  const vals = [...(r.vals || [])]
+                                  vals[ci] = e.target.value
+                                  return { ...r, vals }
+                                }),
+                              }))
+                            },
+                            50,
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </Box>
+        </SectionCard>
+
+        {/* ── ILO–CDIO and ILO–SDG Mapping ── */}
+        <SectionCard title="ILO–CDIO and ILO–SDG Mapping"
+          action={
+            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+              <AddRowBtn label="+ CDIO" onClick={() => addMappingCol('cdio_headers', 'cdio_sdg_rows', 'cdio_vals')} />
+              <Button size="small" onClick={() => removeMappingCol('cdio_headers', 'cdio_sdg_rows', 'cdio_vals', (syllabusData.cdio_headers || ['']).length - 1)}
+                disabled={(syllabusData.cdio_headers || ['']).length <= 1}
+                sx={{ minWidth: 0, px: 0.75, py: 0, fontSize: '0.72rem', color: '#999', textTransform: 'none', '&:hover': { color: MAROON } }}>
+                − CDIO
+              </Button>
+              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
+              <AddRowBtn label="+ SDG" onClick={() => addMappingCol('sdg_headers', 'cdio_sdg_rows', 'sdg_vals')} />
+              <Button size="small" onClick={() => removeMappingCol('sdg_headers', 'cdio_sdg_rows', 'sdg_vals', (syllabusData.sdg_headers || ['']).length - 1)}
+                disabled={(syllabusData.sdg_headers || ['']).length <= 1}
+                sx={{ minWidth: 0, px: 0.75, py: 0, fontSize: '0.72rem', color: '#999', textTransform: 'none', '&:hover': { color: MAROON } }}>
+                − SDG
+              </Button>
+            </Box>
+          }>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ ...TABLE_TH, verticalAlign: 'middle' }}>ILOs</th>
+                  <th colSpan={(syllabusData.cdio_headers || ['']).length}
+                    style={{ ...TABLE_TH, textAlign: 'center' }}>
+                    CDIO SKILLS
+                  </th>
+                  <th colSpan={(syllabusData.sdg_headers || ['']).length}
+                    style={{ ...TABLE_TH, textAlign: 'center', borderRight: 'none' }}>
+                    SDG Skills
+                  </th>
+                </tr>
+                <tr>
+                  {(syllabusData.cdio_headers || ['']).map((h, ci) => (
+                    <th key={`cdio-${ci}`} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
+                      <input value={h || ''} placeholder="CDIO #"
+                        onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, cdio_headers: s.cdio_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid #ccc',
+                          background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: '#444', outline: 'none', padding: '1px 2px' }} />
+                    </th>
+                  ))}
+                  {(syllabusData.sdg_headers || ['']).map((h, ci) => (
+                    <th key={`sdg-${ci}`} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
+                      <input value={h || ''} placeholder="SDG #"
+                        onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, sdg_headers: s.sdg_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid #ccc',
+                          background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: '#444', outline: 'none', padding: '1px 2px' }} />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {syllabusData.ilos.map((_, ri) => {
+                  const row = (syllabusData.cdio_sdg_rows || [])[ri] || { cdio_vals: [], sdg_vals: [] }
+                  return (
+                    <tr key={ri}>
+                      <td style={{ ...TABLE_TD, fontWeight: 600, color: MAROON, whiteSpace: 'nowrap', paddingLeft: 10, minWidth: 52 }}>ILO{ri + 1}</td>
+                      {(syllabusData.cdio_headers || ['']).map((_, ci) => (
+                        <td key={`c${ci}`} style={{ ...TABLE_TD, textAlign: 'center', minWidth: 70 }}>
+                          {inlineInput(
+                            (row.cdio_vals || [])[ci] || '',
+                            e => {
+                              setIsDirty(true); setSaveSuccess(false)
+                              setSyllabusData(s => ({
+                                ...s,
+                                cdio_sdg_rows: s.cdio_sdg_rows.map((r, i) => {
+                                  if (i !== ri) return r
+                                  const vals = [...(r.cdio_vals || [])]
+                                  vals[ci] = e.target.value
+                                  return { ...r, cdio_vals: vals }
+                                }),
+                              }))
+                            },
+                            50,
+                          )}
+                        </td>
+                      ))}
+                      {(syllabusData.sdg_headers || ['']).map((_, ci) => (
+                        <td key={`s${ci}`} style={{ ...TABLE_TD, textAlign: 'center' }}>
+                          {inlineInput(
+                            (row.sdg_vals || [])[ci] || '',
+                            e => {
+                              setIsDirty(true); setSaveSuccess(false)
+                              setSyllabusData(s => ({
+                                ...s,
+                                cdio_sdg_rows: s.cdio_sdg_rows.map((r, i) => {
+                                  if (i !== ri) return r
+                                  const vals = [...(r.sdg_vals || [])]
+                                  vals[ci] = e.target.value
+                                  return { ...r, sdg_vals: vals }
+                                }),
+                              }))
+                            },
+                            50,
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </Box>
+        </SectionCard>
+      </>
     )
   }
 
@@ -768,23 +1464,64 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Paper>
       )
     }
-
     if (activeTab === 'syllabus') {
-      const showFooter = isDirty && syllabusSub !== 'generate'
+      const showSaveFooter = isDirty
+      const showAiFooter   = Boolean(aiField) && !AI_EXCLUDED_SECTIONS.has(syllabusSub)
+      const totalFooterPb  = (showSaveFooter ? 72 : 0) + (showAiFooter ? 60 : 0)
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
-          <Box sx={{ flex: 1, overflow: 'auto', pb: showFooter ? '72px' : 0 }}>
+          <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
             {course && (
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="caption"
-                  sx={{ color: MAROON, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-                  {syllabusData.course_code || course.course_code}
-                </Typography>
-                <Typography variant="h6" sx={{ fontWeight: 800, color: '#1A1A1A', lineHeight: 1.2 }}>
-                  {syllabusData.course_title || course.course_title}
-                </Typography>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+                {/* hidden file input for syllabus upload */}
+                <input
+                  ref={syllabusUploadRef}
+                  type="file"
+                  accept=".pdf,.docx,.xlsx,.txt"
+                  style={{ display: 'none' }}
+                  onChange={handleSyllabusUpload}
+                />
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography variant="caption"
+                    sx={{ color: MAROON, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                    {syllabusData.course_code || course.course_code}
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#1A1A1A', lineHeight: 1.2 }}>
+                    {syllabusData.course_title || course.course_title}
+                  </Typography>
+                </Box>
+                <Tooltip title={syllabusUploading ? 'Parsing syllabus…' : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={syllabusUploading}
+                      startIcon={syllabusUploading ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <CloudUploadIcon sx={{ fontSize: '1rem !important' }} />}
+                      onClick={() => syllabusUploadRef.current?.click()}
+                      sx={{
+                        textTransform: 'none',
+                        borderColor: MAROON,
+                        color: MAROON,
+                        fontSize: '0.75rem',
+                        py: 0.5,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        borderRadius: 1.5,
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      }}
+                    >
+                      {syllabusUploading ? 'Parsing…' : 'Upload Syllabus'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
+            )}
+            {syllabusUploadError && (
+              <AutoAlert message={syllabusUploadError} onClose={() => setSyllabusUploadError('')} sx={{ mb: 1.5 }} />
+            )}
+            {syllabusUploadSuccess && (
+              <AutoAlert message="Syllabus imported! Review the fields below and save when ready." severity="success" onClose={() => setSyllabusUploadSuccess(false)} sx={{ mb: 1.5 }} />
             )}
             <Box sx={{ borderBottom: '2px solid rgba(0,0,0,0.08)', mb: 2.5 }}>
               <Tabs
@@ -807,9 +1544,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
 
           {/* Sticky save footer — appears when any field has been edited */}
-          {showFooter && (
+          {showSaveFooter && (
             <Box sx={{
-              position: 'sticky', bottom: 0,
+              position: 'sticky', bottom: showAiFooter ? '60px' : 0,
               bgcolor: '#fff', borderTop: '1.5px solid rgba(139,0,0,0.18)',
               boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
               px: 2.5, py: 1.25,
@@ -836,6 +1573,75 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5, minWidth: 100 }}>
                 {saveLoading ? 'Saving...' : 'Save Syllabus'}
               </Button>
+            </Box>
+          )}
+
+          {/* AI generation footer — appears when a field is focused in an eligible section */}
+          {showAiFooter && (
+            <Box sx={{
+              position: 'sticky', bottom: 0,
+              bgcolor: '#1C1C1E',
+              borderTop: `2px solid ${MAROON}`,
+              boxShadow: '0 -4px 20px rgba(0,0,0,0.18)',
+              px: 2, py: 1,
+              display: 'flex', alignItems: 'center', gap: 1.5,
+              zIndex: 20,
+              minHeight: 60,
+            }}>
+              <AutoAwesomeIcon sx={{ color: MAROON, fontSize: '1.1rem', flexShrink: 0 }} />
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="caption" sx={{ color: '#aaa', display: 'block', lineHeight: 1, mb: 0.15 }}>AI Assist</Typography>
+                <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                  {aiField.label}
+                </Typography>
+              </Box>
+              {aiError && (
+                <Typography variant="caption" sx={{ color: '#ef9a9a', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aiError}</Typography>
+              )}
+              <Select
+                size="small"
+                value={aiProvider}
+                onChange={e => setAiProvider(e.target.value)}
+                sx={{
+                  bgcolor: '#333', color: '#fff', fontSize: '0.75rem', height: 30,
+                  minWidth: 110, flexShrink: 0,
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#555' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#888' },
+                  '& .MuiSvgIcon-root': { color: '#aaa' },
+                  '& .MuiSelect-select': { py: 0.5 },
+                }}
+                MenuProps={{ PaperProps: { sx: { bgcolor: '#2a2a2a', color: '#fff' } } }}
+              >
+                {AI_PROVIDERS.map(p => (
+                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: '#444' } }}>
+                    {cap(p)}
+                  </MenuItem>
+                ))}
+              </Select>
+              {getAiCurrentValue() && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={aiGenerating}
+                  onClick={() => handleAiGenerate('continue')}
+                  sx={{ textTransform: 'none', color: '#ddd', borderColor: '#555', fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: '#aaa', bgcolor: '#333' } }}
+                >
+                  Continue
+                </Button>
+              )}
+              <Button
+                size="small"
+                variant="contained"
+                disabled={aiGenerating}
+                onClick={() => handleAiGenerate('generate')}
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00' }, textTransform: 'none', fontSize: '0.75rem', py: 0.3, px: 1.5, fontWeight: 700, flexShrink: 0 }}
+              >
+                {aiGenerating ? 'Generating…' : 'Generate'}
+              </Button>
+              <IconButton size="small" onClick={() => setAiField(null)}
+                sx={{ color: '#666', '&:hover': { color: '#fff' }, p: 0.5, flexShrink: 0 }}>
+                <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>✕</span>
+              </IconButton>
             </Box>
           )}
 
