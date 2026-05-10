@@ -26,7 +26,7 @@ PASS_MARK = "[PASS]"
 FAIL_MARK = "[FAIL]"
 WARN_MARK = "[WARN]"
 
-DEFAULT_PROVIDERS = ["ollama", "gemini", "gpt", "groq", "anthropic", "openrouter"]
+DEFAULT_PROVIDERS = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--providers",
         default=",".join(DEFAULT_PROVIDERS),
-        help="Comma-separated providers (ollama,gemini,gpt,groq,anthropic,openrouter)",
+        help="Comma-separated providers (gemini,gpt,groq,anthropic,openrouter)",
     )
     parser.add_argument(
         "--max-tokens",

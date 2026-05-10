@@ -5,16 +5,23 @@ import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardActionArea from '@mui/material/CardActionArea'
 import CardContent from '@mui/material/CardContent'
 import CircularProgress from '@mui/material/CircularProgress'
 import Chip from '@mui/material/Chip'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
+import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import AddIcon from '@mui/icons-material/Add'
 import AutoStoriesIcon from '@mui/icons-material/AutoStories'
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects'
 import LayersIcon from '@mui/icons-material/Layers'
@@ -22,6 +29,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import SchoolIcon from '@mui/icons-material/School'
 import ScienceIcon from '@mui/icons-material/Science'
 import { useNavigate } from 'react-router-dom'
+import api from '../config/api'
 import useApi from '../hooks/useApi'
 import { useAuth } from '../store/authStore'
 import { toInitials } from '../utils'
@@ -36,9 +44,43 @@ export default function FacultyCoursesBoard() {
   const { user, logout } = useAuth()
   const [anchorEl, setAnchorEl] = useState(null)
   const [errorDismissed, setErrorDismissed] = useState(false)
-  const { data, loading, error } = useApi('/curriculum/faculty-courses/')
+  const { data, loading, error, refetch } = useApi('/curriculum/faculty-courses/')
   // reset dismissed state whenever error changes
   useEffect(() => { setErrorDismissed(false) }, [error])
+
+  // --- Create new course dialog ---
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState('')
+  const [form, setForm] = useState({ course_code: '', course_title: '', description: '' })
+
+  const openDialog = () => {
+    setForm({ course_code: '', course_title: '', description: '' })
+    setCreateError('')
+    setDialogOpen(true)
+  }
+  const closeDialog = () => { if (!creating) setDialogOpen(false) }
+
+  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+
+  const handleCreate = async () => {
+    if (!form.course_code.trim() || !form.course_title.trim()) {
+      setCreateError('Course code and title are required.')
+      return
+    }
+    setCreating(true)
+    setCreateError('')
+    try {
+      const { data: json } = await api.post('/curriculum/courses/', form)
+      setDialogOpen(false)
+      navigate(`/faculty/workspace/${json.course.course_id}`)
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Failed to create course.'
+      setCreateError(detail)
+    } finally {
+      setCreating(false)
+    }
+  }
 
   const courses = data?.courses || []
 
@@ -117,6 +159,30 @@ export default function FacultyCoursesBoard() {
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
             }}
           >
+            {/* ── Create new course card ── */}
+            <Card
+              elevation={0}
+              onClick={openDialog}
+              sx={{
+                bgcolor: '#fff', borderRadius: 3,
+                border: '2px dashed rgba(139,0,0,0.25)',
+                cursor: 'pointer',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+                '&:hover': { borderColor: '#8B0000', boxShadow: '0 4px 16px rgba(139,0,0,0.10)' },
+              }}
+            >
+              <CardActionArea sx={{ height: '100%' }}>
+                <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
+                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 28, color: '#8B0000' }} />
+                  </Box>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#8B0000', mt: 0.5 }}>
+                    Create new course
+                  </Typography>
+                </CardContent>
+              </CardActionArea>
+            </Card>
+
             {courses.map((course, idx) => {
               const CourseIcon = CARD_ICONS[idx % CARD_ICONS.length]
               const accentColor = CARD_COLORS[idx % CARD_COLORS.length]
@@ -158,12 +224,67 @@ export default function FacultyCoursesBoard() {
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
                 <SchoolIcon sx={{ fontSize: 72, color: '#ddd', mb: 2 }} />
                 <Typography variant="body1" sx={{ color: '#999' }}>No assigned courses yet.</Typography>
-                <Typography variant="body2" sx={{ color: '#bbb', mt: 0.5 }}>Ask your admin to assign your teaching load.</Typography>
+                <Typography variant="body2" sx={{ color: '#bbb', mt: 0.5 }}>Click "Create new course" to add your first course.</Typography>
               </Box>
             )}
           </Box>
         )}
       </Box>
+
+      {/* ── Create new course dialog ── */}
+      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 800, color: '#8B0000' }}>New Course</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
+          {createError && (
+            <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
+          )}
+          <TextField
+            label="Course Code"
+            name="course_code"
+            value={form.course_code}
+            onChange={handleFormChange}
+            placeholder="e.g. BA401"
+            size="small"
+            autoFocus
+            disabled={creating}
+            inputProps={{ maxLength: 100 }}
+          />
+          <TextField
+            label="Course Title"
+            name="course_title"
+            value={form.course_title}
+            onChange={handleFormChange}
+            placeholder="e.g. Business Analytics"
+            size="small"
+            disabled={creating}
+            inputProps={{ maxLength: 255 }}
+          />
+          <TextField
+            label="Description (optional)"
+            name="description"
+            value={form.description}
+            onChange={handleFormChange}
+            multiline
+            minRows={2}
+            size="small"
+            disabled={creating}
+          />
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={closeDialog} disabled={creating} sx={{ color: '#666' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreate}
+            disabled={creating}
+            startIcon={creating ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
+            sx={{ bgcolor: '#8B0000', '&:hover': { bgcolor: '#6B0000' }, fontWeight: 700, borderRadius: 2 }}
+          >
+            {creating ? 'Creating…' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

@@ -282,3 +282,254 @@ OUTPUT — Return the assessment using exactly this structure:
    (Corresponding numbered list)
 """
         return system, user
+
+    # ------------------------------------------------------------------
+    # Syllabus field generation
+    # ------------------------------------------------------------------
+
+    # Per-section content hints for targeted generation
+    _SECTION_HINTS = {
+        'contact': (
+            "Generate specific, OBE-aligned assessment criteria for {course_name}. "
+            "Include grading breakdown, performance expectations, and how each "
+            "assessment component maps to course learning outcomes."
+        ),
+        'tlas': (
+            "Generate comprehensive Teaching, Learning, and Assessment (TLA) strategies "
+            "for {course_name}. Include active learning methods, collaborative activities, "
+            "formative assessment techniques, and instructional approaches aligned with OBE."
+        ),
+        'ilo': (
+            "Generate a specific, measurable Intended Learning Outcome (ILO) for "
+            "{course_name} using Bloom's Taxonomy action verbs. "
+            "The ILO must be observable and assessable."
+        ),
+        'assessment_map': (
+            "Generate a complete assessment task row for {course_name}: task name, "
+            "code, I/R/D designation, weight percentage, ILO coverage, and cognitive domain."
+        ),
+        'references': (
+            "Generate an academic reference in APA 7th-edition format for {course_name}. "
+            "Use authoritative textbooks, journal articles, or online resources directly "
+            "relevant to the course topics."
+        ),
+        'attributes': (
+            "Generate graduate attribute descriptions for {course_name} including code, "
+            "title, and description mapping to student outcomes, CDIO skills, or SDG goals."
+        ),
+        'policies': (
+            "Generate a clear, fair course policy section for {course_name} that covers "
+            "student expectations, academic integrity, attendance, and professional conduct."
+        ),
+    }
+
+    @classmethod
+    def build_syllabus_field_prompt(
+        cls,
+        course_name: str,
+        course_code: str,
+        field_label: str,
+        section: str,
+        existing_content: str,
+        mode: str,
+        context_chunks: list,
+    ) -> tuple:
+        """
+        Build a prompt to generate or continue a single syllabus field.
+
+        Args:
+            course_name:      Full course title.
+            course_code:      Course code (may be empty).
+            field_label:      Human-readable label for the field (shown in footer).
+            section:          Syllabus section key (e.g. 'tlas', 'ilo', 'policies').
+            existing_content: Current value of the field (used for 'continue' mode).
+            mode:             'generate' (fresh) or 'continue' (extend existing).
+            context_chunks:   RAG chunks (global + course-specific).
+
+        Returns:
+            (system_prompt: str, user_prompt: str)
+        """
+        context = cls._format_context(context_chunks)
+
+        hint_template = cls._SECTION_HINTS.get(
+            section,
+            "Generate professional, OBE-aligned content for the {course_name} syllabus.",
+        )
+        hint = hint_template.replace("{course_name}", course_name)
+
+        system = (
+            "You are an expert curriculum designer at a Philippine university following "
+            "Outcome-Based Education (OBE). You generate precise, professional syllabus content. "
+            "Be specific, practical, and aligned with CHED guidelines. "
+            "Return ONLY the requested content — no headers, no explanations, no markdown fences."
+        )
+
+        if mode == "continue":
+            user = (
+                f"REFERENCE MATERIAL:\n{context}\n\n"
+                f'TASK: Continue the following content that a faculty member has started for '
+                f'the "{field_label}" field of the course "{course_name}" ({course_code or "N/A"}).\n\n'
+                f"EXISTING CONTENT:\n{existing_content}\n\n"
+                "Continue naturally from where the text leaves off. Match the tone, style, and "
+                "format of the existing content. Do not repeat what is already written. "
+                "Do not add a header or prefix. Output only the continuation text."
+            )
+        else:
+            user = (
+                f"REFERENCE MATERIAL:\n{context}\n\n"
+                f"TASK: {hint}\n\n"
+                f"Course       : {course_name}\n"
+                f"Course Code  : {course_code or 'N/A'}\n"
+                f"Field to populate: {field_label}\n\n"
+                "Generate professional, OBE-aligned content for this field. "
+                "Be concise but complete. Output only the field content — "
+                "no headers, no explanations, no extra commentary."
+            )
+
+        return system, user
+
+    # ------------------------------------------------------------------
+    # Syllabus upload parsing
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_syllabus_parse_prompt(
+        extracted_text: str,
+        course_name: str,
+        course_code: str,
+    ) -> tuple:
+        """
+        Build a prompt to parse raw syllabus text into the EMPTY_SYLLABUS JSON shape.
+
+        Returns:
+            (system_prompt: str, user_prompt: str)
+        """
+        system = (
+            "You are an expert at extracting structured syllabus data from BatStateU Course Information Syllabus (CIS) documents. "
+            "Your task is to read every section of the provided document text and map ALL content to the exact JSON schema given. "
+            "Extract the COMPLETE and EXACT text from each field — do not summarize, abbreviate, or omit any content. "
+            "For table-like sections (assessment tasks, TLA activities, mapping tables), extract every row. "
+            "Return ONLY a valid JSON object — no markdown fences, no commentary, no extra text."
+        )
+
+        schema = (
+            '{\n'
+            '  // ── 1. Header & Institutional Info ──\n'
+            '  "university_name": "full university name and campus (multi-line ok)",\n'
+            '  "college": "college name",\n'
+            '  "program": "degree program name",\n'
+            '  "document_title": "e.g. Course Information Syllabus (CIS)",\n'
+            '\n'
+            '  // ── 2. University Direction ──\n'
+            '  "vision": "full vision statement text",\n'
+            '  "mission": "full mission statement text",\n'
+            '\n'
+            '  // ── 3. Course Specifications ──\n'
+            '  "course_title": "full course title",\n'
+            '  "course_code": "e.g. COSC 101",\n'
+            '  "course_category": "e.g. Major, Core, GE",\n'
+            '  "prerequisites": "prerequisite courses or None",\n'
+            '  "semester_year": "e.g. 1st Semester AY 2024-2025",\n'
+            '  "credit_hours": "e.g. 3",\n'
+            '  "instructor_name": "instructor full name",\n'
+            '  "contact_info": "email / phone / room",\n'
+            '  "education": "instructor educational background",\n'
+            '  "reference_cmo": "CMO number if present",\n'
+            '  "date_prepared": "date prepared string",\n'
+            '  "revision_no": "revision number",\n'
+            '  "revision_date": "revision date string",\n'
+            '  "period_of_study": "period of study string",\n'
+            '\n'
+            '  // ── 4. Course Overview ──\n'
+            '  "description": "full course description / rationale paragraph(s)",\n'
+            '  "lecture_hours": "number of lecture hours per week",\n'
+            '  "lab_hours": "number of lab/laboratory hours per week",\n'
+            '\n'
+            '  // ── 5. Assessment & Strategies ──\n'
+            '  "assessment_criteria": "full criteria for assessment text",\n'
+            '  "tlas": "full teaching, learning, and assessment strategies description",\n'
+            '\n'
+            '  // ── 6. Expected Outcomes ──\n'
+            '  "ilos": ["ILO 1 text", "ILO 2 text", "..."],\n'
+            '  // assessment_tasks: one row per assessment task in the Assessment Method and Distribution Map\n'
+            '  // ilo_values: one entry per ILO (same count as ilos array above), value is the assessment code abbreviation (e.g. "ME", "LA", "FP", "AR") or empty string\n'
+            '  // c/p/a = Cognitive / Psychomotor / Affective domain values (abbreviations)\n'
+            '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "weight": "60", "ilo_values": ["ME", "", ""], "c": "ME", "p": "", "a": ""}],\n'
+            '\n'
+            '  // ── 7. References & Frameworks ──\n'
+            '  "references": ["full citation string 1", "full citation string 2"],\n'
+            '  "igas": [{"code": "IGA1", "title": "attribute title", "description": "full description"}],\n'
+            '  "student_outcomes": [{"code": "SO1", "title": "outcome title", "description": "full description"}],\n'
+            '  "cdio_skills": [{"code": "CDIO1", "title": "skill title", "description": "full description"}],\n'
+            '  "sdg_skills": [{"code": "SDG1", "title": "skill title", "description": "full description"}],\n'
+            '\n'
+            '  // ── 8. Course Policies ──\n'
+            '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
+            '  "policies": [{"title": "Class Policies", "content": "full policy text"}],\n'
+            '  "other_policies": "any additional course policies or requirements",\n'
+            '\n'
+            '  // ── 9. TLA Activities ──\n'
+            '  // Extract every row from the TLA Activities table\n'
+            '  // chapter: chapter number (e.g. "1", "2") or empty if it is an orientation/exam row\n'
+            '  // topics: topics and reading list text\n'
+            '  // weeks: week number(s) e.g. "1", "2-3", "4"\n'
+            '  // outcomes: topic outcomes text\n'
+            '  // ilo: ILO references e.g. "1, 2, 3"\n'
+            '  // so: SO references e.g. "1, 2"\n'
+            '  // delivery: delivery method e.g. "Lecture, Hands-on Laboratory"\n'
+            '  "tla_chapters": [{"chapter": "1", "topics": "Topic / Reading List text", "weeks": "2-3", "outcomes": "outcome text", "ilo": "1, 2", "so": "1, 2", "delivery": "Lecture, Hands-on Laboratory"}],\n'
+            '\n'
+            '  // ── 10. Schedules & Mappings ──\n'
+            '  // Assessment Schedule: SCHEDULE_WEEKS is [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] (16 entries)\n'
+            '  // values array has 16 entries (index 0 = week 3, index 1 = week 4, ..., index 15 = week 18)\n'
+            '  "schedule_methods": [{"name": "Major Examinations", "values": ["", "", "60", "", "", "", "60", "", "", "", "", "", "", "", "80", ""]}],\n'
+            '\n'
+            '  // ILO-SO and ILO-CPA Mapping\n'
+            '  // so_headers: the SO column numbers/codes that appear in the mapping table (e.g. ["2","3","5"])\n'
+            '  // so_cpa_rows: one entry per ILO (same count as ilos)\n'
+            '  //   so_vals: one value per so_header column (assessment abbreviation or empty string)\n'
+            '  //   c/p/a: Cognitive/Psychomotor/Affective domain mapping for this ILO\n'
+            '  "so_headers": ["2", "3", "5"],\n'
+            '  "so_cpa_rows": [{"so_vals": ["ME, LA", "", ""], "c": "ME", "p": "ME, LA", "a": ""}],\n'
+            '\n'
+            '  // ILO-IGA Mapping\n'
+            '  // iga_headers: IGA column numbers/codes (e.g. ["3","6"])\n'
+            '  // iga_rows: one entry per ILO, vals has one value per iga_header column\n'
+            '  "iga_headers": ["3", "6"],\n'
+            '  "iga_rows": [{"vals": ["ME, LA, FP", ""]}],\n'
+            '\n'
+            '  // ILO-CDIO and ILO-SDG Mapping\n'
+            '  // cdio_headers: CDIO column numbers (e.g. ["3","4"])\n'
+            '  // sdg_headers: SDG column numbers (e.g. ["2","5"])\n'
+            '  // cdio_sdg_rows: one entry per ILO\n'
+            '  //   cdio_vals: one value per cdio_header column\n'
+            '  //   sdg_vals: one value per sdg_header column\n'
+            '  "cdio_headers": ["3", "4"],\n'
+            '  "sdg_headers": ["2", "5"],\n'
+            '  "cdio_sdg_rows": [{"cdio_vals": ["", "ME, LA, FP"], "sdg_vals": ["ME, LA, FP", ""]}]\n'
+            '}'
+        )
+
+        user = (
+            f"Parse this BatStateU Course Information Syllabus (CIS) document for course: {course_name} ({course_code or 'N/A'}).\n\n"
+            "CRITICAL INSTRUCTIONS:\n"
+            "1. Extract EVERY field — leave nothing empty if the text contains the data.\n"
+            "2. For ILOs: extract each numbered ILO as a separate array element.\n"
+            "3. For assessment_tasks: extract every row from the Assessment Method and Distribution Map table. "
+            "The ilo_values array must have exactly one entry per ILO (same length as the ilos array).\n"
+            "4. For tla_chapters: extract EVERY row from the TLA Activities table (including orientation, exams, and all chapters).\n"
+            "5. For schedule_methods: the values array has 16 entries for weeks 3-18. "
+            "Find the assessment schedule grid and place each score in the correct week index "
+            "(index 0=wk3, index 1=wk4, index 2=wk5, ..., index 13=wk16, index 14=wk17, index 15=wk18). "
+            "Put empty string '' for weeks with no value.\n"
+            "6. For mapping tables (so_cpa_rows, iga_rows, cdio_sdg_rows): "
+            "extract the column header numbers/codes into *_headers arrays, "
+            "and create one row per ILO with the assessment abbreviations in the correct column slots.\n"
+            "7. Use empty string '' (never null) for missing scalar values. "
+            "Use [] for empty arrays, but always include at least one element.\n"
+            "8. Preserve exact text — do not summarize.\n\n"
+            f"SYLLABUS TEXT:\n{extracted_text}\n\n"
+            f"Return a JSON object with EXACTLY these keys and structure:\n{schema}"
+        )
+
+        return system, user

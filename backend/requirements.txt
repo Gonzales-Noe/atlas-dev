@@ -22,6 +22,7 @@ python-docx==0.8.11             # DOCX file parsing
 pymupdf>=1.24.0                 # PyMuPDF – header-aware PDF structural extraction
 pypdf==4.0.0                    # PDF parsing (fallback)
 PyPDF2==3.0.1                   # PDF manipulation
+openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)
 
 # ── Text Processing & Embeddings ───────────────────────────
 tiktoken==0.7.0                 # Token counting for Anthropic
