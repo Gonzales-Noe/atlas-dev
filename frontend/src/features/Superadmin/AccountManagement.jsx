@@ -1,14 +1,13 @@
 // src/features/Superadmin/AccountManagement.jsx
 import { useState } from 'react'
 import {
-  Box, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Button, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Menu, MenuItem, IconButton, Grid, Typography, Divider, Switch, FormControlLabel
+  Box, Card, CardContent, CardHeader, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Button, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Menu, MenuItem, IconButton, Grid, Typography, Divider, Switch, FormControlLabel
 } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import SuperAdminLayout from './SuperAdminLayout'
 
-// Mock account data
 const mockAccounts = [
   { id: 1, institution: 'State University', admin: 'Dr. Maria Santos', email: 'maria@stateuniv.edu', status: 'active', subscriptionPlan: 'Professional', users: 450, createdAt: '2025-03-15', lastLogin: '2026-05-10 09:45' },
   { id: 2, institution: 'Tech College', admin: 'Prof. John Doe', email: 'john@techcollege.edu', status: 'active', subscriptionPlan: 'Premium', users: 320, createdAt: '2025-04-20', lastLogin: '2026-05-09 14:30' },
@@ -18,7 +17,7 @@ const mockAccounts = [
 ]
 
 const getStatusColor = (status) => {
-  return status === 'active' ? { bg: '#C8E6C9', color: '#2E7D32' } : { bg: '#F5F5F5', color: '#888' }
+  return status === 'active' ? { bg: '#E8F5E9', color: '#2E7D32' } : { bg: '#F1F5F9', color: '#64748B' }
 }
 
 const getPlanColor = (plan) => {
@@ -26,7 +25,7 @@ const getPlanColor = (plan) => {
     case 'Premium': return { bg: '#FFF8E1', color: '#F57F17' }
     case 'Professional': return { bg: '#E3F2FD', color: '#1565C0' }
     case 'Standard': return { bg: '#F3E5F5', color: '#6A1B9A' }
-    default: return { bg: '#EEEEEE', color: '#616161' }
+    default: return { bg: '#F1F5F9', color: '#64748B' }
   }
 }
 
@@ -56,15 +55,13 @@ export default function AccountManagement() {
   const handleViewDetails = (account) => { setSelectedAccount(account); setDetailsDialogOpen(true); handleMenuClose() }
   const handleEdit = (account) => { setSelectedAccount(account); setEditDialogOpen(true); handleMenuClose() }
 
-  // New styling to match the mockup perfectly
-  const cardStyles = { borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+  const cardStyles = { borderRadius: '24px', border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', background: '#FFFFFF', p: 1 };
 
   return (
     <SuperAdminLayout>
       <Box>
-        {/* Page Title - Now White */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFFFFF', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#FFFFFF', mb: 1 }}>
             Account Management
           </Typography>
           <Typography sx={{ color: '#FFCDD2', fontSize: '0.95rem' }}>
@@ -72,72 +69,69 @@ export default function AccountManagement() {
           </Typography>
         </Box>
 
-        {/* Summary Stats */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={cardStyles}>
-              <CardContent>
-                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Total Accounts</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1A1A1A' }}>{mockAccounts.length}</Typography>
+              <CardContent sx={{ p: 3 }}>
+                <Typography sx={{ color: '#64748B', fontSize: '0.9rem', mb: 1, fontWeight: 700 }}>Total Accounts</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, color: '#1A1A1A', lineHeight: 1 }}>{mockAccounts.length}</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={cardStyles}>
-              <CardContent>
-                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Active Accounts</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#2E7D32' }}>{mockAccounts.filter((a) => a.status === 'active').length}</Typography>
+              <CardContent sx={{ p: 3 }}>
+                <Typography sx={{ color: '#64748B', fontSize: '0.9rem', mb: 1, fontWeight: 700 }}>Active Accounts</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, color: '#2E7D32', lineHeight: 1 }}>{mockAccounts.filter((a) => a.status === 'active').length}</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={cardStyles}>
-              <CardContent>
-                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Total Users</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1976D2' }}>{mockAccounts.reduce((sum, a) => sum + a.users, 0).toLocaleString()}</Typography>
+              <CardContent sx={{ p: 3 }}>
+                <Typography sx={{ color: '#64748B', fontSize: '0.9rem', mb: 1, fontWeight: 700 }}>Total Users</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, color: '#1976D2', lineHeight: 1 }}>{mockAccounts.reduce((sum, a) => sum + a.users, 0).toLocaleString()}</Typography>
               </CardContent>
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={cardStyles}>
-              <CardContent>
-                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>MRR Revenue</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#F57C00' }}>${(mockAccounts.length * 299).toLocaleString()}</Typography>
+              <CardContent sx={{ p: 3 }}>
+                <Typography sx={{ color: '#64748B', fontSize: '0.9rem', mb: 1, fontWeight: 700 }}>MRR Revenue</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 800, color: '#F57C00', lineHeight: 1 }}>${(mockAccounts.length * 299).toLocaleString()}</Typography>
               </CardContent>
             </Card>
           </Grid>
         </Grid>
 
-        {/* Filters & Search */}
         <Card sx={{ ...cardStyles, mb: 3 }}>
-          <CardContent>
+          <CardContent sx={{ p: 3 }}>
             <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>
-              <TextField placeholder="Search institution, admin, or email..." variant="outlined" size="small" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }} InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: '#888' }} /> }} sx={{ flex: 1, minWidth: 250 }} />
-              <TextField select label="Filter by Status" variant="outlined" size="small" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(0) }} SelectProps={{ native: true }} sx={{ minWidth: 150 }}>
+              <TextField placeholder="Search institution, admin, or email..." variant="outlined" size="small" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }} InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: '#888' }} /> }} sx={{ flex: 1, minWidth: 250, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+              <TextField select label="Filter by Status" variant="outlined" size="small" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(0) }} SelectProps={{ native: true }} sx={{ minWidth: 150, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </TextField>
-              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)} sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }}>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)} sx={{ background: '#8B0000', borderRadius: '12px', '&:hover': { background: '#6B0000' }, textTransform: 'none', px: 3 }}>
                 New Account
               </Button>
             </Stack>
           </CardContent>
         </Card>
 
-        {/* Accounts Table */}
         <Card sx={cardStyles}>
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow sx={{ background: '#FAFAFA', borderBottom: '2px solid #EEE' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Institution</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Admin</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'center' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'center' }}>Plan</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'right' }}>Users</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Last Login</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'center' }}>Actions</TableCell>
+                <TableRow sx={{ background: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Institution</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Admin</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', textAlign: 'center', borderBottom: 'none' }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', textAlign: 'center', borderBottom: 'none' }}>Plan</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', textAlign: 'right', borderBottom: 'none' }}>Users</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Last Login</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', textAlign: 'center', borderBottom: 'none' }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -145,16 +139,16 @@ export default function AccountManagement() {
                   const statusColor = getStatusColor(account.status)
                   const planColor = getPlanColor(account.subscriptionPlan)
                   return (
-                    <TableRow key={account.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
-                      <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{account.institution}</TableCell>
-                      <TableCell sx={{ color: '#666' }}>{account.admin}</TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
-                      <TableCell sx={{ textAlign: 'right', fontWeight: 600, color: '#1A1A1A' }}>{account.users}</TableCell>
-                      <TableCell sx={{ color: '#666', fontSize: '0.9rem' }}>{account.lastLogin}</TableCell>
+                    <TableRow key={account.id} sx={{ '&:hover': { background: '#F8FAFC' }, '& td': { borderBottom: '1px solid #F1F5F9' }, '&:last-child td': { borderBottom: 'none' } }}>
+                      <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>{account.institution}</TableCell>
+                      <TableCell sx={{ color: '#64748B' }}>{account.admin}</TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 700, fontSize: '0.7rem', borderRadius: '8px' }} /></TableCell>
+                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 700, fontSize: '0.7rem', borderRadius: '8px' }} /></TableCell>
+                      <TableCell sx={{ textAlign: 'right', fontWeight: 700, color: '#1A1A1A' }}>{account.users}</TableCell>
+                      <TableCell sx={{ color: '#64748B', fontSize: '0.9rem' }}>{account.lastLogin}</TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
                         <IconButton size="small" onClick={(e) => handleMenuOpen(e, account)}><MoreVertIcon fontSize="small" /></IconButton>
-                        <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === account.id} onClose={handleMenuClose}>
+                        <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === account.id} onClose={handleMenuClose} PaperProps={{ sx: { borderRadius: '12px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' } }}>
                           <MenuItem onClick={() => handleViewDetails(account)}>View Details</MenuItem>
                           <MenuItem onClick={() => handleEdit(account)}>Edit Account</MenuItem>
                           <MenuItem>Manage Subscription</MenuItem>
@@ -168,41 +162,40 @@ export default function AccountManagement() {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination rowsPerPageOptions={[5, 10, 25]} component="div" count={filteredAccounts.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} sx={{ borderTop: '1px solid #EEE', '& .MuiTablePagination-root': { p: 2 } }} />
+          <TablePagination rowsPerPageOptions={[5, 10, 25]} component="div" count={filteredAccounts.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} sx={{ borderTop: '1px solid #F1F5F9' }} />
         </Card>
 
-        {/* Account Details Dialog */}
-        <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Account Details</DialogTitle>
-          <Divider />
+        {/* Dialogs */}
+        <Dialog open={detailsDialogOpen} onClose={() => setDetailsDialogOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '24px' } }}>
+          <DialogTitle sx={{ fontWeight: 800 }}>Account Details</DialogTitle>
+          <Divider sx={{ borderColor: '#F1F5F9' }} />
           <DialogContent sx={{ pt: 3 }}>
             {selectedAccount && (
-              <Stack spacing={2}>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>INSTITUTION</Typography><Typography sx={{ fontWeight: 600 }}>{selectedAccount.institution}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>PRIMARY ADMIN</Typography><Typography>{selectedAccount.admin}</Typography><Typography sx={{ color: '#666', fontSize: '0.9rem' }}>{selectedAccount.email}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>STATUS</Typography><Chip label={selectedAccount.status.toUpperCase()} sx={{ background: getStatusColor(selectedAccount.status).bg, color: getStatusColor(selectedAccount.status).color, fontWeight: 600 }} /></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>TOTAL USERS</Typography><Typography sx={{ fontSize: '1.5rem', fontWeight: 700, color: '#922724' }}>{selectedAccount.users}</Typography></Box>
+              <Stack spacing={2.5}>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>INSTITUTION</Typography><Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>{selectedAccount.institution}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>PRIMARY ADMIN</Typography><Typography sx={{ fontWeight: 600 }}>{selectedAccount.admin}</Typography><Typography sx={{ color: '#64748B', fontSize: '0.9rem' }}>{selectedAccount.email}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>STATUS</Typography><Chip label={selectedAccount.status.toUpperCase()} sx={{ background: getStatusColor(selectedAccount.status).bg, color: getStatusColor(selectedAccount.status).color, fontWeight: 700, borderRadius: '8px' }} /></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>TOTAL USERS</Typography><Typography sx={{ fontSize: '1.8rem', fontWeight: 800, color: '#1A1A1A' }}>{selectedAccount.users}</Typography></Box>
               </Stack>
             )}
           </DialogContent>
-          <DialogActions sx={{ p: 2 }}><Button onClick={() => setDetailsDialogOpen(false)}>Close</Button></DialogActions>
+          <DialogActions sx={{ p: 3, pt: 0 }}><Button onClick={() => setDetailsDialogOpen(false)} sx={{ color: '#64748B', fontWeight: 700 }}>Close</Button></DialogActions>
         </Dialog>
 
-        {/* Create/Edit Account Dialog */}
-        <Dialog open={createDialogOpen || editDialogOpen} onClose={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }} maxWidth="sm" fullWidth>
-          <DialogTitle>{editDialogOpen ? 'Edit Account' : 'Create New Account'}</DialogTitle>
-          <Divider />
+        <Dialog open={createDialogOpen || editDialogOpen} onClose={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '24px' } }}>
+          <DialogTitle sx={{ fontWeight: 800 }}>{editDialogOpen ? 'Edit Account' : 'Create New Account'}</DialogTitle>
+          <Divider sx={{ borderColor: '#F1F5F9' }} />
           <DialogContent sx={{ pt: 3 }}>
-            <Stack spacing={2}>
-              <TextField label="Institution Name" variant="outlined" fullWidth defaultValue={selectedAccount?.institution || ''} />
-              <TextField label="Admin Name" variant="outlined" fullWidth defaultValue={selectedAccount?.admin || ''} />
-              <TextField label="Admin Email" variant="outlined" type="email" fullWidth defaultValue={selectedAccount?.email || ''} />
-              <FormControlLabel control={<Switch defaultChecked={selectedAccount?.status === 'active'} />} label="Active Account" />
+            <Stack spacing={2.5}>
+              <TextField label="Institution Name" variant="outlined" fullWidth defaultValue={selectedAccount?.institution || ''} InputProps={{ sx: { borderRadius: '12px' } }} />
+              <TextField label="Admin Name" variant="outlined" fullWidth defaultValue={selectedAccount?.admin || ''} InputProps={{ sx: { borderRadius: '12px' } }} />
+              <TextField label="Admin Email" variant="outlined" type="email" fullWidth defaultValue={selectedAccount?.email || ''} InputProps={{ sx: { borderRadius: '12px' } }} />
+              <FormControlLabel control={<Switch defaultChecked={selectedAccount?.status === 'active'} color="error" />} label={<Typography sx={{ fontWeight: 600 }}>Active Account</Typography>} />
             </Stack>
           </DialogContent>
-          <DialogActions sx={{ p: 2 }}>
-            <Button onClick={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }}>Cancel</Button>
-            <Button variant="contained" sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }} onClick={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }}>{editDialogOpen ? 'Update' : 'Create'}</Button>
+          <DialogActions sx={{ p: 3, pt: 0 }}>
+            <Button onClick={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }} sx={{ color: '#64748B', fontWeight: 700 }}>Cancel</Button>
+            <Button variant="contained" sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: '12px', px: 3, textTransform: 'none', fontWeight: 700 }} onClick={() => { setCreateDialogOpen(false); setEditDialogOpen(false) }}>{editDialogOpen ? 'Update' : 'Create'}</Button>
           </DialogActions>
         </Dialog>
       </Box>
