@@ -4,7 +4,6 @@ from . import views
 urlpatterns = [
     # Anthropic Claude API endpoints
     path('claude-test/', views.claude_api_test, name='claude_api_test'),
-    path('ollama-health/', views.ollama_health, name='ollama_health'),
     
     # RAG document endpoints
     path('upload-rag-document/', views.upload_rag_document, name='upload_rag_document'),

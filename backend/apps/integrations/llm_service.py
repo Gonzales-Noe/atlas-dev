@@ -22,14 +22,10 @@ except ImportError:
 from .anthropic_service import AnthropicService
 
 class LLMService:
-    """Service for interacting with various LLM providers (Ollama, OpenRouter, Groq, Anthropic)."""
+    """Service for interacting with various LLM providers (OpenRouter, Groq, Anthropic)."""
     
     def __init__(self):
-        self.default_provider = os.environ.get('DEFAULT_LLM_PROVIDER', 'ollama').lower()
-
-        # Ollama setup (local, no credits)
-        self.ollama_base_url = os.environ.get('OLLAMA_BASE_URL', 'http://127.0.0.1:11434').rstrip('/')
-        self.ollama_default_model = os.environ.get('OLLAMA_DEFAULT_MODEL', 'deepseek-r1:8b').strip()
+        self.default_provider = os.environ.get('DEFAULT_LLM_PROVIDER', 'gemini').lower()
         
         # OpenRouter setup (using OpenAI SDK format)
         self.openrouter_key = os.environ.get('OPENROUTER_API_KEY')
@@ -53,9 +49,6 @@ class LLMService:
 
     def get_provider_and_model(self, provider_choice=None):
         choice = (provider_choice or self.default_provider).lower()
-
-        if choice == 'ollama':
-            return 'ollama', self.ollama_default_model
         
         if choice == 'gemini':
             return 'openrouter', 'google/gemini-2.5-flash'
@@ -70,73 +63,13 @@ class LLMService:
              return 'openrouter', 'meta-llama/llama-3-70b-instruct' # Generic openrouter fallback if just 'openrouter' is specified
         else:
             # fallback
-            return 'ollama', self.ollama_default_model
-
-    def check_ollama_health(self):
-        """Return local Ollama availability and model readiness."""
-        health = {
-            "provider": "ollama",
-            "base_url": self.ollama_base_url,
-            "model": self.ollama_default_model,
-            "server_reachable": False,
-            "model_available": False,
-            "available_models": [],
-            "error": None,
-        }
-
-        try:
-            response = requests.get(f"{self.ollama_base_url}/api/tags", timeout=10)
-            response.raise_for_status()
-            data = response.json()
-            models = data.get("models", [])
-
-            available = []
-            for item in models:
-                name = item.get("name") or item.get("model")
-                if name:
-                    available.append(name)
-
-            requested = self.ollama_default_model
-            requested_base = requested.split(":", 1)[0]
-            available_bases = {m.split(":", 1)[0] for m in available}
-
-            health["server_reachable"] = True
-            health["available_models"] = available
-            health["model_available"] = requested in available or requested_base in available_bases
-            return health
-        except Exception as exc:  # noqa: BLE001 - health endpoint should capture runtime errors
-            health["error"] = str(exc)
-            return health
+            return 'openrouter', 'google/gemini-2.5-flash'
             
     def generate_response(self, messages, provider_choice=None, system=None, max_tokens=1024):
         """
         messages: [{"role": "user", "content": "hello"}]
         """
         provider, model = self.get_provider_and_model(provider_choice)
-
-        if provider == 'ollama':
-            payload_messages = []
-            if system:
-                payload_messages.append({"role": "system", "content": system})
-            payload_messages.extend(messages)
-
-            response = requests.post(
-                f"{self.ollama_base_url}/api/chat",
-                headers={"Content-Type": "application/json"},
-                json={
-                    "model": model,
-                    "messages": payload_messages,
-                    "stream": False,
-                    "options": {"num_predict": max_tokens},
-                },
-                timeout=180,
-            )
-            response.raise_for_status()
-            data = response.json()
-            content = ((data.get("message") or {}).get("content") or "").strip()
-            if not content:
-                raise ValueError("Ollama returned an empty response.")
-            return content
         
         if provider == 'openrouter':
             if not self.openrouter_key:
