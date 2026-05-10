@@ -36,7 +36,7 @@ api.interceptors.response.use(
       originalRequest._retry = true
       try {
         const refreshToken = localStorage.getItem('atlas_refresh_token')
-        const { data } = await axios.post('/api/auth/token/refresh/', {
+        const { data } = await axios.post('/api/users/token/refresh/', {
           refresh: refreshToken,
         })
         localStorage.setItem('atlas_access_token', data.access)

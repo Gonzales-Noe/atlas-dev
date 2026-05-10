@@ -11,6 +11,7 @@ import Alert                 from '@mui/material/Alert'
 import CircularProgress      from '@mui/material/CircularProgress'
 import AuthLayout            from '../../components/AuthLayout'
 import AtlasLogo             from '../../components/AtlasLogo'
+import AutoAlert             from '../../components/AutoAlert'
 import { useAuth }           from '../../store/authStore'
 import useRoleRedirect       from '../../hooks/useRoleRedirect'
 import { ROUTES }            from '../../config/routes'
@@ -87,11 +88,7 @@ export default function SignInPage() {
         </div>
 
         {/* Error */}
-        {error && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+        <AutoAlert message={error} onClose={() => setError('')} sx={{ mb: 2, borderRadius: 2 }} />
 
         {/* Email / password form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -134,10 +131,9 @@ export default function SignInPage() {
           <Button
             type="submit"
             variant="contained"
-            color="primary"
             fullWidth
             disabled={loading}
-            sx={{ borderRadius: 2, py: 1.3, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.04em' }}
+            sx={{ borderRadius: 2, py: 1.3, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.04em', bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
           >
             {loading
               ? <CircularProgress size={20} sx={{ color: '#fff' }} />

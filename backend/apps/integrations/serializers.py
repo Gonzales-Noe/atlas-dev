@@ -76,6 +76,16 @@ class FileUploadSerializer(serializers.Serializer):
         return value
 
 
+class CourseRagUploadSerializer(serializers.Serializer):
+    """Serializer for faculty course-level RAG uploads."""
+
+    file = serializers.FileField(required=True)
+    file_type = serializers.ChoiceField(choices=['pdf', 'docx'], required=True)
+    course_id = serializers.UUIDField(required=True)
+    module_tag = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+    term_tag = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
+
+
 class AnthropicTestSerializer(serializers.Serializer):
     """Serializer for Anthropic API test requests."""
     
@@ -85,7 +95,7 @@ class AnthropicTestSerializer(serializers.Serializer):
     )
     model = serializers.CharField(
         required=False,
-        default="claude-3-5-sonnet-20241022",
+        default="claude-haiku-4-5-20251001",
         help_text="Claude model to use"
     )
     max_tokens = serializers.IntegerField(

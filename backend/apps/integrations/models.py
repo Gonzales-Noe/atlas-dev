@@ -47,6 +47,23 @@ class UserProfile(models.Model):
     class Meta:
         db_table = 'users'
 
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    @property
+    def username(self):
+        return self.email
+
+    @property
+    def name(self):
+        local_part = self.email.split('@', 1)[0]
+        return local_part.replace('.', ' ').replace('_', ' ').title()
+
 class Course(models.Model):
     course_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course_code = models.CharField(max_length=100, unique=True)
@@ -81,6 +98,7 @@ class Syllabus(models.Model):
     version = models.IntegerField(default=1)
     status = models.CharField(max_length=50, default='Draft')
     generated_at = models.DateTimeField(null=True, blank=True)
+    syllabus_content = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'syllabi'
