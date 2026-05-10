@@ -147,7 +147,8 @@ export default function SignInPage() {
 
               {error && <Alert severity="error" sx={{ mb: 4, borderRadius: 2 }}>{error}</Alert>}
               <Alert severity="info" sx={{ mb: 4, borderRadius: 2 }}>
-                Super Admin access is available with <strong>superadmin@atlas.local</strong> / <strong>SuperAdmin123!</strong>
+                Super Admin access: <strong>superadmin@atlas.local</strong> / <strong>SuperAdmin123!</strong><br />
+                Faculty access: <strong>faculty@atlas.local</strong> / <strong>Faculty123!</strong>
               </Alert>
 
               {/* Email / password form */}

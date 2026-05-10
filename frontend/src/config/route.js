@@ -17,6 +17,7 @@ export const ROUTES = {
     MODULE:      '/faculty/module',
     ASSESSMENT:  '/faculty/assessment',
     GRADING:     '/faculty/grading',
+    ANALYTICS:   '/faculty/analytics',
   },
 
   // Admin (Tenant Admin — per HEI)

@@ -8,6 +8,12 @@ import SuperAdminDashboard from './features/Superadmin/Dashboard.jsx'
 import SuperAdminAuditLogs from './features/Superadmin/AuditLogs.jsx'
 import SuperAdminSystemManagement from './features/Superadmin/SystemManagement.jsx'
 import SuperAdminAccountManagement from './features/Superadmin/AccountManagement.jsx'
+import FacultyDashboard from './features/roles/Faculty/Dashboard.jsx'
+import FacultySyllabus from './features/roles/Faculty/Syllabus.jsx'
+import FacultyModule from './features/roles/Faculty/Module.jsx'
+import FacultyAssessment from './features/roles/Faculty/Assessment.jsx'
+import FacultyGrading from './features/roles/Faculty/Grading.jsx'
+import FacultyAnalytics from './features/roles/Faculty/Analytics.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
 
@@ -53,6 +59,56 @@ function App() {
           element={
             <ProtectedRoute role="superadmin">
               <SuperAdminAccountManagement />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Faculty Routes */}
+        <Route
+          path={ROUTES.FACULTY.DASHBOARD}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.SYLLABUS}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultySyllabus />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.MODULE}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyModule />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.ASSESSMENT}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyAssessment />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.GRADING}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyGrading />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.ANALYTICS}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyAnalytics />
             </ProtectedRoute>
           }
         />
