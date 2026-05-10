@@ -4,7 +4,7 @@ from .base import *
 DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*.local']
 
-# Development tools
+# Development tools if DEBUG: INSTALLED_APPS.append('debug_toolbar')
 INSTALLED_APPS += [
     'debug_toolbar',
     'django_extensions',
