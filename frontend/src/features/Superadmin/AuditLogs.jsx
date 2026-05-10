@@ -1,7 +1,7 @@
 // src/features/Superadmin/AuditLogs.jsx
 import { useState } from 'react'
 import {
-  Box, Card, CardContent, CardHeader, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Chip, Button, Dialog, DialogTitle, DialogContent, Typography, Divider,
+  Box, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Chip, Button, Dialog, DialogTitle, DialogContent, Typography, Divider,
 } from '@mui/material'
 import FilterListIcon from '@mui/icons-material/FilterList'
 import SuperAdminLayout from './SuperAdminLayout'
@@ -19,10 +19,10 @@ const mockAuditLogs = [
 
 const getStatusColor = (status) => {
   switch (status) {
-    case 'success': return { bg: '#C8E6C9', color: '#2E7D32' }
+    case 'success': return { bg: '#E8F5E9', color: '#2E7D32' }
     case 'error': return { bg: '#FFCDD2', color: '#C62828' }
-    case 'warning': return { bg: '#FFF9C4', color: '#F57F17' }
-    default: return { bg: '#E3F2FD', color: '#1565C0' }
+    case 'warning': return { bg: '#FFF8E1', color: '#F57F17' }
+    default: return { bg: '#F1F5F9', color: '#64748B' }
   }
 }
 
@@ -45,15 +45,13 @@ export default function AuditLogs() {
   const handleViewDetails = (log) => { setSelectedLog(log); setDetailsOpen(true) }
   const uniqueActions = [...new Set(mockAuditLogs.map((log) => log.action))]
 
-  // Mockup Styles
-  const cardStyles = { borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
+  const cardStyles = { borderRadius: '24px', border: 'none', boxShadow: '0 8px 32px rgba(0,0,0,0.08)', background: '#FFFFFF', p: 1 };
 
   return (
     <SuperAdminLayout>
       <Box>
-        {/* Page Title */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFFFFF', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, color: '#FFFFFF', mb: 1 }}>
             Audit Logs
           </Typography>
           <Typography sx={{ color: '#FFCDD2', fontSize: '0.95rem' }}>
@@ -61,52 +59,50 @@ export default function AuditLogs() {
           </Typography>
         </Box>
 
-        {/* Filters */}
         <Card sx={{ ...cardStyles, mb: 3 }}>
-          <CardContent>
+          <CardContent sx={{ p: 3 }}>
             <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>
-              <TextField placeholder="Search by user, action, or institution..." variant="outlined" size="small" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }} sx={{ flex: 1, minWidth: 250 }} />
-              <TextField select label="Filter by Action" variant="outlined" size="small" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(0) }} SelectProps={{ native: true }} sx={{ minWidth: 200 }}>
+              <TextField placeholder="Search by user, action, or institution..." variant="outlined" size="small" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setPage(0) }} sx={{ flex: 1, minWidth: 250, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }} />
+              <TextField select label="Filter by Action" variant="outlined" size="small" value={filterAction} onChange={(e) => { setFilterAction(e.target.value); setPage(0) }} SelectProps={{ native: true }} sx={{ minWidth: 200, '& .MuiOutlinedInput-root': { borderRadius: '12px' } }}>
                 <option value="">All Actions</option>
                 {uniqueActions.map((action) => (
                   <option key={action} value={action}>{action}</option>
                 ))}
               </TextField>
-              <Button variant="outlined" startIcon={<FilterListIcon />} sx={{ color: '#8B0000', borderColor: '#8B0000' }}>
+              <Button variant="outlined" startIcon={<FilterListIcon />} sx={{ color: '#8B0000', borderColor: '#8B0000', borderRadius: '12px', textTransform: 'none', fontWeight: 700, px: 3 }}>
                 More Filters
               </Button>
             </Stack>
           </CardContent>
         </Card>
 
-        {/* Audit Logs Table */}
         <Card sx={cardStyles}>
           <TableContainer>
             <Table>
               <TableHead>
-                <TableRow sx={{ background: '#FAFAFA', borderBottom: '2px solid #EEE' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Timestamp</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>User</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Action</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Institution</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'center' }}>Details</TableCell>
+                <TableRow sx={{ background: '#F8FAFC' }}>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Timestamp</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>User</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Action</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Institution</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', borderBottom: 'none' }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 700, color: '#475569', textAlign: 'center', borderBottom: 'none' }}>Details</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {filteredLogs.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((log) => {
                   const statusColor = getStatusColor(log.status)
                   return (
-                    <TableRow key={log.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
-                      <TableCell sx={{ fontSize: '0.9rem', color: '#666' }}>{log.timestamp}</TableCell>
-                      <TableCell sx={{ fontSize: '0.9rem', fontWeight: 600 }}>{log.user}</TableCell>
-                      <TableCell sx={{ fontSize: '0.9rem', color: '#1A1A1A' }}>{log.action}</TableCell>
-                      <TableCell sx={{ fontSize: '0.9rem', color: '#666' }}>{log.institution}</TableCell>
+                    <TableRow key={log.id} sx={{ '&:hover': { background: '#F8FAFC' }, '& td': { borderBottom: '1px solid #F1F5F9' }, '&:last-child td': { borderBottom: 'none' } }}>
+                      <TableCell sx={{ fontSize: '0.9rem', color: '#64748B', fontWeight: 600 }}>{log.timestamp}</TableCell>
+                      <TableCell sx={{ fontSize: '0.95rem', fontWeight: 700, color: '#1A1A1A' }}>{log.user}</TableCell>
+                      <TableCell sx={{ fontSize: '0.95rem', color: '#1A1A1A', fontWeight: 600 }}>{log.action}</TableCell>
+                      <TableCell sx={{ fontSize: '0.95rem', color: '#64748B', fontWeight: 600 }}>{log.institution}</TableCell>
                       <TableCell>
-                        <Chip label={log.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} />
+                        <Chip label={log.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 700, fontSize: '0.7rem', borderRadius: '8px' }} />
                       </TableCell>
                       <TableCell sx={{ textAlign: 'center' }}>
-                        <Button size="small" variant="text" onClick={() => handleViewDetails(log)} sx={{ color: '#8B0000' }}>View</Button>
+                        <Button size="small" variant="text" onClick={() => handleViewDetails(log)} sx={{ color: '#8B0000', fontWeight: 700, textTransform: 'none' }}>View</Button>
                       </TableCell>
                     </TableRow>
                   )
@@ -114,25 +110,24 @@ export default function AuditLogs() {
               </TableBody>
             </Table>
           </TableContainer>
-          <TablePagination rowsPerPageOptions={[5, 10, 25, 50]} component="div" count={filteredLogs.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} sx={{ borderTop: '1px solid #EEE', '& .MuiTablePagination-root': { p: 2 } }} />
+          <TablePagination rowsPerPageOptions={[5, 10, 25, 50]} component="div" count={filteredLogs.length} rowsPerPage={rowsPerPage} page={page} onPageChange={handleChangePage} onRowsPerPageChange={handleChangeRowsPerPage} sx={{ borderTop: '1px solid #F1F5F9' }} />
         </Card>
 
-        {/* Details Dialog */}
-        <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Audit Log Details</DialogTitle>
-          <Divider />
+        <Dialog open={detailsOpen} onClose={() => setDetailsOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: '24px' } }}>
+          <DialogTitle sx={{ fontWeight: 800 }}>Audit Log Details</DialogTitle>
+          <Divider sx={{ borderColor: '#F1F5F9' }} />
           <DialogContent sx={{ pt: 3 }}>
             {selectedLog && (
-              <Stack spacing={2}>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>TIMESTAMP</Typography><Typography>{selectedLog.timestamp}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>USER</Typography><Typography>{selectedLog.user}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>ACTION</Typography><Typography>{selectedLog.action}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>RESOURCE</Typography><Typography>{selectedLog.resource}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>INSTITUTION</Typography><Typography>{selectedLog.institution}</Typography></Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>STATUS</Typography>
-                  <Chip label={selectedLog.status.toUpperCase()} size="small" sx={{ background: getStatusColor(selectedLog.status).bg, color: getStatusColor(selectedLog.status).color, fontWeight: 600 }} />
+              <Stack spacing={2.5}>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>TIMESTAMP</Typography><Typography sx={{ fontWeight: 600, color: '#1A1A1A' }}>{selectedLog.timestamp}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>USER</Typography><Typography sx={{ fontWeight: 600, color: '#1A1A1A' }}>{selectedLog.user}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>ACTION</Typography><Typography sx={{ fontWeight: 600, color: '#1A1A1A' }}>{selectedLog.action}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>RESOURCE</Typography><Typography sx={{ fontWeight: 600, color: '#1A1A1A' }}>{selectedLog.resource}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>INSTITUTION</Typography><Typography sx={{ fontWeight: 600, color: '#1A1A1A' }}>{selectedLog.institution}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>STATUS</Typography>
+                  <Chip label={selectedLog.status.toUpperCase()} size="small" sx={{ background: getStatusColor(selectedLog.status).bg, color: getStatusColor(selectedLog.status).color, fontWeight: 700, borderRadius: '8px' }} />
                 </Box>
-                <Box><Typography sx={{ fontWeight: 700, color: '#666', fontSize: '0.8rem', mb: 0.5 }}>DETAILS</Typography><Typography sx={{ whiteSpace: 'pre-wrap', color: '#666' }}>{selectedLog.details}</Typography></Box>
+                <Box><Typography sx={{ fontWeight: 700, color: '#64748B', fontSize: '0.8rem', mb: 0.5 }}>DETAILS</Typography><Typography sx={{ whiteSpace: 'pre-wrap', color: '#1A1A1A', fontWeight: 500 }}>{selectedLog.details}</Typography></Box>
               </Stack>
             )}
           </DialogContent>
