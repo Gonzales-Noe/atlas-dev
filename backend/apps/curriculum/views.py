@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
-from apps.integrations.models import Assessment, CourseLoad, Module, Syllabus, UserRole
+from apps.integrations.models import Assessment, Course, CourseLoad, Module, Syllabus, UserRole
 from apps.integrations.rag_service import semantic_search
 
 from .serializers import GenerateModuleSerializer, GenerateSyllabusSerializer
@@ -350,6 +350,457 @@ def generate_module(request):
         logger.exception(
             "Error generating module %r for course %r", module_title, course_name
         )
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_course(request):
+    """Create a new course and auto-assign it to the requesting faculty user."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_code = (request.data.get("course_code") or "").strip()
+    course_title = (request.data.get("course_title") or "").strip()
+    description = (request.data.get("description") or "").strip()
+
+    if not course_code:
+        return Response(
+            {"success": False, "detail": "course_code is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not course_title:
+        return Response(
+            {"success": False, "detail": "course_title is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if Course.objects.filter(course_code=course_code).exists():
+        return Response(
+            {"success": False, "detail": f"A course with code '{course_code}' already exists."},
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    course = Course.objects.create(
+        course_code=course_code,
+        course_title=course_title,
+        description=description or None,
+    )
+    CourseLoad.objects.create(course=course, faculty=request.user)
+
+    logger.info(
+        "Faculty %s created course %s (%s)", request.user.email, course_code, course.course_id
+    )
+
+    return Response(
+        {
+            "success": True,
+            "course": {
+                "course_id": str(course.course_id),
+                "course_code": course.course_code,
+                "course_title": course.course_title,
+                "description": course.description,
+                "syllabus_count": 0,
+                "assessment_count": 0,
+            },
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_syllabus_field(request):
+    """
+    Generate or continue a single syllabus field using RAG + LLM.
+
+    Endpoint: POST /api/curriculum/generate-syllabus-field/
+
+    Body (JSON):
+    {
+        "course_id":        "<uuid>",
+        "section":          "tlas",           // syllabus section key
+        "field_label":      "TLA Strategies", // human-readable label shown in footer
+        "existing_content": "...",            // current field value (used for 'continue')
+        "mode":             "generate",       // 'generate' | 'continue'
+        "provider":         "gemini",         // optional LLM provider
+        "top_k":            5                 // optional RAG top-k
+    }
+
+    Pipeline:
+        1. Validate faculty assignment.
+        2. Semantic search over global knowledge base.
+        3. Fetch top-3 parent chunks from faculty-uploaded course docs.
+        4. Build field-specific CoT prompt.
+        5. Call LLM and return the generated text.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    section = request.data.get("section", "")
+    field_label = request.data.get("field_label", "Syllabus Field")
+    existing_content = request.data.get("existing_content", "")
+    mode = request.data.get("mode", "generate")
+    provider = request.data.get("provider") or None
+    top_k = max(1, int(request.data.get("top_k", 5)))
+
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    try:
+        # ── Step 1: Global RAG ─────────────────────────────────────────────
+        search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
+        global_chunks = semantic_search(search_query, top_k=top_k)
+
+        # ── Step 2: Course-specific RAG (uploaded faculty documents) ───────
+        from apps.integrations.models import ParentChunk  # local import to avoid circular
+        course_parent_texts = list(
+            ParentChunk.objects
+            .filter(records__course=course)
+            .order_by("-records__records_id")
+            .values_list("parent_content", flat=True)[:3]
+        )
+        course_chunks = [
+            {
+                "text": text,
+                "document_title": "Uploaded course document",
+                "page_number": None,
+                "score": 0.5,
+            }
+            for text in course_parent_texts
+        ]
+
+        all_chunks = global_chunks + course_chunks
+
+        # ── Step 3: Build prompt ──────────────────────────────────────────
+        system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name=course.course_title,
+            course_code=course.course_code,
+            field_label=field_label,
+            section=section,
+            existing_content=existing_content,
+            mode=mode,
+            context_chunks=all_chunks,
+        )
+
+        # ── Step 4: Call LLM ─────────────────────────────────────────────
+        llm = LLMService()
+        generated_text = llm.generate_response(
+            messages=[{"role": "user", "content": user_prompt}],
+            provider_choice=provider,
+            system=system_prompt,
+            max_tokens=1500,
+        )
+
+        logger.info(
+            "generate_syllabus_field: section=%r field=%r mode=%r course=%r provider=%r chunks=%d",
+            section, field_label, mode, course.course_code, provider, len(all_chunks),
+        )
+
+        return Response(
+            {
+                "success": True,
+                "generated_text": generated_text,
+                "provider_used": provider or llm.default_provider,
+                "rag_chunks_used": len(all_chunks),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as exc:
+        logger.exception("Error in generate_syllabus_field for course %r", course_id)
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+def _extract_text_from_file(file_obj, filename: str) -> str:
+    """Extract raw text from .txt / .docx / .pdf / .xlsx files."""
+    if filename.endswith(".txt"):
+        return file_obj.read().decode("utf-8", errors="replace")
+
+    if filename.endswith(".docx"):
+        from docx import Document as DocxDocument  # python-docx
+        doc = DocxDocument(file_obj)
+        parts = []
+        for p in doc.paragraphs:
+            if p.text.strip():
+                parts.append(p.text)
+        for tbl in doc.tables:
+            for row in tbl.rows:
+                cells = [c.text.strip() for c in row.cells if c.text.strip()]
+                if cells:
+                    parts.append("\t".join(cells))
+        return "\n".join(parts)
+
+    if filename.endswith(".pdf"):
+        from pypdf import PdfReader
+        reader = PdfReader(file_obj)
+        pages = [page.extract_text() or "" for page in reader.pages]
+        return "\n".join(pages)
+
+    if filename.endswith(".xlsx"):
+        try:
+            import openpyxl
+        except ImportError:
+            raise ValueError("openpyxl is not installed. Run: pip install openpyxl")
+        wb = openpyxl.load_workbook(file_obj, data_only=True)
+        sheets_text = []
+        for ws in wb.worksheets:
+            # Build a value map that fills merged cell ranges with the top-left cell value
+            merged_map = {}
+            for merge_range in ws.merged_cells.ranges:
+                top_val = ws.cell(merge_range.min_row, merge_range.min_col).value
+                if top_val is not None:
+                    for r in range(merge_range.min_row, merge_range.max_row + 1):
+                        for c in range(merge_range.min_col, merge_range.max_col + 1):
+                            merged_map[(r, c)] = top_val
+
+            lines = [f"=== Sheet: {ws.title} ==="]
+            for row in ws.iter_rows():
+                row_texts = []
+                for cell in row:
+                    val = merged_map.get((cell.row, cell.column), cell.value)
+                    row_texts.append(str(val).strip() if val is not None else "")
+                # Trim trailing empty cells to avoid gigantic tab-heavy rows.
+                while row_texts and not row_texts[-1]:
+                    row_texts.pop()
+                # Only emit rows that have at least one non-empty cell
+                if any(t for t in row_texts):
+                    lines.append("\t".join(row_texts))
+            sheets_text.append("\n".join(lines))
+        return "\n\n".join(sheets_text)
+
+    raise ValueError(f"Unsupported file type: {filename}")
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def parse_syllabus_upload(request):
+    """
+    Upload a syllabus file (xlsx / pdf / docx / txt), extract its text,
+    and use the LLM to map the content to the EMPTY_SYLLABUS JSON schema.
+
+    Endpoint: POST /api/curriculum/parse-syllabus-upload/
+
+    Body: multipart/form-data
+        file      — the document to parse
+        course_id — UUID of the target course
+
+    Returns: { success: true, syllabus_data: { ...EMPTY_SYLLABUS shape... } }
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ── Extract text ──────────────────────────────────────────────────────
+    try:
+        extracted_text = _extract_text_from_file(file_obj, filename)
+    except Exception as exc:
+        return Response(
+            {"success": False, "error": f"Failed to extract text: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not extracted_text.strip():
+        return Response(
+            {"success": False, "error": "Could not extract any text from this file."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # ── Parse with LLM ────────────────────────────────────────────────────
+    try:
+        import json
+        import re
+
+        system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_parse_prompt(
+            extracted_text=extracted_text,
+            course_name=course.course_title,
+            course_code=course.course_code,
+        )
+
+        llm = LLMService()
+        parse_max_tokens = 8192
+        # The syllabus parse prompt can be very large; prioritize Anthropic first.
+        # OpenRouter may fail on credits, and Groq can reject oversized requests (413).
+        raw_response = None
+        last_exc = None
+        openrouter_payment_blocked = False
+        attempted_providers = []
+        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
+        if approx_prompt_tokens > 10000:
+            # For oversized prompts, avoid OpenRouter providers entirely.
+            provider_fallback_order = ["anthropic", "groq"]
+        else:
+            provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
+        logger.info(
+            "parse_syllabus_upload: approx_prompt_tokens=%s provider_order=%s",
+            approx_prompt_tokens,
+            provider_fallback_order,
+        )
+
+        for provider_choice in provider_fallback_order:
+            backend_name, _ = llm.get_provider_and_model(provider_choice)
+            if provider_choice == "groq" and approx_prompt_tokens > 10000:
+                logger.warning(
+                    "parse_syllabus_upload: skipping groq due large prompt (~%s tokens)",
+                    approx_prompt_tokens,
+                )
+                continue
+            if openrouter_payment_blocked and backend_name == "openrouter":
+                logger.warning(
+                    "parse_syllabus_upload: skipping provider %s because OpenRouter credits are exhausted",
+                    provider_choice,
+                )
+                continue
+
+            try:
+                attempted_providers.append(provider_choice)
+                raw_response = llm.generate_response(
+                    messages=[{"role": "user", "content": user_prompt}],
+                    provider_choice=provider_choice,
+                    system=system_prompt,
+                    max_tokens=parse_max_tokens,
+                )
+                logger.info(
+                    "parse_syllabus_upload: succeeded with provider %s for course %r",
+                    provider_choice,
+                    course.course_code,
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if backend_name == "openrouter" and status_code == 402:
+                    openrouter_payment_blocked = True
+                logger.warning(
+                    "parse_syllabus_upload: provider %s failed for course %r: %s",
+                    provider_choice,
+                    course.course_code,
+                    exc,
+                )
+
+        if raw_response is None:
+            if openrouter_payment_blocked:
+                user_error = (
+                    "Syllabus parsing is unavailable: OpenRouter credits are exhausted and no other configured "
+                    "provider succeeded (Groq/Anthropic). Please top up OpenRouter or configure another provider key."
+                )
+            else:
+                user_error = (
+                    "Syllabus parsing is unavailable: no configured LLM provider succeeded. "
+                    "Check API keys for OpenRouter, Groq, and Anthropic."
+                )
+            logger.error(
+                "parse_syllabus_upload: all providers failed for course %r. attempted=%s last_error=%s",
+                course.course_code,
+                attempted_providers,
+                last_exc,
+            )
+            return Response(
+                {"success": False, "error": user_error},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Robustly extract and parse JSON from the LLM response.
+        # The model may add preamble text or wrap in a markdown code fence.
+        raw_json = None
+
+        # Strategy 1: extract JSON from a markdown code fence anywhere in the response
+        fence_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', raw_response, re.DOTALL)
+        if fence_match:
+            raw_json = fence_match.group(1)
+        else:
+            # Strategy 2: find the outermost { ... } block in the response
+            brace_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+            if brace_match:
+                raw_json = brace_match.group(0)
+
+        if not raw_json:
+            raise json.JSONDecodeError("No JSON object found in LLM response", raw_response, 0)
+
+        try:
+            syllabus_data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            # Common fix: remove trailing commas before } or ]
+            sanitized = re.sub(r',(\s*[}\]])', r'\1', raw_json)
+            try:
+                syllabus_data = json.loads(sanitized)
+            except json.JSONDecodeError:
+                # Last resort: cheap JSON repair pass (no document re-parse).
+                repair_system = (
+                    "You repair malformed JSON. Return ONLY valid JSON with the same keys/values. "
+                    "Do not add commentary or markdown fences."
+                )
+                repair_prompt = (
+                    "Repair this JSON so it parses. Preserve content and structure as much as possible:\n\n"
+                    f"{raw_json}"
+                )
+                repaired = llm.generate_response(
+                    messages=[{"role": "user", "content": repair_prompt}],
+                    provider_choice="anthropic",
+                    system=repair_system,
+                    max_tokens=4096,
+                )
+                repaired_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', repaired, re.DOTALL)
+                repaired_json = repaired_match.group(1) if repaired_match else repaired
+                syllabus_data = json.loads(repaired_json)
+
+        logger.info(
+            "parse_syllabus_upload: parsed syllabus for course %r from %r",
+            course.course_code, file_obj.name,
+        )
+
+        return Response(
+            {"success": True, "syllabus_data": syllabus_data},
+            status=status.HTTP_200_OK,
+        )
+
+    except json.JSONDecodeError as exc:
+        logger.warning("parse_syllabus_upload: LLM returned invalid JSON: %s", exc)
+        return Response(
+            {"success": False, "error": "The model returned malformed JSON. Please try again."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    except Exception as exc:
+        logger.exception("Error in parse_syllabus_upload for course %r", course_id)
         return Response(
             {"success": False, "error": str(exc)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

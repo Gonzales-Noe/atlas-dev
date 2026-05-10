@@ -198,27 +198,6 @@ def _handle_global_rag_upload(request):
         )
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def ollama_health(request):
-    """
-    Health check for local Ollama model availability.
-
-    Endpoint: GET /api/integrations/ollama-health/
-    """
-    llm = LLMService()
-    health = llm.check_ollama_health()
-    ok = bool(health.get('server_reachable') and health.get('model_available'))
-
-    return Response(
-        {
-            'success': ok,
-            **health,
-        },
-        status=status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE,
-    )
-
-
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def claude_api_test(request):
