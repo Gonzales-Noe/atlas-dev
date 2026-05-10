@@ -9,14 +9,214 @@ from rest_framework.response import Response
 from . import rag_service
 from .anthropic_service import AnthropicService
 from .document_processor import DocumentProcessor
-from .models import GlobalDocument, GlobalDocumentChunk
+from .llm_service import LLMService
+from .models import (
+    ChildChunk,
+    Course,
+    CourseFile,
+    CourseLoad,
+    GlobalDocument,
+    GlobalDocumentChunk,
+    ParentChunk,
+    UserRole,
+)
 from .serializers import (
     AnthropicTestSerializer,
+    CourseRagUploadSerializer,
     FileUploadSerializer,
     SemanticSearchSerializer,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_admin_user(request) -> bool:
+    return bool(request.user and getattr(request.user, 'role', None) == UserRole.ADMIN)
+
+
+def _is_faculty_user(request) -> bool:
+    return bool(request.user and getattr(request.user, 'role', None) == UserRole.FACULTY)
+
+
+def _forbidden_admin_only_response():
+    return Response(
+        {
+            'success': False,
+            'detail': 'Not permitted. Only admin users can upload global knowledge documents.',
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _forbidden_faculty_only_response():
+    return Response(
+        {
+            'success': False,
+            'detail': 'Not permitted. Only faculty users can upload course knowledge documents.',
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _to_1536_dim(vector):
+    """Pad or trim vectors so they fit ChildChunk.vector(1536)."""
+    if vector is None:
+        return None
+    if len(vector) == 1536:
+        return vector
+    if len(vector) > 1536:
+        return vector[:1536]
+    return vector + [0.0] * (1536 - len(vector))
+
+
+def _get_faculty_course_or_403(request, course_id):
+    course = Course.objects.filter(course_id=course_id).first()
+    if not course:
+        return None, Response(
+            {'success': False, 'detail': 'Course not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_assigned = CourseLoad.objects.filter(course=course, faculty=request.user).exists()
+    if not is_assigned:
+        return None, Response(
+            {'success': False, 'detail': 'You can only manage knowledge files for your assigned courses.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return course, None
+
+
+def _handle_global_rag_upload(request):
+    """Shared implementation for global RAG document uploads."""
+    serializer = FileUploadSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    file_obj = serializer.validated_data["file"]
+    file_type = serializer.validated_data["file_type"]
+    discipline = serializer.validated_data.get("discipline") or None
+    program = serializer.validated_data.get("program") or None
+    doc_type = serializer.validated_data.get("doc_type") or None
+
+    is_valid, error_msg = DocumentProcessor.validate_file(file_obj, file_type)
+    if not is_valid:
+        return Response(
+            {"success": False, "error": error_msg},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        hierarchical = DocumentProcessor.process_file_hierarchical(
+            file_obj, file_type, file_obj.name
+        )
+        parents_data = hierarchical.get("parents", [])
+
+        if not parents_data:
+            return Response(
+                {"success": False, "error": "No text extracted from file."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Batch embedding keeps upload latency manageable for large handbooks.
+        child_records: list = []
+        all_child_texts: list = []
+        for p_idx, parent_data in enumerate(parents_data):
+            for child_data in parent_data.get("children", []):
+                child_records.append((p_idx, child_data))
+                all_child_texts.append(child_data["content"])
+
+        logger.info(
+            "[ATLAS RAG] Batch-embedding %d child chunks…", len(all_child_texts)
+        )
+        all_embeddings = rag_service.embed_documents_batch(all_child_texts)
+        logger.info("[ATLAS RAG] Embedding complete.")
+
+        with transaction.atomic():
+            document = GlobalDocument.objects.create(
+                title=file_obj.name[:255],
+                discipline=discipline,
+                program=program,
+                doc_type=doc_type,
+            )
+
+            parent_chunk_map: dict = {}
+            for p_idx, parent_data in enumerate(parents_data):
+                parent_chunk = GlobalDocumentChunk.objects.create(
+                    document=document,
+                    chunk_role="PARENT",
+                    page_number=parent_data.get("page_number"),
+                    text_content=parent_data["content"],
+                    token_count=parent_data.get("token_count"),
+                    embedding_vector=None,
+                )
+                parent_chunk_map[p_idx] = parent_chunk
+
+            child_bulk: list = []
+            for i, (p_idx, child_data) in enumerate(child_records):
+                child_bulk.append(
+                    GlobalDocumentChunk(
+                        document=document,
+                        parent=parent_chunk_map[p_idx],
+                        chunk_role="CHILD",
+                        page_number=child_data.get("page_number"),
+                        text_content=child_data["content"],
+                        token_count=child_data.get("token_count"),
+                        embedding_vector=all_embeddings[i],
+                    )
+                )
+
+            GlobalDocumentChunk.objects.bulk_create(child_bulk)
+            total_children = len(child_bulk)
+
+        message = (
+            f"[ATLAS RAG] Indexed {len(parents_data)} parents and "
+            f"{total_children} children from {file_obj.name}."
+        )
+        logger.info(message)
+
+        return Response(
+            {
+                "success": True,
+                "document_id": str(document.document_id),
+                "file_name": file_obj.name,
+                "total_parents": len(parents_data),
+                "total_children": total_children,
+                "status": "indexed",
+                "message": message,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    except Exception as exc:
+        logger.exception("Error uploading RAG document")
+        return Response(
+            {"success": False, "error": f"Failed to upload document: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ollama_health(request):
+    """
+    Health check for local Ollama model availability.
+
+    Endpoint: GET /api/integrations/ollama-health/
+    """
+    llm = LLMService()
+    health = llm.check_ollama_health()
+    ok = bool(health.get('server_reachable') and health.get('model_available'))
+
+    return Response(
+        {
+            'success': ok,
+            **health,
+        },
+        status=status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 @api_view(['POST'])
@@ -127,118 +327,176 @@ def upload_rag_document(request):
 
     Returns 201 on success with parent/child counts.
     """
-    serializer = FileUploadSerializer(data=request.data)
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    return _handle_global_rag_upload(request)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_global_rag_document(request):
+    """
+    Admin-only endpoint for uploading global RAG knowledge documents.
+
+    Endpoint: POST /api/integrations/upload-global-rag-document/
+    """
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    return _handle_global_rag_upload(request)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_course_rag_document(request):
+    """
+    Faculty-only upload endpoint for course-level RAG knowledge.
+
+    Stores parent and child chunks in separate tables:
+      - parent_chunk
+      - child_chunk
+    """
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    serializer = CourseRagUploadSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
-            {"success": False, "errors": serializer.errors},
+            {'success': False, 'errors': serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    file_obj  = serializer.validated_data["file"]
-    file_type = serializer.validated_data["file_type"]
-    discipline = serializer.validated_data.get("discipline") or None
-    program    = serializer.validated_data.get("program")    or None
-    doc_type   = serializer.validated_data.get("doc_type")   or None
+    file_obj = serializer.validated_data['file']
+    file_type = serializer.validated_data['file_type']
+    course_id = serializer.validated_data['course_id']
+    module_tag = serializer.validated_data.get('module_tag') or None
+    term_tag = serializer.validated_data.get('term_tag') or None
+
+    course, course_error = _get_faculty_course_or_403(request, course_id)
+    if course_error:
+        return course_error
 
     is_valid, error_msg = DocumentProcessor.validate_file(file_obj, file_type)
     if not is_valid:
-        return Response(
-            {"success": False, "error": error_msg},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return Response({'success': False, 'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         hierarchical = DocumentProcessor.process_file_hierarchical(
             file_obj, file_type, file_obj.name
         )
-        parents_data = hierarchical.get("parents", [])
-
+        parents_data = hierarchical.get('parents', [])
         if not parents_data:
             return Response(
-                {"success": False, "error": "No text extracted from file."},
+                {'success': False, 'error': 'No readable text was found in the uploaded file.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ── Batch-embed ALL child texts in one forward pass ──────────────────
-        # Collect (parent_idx, child_data) pairs so we can assign embeddings
-        # after the single batch encode call.
-        child_records: list = []  # list of (parent_data_idx, child_data)
-        all_child_texts: list = []
+        child_records = []
+        all_child_texts = []
         for p_idx, parent_data in enumerate(parents_data):
-            for child_data in parent_data.get("children", []):
+            for child_data in parent_data.get('children', []):
                 child_records.append((p_idx, child_data))
-                all_child_texts.append(child_data["content"])
+                all_child_texts.append(child_data['content'])
 
-        logger.info(
-            "[ATLAS RAG] Batch-embedding %d child chunks…", len(all_child_texts)
-        )
         all_embeddings = rag_service.embed_documents_batch(all_child_texts)
-        logger.info("[ATLAS RAG] Embedding complete.")
 
         with transaction.atomic():
-            document = GlobalDocument.objects.create(
-                title=file_obj.name[:255],
-                discipline=discipline,
-                program=program,
-                doc_type=doc_type,
+            course_file = CourseFile.objects.create(
+                uploader=request.user,
+                course=course,
+                storage_path=file_obj.name,
+                rag_status='PROCESSING',
             )
 
-            # Insert PARENT chunks and build a lookup by parent_data index.
-            parent_chunk_map: dict = {}
+            parent_rows = {}
             for p_idx, parent_data in enumerate(parents_data):
-                parent_chunk = GlobalDocumentChunk.objects.create(
-                    document=document,
-                    chunk_role="PARENT",
-                    page_number=parent_data.get("page_number"),
-                    text_content=parent_data["content"],
-                    token_count=parent_data.get("token_count"),
-                    embedding_vector=None,
+                parent_rows[p_idx] = ParentChunk.objects.create(
+                    records=course_file,
+                    uploader=request.user,
+                    module_tag=module_tag,
+                    term_tag=term_tag,
+                    parent_content=parent_data['content'],
                 )
-                parent_chunk_map[p_idx] = parent_chunk
 
-            # Build CHILD bulk list using pre-computed embeddings.
-            child_bulk: list = []
-            for i, (p_idx, child_data) in enumerate(child_records):
+            child_bulk = []
+            for idx, (p_idx, child_data) in enumerate(child_records):
                 child_bulk.append(
-                    GlobalDocumentChunk(
-                        document=document,
-                        parent=parent_chunk_map[p_idx],
-                        chunk_role="CHILD",
-                        page_number=child_data.get("page_number"),
-                        text_content=child_data["content"],
-                        token_count=child_data.get("token_count"),
-                        embedding_vector=all_embeddings[i],
+                    ChildChunk(
+                        parent=parent_rows[p_idx],
+                        uploader=request.user,
+                        overlap_text=child_data['content'],
+                        embedding_vector=_to_1536_dim(all_embeddings[idx]),
                     )
                 )
 
-            GlobalDocumentChunk.objects.bulk_create(child_bulk)
-            total_children = len(child_bulk)
+            if child_bulk:
+                ChildChunk.objects.bulk_create(child_bulk)
 
-        message = (
-            f"[ATLAS RAG] Indexed {len(parents_data)} parents and "
-            f"{total_children} children from {file_obj.name}."
-        )
-        logger.info(message)
+            course_file.rag_status = 'COMPLETED'
+            course_file.save(update_fields=['rag_status'])
 
         return Response(
             {
-                "success": True,
-                "document_id": str(document.document_id),
-                "file_name": file_obj.name,
-                "total_parents": len(parents_data),
-                "total_children": total_children,
-                "status": "indexed",
-                "message": message,
+                'success': True,
+                'course_id': str(course.course_id),
+                'course_code': course.course_code,
+                'file_name': file_obj.name,
+                'parents_saved': len(parents_data),
+                'children_saved': len(child_records),
+                'message': 'Upload complete. This document is now available for your course generation tools.',
             },
             status=status.HTTP_201_CREATED,
         )
-
     except Exception as exc:
-        logger.exception("Error uploading RAG document")
+        logger.exception('Error uploading course RAG document')
         return Response(
-            {"success": False, "error": f"Failed to upload document: {exc}"},
+            {'success': False, 'error': f'Failed to upload course document: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_course_rag_documents(request):
+    """List faculty-uploaded course files with chunk counts for the selected course."""
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    course_id = request.query_params.get('course_id')
+    if not course_id:
+        return Response(
+            {'success': False, 'detail': 'course_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, course_error = _get_faculty_course_or_403(request, course_id)
+    if course_error:
+        return course_error
+
+    files = CourseFile.objects.filter(course=course, uploader=request.user).order_by('-records_id')
+    payload = []
+    for record in files:
+        parent_count = ParentChunk.objects.filter(records=record).count()
+        child_count = ChildChunk.objects.filter(parent__records=record).count()
+        payload.append(
+            {
+                'records_id': str(record.records_id),
+                'storage_path': record.storage_path,
+                'rag_status': record.rag_status,
+                'parent_chunks': parent_count,
+                'child_chunks': child_count,
+            }
+        )
+
+    return Response(
+        {
+            'success': True,
+            'course_id': str(course.course_id),
+            'course_code': course.course_code,
+            'total': len(payload),
+            'documents': payload,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(['GET'])
@@ -256,6 +514,9 @@ def list_rag_documents(request):
             "documents": [...]
         }
     """
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+
     try:
         documents = GlobalDocument.objects.order_by("-created_at")
         payload = []

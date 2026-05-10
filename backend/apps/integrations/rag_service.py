@@ -5,7 +5,7 @@ Retrieval pipeline (three steps):
     1. Embed query with BAAI/bge-base-en-v1.5 (768-dim, cosine, normalised).
     2. HNSW vector search over CHILD chunks to find top candidates.
     3. Collect unique PARENT chunks via the parent FK.
-    4. Rerank parents with BAAI/bge-reranker-base (cross-encoder).
+    4. Optionally rerank parents with BAAI/bge-reranker-base (cross-encoder).
     5. Return top-k parent texts as rich context dicts for CoT prompts.
 
 Embedding notes:
@@ -121,12 +121,12 @@ def semantic_search(
     Steps:
         1. Vector search – find top (top_k × 3) CHILD chunks by cosine similarity.
         2. Parent retrieval – collect unique parent GlobalDocumentChunks.
-        3. Reranking – score each parent's text against the query with a
-           cross-encoder; sort descending, take top_k.
+          3. Ranking – either cross-encoder reranking (if enabled) or
+              vector-order fallback scoring; sort descending, take top_k.
 
     Args:
         query:      Natural-language query string.
-        top_k:      Number of parent passages to return after reranking.
+        top_k:      Number of parent passages to return after ranking.
         discipline: Optional filter on global_document.discipline.
         program:    Optional filter on global_document.program.
         doc_type:   Optional filter on global_document.doc_type.
@@ -139,7 +139,7 @@ def semantic_search(
                 "discipline":      str | None,
                 "program":         str | None,
                 "page_number":     int | None,
-                "score":           float,        # reranker score (higher = better)
+                "score":           float,        # ranking score (higher = better)
             }
 
         Returns [] on any error so callers can still generate without RAG context.
@@ -191,12 +191,14 @@ def semantic_search(
 
         # ── Step 3: rerank parents ─────────────────────────────────────────
         reranker = _get_reranker()
+        ranking_mode = "cross-encoder"
         if reranker is not None:
             pairs = [(query, p.text_content) for p in parent_chunks]
             scores = reranker.predict(pairs).tolist()
         else:
             # Position-based fallback (already ordered by vector similarity).
             scores = [1.0 / (i + 1) for i in range(len(parent_chunks))]
+            ranking_mode = "vector-fallback"
 
         ranked = sorted(
             zip(scores, parent_chunks), key=lambda x: x[0], reverse=True
@@ -217,10 +219,11 @@ def semantic_search(
             )
 
         logger.info(
-            "semantic_search(%r) → %d candidates → %d reranked results",
+            "semantic_search(%r) → %d candidates → %d %s results",
             query[:60],
             len(parent_chunks),
             len(results),
+            ranking_mode,
         )
         return results
 

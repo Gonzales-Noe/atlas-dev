@@ -12,6 +12,7 @@ import Alert            from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import AuthLayout       from '../../components/AuthLayout'
 import AtlasLogo        from '../../components/AtlasLogo'
+import AutoAlert        from '../../components/AutoAlert'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/routes'
 
@@ -195,7 +196,7 @@ export default function PasswordResetPage() {
               Enter your institutional email and we'll send you a one-time code.
             </p>
 
-            {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
+            <AutoAlert message={error} onClose={() => setError('')} sx={{ mb: 2, borderRadius: 2 }} />
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               <TextField
@@ -211,9 +212,8 @@ export default function PasswordResetPage() {
               <Button
                 type="submit"
                 variant="contained"
-                color="primary"
                 disabled={loading}
-                sx={{ borderRadius: 2, whiteSpace: 'nowrap', px: 2.5, minWidth: 0 }}
+                sx={{ borderRadius: 2, whiteSpace: 'nowrap', px: 2.5, minWidth: 0, bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
               >
                 {loading ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Get OTP'}
               </Button>
@@ -247,7 +247,7 @@ export default function PasswordResetPage() {
               We sent a 4-digit code to <strong style={{ color: '#333' }}>{email}</strong>
             </p>
 
-            {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
+            <AutoAlert message={error} onClose={() => setError('')} sx={{ mb: 2, borderRadius: 2 }} />
 
             <p style={{ color: '#555', fontSize: '0.8rem', marginBottom: 10, textAlign: 'center' }}>
               Enter Code
@@ -258,10 +258,9 @@ export default function PasswordResetPage() {
             <Button
               type="submit"
               variant="contained"
-              color="primary"
               fullWidth
               disabled={loading || otp.length < 4}
-              sx={{ borderRadius: 2, py: 1.3, fontSize: '0.9rem', fontWeight: 700, letterSpacing: '0.04em', mt: 2 }}
+              sx={{ borderRadius: 2, py: 1.3, fontSize: '0.9rem', fontWeight: 700, letterSpacing: '0.04em', mt: 2, bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
             >
               {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'LOGIN'}
             </Button>
@@ -304,7 +303,7 @@ export default function PasswordResetPage() {
               Choose a strong password for your account.
             </p>
 
-            {error && <Alert severity="error" sx={{ borderRadius: 2 }}>{error}</Alert>}
+            <AutoAlert message={error} onClose={() => setError('')} sx={{ borderRadius: 2 }} />
 
             <TextField
               label="New Password"
@@ -330,10 +329,9 @@ export default function PasswordResetPage() {
             <Button
               type="submit"
               variant="contained"
-              color="primary"
               fullWidth
               disabled={loading}
-              sx={{ borderRadius: 2, py: 1.3, fontSize: '0.9rem', fontWeight: 700, letterSpacing: '0.04em' }}
+              sx={{ borderRadius: 2, py: 1.3, fontSize: '0.9rem', fontWeight: 700, letterSpacing: '0.04em', bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
             >
               {loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : 'Reset Password'}
             </Button>
@@ -360,10 +358,9 @@ export default function PasswordResetPage() {
             </p>
             <Button
               variant="contained"
-              color="primary"
               fullWidth
               onClick={() => navigate(ROUTES.SIGN_IN)}
-              sx={{ borderRadius: 2, py: 1.2 }}
+              sx={{ borderRadius: 2, py: 1.2, bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
             >
               Go to Sign In
             </Button>
