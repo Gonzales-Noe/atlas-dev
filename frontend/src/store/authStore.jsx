@@ -15,6 +15,11 @@ const FACULTY_CREDENTIALS = {
   password: 'Faculty123!',
 }
 
+const ADMIN_CREDENTIALS = {
+  email: 'admin@atlas.local',
+  password: 'Admin123!',
+}
+
 const SUPERADMIN_USER = {
   id: 'superadmin',
   email: 'superadmin@atlas.local',
@@ -29,6 +34,14 @@ const FACULTY_USER = {
   role: 'faculty',
   name: 'ATLAS Faculty',
   tenant_id: 'faculty-01',
+}
+
+const ADMIN_USER = {
+  id: 'admin',
+  email: 'admin@atlas.local',
+  role: 'admin',
+  name: 'Institutional Admin',
+  tenant_id: 'institution-01',
 }
 
 // ── State shape ────────────────────────────────────────────────────────────
@@ -85,7 +98,7 @@ export function AuthProvider({ children }) {
       return
     }
 
-    if (token === 'superadmin-test-token' || token === 'faculty-test-token') {
+    if (token === 'superadmin-test-token' || token === 'faculty-test-token' || token === 'admin-test-token') {
       const savedUser = localStorage.getItem('atlas_user')
       if (savedUser) {
         dispatch({ type: 'AUTH_SUCCESS', payload: JSON.parse(savedUser) })
@@ -129,7 +142,16 @@ export function AuthProvider({ children }) {
         return FACULTY_USER
       }
 
-      const { data } = await api.post('/auth/token/', { email, password })
+      if (
+        email === ADMIN_CREDENTIALS.email &&
+        password === ADMIN_CREDENTIALS.password
+      ) {
+        localStorage.setItem('atlas_access_token', 'admin-test-token')
+        localStorage.setItem('atlas_refresh_token', 'admin-test-token')
+        localStorage.setItem('atlas_user', JSON.stringify(ADMIN_USER))
+        dispatch({ type: 'AUTH_SUCCESS', payload: ADMIN_USER })
+        return ADMIN_USER
+      }
       localStorage.setItem('atlas_access_token',  data.access)
       localStorage.setItem('atlas_refresh_token', data.refresh)
       // Fetch user profile
