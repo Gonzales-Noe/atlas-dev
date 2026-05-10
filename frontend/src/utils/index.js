@@ -7,8 +7,21 @@ export const ROLES = {
   SUPERADMIN: 'superadmin',
 }
 
+export function normalizeRole(role) {
+  if (!role) return ''
+  if (role === 'super_admin') return 'superadmin'
+  return role.toString().toLowerCase()
+}
+
+export function getDashboardRoute(role) {
+  const normalized = normalizeRole(role)
+  if (normalized === ROLES.ADMIN) return '/admin/dashboard'
+  if (normalized === ROLES.SUPERADMIN) return '/superadmin/dashboard'
+  return '/faculty/dashboard'
+}
+
 export function hasRole(user, ...roles) {
-  return roles.includes(user?.role)
+  return roles.includes(normalizeRole(user?.role))
 }
 
 // ── Format helpers ─────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-PROVIDER_CHOICES = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
+PROVIDER_CHOICES = ["ollama", "gemini", "gpt", "groq", "anthropic", "openrouter"]
 
 
 class GenerateSyllabusSerializer(serializers.Serializer):

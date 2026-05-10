@@ -13,6 +13,7 @@ import Alert            from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import AuthLayout       from '../../components/AuthLayout'
 import AtlasLogo        from '../../components/AtlasLogo'
+import AutoAlert        from '../../components/AutoAlert'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/routes'
 
@@ -91,11 +92,10 @@ export default function SignUpPage() {
           </Alert>
           <Button
             variant="outlined"
-            color="primary"
             fullWidth
             component={Link}
             to={ROUTES.SIGN_IN}
-            sx={{ borderRadius: 2 }}
+            sx={{ borderRadius: 2, borderColor: '#8B0000', color: '#8B0000', '&:hover': { borderColor: '#700000', bgcolor: '#FFF5F5' } }}
           >
             Back to Sign In
           </Button>
@@ -128,11 +128,7 @@ export default function SignUpPage() {
         </div>
 
         {/* Error */}
-        {error && (
-          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
-            {error}
-          </Alert>
-        )}
+        <AutoAlert message={error} onClose={() => setError('')} sx={{ mb: 2, borderRadius: 2 }} />
 
         {/* Google sign-up */}
         <Button
@@ -211,10 +207,9 @@ export default function SignUpPage() {
           <Button
             type="submit"
             variant="contained"
-            color="primary"
             fullWidth
             disabled={loading}
-            sx={{ borderRadius: 2, py: 1.2, fontSize: '0.95rem', mt: 0.5 }}
+            sx={{ borderRadius: 2, py: 1.2, fontSize: '0.95rem', mt: 0.5, bgcolor: '#8B0000', '&:hover': { bgcolor: '#700000' } }}
           >
             {loading
               ? <CircularProgress size={20} sx={{ color: '#fff' }} />
