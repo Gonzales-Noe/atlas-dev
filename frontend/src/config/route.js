@@ -13,6 +13,7 @@ export const ROUTES = {
   // Faculty
   FACULTY: {
     DASHBOARD:   '/faculty/dashboard',
+    WORKSPACE:   '/faculty/workspace/:courseId',
     SYLLABUS:    '/faculty/syllabus',
     MODULE:      '/faculty/module',
     ASSESSMENT:  '/faculty/assessment',
@@ -24,6 +25,7 @@ export const ROUTES = {
   ADMIN: {
     DASHBOARD:          '/admin/dashboard',
     ACCOUNT_MANAGEMENT: '/admin/account-management',
+    GLOBAL_KNOWLEDGE:   '/admin/global-knowledge',
     AUDIT_LOGS:         '/admin/audit-logs',
   },
 

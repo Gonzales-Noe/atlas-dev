@@ -1,141 +1,222 @@
 import logging
-import os
 
 from django.db import transaction
-import httpx
-import numpy as np
-from pgvector.django import CosineDistance
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from . import rag_service
 from .anthropic_service import AnthropicService
 from .document_processor import DocumentProcessor
-from .models import GlobalDocument, GlobalDocumentChunk
+from .llm_service import LLMService
+from .models import (
+    ChildChunk,
+    Course,
+    CourseFile,
+    CourseLoad,
+    GlobalDocument,
+    GlobalDocumentChunk,
+    ParentChunk,
+    UserRole,
+)
 from .serializers import (
     AnthropicTestSerializer,
+    CourseRagUploadSerializer,
     FileUploadSerializer,
     SemanticSearchSerializer,
 )
 
-try:
-    from openai import OpenAI
-except ImportError:
-    OpenAI = None
-
-try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_IMPORT_ERROR = None
-except ImportError as exc:
-    SentenceTransformer = None
-    SENTENCE_TRANSFORMERS_IMPORT_ERROR = str(exc)
-
 logger = logging.getLogger(__name__)
-_LOCAL_EMBEDDER = None
 
 
-def _get_local_embedder():
-    global _LOCAL_EMBEDDER
-    if SentenceTransformer is None:
-        detail = SENTENCE_TRANSFORMERS_IMPORT_ERROR or "unknown import error"
-        raise ValueError(f"sentence-transformers package is not installed. Details: {detail}")
-    if _LOCAL_EMBEDDER is None:
-        model_name = os.environ.get("LOCAL_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
-        _LOCAL_EMBEDDER = SentenceTransformer(model_name)
-    return _LOCAL_EMBEDDER
+def _is_admin_user(request) -> bool:
+    return bool(request.user and getattr(request.user, 'role', None) == UserRole.ADMIN)
 
 
-def _get_embedding_client():
-    """Return embedding backend and client details from env config."""
-    provider = os.environ.get("EMBEDDING_PROVIDER", "hash").lower()
-
-    if provider == "hash":
-        return "hash", None
-
-    if provider == "local":
-        return "local", _get_local_embedder()
-
-    openai_api_key = os.environ.get("OPENAI_API_KEY")
-    if provider == "openai" and openai_api_key:
-        if OpenAI is None:
-            raise ValueError("openai package is not installed.")
-        return "openai", OpenAI(api_key=openai_api_key)
-
-    openrouter_api_key = os.environ.get("OPENROUTER_API_KEY")
-    if provider == "openrouter_sdk" and openrouter_api_key:
-        if OpenAI is None:
-            raise ValueError("openai package is not installed.")
-        referer = os.environ.get("OPENROUTER_SITE_URL", "http://localhost:8000")
-        title = os.environ.get("OPENROUTER_APP_NAME", "ATLAS-Dev")
-        client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=openrouter_api_key,
-            default_headers={
-                "HTTP-Referer": referer,
-                "X-Title": title,
-            },
-        )
-        return "openrouter_sdk", client
-
-    # Legacy raw-httpx path kept for reference
-    if provider == "openrouter" and openrouter_api_key:
-        return "openrouter", openrouter_api_key
-
-    if provider == "groq":
-        raise ValueError("Groq embeddings are not configured yet. Use EMBEDDING_PROVIDER=hash/local/openrouter_sdk/openai.")
-
-    raise ValueError("Invalid embedding configuration. Set EMBEDDING_PROVIDER=hash/local/openrouter_sdk/openai.")
+def _is_faculty_user(request) -> bool:
+    return bool(request.user and getattr(request.user, 'role', None) == UserRole.FACULTY)
 
 
-def _embed_text(client_config, text):
-    """Generate embedding vector for one text chunk."""
-    provider, client = client_config
-
-    if provider == "hash":
-        # Fast deterministic fallback embedding for environments without model/API access.
-        # Produces stable 1536-d vectors so pgvector similarity works immediately.
-        import hashlib
-        values = []
-        base = text.encode("utf-8", errors="ignore")
-        for idx in range(1536):
-            digest = hashlib.sha256(base + f":{idx}".encode("utf-8")).digest()
-            values.append(((int.from_bytes(digest[:4], "big") / 2**32) * 2.0) - 1.0)
-        return values
-
-    if provider == "local":
-        vector = client.encode(text).tolist()
-        # Match DB VectorField dimension (1536).
-        if len(vector) < 1536:
-            vector = vector + [0.0] * (1536 - len(vector))
-        elif len(vector) > 1536:
-            vector = vector[:1536]
-        return np.asarray(vector, dtype=float).tolist()
-
-    if provider in ("openai", "openrouter_sdk"):
-        env_key = "OPENAI_EMBEDDING_MODEL" if provider == "openai" else "OPENROUTER_EMBEDDING_MODEL"
-        default_model = "text-embedding-3-small" if provider == "openai" else "openai/text-embedding-3-small"
-        model_name = os.environ.get(env_key, default_model)
-        result = client.embeddings.create(model=model_name, input=text)
-        return result.data[0].embedding
-
-    # Legacy OpenRouter embedding path with explicit Authorization header.
-    model_name = os.environ.get("OPENROUTER_EMBEDDING_MODEL", "openai/text-embedding-3-small")
-    response = httpx.post(
-        "https://openrouter.ai/api/v1/embeddings",
-        headers={
-            "Authorization": f"Bearer {client}",
-            "Content-Type": "application/json",
+def _forbidden_admin_only_response():
+    return Response(
+        {
+            'success': False,
+            'detail': 'Not permitted. Only admin users can upload global knowledge documents.',
         },
-        json={
-            "model": model_name,
-            "input": text,
-        },
-        timeout=30.0,
+        status=status.HTTP_403_FORBIDDEN,
     )
-    response.raise_for_status()
-    payload = response.json()
-    return payload["data"][0]["embedding"]
+
+
+def _forbidden_faculty_only_response():
+    return Response(
+        {
+            'success': False,
+            'detail': 'Not permitted. Only faculty users can upload course knowledge documents.',
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _to_1536_dim(vector):
+    """Pad or trim vectors so they fit ChildChunk.vector(1536)."""
+    if vector is None:
+        return None
+    if len(vector) == 1536:
+        return vector
+    if len(vector) > 1536:
+        return vector[:1536]
+    return vector + [0.0] * (1536 - len(vector))
+
+
+def _get_faculty_course_or_403(request, course_id):
+    course = Course.objects.filter(course_id=course_id).first()
+    if not course:
+        return None, Response(
+            {'success': False, 'detail': 'Course not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    is_assigned = CourseLoad.objects.filter(course=course, faculty=request.user).exists()
+    if not is_assigned:
+        return None, Response(
+            {'success': False, 'detail': 'You can only manage knowledge files for your assigned courses.'},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return course, None
+
+
+def _handle_global_rag_upload(request):
+    """Shared implementation for global RAG document uploads."""
+    serializer = FileUploadSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    file_obj = serializer.validated_data["file"]
+    file_type = serializer.validated_data["file_type"]
+    discipline = serializer.validated_data.get("discipline") or None
+    program = serializer.validated_data.get("program") or None
+    doc_type = serializer.validated_data.get("doc_type") or None
+
+    is_valid, error_msg = DocumentProcessor.validate_file(file_obj, file_type)
+    if not is_valid:
+        return Response(
+            {"success": False, "error": error_msg},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        hierarchical = DocumentProcessor.process_file_hierarchical(
+            file_obj, file_type, file_obj.name
+        )
+        parents_data = hierarchical.get("parents", [])
+
+        if not parents_data:
+            return Response(
+                {"success": False, "error": "No text extracted from file."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Batch embedding keeps upload latency manageable for large handbooks.
+        child_records: list = []
+        all_child_texts: list = []
+        for p_idx, parent_data in enumerate(parents_data):
+            for child_data in parent_data.get("children", []):
+                child_records.append((p_idx, child_data))
+                all_child_texts.append(child_data["content"])
+
+        logger.info(
+            "[ATLAS RAG] Batch-embedding %d child chunks…", len(all_child_texts)
+        )
+        all_embeddings = rag_service.embed_documents_batch(all_child_texts)
+        logger.info("[ATLAS RAG] Embedding complete.")
+
+        with transaction.atomic():
+            document = GlobalDocument.objects.create(
+                title=file_obj.name[:255],
+                discipline=discipline,
+                program=program,
+                doc_type=doc_type,
+            )
+
+            parent_chunk_map: dict = {}
+            for p_idx, parent_data in enumerate(parents_data):
+                parent_chunk = GlobalDocumentChunk.objects.create(
+                    document=document,
+                    chunk_role="PARENT",
+                    page_number=parent_data.get("page_number"),
+                    text_content=parent_data["content"],
+                    token_count=parent_data.get("token_count"),
+                    embedding_vector=None,
+                )
+                parent_chunk_map[p_idx] = parent_chunk
+
+            child_bulk: list = []
+            for i, (p_idx, child_data) in enumerate(child_records):
+                child_bulk.append(
+                    GlobalDocumentChunk(
+                        document=document,
+                        parent=parent_chunk_map[p_idx],
+                        chunk_role="CHILD",
+                        page_number=child_data.get("page_number"),
+                        text_content=child_data["content"],
+                        token_count=child_data.get("token_count"),
+                        embedding_vector=all_embeddings[i],
+                    )
+                )
+
+            GlobalDocumentChunk.objects.bulk_create(child_bulk)
+            total_children = len(child_bulk)
+
+        message = (
+            f"[ATLAS RAG] Indexed {len(parents_data)} parents and "
+            f"{total_children} children from {file_obj.name}."
+        )
+        logger.info(message)
+
+        return Response(
+            {
+                "success": True,
+                "document_id": str(document.document_id),
+                "file_name": file_obj.name,
+                "total_parents": len(parents_data),
+                "total_children": total_children,
+                "status": "indexed",
+                "message": message,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    except Exception as exc:
+        logger.exception("Error uploading RAG document")
+        return Response(
+            {"success": False, "error": f"Failed to upload document: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def ollama_health(request):
+    """
+    Health check for local Ollama model availability.
+
+    Endpoint: GET /api/integrations/ollama-health/
+    """
+    llm = LLMService()
+    health = llm.check_ollama_health()
+    ok = bool(health.get('server_reachable') and health.get('model_available'))
+
+    return Response(
+        {
+            'success': ok,
+            **health,
+        },
+        status=status.HTTP_200_OK if ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
 
 
 @api_view(['POST'])
@@ -226,107 +307,196 @@ def claude_api_test(request):
 @permission_classes([IsAuthenticated])
 def upload_rag_document(request):
     """
-    Upload and ingest a document for RAG.
-    
+    Upload and ingest a document into the Parent-Child RAG knowledge base.
+
     Endpoint: POST /api/integrations/upload-rag-document/
-    
-    Expected Request (multipart/form-data):
-    - file: Document file (PDF or DOCX)
-    - file_type: 'pdf' or 'docx'
-    - course_id: Optional course identifier
-    - course_name: Optional course name
-    
-    Returns:
-        201 Created: {
-            "success": true,
-            "document_id": 123,
-            "file_name": "course_syllabus_IT301.docx",
-            "total_segments": 24,
-            "status": "indexed",
-            "message": "[ATLAS RAG] Successfully chunked and embedded 24 segments..."
-        }
-        
-        400 Bad Request: Validation errors
-        401 Unauthorized: Missing/invalid JWT token
-        500 Internal Server Error: Processing error
+
+    Request (multipart/form-data):
+        file        – PDF or DOCX file
+        file_type   – 'pdf' | 'docx'
+        discipline  – optional, e.g. 'Engineering'
+        program     – optional, e.g. 'BSCS'
+        doc_type    – optional, e.g. 'CHED_Handbook'
+
+    Pipeline:
+        1. Validate file.
+        2. Two-pass hierarchical chunking (Parent ≈1200 tokens, Child ≈200 tokens).
+        3. Save GlobalDocument record with metadata.
+        4. Save PARENT GlobalDocumentChunks (no embedding — context only).
+        5. Embed each CHILD chunk with BGE-Base-v1.5 (768-dim) and bulk-save.
+
+    Returns 201 on success with parent/child counts.
     """
-    serializer = FileUploadSerializer(data=request.data)
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    return _handle_global_rag_upload(request)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_global_rag_document(request):
+    """
+    Admin-only endpoint for uploading global RAG knowledge documents.
+
+    Endpoint: POST /api/integrations/upload-global-rag-document/
+    """
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    return _handle_global_rag_upload(request)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_course_rag_document(request):
+    """
+    Faculty-only upload endpoint for course-level RAG knowledge.
+
+    Stores parent and child chunks in separate tables:
+      - parent_chunk
+      - child_chunk
+    """
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    serializer = CourseRagUploadSerializer(data=request.data)
     if not serializer.is_valid():
-        logger.warning("Validation error: %s", serializer.errors)
         return Response(
-            {"success": False, "errors": serializer.errors},
+            {'success': False, 'errors': serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    file_obj = serializer.validated_data["file"]
-    file_type = serializer.validated_data["file_type"]
-    description = serializer.validated_data.get("course_name", "") or serializer.validated_data.get("course_id", "")
+    file_obj = serializer.validated_data['file']
+    file_type = serializer.validated_data['file_type']
+    course_id = serializer.validated_data['course_id']
+    module_tag = serializer.validated_data.get('module_tag') or None
+    term_tag = serializer.validated_data.get('term_tag') or None
+
+    course, course_error = _get_faculty_course_or_403(request, course_id)
+    if course_error:
+        return course_error
 
     is_valid, error_msg = DocumentProcessor.validate_file(file_obj, file_type)
     if not is_valid:
-        return Response(
-            {"success": False, "error": error_msg},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+        return Response({'success': False, 'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        embedding_client = _get_embedding_client()
-        # Pass the raw SentenceTransformer model to process_file so SemanticChunker
-        # can use it for topic-boundary detection. For non-local providers the
-        # embedder is None and RecursiveCharacterTextSplitter is used instead.
-        provider, raw_client = embedding_client
-        st_embedder = raw_client if provider == "local" else None
-        segments_data = DocumentProcessor.process_file(file_obj, file_type, file_obj.name, embedder=st_embedder)
-        if not segments_data:
+        hierarchical = DocumentProcessor.process_file_hierarchical(
+            file_obj, file_type, file_obj.name
+        )
+        parents_data = hierarchical.get('parents', [])
+        if not parents_data:
             return Response(
-                {"success": False, "error": "No text extracted from file."},
+                {'success': False, 'error': 'No readable text was found in the uploaded file.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        child_records = []
+        all_child_texts = []
+        for p_idx, parent_data in enumerate(parents_data):
+            for child_data in parent_data.get('children', []):
+                child_records.append((p_idx, child_data))
+                all_child_texts.append(child_data['content'])
+
+        all_embeddings = rag_service.embed_documents_batch(all_child_texts)
+
         with transaction.atomic():
-            document = GlobalDocument.objects.create(
-                title=file_obj.name[:255],
-                description=description[:1000] if description else None,
+            course_file = CourseFile.objects.create(
+                uploader=request.user,
+                course=course,
+                storage_path=file_obj.name,
+                rag_status='PROCESSING',
             )
 
-            chunks = []
-            for segment in segments_data:
-                text_content = segment["content"]
-                embedding = _embed_text(embedding_client, text_content)
-                chunks.append(
-                    GlobalDocumentChunk(
-                        document=document,
-                        page_number=segment.get("page_number"),
-                        text_content=text_content,
-                        embedding_vector=embedding,
+            parent_rows = {}
+            for p_idx, parent_data in enumerate(parents_data):
+                parent_rows[p_idx] = ParentChunk.objects.create(
+                    records=course_file,
+                    uploader=request.user,
+                    module_tag=module_tag,
+                    term_tag=term_tag,
+                    parent_content=parent_data['content'],
+                )
+
+            child_bulk = []
+            for idx, (p_idx, child_data) in enumerate(child_records):
+                child_bulk.append(
+                    ChildChunk(
+                        parent=parent_rows[p_idx],
+                        uploader=request.user,
+                        overlap_text=child_data['content'],
+                        embedding_vector=_to_1536_dim(all_embeddings[idx]),
                     )
                 )
 
-            GlobalDocumentChunk.objects.bulk_create(chunks)
+            if child_bulk:
+                ChildChunk.objects.bulk_create(child_bulk)
 
-        message = (
-            f"[ATLAS RAG] Stored {len(chunks)} embedded chunks from {file_obj.name} "
-            "in global_document/global_document_chunk."
-        )
-        logger.info(message)
+            course_file.rag_status = 'COMPLETED'
+            course_file.save(update_fields=['rag_status'])
 
         return Response(
             {
-                "success": True,
-                "document_id": str(document.document_id),
-                "file_name": file_obj.name,
-                "total_chunks": len(chunks),
-                "status": "indexed",
-                "message": message,
+                'success': True,
+                'course_id': str(course.course_id),
+                'course_code': course.course_code,
+                'file_name': file_obj.name,
+                'parents_saved': len(parents_data),
+                'children_saved': len(child_records),
+                'message': 'Upload complete. This document is now available for your course generation tools.',
             },
             status=status.HTTP_201_CREATED,
         )
     except Exception as exc:
-        logger.exception("Error uploading RAG document")
+        logger.exception('Error uploading course RAG document')
         return Response(
-            {"success": False, "error": f"Failed to upload document: {exc}"},
+            {'success': False, 'error': f'Failed to upload course document: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_course_rag_documents(request):
+    """List faculty-uploaded course files with chunk counts for the selected course."""
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    course_id = request.query_params.get('course_id')
+    if not course_id:
+        return Response(
+            {'success': False, 'detail': 'course_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, course_error = _get_faculty_course_or_403(request, course_id)
+    if course_error:
+        return course_error
+
+    files = CourseFile.objects.filter(course=course, uploader=request.user).order_by('-records_id')
+    payload = []
+    for record in files:
+        parent_count = ParentChunk.objects.filter(records=record).count()
+        child_count = ChildChunk.objects.filter(parent__records=record).count()
+        payload.append(
+            {
+                'records_id': str(record.records_id),
+                'storage_path': record.storage_path,
+                'rag_status': record.rag_status,
+                'parent_chunks': parent_count,
+                'child_chunks': child_count,
+            }
+        )
+
+    return Response(
+        {
+            'success': True,
+            'course_id': str(course.course_id),
+            'course_code': course.course_code,
+            'total': len(payload),
+            'documents': payload,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(['GET'])
@@ -344,6 +514,9 @@ def list_rag_documents(request):
             "documents": [...]
         }
     """
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+
     try:
         documents = GlobalDocument.objects.order_by("-created_at")
         payload = []
@@ -354,6 +527,9 @@ def list_rag_documents(request):
                     "document_id": str(doc.document_id),
                     "title": doc.title,
                     "description": doc.description,
+                    "discipline": doc.discipline,
+                    "program": doc.program,
+                    "doc_type": doc.doc_type,
                     "created_at": doc.created_at,
                     "total_chunks": doc.globaldocumentchunk_set.count(),
                 }
@@ -375,14 +551,24 @@ def list_rag_documents(request):
 @permission_classes([IsAuthenticated])
 def semantic_search(request):
     """
-    Semantic search over global document chunks.
+    Parent-Child semantic search with BGE-Base-v1.5 + BGE-Reranker.
 
     Endpoint: POST /api/integrations/semantic-search/
     Body:
     {
-      "query": "What is typology in OBE?",
-      "top_k": 5
+      "query":      "What is typology in OBE?",
+      "top_k":      5,
+      "discipline": "Engineering",   # optional pre-filter
+      "program":    "BSCS",          # optional pre-filter
+      "doc_type":   "CHED_Handbook"  # optional pre-filter
     }
+
+    Pipeline (delegated to rag_service):
+        1. Embed query with BGE-Base-v1.5 (768-dim).
+        2. HNSW vector search over CHILD chunks (top_k × 3 candidates).
+        3. Collect unique PARENT chunks via parent FK.
+        4. Rerank with BGE-Reranker-Base cross-encoder.
+        5. Return top_k parent passages with reranker scores.
     """
     serializer = SemanticSearchSerializer(data=request.data)
     if not serializer.is_valid():
@@ -391,32 +577,20 @@ def semantic_search(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    query_text = serializer.validated_data["query"]
-    top_k = serializer.validated_data["top_k"]
+    query_text  = serializer.validated_data["query"]
+    top_k       = serializer.validated_data["top_k"]
+    discipline  = serializer.validated_data.get("discipline") or None
+    program     = serializer.validated_data.get("program")    or None
+    doc_type    = serializer.validated_data.get("doc_type")   or None
 
     try:
-        embedding_client = _get_embedding_client()
-        query_embedding = _embed_text(embedding_client, query_text)
-
-        matches = (
-            GlobalDocumentChunk.objects.select_related("document")
-            .filter(embedding_vector__isnull=False)
-            .annotate(distance=CosineDistance("embedding_vector", query_embedding))
-            .order_by("distance")[:top_k]
+        results = rag_service.semantic_search(
+            query=query_text,
+            top_k=top_k,
+            discipline=discipline,
+            program=program,
+            doc_type=doc_type,
         )
-
-        results = [
-            {
-                "chunk_id": str(item.chunk_id),
-                "document_id": str(item.document.document_id),
-                "document_title": item.document.title,
-                "page_number": item.page_number,
-                "text_content": item.text_content,
-                "score": 1 - float(item.distance),
-                "distance": float(item.distance),
-            }
-            for item in matches
-        ]
 
         return Response(
             {

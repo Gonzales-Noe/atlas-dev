@@ -47,6 +47,23 @@ class UserProfile(models.Model):
     class Meta:
         db_table = 'users'
 
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    @property
+    def username(self):
+        return self.email
+
+    @property
+    def name(self):
+        local_part = self.email.split('@', 1)[0]
+        return local_part.replace('.', ' ').replace('_', ' ').title()
+
 class Course(models.Model):
     course_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course_code = models.CharField(max_length=100, unique=True)
@@ -81,6 +98,7 @@ class Syllabus(models.Model):
     version = models.IntegerField(default=1)
     status = models.CharField(max_length=50, default='Draft')
     generated_at = models.DateTimeField(null=True, blank=True)
+    syllabus_content = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'syllabi'
@@ -221,17 +239,43 @@ class GlobalDocument(models.Model):
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
+    # Metadata for filtered retrieval
+    discipline = models.CharField(max_length=100, null=True, blank=True)  # e.g. 'Engineering'
+    program = models.CharField(max_length=100, null=True, blank=True)     # e.g. 'BSCS'
+    doc_type = models.CharField(max_length=50, null=True, blank=True)     # e.g. 'CHED_Handbook'
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = 'global_document'
 
+
 class GlobalDocumentChunk(models.Model):
+    CHUNK_ROLE_CHOICES = [('PARENT', 'Parent'), ('CHILD', 'Child')]
+
     chunk_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     document = models.ForeignKey(GlobalDocument, on_delete=models.CASCADE)
+
+    # Self-referential FK: CHILD chunks point to their PARENT chunk.
+    # PARENT chunks have parent=None.
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children',
+    )
+
+    chunk_role = models.CharField(
+        max_length=20, choices=CHUNK_ROLE_CHOICES, null=True, blank=True
+    )
+
     page_number = models.IntegerField(null=True, blank=True)
     text_content = models.TextField()
-    embedding_vector = VectorField(dimensions=1536, null=True, blank=True)
+    token_count = models.IntegerField(null=True, blank=True)
+
+    # BGE-Base-v1.5 uses 768 dimensions.
+    # PARENT chunks store no embedding (None); CHILD chunks store full embeddings.
+    embedding_vector = VectorField(dimensions=768, null=True, blank=True)
 
     class Meta:
         db_table = 'global_document_chunk'
