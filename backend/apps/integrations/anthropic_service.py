@@ -25,13 +25,17 @@ class AnthropicService:
             logger.warning("ANTHROPIC_API_KEY not found in environment variables")
             self.client = None
         else:
-            self.client = Anthropic(api_key=self.api_key)
+            try:
+                self.client = Anthropic(api_key=self.api_key)
+            except Exception as exc:  # noqa: BLE001 - environment/sdk mismatch guard
+                logger.warning("Anthropic client initialization failed: %s", exc)
+                self.client = None
     
     def is_configured(self):
         """Check if Anthropic API is properly configured."""
         return self.client is not None and self.api_key is not None
     
-    def send_message(self, messages, model="claude-3-5-sonnet-20241022", max_tokens=1024, system=None):
+    def send_message(self, messages, model="claude-haiku-4-5-20251001", max_tokens=1024, system=None):
         """
         Send a message to Claude API.
         
