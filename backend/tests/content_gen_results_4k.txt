@@ -1,0 +1,320 @@
+
+============================================================================
+  ATLAS Content-Generation Model Comparison
+  Task: Generate a teaching module — "Analytics Techniques and Tools"
+  Course: Business Analytics  |  Week: 4
+============================================================================
+
+Max tokens per provider : 4000
+Providers to test       : gemini, groq, anthropic
+RAG context             : none (pure model knowledge test)
+
+
+============================================================================
+  Provider : GEMINI   →   openrouter/google/gemini-2.5-flash
+----------------------------------------------------------------------------
+
+  Response preview (first 400 chars):
+  Here is a complete, ready-to-deliver teaching module for Week 4 of the
+  Business Analytics course, focusing on Analytics Techniques and Tools,
+  designed within an Outcome-Based Education framework.  ---  ##
+  Business Analytics - Week 4: Analytics Techniques and Tools  ### 1.
+  MODULE OVERVIEW  **Purpose:** This module aims to deepen students'
+  understanding of foundational analytical techniques used in
+
+============================================================================
+  Provider : GROQ   →   groq/llama-3.3-70b-versatile
+----------------------------------------------------------------------------
+
+  Response preview (first 400 chars):
+  **1. MODULE OVERVIEW**    Purpose: This module introduces students to
+  various analytics techniques and tools used in business decision-
+  making, building on their understanding of data analysis and
+  statistical concepts.    Place in course: Week 4 of the Business
+  Analytics course, following weeks that covered data preparation,
+  statistical analysis, and data visualization.    Estimated contact
+  hours:
+
+============================================================================
+  Provider : ANTHROPIC   →   anthropic/claude-haiku-4-5-20251001
+----------------------------------------------------------------------------
+
+  Response preview (first 400 chars):
+  # TEACHING MODULE: ANALYTICS TECHNIQUES AND TOOLS **Business Analytics
+  | Week 4**  ---  ## 1. MODULE OVERVIEW  ### Purpose Week 4 introduces
+  students to the foundational analytics techniques and contemporary
+  tools used in business decision-making. Students move from data
+  fundamentals (Weeks 1–3) to practical application of analytical
+  methods, building competency in selecting appropriate tools and
+
+
+============================================================================
+  SUMMARY — Module Generation Quality Ranking
+============================================================================
+  Provider       Model                                    Score  Grade         Time  Status
+  ──────────────  ────────────────────────────────────────  ─────  ──────────  ──────  ──────────
+  gemini         google/gemini-2.5-flash                    100  Excellent    28.0s  [PASS]
+  anthropic      claude-haiku-4-5-20251001                   82  Good         46.3s  [PASS]
+  groq           llama-3.3-70b-versatile                     77  Good          3.0s  [PASS]
+
+  Recommended: GEMINI (google/gemini-2.5-flash) — score 100/100
+
+============================================================================
+  FULL RESPONSES
+============================================================================
+
+============================================================================
+  PROVIDER: GEMINI  |  MODEL: google/gemini-2.5-flash
+============================================================================
+Here is a complete, ready-to-deliver teaching module for Week 4 of the Business Analytics course, focusing on Analytics Techniques and Tools, designed within an Outcome-Based Education framework.
+
+---
+
+## Business Analytics - Week 4: Analytics Techniques and Tools
+
+### 1. MODULE OVERVIEW
+
+**Purpose:** This module aims to deepen students' understanding of foundational analytical techniques used in business, focusing on descriptive and diagnostic analytics. It introduces students to practical tools for data manipulation and statistical analysis, bridging conceptual knowledge with hands-on application.
+
+**Place in course:** This module follows foundational weeks covering data fundamentals and an introduction to business analytics (e.g., Week 1: Introduction to Business Analytics & Data Types; Week 2: Data Collection & Preparation; Week 3: Data Visualization Fundamentals). Students are expected to have a basic understanding of business problems, data types (quantitative vs. qualitative, nominal, ordinal, interval, ratio), data cleaning concepts, and the principles of effective data visualization. This week sets the stage for more advanced predictive and prescriptive analytics in subsequent modules.
+
+**Estimated contact hours:** 3 hours
+
+### 2. MODULE LEARNING OUTCOMES (MLOs)
+
+Upon successful completion of this module, students will be able to:
+
+*   **MLO 4.1:** Differentiate between descriptive and diagnostic analytics techniques and their appropriate application in business contexts.
+*   **MLO 4.2:** Apply fundamental statistical measures (e.g., mean, median, mode, standard deviation, correlation) using a specified analytics tool to describe and summarize business datasets.
+*   **MLO 4.3:** Interpret analytical outputs to explain patterns, trends, and relationships within business data, informing initial problem diagnosis.
+
+### 3. INSTRUCTIONAL SEQUENCE
+
+| Phase                         | Time | Activity / Content                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Delivery Method                                                               | Materials                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| :---------------------------- | :--- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **a. Introduction / Hook**    | 15 min | **Engage: "What's the Story in Your Sales Data?"** <br>&#x2022; **Recall & Connect:** Quick recap of previous week's data visualization. Present a simple bar chart of monthly sales data. <br>&#x2022; **Discussion Prompt:** "Looking at this chart, what are some basic observations you can make? (e.g., highest month, lowest month). What questions does it raise? How can we go *beyond* just seeing trends to *understanding them*?" <br>&#x2022; **Introduce Analytical Continuum:** Briefly introduce the concept of "What happened?" (Descriptive) vs. "Why did it happen?" (Diagnostic). <br>&#x2022; **State MLOs:** Clearly articulate today's learning outcomes: distinguishing techniques, applying tools for statistical measures, and interpreting outputs for problem diagnosis.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Interactive Lecture, Think-Pair-Share, Q&A                                    | Whiteboard/Projector, Slide 1 (Title), Slide 2 (Recap viz), Slide 3 (Discussion prompts), Slide 4 (MLOs), Slide 5 (Analytics Continuum graphic).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **b. Core Content Delivery**  | 75 min | **1. Foundations of Descriptive Analytics (25 min)** <br>&#x2022; **Definition & Purpose:** Focus on "What happened?" and "How much?". <br>&#x2022; **Key Measures:** <br>&#x2003;	&#x2022;	**Measures of Central Tendency:** Mean, Median, Mode (explain pros/cons for different data distributions). <br>&#x2003;	&#x2022;	**Measures of Dispersion:** Range, Variance, Standard Deviation, Quartiles/Interquartile Range (explain what variability means). <br>&#x2003;	&#x2022;	**Frequency Distributions:** Histograms, Pareto charts for categorical data. <br>&#x2003;	&#x2022;	**Examples:** Discuss real-world business examples (e.g., average customer spend, distribution of product returns, most common customer complaint). <br>&#x2003;	**Tool Introduction (Excel/Python Pandas):** Demonstrate how to calculate these measures efficiently using functions. Show how to generate basic histograms and frequency tables. <br><br>**2. Intro to Diagnostic Analytics (25 min)** <br>&#x2022; **Definition & Purpose:** Focus on "Why did it happen?". Emphasise it builds on descriptive insights. <br>&#x2022; **Key Techniques:** <br>&#x2003;	&#x2022;	**Correlation Analysis:** Understanding linear relationships (e.g., sales vs. advertising spend). Explain correlation coefficient (r) and its interpretation (strength, direction). Emphasize "correlation is not causation." <br>&#x2003;	&#x2022;	**Cross-Tabulations / Contingency Tables:** Analyzing relationships between categorical variables (e.g., customer segment vs. product preference). <br>&#x2003;	&#x2022;	**Drill-Down Analysis:** Concept of slicing and dicing data to find root causes (e.g., overall sales down, but why? By region? By product category?). <br>&#x2003;	**Tool Demonstration:** Show how to compute correlation matrices or specific correlations; demonstrate pivot tables for cross-tabulations in Excel/Pandas. <br><br>**3. Choosing the Right Tool (25 min)** <br>&#x2022; **Overview of Common Tools:** Briefly discuss Excel, Python (Pandas/NumPy/SciPy), R, and BI tools (Tableau/Power BI) for these analytical tasks. <br>&#x2003;	&#x2022;	**Strengths & Weaknesses:** When to use which tool for descriptive/diagnostic analytics (e.g., Excel for quick ad-hoc analysis, Python for larger datasets/automation). <br>&#x2003;	**Focus for this module:** We will primarily use Excel (or Python, depending on course-level decision) for hands-on exercises due to its accessibility and widespread use for foundational tasks. **Live Tool Demonstration:** Step-by-step walkthrough of computing descriptive statistics and correlation in the chosen tool using a small sample dataset.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Interactive Lecture, Live Software Demonstration, Q&A, Short interactive quizzes/polls                                                                                                                                                                                                            | Slides 6-15 (Descriptive Analytics definitions, formulas, examples), Slides 16-25 (Diagnostic Analytics definitions, concepts, examples), Slides 26-30 (Tools Comparison). <br>Pre-prepared Excel file (or Python notebook) with sample data for live demonstration (e.g., "Sales_CustomerData.xlsx" or "Sales_CustomerData.ipynb"). <br>Relevant formulas projected or on handout.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **c. Guided Practice / Activity** | 60 min | **Activity: "Customer Churn Insights"** <br>&#x2022; **Scenario:** Provide a dataset of mock customer data including attributes like subscription duration, monthly charge, total charge, contract type, and churn status. <br>&#x2022; **Task 1 (Descriptive Analysis - 25 min):** <br>&#x2003;	&#x2022;	Calculate mean, median, standard deviation for 'monthly charge' and 'total charge'. <br>&#x2003;	&#x2022;	Create frequency distributions for 'contract type' and 'churn status'. <br>&#x2003;	&#x2022;	**Discussion:** What do these numbers tell us about the general customer base? <br>&#x2022; **Task 2 (Diagnostic Analysis - 25 min):** <br>&#x2003;	&#x2022;	Calculate the correlation between 'monthly charge' and 'total charge'. <br>&#x2003;	&#x2022;	Create a pivot table (cross-tabulation) showing 'churn status' by 'contract type'. <br>&#x2003;	&#x2022;	**Discussion:** Based on your findings, what *might* be causing customers to churn? What patterns emerge between contract type and churn? (Emphasize "might" and "patterns"). <br>&#x2022; **Facilitation:** Instructor circulates, provides hints, answers questions. Students work in pairs/small groups.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Hands-on Lab Activity (Individual/Pair Work), Instructor Facilitation, Group Discussion, Peer Teaching (optional)               | "Customer_Churn_Data.xlsx" (or .csv for Python). <br>Activity Worksheet with specific instructions and questions. <br>Access to computers with Excel or Python environment. <br>Reference sheet for Excel functions (AVERAGE, MEDIAN, STDEV.S, CORREL, PIVOT TABLE) or Python Pandas commands (describe(), mean(), median(), std(), value_counts(), corr(), pivot_table()).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **d. Closure / Synthesis**    | 30 min | **1. Group Share & Debrief (15 min):** <br>&#x2022; Each group briefly shares their key findings from the "Customer Churn Insights" activity, particularly focusing on the interpretations. <br>&#x2022; Instructor guides discussion to highlight successful application of MLOs and reinforce correct interpretations and caveats (e.g., correlation vs. causation). **Check for MLO understanding.** <br><br>**2. Consolidate Key Takeaways (10 min):** <br>&#x2022; Reiterate the distinction and purpose of descriptive vs. diagnostic analytics (MLO 4.1). <br>&#x2022; Summarize the importance of statistical measures and their interpretation for initial problem understanding (MLO 4.2 & 4.3). <br>&#x2022; Briefly discuss the power of analytical tools for efficient analysis. <br><br>**3. Preview Next Week (5 min):** <br>&#x2022; Transition to predictive analytics: "Next week, we'll move from understanding *what happened* and *why* to *what will happen*." Introduce concepts like forecasting and simple regression. Encourage students to read ahead.                                                                                                                                                                                                                                                                                                                                                                                                   | Group Presentations, Instructor-led Debrief, Interactive Q&A, Short Lecture | Slides 31-33 (Key Takeaways, Next Week Preview). <br>Whiteboard/Flipchart for key insights during debrief.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+
+### 4. FORMATIVE ASSESSMENT
+
+**Type:** Short Quiz / Problem Set
+
+**Description:** Students will be given a small, new dataset (e.g., "Online_Retail_Transactions_Sample.xlsx") related to online retail transactions. They will be asked to:
+1.  **Multiple Choice/Short Answer:** Identify if a given scenario requires descriptive or diagnostic analytics and justify their choice (MLO 4.1).
+2.  **Calculation & Interpretation:** Calculate 2-3 specific descriptive statistics (e.g., mean order value, standard deviation of item quantity, most frequent product category) and compute a correlation (e.g., between item quantity and unit price) using the chosen analytics tool (Excel/Python).
+3.  **Interpretation:** Write a brief paragraph interpreting the results of their calculations in the context of the online retail business problem, suggesting potential insights or areas for further investigation (MLO 4.3).
+
+**MLO Alignment:** Directly assesses MLO 4.1, MLO 4.2, and MLO 4.3.
+
+**Estimated time:** 20 minutes (10 minutes for calculation, 10 minutes for interpretation/justification).
+
+### 5. INSTRUCTIONAL MATERIALS & RESOURCES
+
+**For Faculty Preparation:**
+
+*   **Lecture Slides:** Comprehensive presentation covering Module Overview, MLOs, Descriptive Analytics (definitions, measures, examples), Diagnostic Analytics (definitions, techniques, examples), and Tools Overview. (Slides 1-33).
+*   **Sample Datasets:**
+    *   "Sales_CustomerData.xlsx" (or .csv for a Python environment) for live demonstrations. (Small, clean dataset).
+    *   "Customer_Churn_Data.xlsx" (or .csv) for the Guided Practice Activity. (Moderately sized, clean dataset).
+    *   "Online_Retail_Transactions_Sample.xlsx" (or .csv) for the Formative Assessment. (Small to medium, clean dataset).
+*   **Activity Worksheet:** Detailed instructions for the "Customer Churn Insights" activity, including specific tasks and discussion prompts.
+*   **Formative Assessment Questions:** Prepared quiz questions and rubric for scoring.
+*   **Software Access:** Ensure access to computers with relevant software (e.g., Microsoft Excel with Data Analysis ToolPak enabled, or Python with Anaconda/Jupyter Notebook installed and necessary libraries like Pandas, NumPy).
+*   **Optional:** Links to external resources for deeper dives (e.g., Khan Academy videos on statistics, Pandas documentation).
+
+**For Student Access:**
+
+*   **Lecture Slides:** Provided digitally.
+*   **Sample Datasets:** Available for download from the learning management system (LMS).
+*   **Activity Worksheet:** Available for download from the LMS.
+*   **Formative Assessment Instructions:** Available on the LMS.
+*   **Recommended Readings:**
+    *   Chapter 3: "Descriptive Analytics: Statistical Measures" from a core Business Analytics textbook (e.g., *Business Analytics: Data Analysis & Decision Making* by Albright & Winston, or *Business Analytics* by Camm et al.).
+    *   Online tutorials/documentation for basic Excel functions (AVERAGE, MEDIAN, STDEV.S, CORREL, PIVOT TABLE) OR Python Pandas methods (.describe(), .mean(), .median(), .std(), .value_counts(), .corr(), .pivot_table()).
+*   **Software:** Access to Microsoft Excel or a Python environment on personal devices or university labs.
+
+---
+
+============================================================================
+  PROVIDER: ANTHROPIC  |  MODEL: claude-haiku-4-5-20251001
+============================================================================
+# TEACHING MODULE: ANALYTICS TECHNIQUES AND TOOLS
+**Business Analytics | Week 4**
+
+---
+
+## 1. MODULE OVERVIEW
+
+### Purpose
+Week 4 introduces students to the foundational analytics techniques and contemporary tools used in business decision-making. Students move from data fundamentals (Weeks 1–3) to practical application of analytical methods, building competency in selecting appropriate tools and techniques for different business problems.
+
+### Place in Course Sequence
+- **Prerequisite knowledge:** Data types, sources, and basic data cleaning (Weeks 1–3)
+- **Where it sits:** Mid-point bridge between theory and applied analytics projects (Weeks 5–7)
+- **Feeds into:** Advanced analytics and predictive modelling (Weeks 5–6)
+
+### Estimated Contact Hours
+- **Synchronous:** 3 hours (lecture + guided practice)
+- **Asynchronous:** 2–3 hours (readings, independent practice, reflection)
+- **Total:** 5–6 hours student engagement
+
+---
+
+## 2. MODULE LEARNING OUTCOMES (MLOs)
+
+By the end of Week 4, students will be able to:
+
+| MLO | Learning Outcome | Bloom's Level | Measurement |
+|-----|------------------|---------------|------------|
+| **MLO 1** | **Identify and classify** analytics techniques (descriptive, diagnostic, predictive, prescriptive) appropriate for distinct business problems | *Understand & Apply* | Case analysis; technique-to-problem matching exercise |
+| **MLO 2** | **Evaluate and select** suitable analytics tools based on data characteristics, scalability, and organisational context | *Analyze & Evaluate* | Tool comparison matrix; tool selection justification |
+| **MLO 3** | **Demonstrate proficiency** using at least two analytics tools (e.g., Excel, Python, Tableau, Power BI) to conduct exploratory data analysis | *Apply* | Hands-on lab with guided practice; reproducible analysis output |
+| **MLO 4** | **Synthesize** findings from multiple analytical techniques to support a business recommendation | *Evaluate & Create* | Mini-case report; peer feedback session |
+
+---
+
+## 3. INSTRUCTIONAL SEQUENCE
+
+### **PHASE A: INTRODUCTION & ENGAGEMENT (30 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Hook & Engagement** | 5 min | **Scenario:** "A retail company has customer transaction data but doesn't know whether to focus on predicting churn, optimising inventory, or personalising promotions. How would you advise them?" | Synchronous Q&A; poll | Interactive whiteboard / polling tool (Mentimeter / Slido) |
+| **State Learning Outcomes** | 5 min | Present MLOs in student-friendly language; connect to real-world analytics roles (e.g., data analyst, business intelligence specialist) | Lecture + slides | Module slides; career pathway infographic |
+| **Activate Prior Knowledge** | 10 min | Quick review: Recall data types and sources from Week 3. Facilitate think-pair-share: "What tools or techniques have you encountered in the news or workplace?" | Collaborative discussion | Jamboard / shared doc with student responses |
+| **Module Roadmap** | 10 min | Visual outline of session: techniques → tools → hands-on demo → your turn → synthesis. Emphasise progression from *knowing* to *doing*. | Visual narrative + slide deck | Roadmap diagram; time tracker on screen |
+
+---
+
+### **PHASE B: CORE CONTENT DELIVERY (80 minutes)**
+
+#### **Section B1: The Analytics Landscape (25 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Concept: Four Types of Analytics** | 15 min | **Descriptive Analytics:** "What happened?" (summary statistics, dashboards).<br>**Diagnostic Analytics:** "Why did it happen?" (root cause, correlation).<br>**Predictive Analytics:** "What will happen?" (forecasting, classification).<br>**Prescriptive Analytics:** "What should we do?" (optimisation, recommendations).<br><br>*Use business examples for each:*<br>- Descriptive: Sales report dashboard<br>- Diagnostic: Churn rate analysis<br>- Predictive: Customer lifetime value forecast<br>- Prescriptive: Dynamic pricing algorithm | Structured lecture with examples; annotated slides; video clip (3–4 min) showing each type in practice | Slide deck with diagrams; case example images; short video (e.g., YouTube analytics in practice) |
+| **Concept: Technique Selection Framework** | 10 min | Present a decision tree:<br>*Are you explaining past events or predicting future ones?*<br>*Is your outcome continuous or categorical?*<br>*How much historical data do you have?*<br><br>**Key techniques introduced:**<br>- Descriptive: Aggregation, visualisation, percentiles<br>- Diagnostic: Correlation, cross-tabulation, clustering<br>- Predictive: Regression, classification, time-series models<br>- Prescriptive: Optimisation algorithms, simulation<br><br>**Not deep-dive coding**—focus on *when* to use each. | Conceptual framework slide + flowchart; worked example on whiteboard | Decision tree handout; technique-selector checklist |
+
+---
+
+#### **Section B2: Analytics Tools Landscape (20 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Tool Categories & Comparison** | 12 min | **Spreadsheet Tools:** Excel (accessible, limited scale).<br>**Programming Languages:** Python (flexible, steep learning curve), R (statistical strength).<br>**Visualisation Platforms:** Tableau, Power BI, Looker (user-friendly BI).<br>**Cloud Platforms:** Google Analytics, AWS, Azure (enterprise-grade).<br>**Specialised Tools:** SAS, SPSS (legacy strongholds).<br><br>**Comparison criteria:** Cost, ease of use, scalability, integration, learning curve, team expertise.<br><br>**Live demo (5 min):** Quick side-by-side comparison of same dataset in Excel vs. Python/Tableau to show output differences. | Lecture with side-by-side comparison table; live demo screen-share | Comparison matrix (downloadable PDF); demo files pre-loaded |
+| **Your Context: Tool Selection** | 8 min | Introduce **Tool Decision Framework:**<br>1. What's your data size? (MB, GB, TB?)<br>2. Who is your audience? (executives, analysts, technical)<br>3. What's your timeline? (quick insight vs. production pipeline)<br>4. Team skills? (business users vs. data engineers)<br>5. Budget constraints?<br><br>**For this course:** Focus on Excel (quick wins) + Python/Pandas (flexibility) + Tableau (communication). | Framework slide + guided questioning; case scenario | Decision grid template |
+
+---
+
+#### **Section B3: Exploratory Data Analysis (EDA) as a Bridge (15 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Why EDA Matters** | 5 min | EDA is the *essential first step* before any analytical technique. It reveals data quality, relationships, distributions, and outliers that shape your analytical approach. | Concept slide + visual examples | Infographic: "EDA is Your Analytics Foundation" |
+| **EDA Checklist** | 10 min | **Structure:** Row counts, column types, missing values.<br>**Univariate:** Mean, median, mode, SD, skewness, distribution shapes.<br>**Bivariate:** Correlation, crosstabs, scatter plots.<br>**Multivariate:** Relationships across 3+ variables; clustering patterns.<br>**Data Quality:** Outliers, duplicates, inconsistencies.<br><br>**Demo:** 8-minute live walkthrough using a sample dataset (e.g., customer acquisition data) in Excel + Python to show the same exploratory steps in both tools. | Live coding demo (screen-share); annotated output | Sample dataset (CSV); EDA checklist template; demo notebook (Python) |
+
+---
+
+### **PHASE C: GUIDED PRACTICE & ACTIVITY (40 minutes)**
+
+#### **Activity 1: Technique Selection Challenge (15 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Scenario Setup** | 2 min | Present 3 realistic business scenarios (provided on handout):<br><br>**Scenario A:** A bank wants to identify which customers might default on loans in the next 6 months.<br>**Scenario B:** A retail chain wants to understand why sales in the Northeast region declined 15% last quarter.<br>**Scenario C:** A SaaS company wants to optimise its pricing strategy based on customer value tiers. | Handout distributed; read aloud + clarify questions | Scenario cards (1-page handout) |
+| **Guided Pair Work** | 10 min | **Instructions:** In pairs, for each scenario, decide:<br>1. What *type* of analytics? (Descriptive / Diagnostic / Predictive / Prescriptive)<br>2. Which *techniques* would you use? (3–5 techniques max, from the framework)<br>3. Which *tool(s)* would you recommend? (Excel / Python / Tableau / other)<br>4. What *data* would you need to collect?<br><br>Faculty circulates, asks probing questions ("Why that technique?" "How would you measure success?"). | Pair-work with instructor facilitation; shared document (Google Docs) or paper worksheet | Scenario handout; technique selection template; decision tree reference |
+| **Pair Share-Out & Debrief** | 3 min | 2–3 pairs share their answers (1 scenario each). Instructor reinforces links between business problem → technique → tool. Highlight that *multiple valid approaches* exist; the key is *justification*. | Socratic discussion; instructor synthesis | None (verbal feedback) |
+
+---
+
+#### **Activity 2: Hands-On EDA Lab (25 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Lab Setup & Data Intro** | 3 min | **Dataset:** A publicly available e-commerce dataset (e.g., Kaggle, UCI Repository) with ~1,000 records and 12 columns (product category, price, rating, customer region, purchase frequency, customer age, churn status, etc.).<br><br>Instructor uploads dataset to shared lab environment (Google Colab, Jupyter, or Excel Online). Each student downloads their own copy. | Instructor screen-share setup; dataset link provided | Pre-cleaned dataset (CSV); lab instructions (1-page step-by-step guide); blank Python notebook template or Excel workbook |
+| **Guided EDA Walkthrough** | 10 min | **Instructor leads, students follow along:**<br><br>**Step 1 (2 min):** Load data; inspect shape and data types.<br>**Step 2 (2 min):** Descriptive stats—mean, median, SD for numeric columns; value counts for categorical.<br>**Step 3 (2 min):** Check missing values and duplicates.<br>**Step 4 (2 min):** Create 2–3 visualisations: histogram (distribution), scatter plot (relationship between price and rating), bar chart (churn by region).<br>**Step 5 (2 min):** Spot 2–3 interesting patterns or anomalies; note them down.<br><br>**Pace:** Pause every 1–2 steps for students to ask clarifying questions. | Live coding + narration; pause for Q&A | Instructor's annotated code (provided post-session); visualisation examples projected on screen |
+| **Independent EDA Practice** | 10 min | **Student Task:** Repeat Steps 1–5 on their own, either using the same dataset or (optional) a different one from Kaggle.<br><br>**Deliverable:** A brief findings document (1 table + 2–3 charts + 3–5 bullet points summarising key patterns).<br><br>**Support:** Instructor and peer assistants circulate; shared Q&A doc for common issues (e.g., "How do I create a scatter plot in Excel?"). | Independent work with peer / instructor support; optional breakout rooms (pairs) if remote | Lab instructions; sample findings template; link to troubleshooting FAQ |
+| **Gallery Walk / Share (2 min)** | 2 min | Quickly share 2–3 student findings. Celebrate diversity of insights: "Notice how different questions led to different discoveries?" | Quick presentations or slide gallery | None (verbal celebration) |
+
+---
+
+### **PHASE D: CLOSURE & SYNTHESIS (20 minutes)**
+
+| Component | Time | Activity / Content | Delivery Method | Materials |
+|-----------|------|-------------------|-----------------|-----------|
+| **Synthesis: Big Picture** | 5 min | **Recap:** Today we explored (1) *when* to use different analytics techniques, (2) *which tools* fit different contexts, and (3) *how* to begin any analysis with exploratory data analysis.<br><br>**Key Insight:** Analytics is a *problem-first* discipline. You choose techniques and tools *in service of* the business question, not the other way around. | Narrative wrap-up; visual summary slide | Recap slide with icons summarising the 4 analytics types and tool families |
+| **Reflect & Connect** | 7 min | **Reflection Prompt (written or verbal):**<br>"In the business scenario from your own industry, which type of analytics do you think would create the most value? Why? Which tool or technique would you start with and why?"<br><br>**Purpose:** Metacognition + relevance. Students consider how Week 4 concepts apply to *their* context.<br><br>Students write (2–3 min) or discuss with a partner (3 min). Optional: collect reflections as exit tickets. | Quiet reflection + optional pair discussion; index cards or digital form | Reflection prompt card or slide; submission method (Padlet, Google Form, or physical cards) |
+| **Bridge to Week 5** | 5 min | **Preview:** Next week, we zoom into *Predictive Analytics & Modelling*. You'll learn regression and classification in depth, build your first supervised learning models, and interpret results for stakeholders. We'll use what you learned this week—technique selection + tool proficiency—to tackle real prediction challenges.<br><br>**Preparation:** Review your Python or Excel skills; bring curiosity! | Story-driven preview; show Week 5 learning outcomes | Week 5 syllabus slide; optional teaser video or mini-case (30 sec) |
+| **Q&A & Closing** | 3 min | Open floor for clarifying questions. Remind students of office hours, discussion board, and tutorial availability. Collect any urgent feedback. | Verbal Q&A | None |
+
+---
+
+## 4. FORMATIVE ASSESSMENT
+
+### **Assessment: Weekly Application Quiz + Lab Submission**
+
+#### **Part A: Technique-Tool Matching Quiz (10 minutes)**
+**Type:** Low-stakes, auto-graded multiple-choice + short-answer
+
+**Description:**
+Students complete a 8–10 question quiz (available 48 hours after class; due end of week).
+
+**Sample Questions:**
+1. **[MC]** A hospital wants to identify patients at risk of readmission within 30 days. Which type of analytics is most appropriate?
+   - A) Descriptive  
+   - B) Diagnostic  
+   - C) **Predictive** ✓  
+   - D) Prescriptive
+
+2. **[MC]** You have a dataset with 50 million rows and need to publish interactive dashboards to 500+ executives. Which tool family is best suited?
+   - A) Excel  
+   - B) **Cloud BI platforms (Power BI, Tableau)** ✓  
+   - C) SPSS  
+   - D) Spreadsheet scripts
+
+3. **[Short Answer]** Describe two techniques you would use to diagnose why an e-commerce site's bounce rate spiked 25% last week. (2–3 sentences expected.)
+   - *Rubric:* Identifies diagnostic techniques (e.g., cohort analysis, funnel analysis, A/B test comparison, traffic source breakdown) + logic for why. Full marks: technique + justification.
+
+**MLO Alignment:**
+- MLO 1: Identify appropriate analytics type (Q1)
+- MLO 2: Evaluate and select tools (Q2)
+- MLO 4: Justify analytical
+
+============================================================================
+  PROVIDER: GROQ  |  MODEL: llama-3.3-70b-versatile
+============================================================================
+**1. MODULE OVERVIEW**
+   Purpose: This module introduces students to various analytics techniques and tools used in business decision-making, building on their understanding of data analysis and statistical concepts.
+   Place in course: Week 4 of the Business Analytics course, following weeks that covered data preparation, statistical analysis, and data visualization.
+   Estimated contact hours: 3 hours
+
+**2. MODULE LEARNING OUTCOMES (MLOs)**
+By the end of this module, students will be able to:
+1. Identify and explain the role of different analytics techniques (descriptive, predictive, prescriptive) in solving business problems.
+2. Apply appropriate analytics tools (such as Excel, Python libraries, or R) to analyze business data and draw meaningful insights.
+3. Evaluate the strengths and limitations of various analytics techniques and tools in different business contexts.
+
+**3. INSTRUCTIONAL SEQUENCE**
+| Phase | Time | Activity / Content | Delivery Method | Materials |
+| --- | --- | --- | --- | --- |
+| Introduction / Hook | 15 minutes | Review of previous weeks, introduction to analytics techniques and tools, stating the MLOs | Lecture | Slides 1-3, Whiteboard |
+| Core Content Delivery | 45 minutes | Overview of descriptive, predictive, and prescriptive analytics; demonstration of Excel, Python, and R for analytics tasks | Lecture with Demonstration | Slides 4-10, Software tutorials |
+| Guided Practice / Activity | 60 minutes | Guided exercise: Students work in pairs to apply analytics tools to a business case study | Guided Practice | Case Study Handout, Access to analytics software |
+| Closure / Synthesis | 30 minutes | Summary of key concepts, discussion on challenges and limitations, preview of next week's topic | Discussion | Slides 11-12, Whiteboard |
+
+**4. FORMATIVE ASSESSMENT**
+   Type: In-class problem
+   Description: Students will be given a simplified business scenario and asked to choose and apply an appropriate analytics technique to solve the problem.
+   MLO Alignment: MLO 1 and MLO 2
+   Estimated time: 20 minutes
+
+**5. INSTRUCTIONAL MATERIALS & RESOURCES**
+- Readings: Chapters 5-6 of the course textbook
+- Slides: A set of 12 slides covering analytics techniques, tools, and examples
+- Tools: Excel, Python (with relevant libraries), R
+- Datasets: Sample datasets for practice exercises
+- Resources: Access to software tutorials, case studies for guided practice
+- Handouts: A summary of key concepts and a case study for the guided practice activity
+

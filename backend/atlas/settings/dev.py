@@ -23,5 +23,13 @@ LOGGING = {
     'handlers': {
         'console': {'class': 'logging.StreamHandler'},
     },
-    'root': {'handlers': ['console'], 'level': 'DEBUG'},
+    'root': {'handlers': ['console'], 'level': 'INFO'},
+    'loggers': {
+        # Suppress verbose HuggingFace/httpx download chatter
+        'httpx': {'level': 'WARNING'},
+        'httpcore': {'level': 'WARNING'},
+        'filelock': {'level': 'WARNING'},
+        'huggingface_hub': {'level': 'WARNING'},
+        'sentence_transformers': {'level': 'WARNING'},
+    },
 }
