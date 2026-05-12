@@ -1,6 +1,8 @@
 import logging
 import os
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -53,9 +55,10 @@ class LLMService:
         elif choice == 'gpt':
             return 'openrouter', 'openai/gpt-4o'
         elif choice == 'groq':
-            return 'groq', 'llama3-70b-8192' # Sample Groq model
+            # Keep default on a currently supported Groq model.
+            return 'groq', 'llama-3.3-70b-versatile'
         elif choice == 'anthropic':
-            return 'anthropic', 'claude-3-5-sonnet-20241022'
+            return 'anthropic', 'claude-haiku-4-5-20251001'
         elif choice == 'openrouter':
              return 'openrouter', 'meta-llama/llama-3-70b-instruct' # Generic openrouter fallback if just 'openrouter' is specified
         else:
@@ -69,20 +72,30 @@ class LLMService:
         provider, model = self.get_provider_and_model(provider_choice)
         
         if provider == 'openrouter':
-            if not self.openrouter_client:
+            if not self.openrouter_key:
                 raise ValueError("OpenRouter not configured.")
-            
+
             payload_messages = []
             if system:
                 payload_messages.append({"role": "system", "content": system})
             payload_messages.extend(messages)
-            
-            response = self.openrouter_client.chat.completions.create(
-                model=model,
-                messages=payload_messages,
-                max_tokens=max_tokens,
+
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.openrouter_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": payload_messages,
+                    "max_tokens": max_tokens,
+                },
+                timeout=90,
             )
-            return response.choices[0].message.content
+            response.raise_for_status()
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
             
         elif provider == 'groq':
             if not self.groq_client:
@@ -115,8 +128,9 @@ class LLMService:
                 system=system
             )
             
-            # extract text
-            if 'content' in response and len(response['content']) > 0:
-                return response['content'][0].text
+            # extract text (content blocks are dicts: {"type": "text", "text": "..."})
+            for block in response.get('content', []):
+                if block.get('type') == 'text' and block.get('text'):
+                    return block['text']
             return ""
 
