@@ -8,11 +8,12 @@ import SuperAdminDashboard from './features/Superadmin/Dashboard.jsx'
 import SuperAdminAuditLogs from './features/Superadmin/AuditLogs.jsx'
 import SuperAdminSystemManagement from './features/Superadmin/SystemManagement.jsx'
 import SuperAdminAccountManagement from './features/Superadmin/AccountManagement.jsx'
-import FacultyDashboard from './features/roles/Faculty/Dashboard.jsx'
-import FacultySyllabus from './features/roles/Faculty/Syllabus.jsx'
-import FacultyModule from './features/roles/Faculty/Module.jsx'
-import FacultyAssessment from './features/roles/Faculty/Assessment.jsx'
-import FacultyGrading from './features/roles/Faculty/Grading.jsx'
+import FacultyDashboardPage from './pages/dashboards/facultyDashboard.jsx'
+import FacultyWorkspacePage from './components/FacultyWorkspacePage.jsx'
+import FacultySyllabusPage from './pages/faculty/syllabusPage.jsx'
+import FacultyModulePage from './pages/faculty/modulePage.jsx'
+import FacultyAssessmentPage from './pages/faculty/assessmentPage.jsx'
+import FacultyGradingPage from './pages/faculty/gradingPage.jsx'
 import FacultyAnalytics from './features/roles/Faculty/Analytics.jsx'
 import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
@@ -71,7 +72,15 @@ function App() {
           path={ROUTES.FACULTY.DASHBOARD}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyDashboard />
+              <FacultyDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.WORKSPACE}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyWorkspacePage />
             </ProtectedRoute>
           }
         />
@@ -79,7 +88,7 @@ function App() {
           path={ROUTES.FACULTY.SYLLABUS}
           element={
             <ProtectedRoute role="faculty">
-              <FacultySyllabus />
+              <FacultySyllabusPage />
             </ProtectedRoute>
           }
         />
@@ -87,7 +96,7 @@ function App() {
           path={ROUTES.FACULTY.MODULE}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyModule />
+              <FacultyModulePage />
             </ProtectedRoute>
           }
         />
@@ -95,7 +104,7 @@ function App() {
           path={ROUTES.FACULTY.ASSESSMENT}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyAssessment />
+              <FacultyAssessmentPage />
             </ProtectedRoute>
           }
         />
@@ -103,7 +112,7 @@ function App() {
           path={ROUTES.FACULTY.GRADING}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyGrading />
+              <FacultyGradingPage />
             </ProtectedRoute>
           }
         />
