@@ -24,16 +24,18 @@ import Chip            from '@mui/material/Chip'
 import MenuIcon        from '@mui/icons-material/Menu'
 import LogoutIcon      from '@mui/icons-material/Logout'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
-import AtlasLogo       from './AtlasLogo'
+import SettingsIcon    from '@mui/icons-material/Settings'
+import HelpIcon        from '@mui/icons-material/Help'
+import atlasLogo       from '../assets/atlas-logo.png'
 import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
 
 const DRAWER_WIDTH = 240
 
 const ROLE_CHIP_COLOR = {
-  faculty:    { bg: '#FFF5F5', color: '#8B0000' },
-  admin:      { bg: '#E3F2FD', color: '#1565C0' },
-  superadmin: { bg: '#F3E5F5', color: '#6A1B9A' },
+  faculty:    { bg: 'rgba(255, 45, 85, 0.15)', color: '#ff2d55', border: '1px solid rgba(255, 45, 85, 0.3)' },
+  admin:      { bg: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff', border: '1px solid rgba(10, 132, 255, 0.3)' },
+  superadmin: { bg: 'rgba(191, 90, 242, 0.15)', color: '#bf5af2', border: '1px solid rgba(191, 90, 242, 0.3)' },
 }
 
 export default function DashboardLayout({ children, navItems = [], role }) {
@@ -43,6 +45,7 @@ export default function DashboardLayout({ children, navItems = [], role }) {
 
   const [mobileOpen, setMobileOpen]   = useState(false)
   const [anchorEl, setAnchorEl]       = useState(null)
+  const [isCollapsed, setIsCollapsed] = useState(false)
   const userMenuOpen = Boolean(anchorEl)
 
   function handleLogout() {
@@ -51,65 +54,84 @@ export default function DashboardLayout({ children, navItems = [], role }) {
   }
 
   const chip = ROLE_CHIP_COLOR[role] || ROLE_CHIP_COLOR.faculty
+  const currentDrawerWidth = isCollapsed ? 80 : DRAWER_WIDTH
 
   const sidebarContent = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Brand */}
       <div
         style={{
-          padding: '20px 20px 16px',
-          borderBottom: '1px solid rgba(139,0,0,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: isCollapsed ? 'center' : 'space-between',
+          padding: isCollapsed ? '0' : '0 8px 0 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          minHeight: 57,
+          boxSizing: 'border-box'
         }}
       >
-        <AtlasLogo size={28} />
+        {!isCollapsed && (
+          <div style={{ overflow: 'hidden', display: 'flex' }}>
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', objectPosition: 'left' }} />
+          </div>
+        )}
+        <IconButton onClick={() => setIsCollapsed(!isCollapsed)} size="small" sx={{ color: '#fff' }}>
+          <MenuIcon />
+        </IconButton>
       </div>
 
       {/* User info */}
-      <div style={{ padding: '14px 20px 10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ padding: isCollapsed ? '14px 0 10px' : '14px 20px 10px', display: 'flex', flexDirection: 'column', alignItems: isCollapsed ? 'center' : 'stretch' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
           <Avatar
             sx={{
               width: 36, height: 36,
-              background: '#8B0000',
+              background: '#ff2d55',
               fontSize: '0.85rem',
               fontWeight: 700,
             }}
           >
             {toInitials(user?.name || user?.email || 'U')}
           </Avatar>
-          <div>
-            <Typography variant="body2" sx={{ fontWeight: 700, color: '#1A1A1A', lineHeight: 1.2 }}>
-              {user?.name || 'User'}
-            </Typography>
-            <Typography variant="caption" sx={{ color: '#888', fontSize: '0.72rem' }}>
-              {user?.email}
-            </Typography>
-          </div>
+          {!isCollapsed && (
+            <div>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#FFFFFF', lineHeight: 1.2 }}>
+                {user?.name || 'User'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.72rem' }}>
+                {user?.email}
+              </Typography>
+            </div>
+          )}
         </div>
-        <Chip
-          label={role?.toUpperCase() || 'FACULTY'}
-          size="small"
-          sx={{
-            mt: 1.2,
-            background: chip.bg,
-            color: chip.color,
-            fontWeight: 700,
-            fontSize: '0.68rem',
-            letterSpacing: '0.06em',
-            height: 20,
-          }}
-        />
+        {!isCollapsed && (
+          <Chip
+            label={role?.toUpperCase() || 'FACULTY'}
+            size="small"
+            sx={{
+              mt: 1.2,
+              background: chip.bg,
+              color: chip.color,
+              border: chip.border,
+              fontWeight: 700,
+              fontSize: '0.68rem',
+              letterSpacing: '0.06em',
+              height: 20,
+            }}
+          />
+        )}
       </div>
 
-      <Divider sx={{ mx: 2, borderColor: 'rgba(139,0,0,0.08)' }} />
+      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'rgba(255,255,255,0.08)' }} />
 
       {/* Nav items */}
-      <List sx={{ flex: 1, px: 1, py: 1 }}>
+      <List sx={{ flex: 1, px: 1, py: 1, overflowX: 'hidden' }}>
         {navItems.map((item) => {
           const isActive = location.pathname === item.to ||
             (item.to !== '/' && location.pathname.startsWith(item.to))
           return (
             <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
+              <Tooltip title={isCollapsed ? item.label : ''} placement="right" disableHoverListener={!isCollapsed}>
               <ListItemButton
                 component={Link}
                 to={item.to}
@@ -117,86 +139,127 @@ export default function DashboardLayout({ children, navItems = [], role }) {
                 sx={{
                   borderRadius: 2,
                   py: 1,
-                  background:    isActive ? 'rgba(139,0,0,0.08)'  : 'transparent',
-                  color:         isActive ? '#8B0000'              : '#555',
+                  px: isCollapsed ? 0 : 2,
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  background:    isActive ? 'rgba(255, 45, 85, 0.15)'  : 'transparent',
+                  color:         isActive ? '#ff2d55'              : 'rgba(255,255,255,0.7)',
                   '&:hover': {
-                    background: 'rgba(139,0,0,0.06)',
-                    color: '#8B0000',
+                    background: 'rgba(255, 45, 85, 0.1)',
+                    color: '#ff2d55',
                   },
                 }}
               >
                 <ListItemIcon
                   sx={{
-                    minWidth: 36,
-                    color: isActive ? '#8B0000' : '#888',
+                    minWidth: isCollapsed ? 0 : 36,
+                    mr: isCollapsed ? 0 : 1,
+                    justifyContent: 'center',
+                    color: isActive ? '#ff2d55' : 'rgba(255,255,255,0.7)',
                   }}
                 >
                   {item.icon}
                 </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontSize: '0.88rem',
-                    fontWeight: isActive ? 700 : 500,
-                  }}
-                />
+                {!isCollapsed && (
+                  <ListItemText
+                    primary={item.label}
+                    primaryTypographyProps={{
+                      fontSize: '0.88rem',
+                      fontWeight: isActive ? 700 : 500,
+                    }}
+                  />
+                )}
                 {/* Active indicator bar */}
                 {isActive && (
                   <div
                     style={{
-                      width: 3, height: 20,
-                      background: '#8B0000',
-                      borderRadius: 2,
-                      marginLeft: 4,
+                      position: 'absolute', left: 0, width: 3, height: 20,
+                      background: '#ff2d55', boxShadow: '0 0 8px #ff2d55',
+                      borderRadius: '0 2px 2px 0',
                     }}
                   />
                 )}
               </ListItemButton>
+              </Tooltip>
             </ListItem>
           )
         })}
       </List>
 
-      {/* Bottom: logout */}
-      <Divider sx={{ mx: 2, borderColor: 'rgba(139,0,0,0.08)' }} />
+      {/* Bottom: Settings, Help, Sign out */}
+      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'rgba(255,255,255,0.08)' }} />
       <List sx={{ px: 1, py: 1 }}>
-        <ListItem disablePadding>
-          <ListItemButton
-            onClick={handleLogout}
-            sx={{
-              borderRadius: 2, py: 1, color: '#888',
-              '&:hover': { background: 'rgba(139,0,0,0.06)', color: '#8B0000' },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 36, color: 'inherit' }}>
-              <LogoutIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText
-              primary="Sign Out"
-              primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: 500 }}
-            />
-          </ListItemButton>
-        </ListItem>
+        {[
+          { label: 'Settings', icon: <SettingsIcon fontSize="small" />, action: () => {} },
+          { label: 'Help Center', icon: <HelpIcon fontSize="small" />, action: () => {} },
+          { label: 'Sign Out', icon: <LogoutIcon fontSize="small" />, action: handleLogout },
+        ].map((item) => (
+          <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
+            <Tooltip title={isCollapsed ? item.label : ''} placement="right" disableHoverListener={!isCollapsed}>
+              <ListItemButton
+                onClick={item.action}
+                sx={{
+                  justifyContent: isCollapsed ? 'center' : 'flex-start',
+                  borderRadius: 2, py: 1, px: isCollapsed ? 0 : 2, color: 'rgba(255,255,255,0.7)',
+                  '&:hover': { background: 'rgba(255, 45, 85, 0.1)', color: '#ff2d55' },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: isCollapsed ? 0 : 36, mr: isCollapsed ? 0 : 1, justifyContent: 'center', color: 'inherit' }}>
+                  {item.icon}
+                </ListItemIcon>
+                {!isCollapsed && <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: 500 }} />}
+              </ListItemButton>
+            </Tooltip>
+          </ListItem>
+        ))}
       </List>
     </div>
   )
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', background: '#F7F7F8' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', background: '#000000', backgroundImage: 'radial-gradient(circle at 15% 50%, rgba(255, 45, 85, 0.15), transparent 25%), radial-gradient(circle at 85% 30%, rgba(10, 132, 255, 0.15), transparent 25%)' }}>
+      <style>{`
+        /* Global Dark Glassmorphism Rules for Dashboards */
+        .MuiPaper-root, .MuiCard-root {
+          background: rgba(30, 30, 35, 0.4) !important;
+          backdrop-filter: blur(24px) !important;
+          -webkit-backdrop-filter: blur(24px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          color: #ffffff !important;
+        }
+        h1, h2, h3, h4, h5, h6, p, span, .MuiTypography-root {
+          color: #ffffff;
+        }
+        .MuiTypography-colorTextSecondary {
+          color: rgba(255, 255, 255, 0.6) !important;
+        }
+        .MuiTableCell-root, .MuiDivider-root {
+          border-color: rgba(255, 255, 255, 0.1) !important;
+          color: #ffffff !important;
+        }
+        .MuiInputBase-root { color: #ffffff !important; }
+        .MuiOutlinedInput-notchedOutline { border-color: rgba(255, 255, 255, 0.2) !important; }
+        .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: rgba(255, 255, 255, 0.4) !important; }
+        .MuiInputLabel-root { color: rgba(255, 255, 255, 0.6) !important; }
+        .MuiChip-root { background: rgba(255, 255, 255, 0.1) !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.1) !important; }
+        .recharts-text { fill: rgba(255,255,255,0.6) !important; }
+        .recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line { stroke: rgba(255,255,255,0.1) !important; }
+      `}</style>
 
       {/* ── Sidebar desktop ─────────────────────────────────────── */}
       <Drawer
         variant="permanent"
         sx={{
-          width: DRAWER_WIDTH,
+          width: currentDrawerWidth,
           flexShrink: 0,
           display: { xs: 'none', md: 'block' },
           '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
+            width: currentDrawerWidth,
+            transition: 'width 0.2s',
+            overflowX: 'hidden',
             boxSizing: 'border-box',
-            border: 'none',
-            borderRight: '1px solid rgba(0,0,0,0.06)',
-            background: '#ffffff',
+            borderRight: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(20, 20, 25, 0.65)',
+            backdropFilter: 'blur(24px)',
           },
         }}
       >
@@ -214,6 +277,9 @@ export default function DashboardLayout({ children, navItems = [], role }) {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
+            background: 'rgba(20, 20, 25, 0.65)',
+            backdropFilter: 'blur(24px)',
+            borderRight: '1px solid rgba(255,255,255,0.1)'
           },
         }}
       >
@@ -236,8 +302,10 @@ export default function DashboardLayout({ children, navItems = [], role }) {
           position="sticky"
           elevation={0}
           sx={{
-            background: '#ffffff',
-            borderBottom: '1px solid rgba(0,0,0,0.06)',
+            background: 'rgba(20, 20, 25, 0.65)',
+            backdropFilter: 'blur(24px)',
+            WebkitBackdropFilter: 'blur(24px)',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
             zIndex: (theme) => theme.zIndex.drawer - 1,
           }}
         >
@@ -246,7 +314,7 @@ export default function DashboardLayout({ children, navItems = [], role }) {
             <IconButton
               edge="start"
               onClick={() => setMobileOpen(true)}
-              sx={{ display: { md: 'none' }, color: '#555' }}
+              sx={{ display: { md: 'none' }, color: '#fff' }}
             >
               <MenuIcon />
             </IconButton>
@@ -263,7 +331,7 @@ export default function DashboardLayout({ children, navItems = [], role }) {
                 <Avatar
                   sx={{
                     width: 32, height: 32,
-                    background: '#8B0000',
+                    background: '#ff2d55',
                     fontSize: '0.78rem',
                     fontWeight: 700,
                   }}
@@ -281,21 +349,21 @@ export default function DashboardLayout({ children, navItems = [], role }) {
               transformOrigin={{ horizontal: 'right', vertical: 'top' }}
               anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
               PaperProps={{
-                sx: { mt: 1, borderRadius: 2, minWidth: 180, boxShadow: '0 4px 24px rgba(0,0,0,0.12)' },
+                sx: { mt: 1, borderRadius: 4, minWidth: 180, background: 'rgba(30, 30, 35, 0.8)', backdropFilter: 'blur(24px)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', color: '#fff' },
               }}
             >
               <MenuItem disabled sx={{ opacity: 1, pb: 0 }}>
                 <div>
-                  <Typography variant="body2" fontWeight={700}>{user?.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">{user?.email}</Typography>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: '#fff' }}>{user?.name}</Typography>
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.6)' }}>{user?.email}</Typography>
                 </div>
               </MenuItem>
               <Divider />
               <MenuItem onClick={() => setAnchorEl(null)}>
-                <AccountCircleIcon fontSize="small" sx={{ mr: 1.5, color: '#888' }} />
+                <AccountCircleIcon fontSize="small" sx={{ mr: 1.5, color: 'rgba(255,255,255,0.6)' }} />
                 Profile
               </MenuItem>
-              <MenuItem onClick={handleLogout} sx={{ color: '#8B0000' }}>
+              <MenuItem onClick={handleLogout} sx={{ color: '#ff2d55' }}>
                 <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
                 Sign Out
               </MenuItem>
