@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, Button, Container, Typography, Grid, Card, CardContent, AppBar, Toolbar, Stack } from '@mui/material'
 import { useAuth } from '../store/authStore'
-import AtlasLogo from '../components/AtlasLogo'
+import atlasLogo from '../assets/atlas-logo.png'
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -27,7 +27,7 @@ export default function LandingPage() {
       {/* Navigation Bar */}
       <AppBar position="static" sx={{ background: '#FFF', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
         <Toolbar>
-          <AtlasLogo size={32} />
+          <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain' }} />
           <Box sx={{ flex: 1 }} />
           <Stack direction="row" spacing={2}>
             <Button

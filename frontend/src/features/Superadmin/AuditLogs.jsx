@@ -53,10 +53,10 @@ export default function AuditLogs() {
       <Box>
         {/* Page Title */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFFFFF', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1A1A1A', mb: 1 }}>
             Audit Logs
           </Typography>
-          <Typography sx={{ color: '#FFCDD2', fontSize: '0.95rem' }}>
+          <Typography sx={{ color: '#666', fontSize: '0.95rem' }}>
             Complete activity history across all institutions and systems
           </Typography>
         </Box>

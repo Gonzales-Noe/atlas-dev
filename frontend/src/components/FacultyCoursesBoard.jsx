@@ -1,4 +1,4 @@
-﻿// src/components/FacultyCoursesBoard.jsx
+﻿﻿// src/components/FacultyCoursesBoard.jsx
 // Course landing page — light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
@@ -33,8 +33,8 @@ import api from '../config/api'
 import useApi from '../hooks/useApi'
 import { useAuth } from '../store/authStore'
 import { toInitials } from '../utils'
-import AtlasLogo from './AtlasLogo'
 import AutoAlert from './AutoAlert'
+import atlasLogo from '../assets/atlas-logo.png'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
 const CARD_COLORS = ['#8B0000', '#1565C0', '#2E7D32', '#6A1B9A', '#E65100']
@@ -99,10 +99,7 @@ export default function FacultyCoursesBoard() {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <AtlasLogo size={30} />
-          <Typography variant="h6" sx={{ fontWeight: 800, color: '#8B0000', letterSpacing: '-0.4px', lineHeight: 1 }}>
-            ATLAS
-          </Typography>
+          <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 30, objectFit: 'contain' }} />
         </Box>
         <Box sx={{ flex: 1 }} />
         <Chip
