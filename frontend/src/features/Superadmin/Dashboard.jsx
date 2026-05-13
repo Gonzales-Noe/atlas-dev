@@ -70,12 +70,11 @@ export default function SuperAdminDashboard() {
   return (
     <SuperAdminLayout>
       <Box>
-        {/* Page Title - Now White to contrast deep red background */}
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#FFFFFF', mb: 1 }}>
+          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1A1A1A', mb: 1 }}>
             Super Admin Dashboard
           </Typography>
-          <Typography sx={{ color: '#FFCDD2', fontSize: '0.95rem' }}>
+          <Typography sx={{ color: '#666', fontSize: '0.95rem' }}>
             System-wide metrics, performance, and management
           </Typography>
         </Box>

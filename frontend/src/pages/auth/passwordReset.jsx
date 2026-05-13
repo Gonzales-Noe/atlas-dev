@@ -11,9 +11,9 @@ import TextField        from '@mui/material/TextField'
 import Alert            from '@mui/material/Alert'
 import CircularProgress from '@mui/material/CircularProgress'
 import AuthLayout       from '../../components/AuthLayout'
-import AtlasLogo        from '../../components/AtlasLogo'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/routes'
+import atlasLogo        from '../../assets/atlas-logo.png'
 
 // ── OTP 4-box input ─────────────────────────────────────────────────────────
 function OtpInput({ value, onChange }) {
@@ -173,7 +173,7 @@ export default function PasswordResetPage() {
 
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <AtlasLogo size={36} />
+          <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 36, objectFit: 'contain' }} />
         </div>
 
         {/* ── STEP 0: Email ─────────────────────────────────────────── */}
