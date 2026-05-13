@@ -3,7 +3,7 @@ version: '3.9'
 services:
   db:
     image: postgres:15-alpine
-    container_name: atlas_db_prod
+    container_name: atlas_dev_prod
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}

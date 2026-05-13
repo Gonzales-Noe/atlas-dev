@@ -13,6 +13,7 @@ export const ROUTES = {
   // Faculty
   FACULTY: {
     DASHBOARD:   '/faculty/dashboard',
+    WORKSPACE:   '/faculty/workspace/:courseId',
     SYLLABUS:    '/faculty/syllabus',
     MODULE:      '/faculty/module',
     ASSESSMENT:  '/faculty/assessment',

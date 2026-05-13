@@ -152,7 +152,10 @@ export function AuthProvider({ children }) {
         dispatch({ type: 'AUTH_SUCCESS', payload: ADMIN_USER })
         return ADMIN_USER
       }
-      localStorage.setItem('atlas_access_token',  data.access)
+
+      // For real database authentication
+      const { data } = await api.post('/auth/token/', { email, password })
+      localStorage.setItem('atlas_access_token', data.access)
       localStorage.setItem('atlas_refresh_token', data.refresh)
       // Fetch user profile
       const { data: user } = await api.get('/auth/me/')
