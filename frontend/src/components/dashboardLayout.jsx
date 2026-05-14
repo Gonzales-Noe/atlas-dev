@@ -35,7 +35,7 @@ import { toInitials }  from '../utils'
 const DRAWER_WIDTH = 240
 
 const ROLE_CHIP_COLOR = {
-  faculty:    { bg: 'rgba(255, 45, 85, 0.15)', color: '#ff2d55', border: '1px solid rgba(255, 45, 85, 0.3)' },
+  faculty:    { bg: 'rgba(139, 0, 0, 0.08)', color: '#8B0000', border: '1px solid rgba(139, 0, 0, 0.3)' },
   admin:      { bg: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff', border: '1px solid rgba(10, 132, 255, 0.3)' },
   superadmin: { bg: 'rgba(191, 90, 242, 0.15)', color: '#bf5af2', border: '1px solid rgba(191, 90, 242, 0.3)' },
 }
@@ -102,7 +102,7 @@ export default function DashboardLayout({ children, navItems = [], role }) {
           <Avatar
             sx={{
               width: 36, height: 36,
-              background: '#ff2d55',
+              background: chip.color,
               fontSize: '0.85rem',
               fontWeight: 700,
             }}
@@ -281,9 +281,9 @@ export default function DashboardLayout({ children, navItems = [], role }) {
         .MuiInputBase-root.Mui-disabled { color: var(--text-secondary) !important; -webkit-text-fill-color: var(--text-secondary) !important; }
         .MuiOutlinedInput-notchedOutline { border-color: var(--input-border) !important; }
         .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: var(--input-border-hover) !important; }
-        .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: #ff2d55 !important; }
+        .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: ${chip.color} !important; }
         .MuiInputLabel-root { color: var(--text-secondary) !important; }
-        .MuiInputLabel-root.Mui-focused { color: #ff2d55 !important; }
+        .MuiInputLabel-root.Mui-focused { color: ${chip.color} !important; }
         .MuiInputBase-input::placeholder { color: var(--text-secondary) !important; opacity: 0.7 !important; }
         .MuiSelect-icon { color: var(--text-secondary) !important; }
 
@@ -409,7 +409,7 @@ export default function DashboardLayout({ children, navItems = [], role }) {
                 <Avatar
                   sx={{
                     width: 32, height: 32,
-                    background: '#ff2d55',
+                  background: chip.color,
                     fontSize: '0.78rem',
                     fontWeight: 700,
                   }}
