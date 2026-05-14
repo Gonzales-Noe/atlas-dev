@@ -26,7 +26,7 @@ import { ROUTES } from '../../../config/route'
 import FacultyLayout from './FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#ff2d55', '#5856D6', '#34C759', '#AF52DE', '#FF9F0A']
+const CARD_COLORS = ['#8B0000', '#A52A2A', '#B71C1C', '#C62828', '#D32F2F']
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
@@ -90,7 +90,7 @@ export default function FacultyDashboard() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#ff2d55' }} />
+            <CircularProgress sx={{ color: '#8B0000' }} />
           </Box>
         ) : (
           <Box
@@ -104,18 +104,18 @@ export default function FacultyDashboard() {
               onClick={openDialog}
               sx={{
                 borderRadius: 4,
-                border: '2px dashed rgba(255, 45, 85, 0.4)',
+                border: '2px dashed rgba(139, 0, 0, 0.3)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: '#ff2d55', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.3)' },
+                '&:hover': { borderColor: '#8B0000', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.3)' },
               }}
             >
               <CardActionArea sx={{ height: '100%', borderRadius: 4 }}>
                 <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, gap: 1, '&:last-child': { pb: 3 } }}>
-                  <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'rgba(255, 45, 85, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 32, color: '#ff2d55' }} />
+                  <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'rgba(139, 0, 0, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 32, color: '#8B0000' }} />
                   </Box>
-                  <Typography variant="body1" sx={{ fontWeight: 700, color: '#ff2d55', mt: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 700, color: '#8B0000', mt: 1 }}>
                     Create new course
                   </Typography>
                 </CardContent>
@@ -173,7 +173,7 @@ export default function FacultyDashboard() {
           }
         }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#ff2d55' }}>New Course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#8B0000' }}>New Course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
           {createError && (
             <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
@@ -219,7 +219,7 @@ export default function FacultyDashboard() {
             variant="contained"
             disabled={creating}
             onClick={handleCreate}
-            sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
           >
             {creating ? 'Creating…' : 'Create Course'}
           </Button>
