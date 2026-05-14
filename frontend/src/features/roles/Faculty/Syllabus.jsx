@@ -123,16 +123,16 @@ export default function FacultySyllabus() {
     URL.revokeObjectURL(link.href)
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const cardStyles = { borderRadius: 4 };
 
   return (
     <FacultyLayout>
-      <Box>
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
             Syllabus Creation
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             {statusMessage}
           </Typography>
         </Box>
@@ -152,15 +152,15 @@ export default function FacultySyllabus() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card sx={cardStyles}>
-              <CardHeader title="Syllabus Builder" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+              <CardHeader title="Syllabus Builder" titleTypographyProps={{ fontWeight: 700 }} />
               <CardContent>
-                <Tabs value={activeSection} onChange={(event, value) => { setActiveSection(value); setAiMessage('') }} textColor="primary" indicatorColor="primary" variant="scrollable" scrollButtons="auto" sx={{ mb: 2 }}>
+                <Tabs value={activeSection} onChange={(event, value) => { setActiveSection(value); setAiMessage('') }} textColor="inherit" indicatorColor="secondary" variant="scrollable" scrollButtons="auto" sx={{ mb: 2, '& .MuiTabs-indicator': { backgroundColor: '#ff2d55' }, '& .MuiTab-root': { color: 'var(--text-secondary)', '&.Mui-selected': { color: '#ff2d55' } } }}>
                   {sectionSteps.map((step, index) => (
                     <Tab key={step.label} label={step.label} />
                   ))}
                 </Tabs>
 
-                <Typography sx={{ color: '#475569', mb: 2 }}>{sectionSteps[activeSection].helper}</Typography>
+                <Typography color="text.secondary" sx={{ mb: 2 }}>{sectionSteps[activeSection].helper}</Typography>
                 <TextField
                   value={sectionDrafts[sectionSteps[activeSection].label]}
                   onChange={(e) => handleSectionChange(e.target.value)}
@@ -171,17 +171,17 @@ export default function FacultySyllabus() {
                   size="small"
                 />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 3 }}>
-                  <Button variant="contained" disabled={!actionEnabled} onClick={handleAiAssist} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, textTransform: 'none', py: 1.5 }}>
+                  <Button variant="contained" disabled={!actionEnabled} onClick={handleAiAssist} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, textTransform: 'none', py: 1.5, fontWeight: 700, borderRadius: 2 }}>
                     AI Assist Draft
                   </Button>
-                  <Button variant="outlined" disabled={!actionEnabled} onClick={handleSectionSave} sx={{ borderColor: '#A52028', color: '#A52028', textTransform: 'none', py: 1.5 }}>
+                  <Button variant="outlined" disabled={!actionEnabled} onClick={handleSectionSave} sx={{ borderColor: '#ff2d55', color: '#ff2d55', textTransform: 'none', py: 1.5, borderRadius: 2, '&:hover': { background: 'rgba(255, 45, 85, 0.1)' } }}>
                     Save Section
                   </Button>
-                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: '#475569', textTransform: 'none', py: 1.5 }}>
+                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'rgba(255,255,255,0.05)' } }}>
                     Mark Syllabus Complete
                   </Button>
                 </Stack>
-                {aiMessage && <Typography sx={{ mt: 2, color: '#065f46', fontWeight: 600 }}>{aiMessage}</Typography>}
+                {aiMessage && <Typography sx={{ mt: 2, color: '#34C759', fontWeight: 600 }}>{aiMessage}</Typography>}
               </CardContent>
             </Card>
           </Grid>
@@ -189,27 +189,27 @@ export default function FacultySyllabus() {
           <Grid item xs={12} md={6}>
             <Stack spacing={3}>
               <Card sx={cardStyles}>
-                <CardHeader title="Upload Existing Syllabus" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+                <CardHeader title="Upload Existing Syllabus" titleTypographyProps={{ fontWeight: 700 }} />
                 <CardContent>
-                  <Typography sx={{ color: '#475569', mb: 3 }}>
+                  <Typography color="text.secondary" sx={{ mb: 3 }}>
                     Upload a completed syllabus file to import your course structure quickly.
                   </Typography>
-                  <Button variant="contained" startIcon={<CloudUploadIcon />} disabled={!actionEnabled} onClick={handleUpload} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5, px: 3 }}>
+                  <Button variant="contained" startIcon={<CloudUploadIcon />} disabled={!actionEnabled} onClick={handleUpload} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', py: 1.5, px: 3, fontWeight: 700 }}>
                     Upload File
                   </Button>
-                  {uploadMessage && <Typography sx={{ mt: 2, color: '#166534', fontWeight: 600 }}>{uploadMessage}</Typography>}
+                  {uploadMessage && <Typography sx={{ mt: 2, color: '#34C759', fontWeight: 600 }}>{uploadMessage}</Typography>}
                 </CardContent>
               </Card>
 
               <Card sx={cardStyles}>
-                <CardHeader title="Generate from ILOs" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+                <CardHeader title="Generate from ILOs" titleTypographyProps={{ fontWeight: 700 }} />
                 <CardContent>
-                  <Typography sx={{ color: '#475569', mb: 2 }}>
+                  <Typography color="text.secondary" sx={{ mb: 2 }}>
                     Type your intended learning outcomes or a prompt and ATLAS will propose a syllabus structure.
                   </Typography>
                   <Stack spacing={2}>
                     <TextField value={iloPrompt} onChange={(e) => setIloPrompt(e.target.value)} multiline rows={6} placeholder="Enter ILOs, course outcomes, and desired topics..." fullWidth size="small" />
-                    <Button variant="contained" startIcon={<AutoAwesomeIcon />} disabled={!actionEnabled} onClick={handleGenerate} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5 }}>
+                    <Button variant="contained" startIcon={<AutoAwesomeIcon />} disabled={!actionEnabled} onClick={handleGenerate} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                       Generate Syllabus
                     </Button>
                   </Stack>
@@ -219,15 +219,15 @@ export default function FacultySyllabus() {
           </Grid>
         </Grid>
 
-        <Divider sx={{ my: 4, borderColor: '#E2E8F0' }} />
+        <Divider sx={{ my: 4, borderColor: 'var(--border-color)' }} />
 
         <Card sx={{ ...cardStyles, mb: 3 }}>
-          <CardHeader title="Review Your Draft" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+          <CardHeader title="Review Your Draft" titleTypographyProps={{ fontWeight: 700 }} />
           <CardContent>
             {sectionSteps.map((step) => (
               <Box key={step.label} sx={{ mb: 3 }}>
-                <Typography sx={{ fontWeight: 700, color: '#0F172A', mb: 1 }}>{step.label}</Typography>
-                <Typography sx={{ color: '#475569', whiteSpace: 'pre-line' }}>
+                <Typography sx={{ fontWeight: 700, mb: 1 }}>{step.label}</Typography>
+                <Typography color="text.secondary" sx={{ whiteSpace: 'pre-line' }}>
                   {sectionDrafts[step.label]?.trim() || 'No draft content yet. Use AI Assist or write your draft above.'}
                 </Typography>
               </Box>
@@ -236,20 +236,20 @@ export default function FacultySyllabus() {
               variant="contained"
               disabled={!actionEnabled}
               onClick={handleDownloadSyllabus}
-              sx={{ mt: 2, background: '#1D4ED8', '&:hover': { background: '#1E40AF' }, borderRadius: 2, textTransform: 'none' }}
+              sx={{ mt: 2, background: 'rgba(255,255,255,0.1)', color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.2)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
             >
               Download Syllabus
             </Button>
           </CardContent>
         </Card>
 
-        <Card sx={{ ...cardStyles, backgroundColor: '#F1F5F9', boxShadow: 'none' }}>
-          <CardHeader title="Syllabus Requirements" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+        <Card sx={{ ...cardStyles, background: 'rgba(255, 45, 85, 0.05)', borderColor: 'rgba(255, 45, 85, 0.2)' }}>
+          <CardHeader title="Syllabus Requirements" titleTypographyProps={{ fontWeight: 700, color: '#ff2d55' }} />
           <CardContent>
-            <Typography sx={{ color: '#475569', mb: 1 }}>
+            <Typography color="text.secondary" sx={{ mb: 1 }}>
               Your syllabus should include:
             </Typography>
-            <ul style={{ margin: 0, paddingLeft: 18, color: '#475569' }}>
+            <ul style={{ margin: 0, paddingLeft: 18, color: 'var(--text-secondary)' }}>
               <li style={{ paddingBottom: '4px' }}>Course goals and intended learning outcomes</li>
               <li style={{ paddingBottom: '4px' }}>Weekly topics and assessment alignment</li>
               <li style={{ paddingBottom: '4px' }}>Grading scheme and attendance policy</li>

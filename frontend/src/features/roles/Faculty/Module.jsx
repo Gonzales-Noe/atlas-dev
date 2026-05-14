@@ -31,16 +31,16 @@ export default function FacultyModule() {
     setFormState({ title: '', week: '', outcome: '', summary: '' })
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const cardStyles = { borderRadius: 4 };
 
   return (
     <FacultyLayout>
-      <Box>
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
             Module Builder
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             Create course modules aligned with your syllabus. Each module can contain week, outcome, and summary details.
           </Typography>
         </Box>
@@ -62,14 +62,14 @@ export default function FacultyModule() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card sx={cardStyles}>
-              <CardHeader title="Create New Module" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} avatar={<ViewModuleIcon sx={{ color: '#A52028' }} />} />
+              <CardHeader title="Create New Module" titleTypographyProps={{ fontWeight: 700 }} avatar={<ViewModuleIcon sx={{ color: '#ff2d55' }} />} />
               <CardContent>
                 <Stack spacing={2}>
                   <TextField label="Module Title" value={formState.title} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, title: e.target.value })} fullWidth size="small" />
                   <TextField label="Week" value={formState.week} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, week: e.target.value })} fullWidth size="small" />
                   <TextField label="Intended Outcome" value={formState.outcome} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, outcome: e.target.value })} fullWidth size="small" />
                   <TextField label="Summary" value={formState.summary} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, summary: e.target.value })} multiline rows={4} fullWidth size="small" />
-                  <Button variant="contained" disabled={!isEnabled || !formState.title} onClick={handleSubmit} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5 }}>
+                  <Button variant="contained" disabled={!isEnabled || !formState.title} onClick={handleSubmit} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                     Add Module
                   </Button>
                 </Stack>
@@ -79,26 +79,26 @@ export default function FacultyModule() {
 
           <Grid item xs={12} md={6}>
             <Card sx={{ ...cardStyles, minHeight: 420 }}>
-              <CardHeader title="Modules Created" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+              <CardHeader title="Modules Created" titleTypographyProps={{ fontWeight: 700 }} />
               <CardContent>
                 {moduleList.length === 0 ? (
-                  <Typography sx={{ color: '#64748B' }}>No modules created yet.</Typography>
+                  <Typography color="text.secondary">No modules created yet.</Typography>
                 ) : (
                   <TableContainer>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Week</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Title</TableCell>
-                          <TableCell sx={{ fontWeight: 700, color: '#475569' }}>Outcome</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Week</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Title</TableCell>
+                          <TableCell sx={{ fontWeight: 700, color: 'text.secondary' }}>Outcome</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {moduleList.map((module) => (
                           <TableRow key={module.id} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                             <TableCell>{module.week}</TableCell>
-                            <TableCell sx={{ fontWeight: 600, color: '#0F172A' }}>{module.title}</TableCell>
-                            <TableCell sx={{ color: '#64748B' }}>{module.outcome}</TableCell>
+                            <TableCell sx={{ fontWeight: 600 }}>{module.title}</TableCell>
+                            <TableCell sx={{ color: 'text.secondary' }}>{module.outcome}</TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
