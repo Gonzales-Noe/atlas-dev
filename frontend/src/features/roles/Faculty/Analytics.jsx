@@ -54,9 +54,9 @@ export default function FacultyAnalytics() {
                 <Typography color="text.secondary" sx={{ mb: 2, fontSize: '1.05rem' }}>
                   {course ? <strong style={{ color: 'var(--text-primary)' }}>{course.courseName}</strong> : 'No course data available.'}
                 </Typography>
-                <Box sx={{ p: 2, bgcolor: 'rgba(255, 45, 85, 0.1)', borderRadius: 3, mb: 2, border: '1px solid rgba(255, 45, 85, 0.2)' }}>
+                <Box sx={{ p: 2, bgcolor: 'rgba(139, 0, 0, 0.08)', borderRadius: 3, mb: 2, border: '1px solid rgba(139, 0, 0, 0.2)' }}>
                   <Typography color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>Modules Created</Typography>
-                  <Typography sx={{ color: '#ff2d55', fontSize: '2.5rem', fontWeight: 800, lineHeight: 1.1 }}>{moduleCount}</Typography>
+                  <Typography sx={{ color: '#8B0000', fontSize: '2.5rem', fontWeight: 800, lineHeight: 1.1 }}>{moduleCount}</Typography>
                 </Box>
                 <Typography color="text.secondary" sx={{ fontSize: '0.9rem' }}>
                   Syllabus Status: <strong style={{ color: localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? '#34C759' : '#FF9F0A' }}>{localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? 'Ready' : 'Pending'}</strong>
@@ -75,8 +75,8 @@ export default function FacultyAnalytics() {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
                     <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                     <YAxis tickLine={false} axisLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
-                    <Tooltip cursor={{ fill: 'var(--border-color)' }} contentStyle={{ borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#ff2d55', fontWeight: 700 }} />
-                    <Bar dataKey="progress" fill="#ff2d55" radius={[4, 4, 0, 0]} barSize={32} />
+                    <Tooltip cursor={{ fill: 'var(--border-color)' }} contentStyle={{ borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#8B0000', fontWeight: 700 }} />
+                    <Bar dataKey="progress" fill="#8B0000" radius={[4, 4, 0, 0]} barSize={32} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>

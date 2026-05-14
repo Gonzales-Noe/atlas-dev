@@ -1,4 +1,4 @@
-﻿﻿// src/components/FacultyCoursesBoard.jsx
+﻿﻿﻿﻿// src/components/FacultyCoursesBoard.jsx
 // Course landing page — light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
@@ -37,7 +37,7 @@ import AutoAlert from './AutoAlert'
 import atlasLogo from '../assets/atlas-logo.png'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#8B0000', '#1565C0', '#2E7D32', '#6A1B9A', '#E65100']
+const CARD_COLORS = ['#8B0000', '#A52A2A', '#B71C1C', '#C62828', '#D32F2F']
 
 export default function FacultyCoursesBoard() {
   const navigate = useNavigate()
