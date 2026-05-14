@@ -25,81 +25,86 @@ export default function FacultyAnalytics() {
     setModuleCount(modules ? JSON.parse(modules).length : 0)
   }, [])
 
-  // Shared styling for the cards
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  // Dark Neon Glassmorphism Card Style
+  const cardStyles = { 
+    borderRadius: 4, 
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column'
+  };
 
   return (
     <FacultyLayout>
-      <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: '85vh' }}>
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
             Faculty Analytics
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             Track course progress and module engagement across the semester.
           </Typography>
         </Box>
 
-        <Grid container spacing={3}>
-          {/* Course Overview */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ ...cardStyles, minHeight: 320 }}>
-              <CardHeader title="Course Overview" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent>
-                <Typography sx={{ mb: 2, color: '#475569', fontSize: '1.1rem' }}>
-                  {course ? <strong style={{ color: '#0F172A' }}>{course.courseName}</strong> : 'No course data available.'}
+        <Grid container spacing={2} sx={{ flex: 1 }}>
+          {/* Top row: Summary numbers */}
+          <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ ...cardStyles, width: '100%' }}>
+              <CardHeader title="Course Overview" titleTypographyProps={{ fontWeight: 700, fontSize: '1.1rem' }} sx={{ pb: 0, pt: 2.5 }} />
+              <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <Typography color="text.secondary" sx={{ mb: 2, fontSize: '1.05rem' }}>
+                  {course ? <strong style={{ color: 'var(--text-primary)' }}>{course.courseName}</strong> : 'No course data available.'}
                 </Typography>
-                <Box sx={{ p: 2, bgcolor: '#F8FAFC', borderRadius: 2, mb: 2 }}>
-                  <Typography sx={{ color: '#64748B', fontWeight: 600 }}>Modules Created</Typography>
-                  <Typography sx={{ color: '#A52028', fontSize: '1.8rem', fontWeight: 800 }}>{moduleCount}</Typography>
+                <Box sx={{ p: 2, bgcolor: 'rgba(255, 45, 85, 0.1)', borderRadius: 3, mb: 2, border: '1px solid rgba(255, 45, 85, 0.2)' }}>
+                  <Typography color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>Modules Created</Typography>
+                  <Typography sx={{ color: '#ff2d55', fontSize: '2.5rem', fontWeight: 800, lineHeight: 1.1 }}>{moduleCount}</Typography>
                 </Box>
-                <Typography sx={{ color: '#64748B' }}>
-                  Syllabus Status: <strong style={{ color: localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? '#166534' : '#854D0E' }}>{localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? 'Ready' : 'Pending'}</strong>
+                <Typography color="text.secondary" sx={{ fontSize: '0.9rem' }}>
+                  Syllabus Status: <strong style={{ color: localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? '#34C759' : '#FF9F0A' }}>{localStorage.getItem('atlas_faculty_syllabus_created') === 'true' ? 'Ready' : 'Pending'}</strong>
                 </Typography>
               </CardContent>
             </Card>
           </Grid>
 
           {/* Progress Snapshot */}
-          <Grid item xs={12} md={6}>
-            <Card sx={{ ...cardStyles, minHeight: 320 }}>
-              <CardHeader title="Progress Snapshot" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent sx={{ height: 300 }}>
+          <Grid item xs={12} md={8} sx={{ display: 'flex' }}>
+            <Card sx={{ ...cardStyles, width: '100%' }}>
+              <CardHeader title="Progress Snapshot" titleTypographyProps={{ fontWeight: 700, fontSize: '1.1rem' }} sx={{ pb: 0, pt: 2.5 }} />
+              <CardContent sx={{ flex: 1, minHeight: 220 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={sampleData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#64748B' }} />
-                    <YAxis tickLine={false} axisLine={false} tick={{ fill: '#64748B' }} />
-                    <Tooltip cursor={{ fill: '#F1F5F9' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="progress" fill="#A52028" radius={[4, 4, 0, 0]} barSize={40} />
+                  <BarChart data={sampleData} margin={{ top: 15, right: 15, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                    <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                    <YAxis tickLine={false} axisLine={false} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
+                    <Tooltip cursor={{ fill: 'var(--border-color)' }} contentStyle={{ borderRadius: '12px', border: '1px solid var(--border-color)', background: 'var(--bg-card)', color: 'var(--text-primary)', backdropFilter: 'blur(10px)' }} itemStyle={{ color: '#ff2d55', fontWeight: 700 }} />
+                    <Bar dataKey="progress" fill="#ff2d55" radius={[4, 4, 0, 0]} barSize={32} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
           </Grid>
 
-          {/* Behavioral Analytics (Restored) */}
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Behavioral Analytics" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent sx={{ pt: 0 }}>
+          {/* Behavioral Analytics */}
+          <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+            <Card sx={{ ...cardStyles, width: '100%' }}>
+              <CardHeader title="Behavioral Analytics" titleTypographyProps={{ fontWeight: 700, fontSize: '1.1rem' }} sx={{ pb: 0, pt: 2.5 }} />
+              <CardContent sx={{ pt: 1, flex: 1, pb: '16px !important' }}>
                 <List disablePadding>
-                  <ListItem disableGutters sx={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Student engagement</Typography>} 
-                      secondary="High engagement on interactive modules" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Student engagement</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>High engagement on interactive modules</Typography>} 
                     />
                   </ListItem>
-                  <ListItem disableGutters sx={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Assessment readiness</Typography>} 
-                      secondary="More formative items needed for Week 3" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Assessment readiness</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>More formative items needed for Week 3</Typography>} 
                     />
                   </ListItem>
-                  <ListItem disableGutters>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Syllabus completion</Typography>} 
-                      secondary="Syllabus ready to support module planning" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Syllabus completion</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Syllabus ready to support module planning</Typography>} 
                     />
                   </ListItem>
                 </List>
@@ -107,28 +112,28 @@ export default function FacultyAnalytics() {
             </Card>
           </Grid>
 
-          {/* Immediate Actions (Restored) */}
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Immediate Actions" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
-              <CardContent sx={{ pt: 0 }}>
+          {/* Immediate Actions */}
+          <Grid item xs={12} md={6} sx={{ display: 'flex' }}>
+            <Card sx={{ ...cardStyles, width: '100%' }}>
+              <CardHeader title="Immediate Actions" titleTypographyProps={{ fontWeight: 700, fontSize: '1.1rem' }} sx={{ pb: 0, pt: 2.5 }} />
+              <CardContent sx={{ pt: 1, flex: 1, pb: '16px !important' }}>
                 <List disablePadding>
-                  <ListItem disableGutters sx={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Finish module plans</Typography>} 
-                      secondary="Complete Week 4 and Week 5 details" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Finish module plans</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Complete Week 4 and Week 5 details</Typography>} 
                     />
                   </ListItem>
-                  <ListItem disableGutters sx={{ borderBottom: '1px solid #F1F5F9' }}>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Review assessments</Typography>} 
-                      secondary="Align questions with learning outcomes" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Review assessments</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Align questions with learning outcomes</Typography>} 
                     />
                   </ListItem>
-                  <ListItem disableGutters>
+                  <ListItem disableGutters sx={{ py: 1.5 }}>
                     <ListItemText 
-                      primary={<Typography sx={{ fontWeight: 600, color: '#1E293B' }}>Share syllabus</Typography>} 
-                      secondary="Publish course syllabus to students" 
+                      primary={<Typography sx={{ fontWeight: 600, fontSize: '0.95rem' }}>Share syllabus</Typography>} 
+                      secondary={<Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>Publish course syllabus to students</Typography>} 
                     />
                   </ListItem>
                 </List>

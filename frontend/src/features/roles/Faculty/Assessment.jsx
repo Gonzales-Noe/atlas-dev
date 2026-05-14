@@ -39,16 +39,16 @@ export default function FacultyAssessment() {
     setSuccessMessage('Assessment items generated. Review them and adjust as needed.')
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const cardStyles = { borderRadius: 4 };
 
   return (
     <FacultyLayout>
-      <Box>
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
             Assessment Generator
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             Create formative and summative assessment items aligned with your course modules.
           </Typography>
         </Box>
@@ -61,11 +61,11 @@ export default function FacultyAssessment() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card sx={cardStyles}>
-              <CardHeader title="Assessment Prompt" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+              <CardHeader title="Assessment Prompt" titleTypographyProps={{ fontWeight: 700 }} />
               <CardContent>
                 <Stack spacing={2}>
                   <TextField value={assessmentPrompt} onChange={(e) => setAssessmentPrompt(e.target.value)} multiline rows={6} placeholder="Enter a prompt or learning objective for the assessment..." fullWidth size="small" disabled={!canGenerate} />
-                  <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5 }}>
+                  <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                     Generate Assessment Items
                   </Button>
                 </Stack>
@@ -75,15 +75,15 @@ export default function FacultyAssessment() {
 
           <Grid item xs={12} md={6}>
             <Card sx={{ ...cardStyles, minHeight: 320 }}>
-              <CardHeader title="Generated Items" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+              <CardHeader title="Generated Items" titleTypographyProps={{ fontWeight: 700 }} />
               <CardContent>
                 {assessmentItems.length === 0 ? (
-                  <Typography sx={{ color: '#64748B' }}>No assessment items generated yet.</Typography>
+                  <Typography color="text.secondary">No assessment items generated yet.</Typography>
                 ) : (
-                  <List sx={{ bgcolor: '#F8FAFC', borderRadius: 2 }}>
+                  <List sx={{ borderRadius: 2, border: '1px solid var(--border-color)' }}>
                     {assessmentItems.map((item) => (
-                      <ListItem key={item.id} alignItems="flex-start" sx={{ borderBottom: '1px solid #E2E8F0', '&:last-child': { borderBottom: 'none' } }}>
-                        <ListItemText primary={<Typography sx={{ fontWeight: 700, color: '#0F172A' }}>{item.title}</Typography>} secondary={<Typography sx={{ color: '#475569', fontSize: '0.85rem', mt: 0.5 }}>{item.instructions}</Typography>} />
+                      <ListItem key={item.id} alignItems="flex-start">
+                        <ListItemText primary={<Typography sx={{ fontWeight: 700 }}>{item.title}</Typography>} secondary={<Typography color="text.secondary" sx={{ fontSize: '0.85rem', mt: 0.5 }}>{item.instructions}</Typography>} />
                       </ListItem>
                     ))}
                   </List>

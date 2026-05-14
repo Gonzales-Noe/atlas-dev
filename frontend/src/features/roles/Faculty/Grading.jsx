@@ -28,16 +28,16 @@ export default function FacultyGrading() {
     setComments('')
   }
 
-  const cardStyles = { borderRadius: 3, border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' };
+  const cardStyles = { borderRadius: 4 };
 
   return (
     <FacultyLayout>
-      <Box>
+      <Box sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1, color: '#0F172A' }}>
+          <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
             Grading & Feedback
           </Typography>
-          <Typography sx={{ color: '#64748B', fontSize: '0.95rem' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             Record grades and provide feedback for student work tied to course modules.
           </Typography>
         </Box>
@@ -48,11 +48,11 @@ export default function FacultyGrading() {
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <Card sx={cardStyles}>
-                <CardHeader title="Select Module" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} />
+                <CardHeader title="Select Module" titleTypographyProps={{ fontWeight: 700 }} />
                 <CardContent>
                   <Stack spacing={2}>
                     {moduleList.map((module) => (
-                      <Button key={module.id} variant={selectedModuleId === module.id ? 'contained' : 'outlined'} onClick={() => setSelectedModuleId(module.id)} sx={{ justifyContent: 'flex-start', textTransform: 'none', background: selectedModuleId === module.id ? '#A52028' : undefined, color: selectedModuleId === module.id ? '#fff' : '#64748B', borderColor: '#E2E8F0', py: 1.5, borderRadius: 2, '&:hover': { background: selectedModuleId === module.id ? '#8B1A20' : '#F1F5F9' } }}>
+                      <Button key={module.id} variant={selectedModuleId === module.id ? 'contained' : 'outlined'} onClick={() => setSelectedModuleId(module.id)} sx={{ justifyContent: 'flex-start', textTransform: 'none', background: selectedModuleId === module.id ? '#ff2d55' : undefined, color: selectedModuleId === module.id ? '#fff' : 'var(--text-secondary)', borderColor: 'var(--border-color)', py: 1.5, borderRadius: 2, '&:hover': { background: selectedModuleId === module.id ? '#d02045' : 'rgba(255, 45, 85, 0.15)', borderColor: '#ff2d55' } }}>
                         {module.title}
                       </Button>
                     ))}
@@ -63,15 +63,15 @@ export default function FacultyGrading() {
 
             <Grid item xs={12} md={6}>
               <Card sx={cardStyles}>
-                <CardHeader title="Grade Student Work" titleTypographyProps={{ fontWeight: 700, color: '#0F172A' }} avatar={<GradeIcon sx={{ color: '#A52028' }} />} />
+                <CardHeader title="Grade Student Work" titleTypographyProps={{ fontWeight: 700 }} avatar={<GradeIcon sx={{ color: '#ff2d55' }} />} />
                 <CardContent>
                   <Stack spacing={3}>
                     <TextField label="Score" value={score} onChange={(e) => setScore(e.target.value)} fullWidth size="small" />
                     <TextField label="Feedback comments" value={comments} onChange={(e) => setComments(e.target.value)} multiline rows={4} fullWidth size="small" />
-                    <Button variant="contained" onClick={handleSave} sx={{ background: '#A52028', '&:hover': { background: '#8B1A20' }, borderRadius: 2, textTransform: 'none', py: 1.5 }}>
+                    <Button variant="contained" onClick={handleSave} sx={{ background: '#ff2d55', '&:hover': { background: '#d02045' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                       Save Feedback
                     </Button>
-                    {selectedModule && <Typography sx={{ color: '#64748B', mt: 1, fontSize: '0.9rem' }}>Grading module: <strong style={{ color: '#0F172A' }}>{selectedModule.title}</strong></Typography>}
+                    {selectedModule && <Typography color="text.secondary" sx={{ mt: 1, fontSize: '0.9rem' }}>Grading module: <strong style={{ color: 'var(--text-primary)' }}>{selectedModule.title}</strong></Typography>}
                     {success && <Alert severity="success" sx={{ borderRadius: 2 }}>{success}</Alert>}
                   </Stack>
                 </CardContent>
