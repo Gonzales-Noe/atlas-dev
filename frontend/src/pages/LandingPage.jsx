@@ -1,240 +1,234 @@
-import { useState, useEffect, useRef } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { ROUTES } from '../config/route'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import atlasLogo from '../assets/atlas-logo.png'
-import atlasMascot from '../assets/atlas.png'
+import { useEffect, useRef, useState } from 'react'
 
-// ── Laptop Mockup ─────────────────────────────────────────────────────────────
-function LaptopMockup({ children }) {
-  return (
-    <div className="relative w-full max-w-[420px] mx-auto select-none">
-      {/* Screen bezel */}
-      <div className="relative bg-[#1a1a1a] rounded-t-xl rounded-b-sm pt-3 px-3 pb-2 shadow-2xl border border-[#333]">
-        {/* Camera dot */}
-        <div className="absolute top-1.5 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-[#444]" />
-        {/* Screen */}
-        <div className="bg-[#f5f5f5] rounded-md overflow-hidden" style={{ aspectRatio: '16/10' }}>
-          {children}
-        </div>
-      </div>
-      {/* Hinge */}
-      <div className="h-[6px] bg-gradient-to-b from-[#2a2a2a] to-[#1a1a1a] rounded-b-sm" />
-      {/* Base */}
-      <div className="h-[10px] bg-gradient-to-b from-[#222] to-[#111] rounded-b-xl mx-[-6px] shadow-lg" />
-      {/* Foot shadow */}
-      <div className="h-[3px] bg-black/20 blur-sm rounded-full mx-4 mt-0.5" />
-    </div>
-  )
-}
-
-// ── App Screen Preview ────────────────────────────────────────────────────────
-function AppScreenPreview({ mascotSmall = false }) {
-  return (
-    <div className="w-full h-full flex bg-white relative overflow-hidden">
-      {/* Fake sidebar */}
-      <div className="w-[22%] bg-[#8B0000] h-full flex flex-col items-center py-2 gap-1.5 flex-shrink-0">
-        <div className="w-6 h-6 rounded-full bg-white/20 mt-1" />
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className={`w-[70%] h-1.5 rounded-full ${i === 0 ? 'bg-white/70' : 'bg-white/20'}`} />
-        ))}
-      </div>
-      {/* Fake content */}
-      <div className="flex-1 p-2 flex flex-col gap-1.5 bg-[#f8f8f8]">
-        <div className="w-[55%] h-2 bg-[#8B0000]/30 rounded-full" />
-        <div className="w-[35%] h-1.5 bg-gray-200 rounded-full" />
-        <div className="flex gap-1.5 mt-1">
-          {['#8B0000', '#c0392b', '#922b21'].map((c, i) => (
-            <div key={i} className="flex-1 h-8 rounded" style={{ background: c, opacity: 0.15 + i * 0.1 }} />
-          ))}
-        </div>
-        <div className="flex-1 bg-white rounded border border-gray-100 p-1.5 flex flex-col gap-1">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="flex gap-1 items-center">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#8B0000]/40" />
-              <div className="flex-1 h-1 bg-gray-200 rounded-full" />
-            </div>
-          ))}
-        </div>
-        {/* Join button */}
-        <div className="self-start bg-[#8B0000] text-white text-[6px] px-1.5 py-0.5 rounded font-bold">
-          Join ATLAS
-        </div>
-      </div>
-      {/* Mascot overlay */}
-      <img
-        src={atlasMascot}
-        alt=""
-        className="absolute right-0 bottom-0 h-[55%] object-contain pointer-events-none"
-        style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.2))' }}
-      />
-    </div>
-  )
-}
-
-// ── Feature Row ───────────────────────────────────────────────────────────────
-function FeatureRow({ title, description, reverse = false, index }) {
+// ── Scroll-triggered animation hook ─────────────────────────────────────────
+function useInView(threshold = 0.15) {
   const ref = useRef(null)
-  const [visible, setVisible] = useState(false)
-
+  const [inView, setInView] = useState(false)
   useEffect(() => {
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true) },
-      { threshold: 0.15 }
+      ([entry]) => { if (entry.isIntersecting) setInView(true) },
+      { threshold }
     )
     if (ref.current) observer.observe(ref.current)
     return () => observer.disconnect()
-  }, [])
-
-  return (
-    <div
-      ref={ref}
-      className={`flex flex-col md:flex-row items-center gap-10 md:gap-16 py-12 md:py-16 transition-all duration-700 ease-out
-        ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}
-        ${reverse ? 'md:flex-row-reverse' : ''}`}
-      style={{ transitionDelay: `${index * 80}ms` }}
-    >
-      {/* Laptop */}
-      <div className="w-full md:w-[52%] flex justify-center">
-        <LaptopMockup>
-          <AppScreenPreview />
-        </LaptopMockup>
-      </div>
-
-      {/* Text */}
-      <div className="w-full md:w-[48%] text-center md:text-left px-2 md:px-0">
-        <div className="inline-flex items-center gap-2 mb-4">
-          <span className="text-3xl">{['🎓','📋','✅','📊'][index]}</span>
-        </div>
-        <h3 className="text-[#8B0000] text-2xl md:text-3xl font-bold mb-4 leading-tight">
-          {title}
-        </h3>
-        <p className="text-gray-600 text-base leading-relaxed">
-          {description}
-        </p>
-      </div>
-    </div>
-  )
+  }, [threshold])
+  return [ref, inView]
 }
 
-// ── Testimonial Card ──────────────────────────────────────────────────────────
-function TestimonialCard({ quote, author, role, delay }) {
-  const ref = useRef(null)
-  const [visible, setVisible] = useState(false)
-
+// ── Animated counter ─────────────────────────────────────────────────────────
+function AnimatedNumber({ target, suffix = '', duration = 1800 }) {
+  const [count, setCount] = useState(0)
+  const [ref, inView] = useInView()
   useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true) },
-      { threshold: 0.1 }
-    )
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
+    if (!inView) return
+    let start = 0
+    const step = target / (duration / 16)
+    const timer = setInterval(() => {
+      start += step
+      if (start >= target) { setCount(target); clearInterval(timer) }
+      else setCount(Math.floor(start))
+    }, 16)
+    return () => clearInterval(timer)
+  }, [inView, target, duration])
+  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>
+}
 
+// ── Floating orb ─────────────────────────────────────────────────────────────
+function Orb({ style }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      borderRadius: '50%',
+      filter: 'blur(80px)',
+      pointerEvents: 'none',
+      zIndex: 0,
+      ...style,
+    }} />
+  )
+}
+
+// ── Glass card ───────────────────────────────────────────────────────────────
+function GlassCard({ children, style, className = '' }) {
   return (
     <div
-      ref={ref}
-      className={`bg-[#8B0000] text-white rounded-xl p-6 flex flex-col gap-3 shadow-lg
-        transition-all duration-700 ease-out
-        ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
-      style={{ transitionDelay: `${delay}ms` }}
+      className={className}
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        borderRadius: 20,
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        ...style,
+      }}
     >
-      <div className="text-yellow-400 text-lg tracking-widest">★★★★★</div>
-      <p className="text-white/90 text-sm leading-relaxed italic flex-1">
-        "{quote}"
-      </p>
-      <div className="border-t border-white/20 pt-3 mt-auto">
-        <p className="font-bold text-sm">{author}</p>
-        <p className="text-white/70 text-xs mt-0.5">{role}</p>
-      </div>
+      {children}
     </div>
   )
 }
 
-// ── Team Card ─────────────────────────────────────────────────────────────────
-function TeamCard({ name, title, initials, delay }) {
-  const ref = useRef(null)
-  const [visible, setVisible] = useState(false)
+// ── Pricing data ─────────────────────────────────────────────────────────────
+const PLANS = [
+  {
+    name: 'Starter',
+    price: '₱2,499',
+    period: '/month',
+    tagline: 'For small departments getting started',
+    color: 'rgba(139,0,0,0.25)',
+    border: 'rgba(200,60,60,0.4)',
+    glow: 'rgba(139,0,0,0.15)',
+    features: [
+      'Up to 10 faculty accounts',
+      'Unlimited course creation',
+      'OBE syllabus generator',
+      'ILO-mapped assessments',
+      'Google Sheets integration',
+      'Email support',
+    ],
+    cta: 'Get Started',
+    popular: false,
+  },
+  {
+    name: 'Professional',
+    price: '₱6,999',
+    period: '/month',
+    tagline: 'For growing institutions',
+    color: 'rgba(180,20,20,0.35)',
+    border: 'rgba(255,80,80,0.6)',
+    glow: 'rgba(200,0,0,0.25)',
+    features: [
+      'Up to 50 faculty accounts',
+      'Everything in Starter',
+      'Prescriptive analytics dashboard',
+      'Bloom\'s Taxonomy tagging',
+      'Admin dashboard & reports',
+      'Priority support',
+      'Custom branding',
+    ],
+    cta: 'Most Popular',
+    popular: true,
+  },
+  {
+    name: 'Enterprise',
+    price: 'Custom',
+    period: '',
+    tagline: 'For large universities',
+    color: 'rgba(100,0,0,0.2)',
+    border: 'rgba(255,120,120,0.3)',
+    glow: 'rgba(139,0,0,0.1)',
+    features: [
+      'Unlimited faculty accounts',
+      'Everything in Professional',
+      'Dedicated onboarding',
+      'API access',
+      'SLA guarantee',
+      'On-premise option',
+      'Custom integrations',
+    ],
+    cta: 'Contact Sales',
+    popular: false,
+  },
+]
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true) },
-      { threshold: 0.1 }
-    )
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
+const FEATURES = [
+  {
+    icon: '🎓',
+    title: 'Set Up Your Course',
+    desc: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course.',
+    accent: 'rgba(139,0,0,0.3)',
+  },
+  {
+    icon: '📋',
+    title: 'Generate Your Syllabus & Modules',
+    desc: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials, not generic templates.',
+    accent: 'rgba(180,20,20,0.3)',
+  },
+  {
+    icon: '✅',
+    title: 'Build Your Assessments',
+    desc: "Generate ILO-mapped exams in multiple formats. Every item is tagged by Bloom's Taxonomy level and comes with an automated answer key or essay rubric.",
+    accent: 'rgba(100,0,0,0.3)',
+  },
+  {
+    icon: '📊',
+    title: 'Prescriptive Analytics',
+    desc: 'Connect your Google Sheets gradebook. ATLAS computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
+    accent: 'rgba(160,10,10,0.3)',
+  },
+  {
+    icon: '🏫',
+    title: 'Admin Dashboard',
+    desc: 'Provision faculty accounts, monitor institutional performance, and generate compliance reports — all from a unified dashboard built for academic leaders.',
+    accent: 'rgba(120,0,0,0.3)',
+  },
+  {
+    icon: '⚡',
+    title: 'Instant Deployment',
+    desc: 'No complex setup. Approved institutions receive credentials within 2–3 business days and can deploy faculty accounts on the same day.',
+    accent: 'rgba(200,40,40,0.3)',
+  },
+]
 
-  return (
-    <div
-      ref={ref}
-      className={`bg-gradient-to-b from-[#8B0000] to-[#6B0000] text-white rounded-xl overflow-hidden shadow-lg
-        transition-all duration-700 ease-out hover:-translate-y-1 hover:shadow-2xl cursor-default
-        ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}
-      style={{ transitionDelay: `${delay}ms` }}
-    >
-      {/* Avatar area */}
-      <div className="h-44 flex items-center justify-center bg-[#7a0000]/40">
-        <div className="w-20 h-20 rounded-full bg-white/20 flex items-center justify-center">
-          <span className="text-white font-bold text-xl">{initials}</span>
-        </div>
-      </div>
-      {/* Info */}
-      <div className="px-5 py-4 text-center">
-        <p className="font-bold text-base">{name}</p>
-        <p className="text-white/70 text-xs mt-1 uppercase tracking-wider">{title}</p>
-      </div>
-    </div>
-  )
-}
+const TESTIMONIALS = [
+  {
+    quote: "I used to spend entire weekends preparing for one course. With ATLAS, I had a complete, properly aligned syllabus ready in under 20 minutes. That time went back to my students.",
+    author: 'Faculty Member',
+    role: 'College of Education',
+    stars: 5,
+  },
+  {
+    quote: "The prescriptive dashboard showed me exactly which topics my class was failing on — by learning outcome, not just by score. I've never had that kind of clarity from any tool before.",
+    author: 'Instructor',
+    role: 'College of Arts and Sciences',
+    stars: 5,
+  },
+  {
+    quote: "Our department adopted ATLAS mid-semester. Provisioning our faculty was straightforward, and they were generating exams and syllabi on the same day. The onboarding friction was genuinely minimal.",
+    author: 'College Head',
+    role: 'College of Information',
+    stars: 5,
+  },
+]
 
-// ── Section Heading ───────────────────────────────────────────────────────────
-function SectionHeading({ label, title, subtitle }) {
-  const ref = useRef(null)
-  const [visible, setVisible] = useState(false)
+const TEAM = [
+  { name: 'Hearty Isabel Delacion', title: 'Co-Founder & CEO', initials: 'HD' },
+  { name: 'Jasmin B. Esperida', title: 'Co-Founder & CEO', initials: 'JE' },
+  { name: 'Noe L. Gonzales', title: 'Co-Founder & CEO', initials: 'NG' },
+]
 
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisible(true) },
-      { threshold: 0.2 }
-    )
-    if (ref.current) observer.observe(ref.current)
-    return () => observer.disconnect()
-  }, [])
+// ── NAV LINKS (mirrored from sign-in/sign-up pages) ──────────────────────────
+const NAV_LINKS = [
+  { label: 'HOME', href: '#home' },
+  { label: 'PRICING', href: '#pricing' },
+  { label: 'CONTACT', href: '#contact' },
+]
 
-  return (
-    <div
-      ref={ref}
-      className={`text-center mb-12 transition-all duration-700 ease-out
-        ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-6'}`}
-    >
-      {label && (
-        <span className="text-xs font-bold tracking-[0.2em] uppercase text-[#8B0000] bg-[#8B0000]/10 px-3 py-1 rounded-full mb-4 inline-block">
-          {label}
-        </span>
-      )}
-      <h2 className="text-[#8B0000] text-3xl md:text-4xl font-bold mt-3 mb-3">{title}</h2>
-      {subtitle && <p className="text-gray-500 text-base max-w-xl mx-auto leading-relaxed">{subtitle}</p>}
-    </div>
-  )
-}
-
-// ── Main Landing Page ─────────────────────────────────────────────────────────
 export default function LandingPage() {
   const navigate = useNavigate()
   const { isAuthenticated, user } = useAuth()
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const [heroVisible, setHeroVisible] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState('home')
 
   useEffect(() => {
-    const timer = setTimeout(() => setHeroVisible(true), 100)
-    const onScroll = () => setScrolled(window.scrollY > 20)
-    window.addEventListener('scroll', onScroll)
-    return () => { clearTimeout(timer); window.removeEventListener('scroll', onScroll) }
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 40)
+      const sections = ['home', 'features', 'testimonials', 'team', 'pricing', 'contact']
+      for (const id of sections.reverse()) {
+        const el = document.getElementById(id)
+        if (el && window.scrollY >= el.offsetTop - 120) {
+          setActiveSection(id)
+          break
+        }
+      }
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const handleGetStarted = () => {
+  function handleGetStarted() {
     if (isAuthenticated) {
       if (user?.role === 'superadmin') navigate('/superadmin/dashboard')
       else if (user?.role === 'admin') navigate('/admin/dashboard')
@@ -244,321 +238,805 @@ export default function LandingPage() {
     }
   }
 
-  const features = [
-    {
-      title: 'Set Up Your Course',
-      description: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course — no generic templates, no wasted time.',
-    },
-    {
-      title: 'Generate Your Syllabus & Modules',
-      description: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials. Expanded lesson modules included, ready for classroom use.',
-    },
-    {
-      title: 'Build Your Assessments',
-      description: "Generate ILO-mapped exams in multiple-choice, essay, or mixed formats. Every item is tagged by Bloom's Taxonomy level and comes with an automated answer key or essay rubric.",
-    },
-    {
-      title: 'Understand Your Class',
-      description: 'Connect your gradebook. ATLAS computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next — by learning outcome, not just by score.',
-    },
-  ]
+  function scrollTo(id) {
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth' })
+    setMobileOpen(false)
+  }
 
-  const testimonials = [
-    {
-      quote: "I used to spend entire weekends preparing for one course. With ATLAS, I had a complete, properly aligned syllabus ready in under 20 minutes. That time went back to my students.",
-      author: 'Faculty Member',
-      role: 'College of Education',
-    },
-    {
-      quote: "The prescriptive dashboard showed me exactly which topics my class was failing on — by learning outcome, not just by score. I've never had that kind of clarity from any tool before.",
-      author: 'Instructor',
-      role: 'College of Arts and Sciences',
-    },
-    {
-      quote: "Our department adopted ATLAS mid-semester. Provisioning our faculty was straightforward, and they were generating exams and syllabi on the same day. The onboarding friction was genuinely minimal.",
-      author: 'College Head',
-      role: 'College of Information',
-    },
-  ]
-
-  const team = [
-    { name: 'Hearty Isabel Delacion', title: 'Co-Founder & CEO', initials: 'HI' },
-    { name: 'Jasmin B. Esperida',     title: 'Co-Founder & CEO', initials: 'JE' },
-    { name: 'Noe L. Gonzales',        title: 'Co-Founder & CEO', initials: 'NL' },
-  ]
+  const [featRef, featInView] = useInView()
+  const [statsRef, statsInView] = useInView()
+  const [testimonialsRef, testimonialsInView] = useInView()
+  const [teamRef, teamInView] = useInView()
+  const [pricingRef, pricingInView] = useInView()
 
   return (
-    <div className="min-h-screen bg-white font-sans overflow-x-hidden">
+    <div style={{
+      minHeight: '100vh',
+      background: '#0A0A0B',
+      color: '#F0F0F0',
+      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+      overflowX: 'hidden',
+    }}>
 
-      {/* ── Navbar ── */}
-      <nav className={`sticky top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 backdrop-blur shadow-sm border-b border-gray-100' : 'bg-white border-b border-gray-100'}`}>
-        <div className="max-w-7xl mx-auto px-4 md:px-8 py-3.5 flex items-center justify-between">
-          <Link to="/" className="flex items-center">
-            <img src={atlasLogo} alt="ATLAS" className="h-9 object-contain" />
-          </Link>
+      {/* ── GLOBAL STYLES ─────────────────────────────────────────────────── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap');
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-6 lg:gap-8">
-            {[
-              { label: 'HOME', href: '#home' },
-              { label: 'FEATURES', href: '#features' },
-              { label: 'TESTIMONIALS', href: '#testimonials' },
-              { label: 'TEAM', href: '#team' },
-            ].map(item => (
-              <a
-                key={item.label}
-                href={item.href}
-                className="text-gray-600 hover:text-[#8B0000] text-sm font-semibold tracking-wide transition-colors"
-                onClick={() => setIsMenuOpen(false)}
+        * { box-sizing: border-box; }
+
+        html { scroll-behavior: smooth; }
+
+        .atlas-btn-primary {
+          background: linear-gradient(135deg, #8B0000, #C0392B);
+          color: #fff;
+          border: none;
+          border-radius: 12px;
+          font-family: inherit;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          letter-spacing: 0.02em;
+        }
+        .atlas-btn-primary:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 32px rgba(139,0,0,0.5);
+          background: linear-gradient(135deg, #A00000, #E04428);
+        }
+        .atlas-btn-outline {
+          background: transparent;
+          color: #F0F0F0;
+          border: 1px solid rgba(255,255,255,0.2);
+          border-radius: 12px;
+          font-family: inherit;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.25s ease;
+        }
+        .atlas-btn-outline:hover {
+          border-color: rgba(255,255,255,0.5);
+          background: rgba(255,255,255,0.07);
+        }
+
+        .nav-link {
+          color: rgba(255,255,255,0.65);
+          text-decoration: none;
+          font-size: 0.82rem;
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          transition: color 0.2s;
+          cursor: pointer;
+          background: none;
+          border: none;
+          font-family: inherit;
+          padding: 4px 0;
+        }
+        .nav-link:hover, .nav-link.active {
+          color: #fff;
+        }
+        .nav-link.active {
+          border-bottom: 2px solid #C0392B;
+        }
+
+        .feature-card {
+          background: rgba(255,255,255,0.03);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
+          padding: 2rem;
+          transition: all 0.35s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .feature-card::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 20px;
+          opacity: 0;
+          transition: opacity 0.35s ease;
+          background: linear-gradient(135deg, rgba(139,0,0,0.12), transparent);
+        }
+        .feature-card:hover {
+          border-color: rgba(192,57,43,0.4);
+          transform: translateY(-4px);
+          box-shadow: 0 20px 60px rgba(139,0,0,0.15);
+        }
+        .feature-card:hover::before {
+          opacity: 1;
+        }
+
+        .testimonial-card {
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.09);
+          border-radius: 20px;
+          padding: 2rem;
+          transition: all 0.3s ease;
+        }
+        .testimonial-card:hover {
+          border-color: rgba(192,57,43,0.35);
+          background: rgba(139,0,0,0.08);
+          transform: translateY(-3px);
+        }
+
+        .pricing-card {
+          background: rgba(255,255,255,0.03);
+          border-radius: 24px;
+          padding: 2.5rem;
+          transition: all 0.35s ease;
+          position: relative;
+          overflow: hidden;
+        }
+        .pricing-card:hover {
+          transform: translateY(-6px);
+        }
+        .pricing-card.popular {
+          background: rgba(139,0,0,0.15);
+        }
+
+        .team-card {
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 20px;
+          padding: 2.5rem 2rem;
+          text-align: center;
+          transition: all 0.3s ease;
+        }
+        .team-card:hover {
+          border-color: rgba(192,57,43,0.4);
+          background: rgba(139,0,0,0.08);
+          transform: translateY(-4px);
+        }
+
+        .fade-up {
+          opacity: 0;
+          transform: translateY(32px);
+          transition: opacity 0.7s ease, transform 0.7s ease;
+        }
+        .fade-up.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        .fade-up:nth-child(1) { transition-delay: 0s; }
+        .fade-up:nth-child(2) { transition-delay: 0.1s; }
+        .fade-up:nth-child(3) { transition-delay: 0.2s; }
+        .fade-up:nth-child(4) { transition-delay: 0.3s; }
+        .fade-up:nth-child(5) { transition-delay: 0.4s; }
+        .fade-up:nth-child(6) { transition-delay: 0.5s; }
+
+        .glow-text {
+          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+
+        .stat-card {
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(255,255,255,0.08);
+          border-radius: 16px;
+          padding: 1.5rem;
+          text-align: center;
+          transition: all 0.3s ease;
+        }
+        .stat-card:hover {
+          border-color: rgba(192,57,43,0.4);
+          background: rgba(139,0,0,0.08);
+        }
+
+        .check-icon::before {
+          content: '✓';
+          display: inline-block;
+          width: 20px;
+          height: 20px;
+          background: rgba(192,57,43,0.2);
+          border: 1px solid rgba(192,57,43,0.4);
+          border-radius: 50%;
+          font-size: 11px;
+          line-height: 20px;
+          text-align: center;
+          color: #FF6B6B;
+          margin-right: 10px;
+          flex-shrink: 0;
+        }
+
+        .mobile-menu {
+          display: none;
+          position: fixed;
+          top: 72px;
+          left: 0;
+          right: 0;
+          background: rgba(10,10,11,0.97);
+          border-bottom: 1px solid rgba(255,255,255,0.1);
+          backdrop-filter: blur(20px);
+          z-index: 999;
+          padding: 1.5rem;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .mobile-menu.open {
+          display: flex;
+        }
+
+        @media (max-width: 768px) {
+          .desktop-nav { display: none !important; }
+          .hamburger { display: flex !important; }
+          .hero-title { font-size: 2.8rem !important; }
+          .hero-subtitle { font-size: 1.05rem !important; }
+          .section-title { font-size: 2rem !important; }
+          .features-grid { grid-template-columns: 1fr !important; }
+          .pricing-grid { grid-template-columns: 1fr !important; }
+          .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
+          .testimonials-grid { grid-template-columns: 1fr !important; }
+          .team-grid { grid-template-columns: 1fr !important; }
+        }
+
+        @media (min-width: 769px) {
+          .hamburger { display: none !important; }
+        }
+
+        .hero-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          background: rgba(192,57,43,0.15);
+          border: 1px solid rgba(192,57,43,0.35);
+          border-radius: 100px;
+          padding: 6px 16px;
+          font-size: 0.78rem;
+          font-weight: 600;
+          color: #FF8080;
+          letter-spacing: 0.05em;
+          margin-bottom: 1.5rem;
+          animation: badge-pulse 2.5s ease-in-out infinite;
+        }
+        @keyframes badge-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.25); }
+          50% { box-shadow: 0 0 0 8px rgba(192,57,43,0); }
+        }
+
+        .hero-cta-group {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          flex-wrap: wrap;
+          margin-top: 2.5rem;
+        }
+
+        .scroll-indicator {
+          position: absolute;
+          bottom: 2rem;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+          opacity: 0.4;
+          animation: bounce 2s ease-in-out infinite;
+        }
+        @keyframes bounce {
+          0%, 100% { transform: translateX(-50%) translateY(0); }
+          50% { transform: translateX(-50%) translateY(8px); }
+        }
+
+        .popular-badge {
+          position: absolute;
+          top: -12px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: linear-gradient(135deg, #8B0000, #C0392B);
+          color: white;
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          padding: 5px 18px;
+          border-radius: 100px;
+          white-space: nowrap;
+        }
+
+        .contact-input {
+          width: 100%;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 12px;
+          padding: 0.9rem 1.2rem;
+          color: #F0F0F0;
+          font-family: inherit;
+          font-size: 0.95rem;
+          outline: none;
+          transition: border-color 0.2s;
+          margin-bottom: 1rem;
+          resize: none;
+        }
+        .contact-input:focus {
+          border-color: rgba(192,57,43,0.6);
+        }
+        .contact-input::placeholder {
+          color: rgba(255,255,255,0.3);
+        }
+
+        .divider {
+          width: 60px;
+          height: 3px;
+          background: linear-gradient(90deg, #8B0000, #C0392B);
+          border-radius: 3px;
+          margin: 1rem auto 0;
+        }
+      `}</style>
+
+      {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
+      <nav style={{
+        position: 'fixed',
+        top: 0, left: 0, right: 0,
+        zIndex: 1000,
+        transition: 'all 0.35s ease',
+        background: scrolled ? 'rgba(10,10,11,0.92)' : 'transparent',
+        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.08)' : 'none',
+        backdropFilter: scrolled ? 'blur(20px)' : 'none',
+      }}>
+        <div style={{
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: '0 2rem',
+          height: 72,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          {/* Logo */}
+          <button onClick={() => scrollTo('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+          </button>
+
+          {/* Desktop Nav */}
+          <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
+            {NAV_LINKS.map(({ label, href }) => (
+              <button
+                key={label}
+                className={`nav-link ${activeSection === href.replace('#', '') ? 'active' : ''}`}
+                onClick={() => scrollTo(href.replace('#', ''))}
               >
-                {item.label}
-              </a>
+                {label}
+              </button>
             ))}
           </div>
 
-          <div className="hidden md:flex items-center gap-3">
+          {/* Auth Buttons */}
+          <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             {isAuthenticated ? (
-              <button
-                onClick={handleGetStarted}
-                className="bg-[#8B0000] text-white text-sm font-bold px-5 py-2 rounded hover:bg-[#6B0000] transition-colors"
-              >
-                Dashboard →
+              <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
+                Dashboard
               </button>
             ) : (
               <>
-                <Link to={ROUTES.SIGN_IN}>
-                  <button className="text-[#8B0000] border border-[#8B0000] text-sm font-bold px-4 py-2 rounded hover:bg-[#8B0000]/5 transition-colors">
-                    SIGN IN
-                  </button>
-                </Link>
-                <Link to={ROUTES.SIGN_UP}>
-                  <button className="bg-[#8B0000] text-white text-sm font-bold px-4 py-2 rounded hover:bg-[#6B0000] transition-colors">
-                    SIGN UP
-                  </button>
-                </Link>
+                <button className="atlas-btn-outline" onClick={() => navigate('/signin')} style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
+                  SIGN IN
+                </button>
+                <button className="atlas-btn-primary" onClick={() => navigate('/signup')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
+                  SIGN UP
+                </button>
               </>
             )}
           </div>
 
-          {/* Mobile hamburger */}
+          {/* Hamburger */}
           <button
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="md:hidden text-gray-700 hover:text-[#8B0000] p-2 rounded"
+            className="hamburger"
+            onClick={() => setMobileOpen(!mobileOpen)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', flexDirection: 'column', gap: 5 }}
           >
-            {isMenuOpen ? (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
+            {[0,1,2].map(i => (
+              <span key={i} style={{
+                display: 'block', width: 24, height: 2,
+                background: '#fff', borderRadius: 2,
+                transition: 'all 0.3s ease',
+                transform: mobileOpen
+                  ? i === 0 ? 'rotate(45deg) translate(5px,5px)'
+                  : i === 1 ? 'scaleX(0)'
+                  : 'rotate(-45deg) translate(5px,-5px)'
+                  : 'none',
+              }} />
+            ))}
           </button>
         </div>
-
-        {/* Mobile menu */}
-        {isMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white px-4 pb-4">
-            {['HOME', 'FEATURES', 'TESTIMONIALS', 'TEAM'].map(item => (
-              <a key={item} href={`#${item.toLowerCase()}`} onClick={() => setIsMenuOpen(false)}
-                className="block py-3 text-gray-700 font-semibold hover:text-[#8B0000] border-b border-gray-50 text-sm">
-                {item}
-              </a>
-            ))}
-            <div className="flex gap-3 mt-4">
-              <Link to={ROUTES.SIGN_IN} className="flex-1">
-                <button className="w-full border border-[#8B0000] text-[#8B0000] font-bold py-2 rounded text-sm">SIGN IN</button>
-              </Link>
-              <Link to={ROUTES.SIGN_UP} className="flex-1">
-                <button className="w-full bg-[#8B0000] text-white font-bold py-2 rounded text-sm">SIGN UP</button>
-              </Link>
-            </div>
-          </div>
-        )}
       </nav>
 
-      {/* ── Hero ── */}
-      <section id="home" className="max-w-7xl mx-auto px-4 md:px-8 pt-16 pb-20 md:pt-24 md:pb-28">
-        <div className="flex flex-col md:flex-row items-center gap-10 md:gap-8">
+      {/* Mobile Menu */}
+      <div className={`mobile-menu ${mobileOpen ? 'open' : ''}`}>
+        {NAV_LINKS.map(({ label, href }) => (
+          <button key={label} className="nav-link" style={{ fontSize: '1rem', padding: '0.5rem 0' }} onClick={() => scrollTo(href.replace('#', ''))}>
+            {label}
+          </button>
+        ))}
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <button className="atlas-btn-outline" onClick={() => { navigate('/signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+            SIGN IN
+          </button>
+          <button className="atlas-btn-primary" onClick={() => { navigate('/signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+            SIGN UP
+          </button>
+        </div>
+      </div>
 
-          {/* Left */}
-          <div className={`w-full md:flex-1 text-center md:text-left transition-all duration-1000 ease-out
-            ${heroVisible ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-10'}`}>
-            <div className="inline-flex items-center gap-2 bg-[#8B0000]/10 border border-[#8B0000]/20 text-[#8B0000] text-xs font-bold px-3 py-1.5 rounded-full mb-6 tracking-wider">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#8B0000] animate-pulse" />
-              NOW IN EARLY ACCESS
-            </div>
-            <h1 className="text-[#8B0000] text-4xl sm:text-5xl md:text-6xl font-extrabold leading-[1.1] mb-6">
-              Bring the Passion.<br />
-              <span className="italic font-bold">We'll Bring the Platform.</span>
-            </h1>
-            <p className="text-gray-600 text-base md:text-lg leading-relaxed max-w-lg mx-auto md:mx-0 mb-10">
-              The all-in-one instructional engine that turns objectives into aligned modules, balanced exams, and actionable insights — built for Philippine Higher Education.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
-              <button
-                onClick={handleGetStarted}
-                className="bg-[#8B0000] text-white font-bold py-3.5 px-8 rounded border border-[#6B0000] hover:bg-[#6B0000] transition-all shadow-md hover:shadow-lg active:scale-95 text-base"
-              >
-                Join ATLAS Now →
-              </button>
-              <a href="#features">
-                <button className="bg-white text-gray-800 font-semibold py-3.5 px-8 rounded border border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all text-base w-full sm:w-auto">
-                  See How it Works
-                </button>
-              </a>
-            </div>
+      {/* ── HERO ────────────────────────────────────────────────────────────── */}
+      <section id="home" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', paddingTop: 72 }}>
 
-            {/* Stats strip */}
-            <div className="flex gap-8 justify-center md:justify-start mt-12 pt-8 border-t border-gray-100">
-              {[
-                { value: 'OBE', label: 'CHED Compliant' },
-                { value: '< 20m', label: 'Syllabus Generated' },
-                { value: '3-in-1', label: 'Syllabus · Module · Exam' },
-              ].map(s => (
-                <div key={s.label} className="text-center md:text-left">
-                  <p className="text-[#8B0000] text-xl font-extrabold">{s.value}</p>
-                  <p className="text-gray-400 text-xs mt-0.5 leading-tight">{s.label}</p>
+        {/* Background orbs */}
+        <Orb style={{ width: 600, height: 600, background: 'rgba(139,0,0,0.18)', top: -100, left: -150 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(180,20,20,0.12)', bottom: -100, right: -100 }} />
+        <Orb style={{ width: 300, height: 300, background: 'rgba(100,0,0,0.2)', top: '40%', left: '60%' }} />
+
+        {/* Grid overlay */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)`,
+          backgroundSize: '60px 60px',
+          zIndex: 0,
+        }} />
+
+        <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '3rem 2rem', maxWidth: 800, margin: '0 auto' }}>
+          <div className="hero-badge">
+            <span style={{ width: 6, height: 6, background: '#FF6B6B', borderRadius: '50%', display: 'inline-block' }} />
+            NOW AVAILABLE FOR PHILIPPINE HIGHER EDUCATION
+          </div>
+
+          <h1 className="hero-title" style={{
+            fontSize: '4.2rem',
+            fontWeight: 800,
+            lineHeight: 1.1,
+            letterSpacing: '-0.02em',
+            margin: '0 0 1.2rem',
+            fontFamily: '"Plus Jakarta Sans", sans-serif',
+          }}>
+            The Smarter Way to<br />
+            <span className="glow-text">Teach & Assess</span>
+          </h1>
+
+          <p className="hero-subtitle" style={{
+            fontSize: '1.2rem',
+            color: 'rgba(255,255,255,0.6)',
+            lineHeight: 1.7,
+            margin: '0 auto',
+            maxWidth: 580,
+          }}>
+            ATLAS is the AI-powered OBE platform built for Philippine higher education —
+            syllabus generation, assessment building, and prescriptive analytics in one place.
+          </p>
+
+          <div className="hero-cta-group">
+            <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
+              Get Started Free
+            </button>
+            <button
+              className="atlas-btn-outline"
+              onClick={() => scrollTo('features')}
+              style={{ padding: '0.9rem 2rem', fontSize: '1rem' }}
+            >
+              See How It Works ↓
+            </button>
+          </div>
+
+          {/* Floating stats chips */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '3rem', flexWrap: 'wrap' }}>
+            {[
+              { label: 'CHED OBE-Compliant', icon: '✓' },
+              { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
+              { label: 'Google Sheets Integration', icon: '✓' },
+            ].map(({ label, icon }) => (
+              <div key={label} style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 100,
+                padding: '6px 14px',
+                fontSize: '0.78rem',
+                color: 'rgba(255,255,255,0.6)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}>
+                <span style={{ color: '#FF6B6B' }}>{icon}</span>
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="scroll-indicator">
+          <span style={{ fontSize: '0.7rem', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)' }}>SCROLL</span>
+          <div style={{ width: 1, height: 40, background: 'linear-gradient(to bottom, rgba(255,255,255,0.3), transparent)' }} />
+        </div>
+      </section>
+
+      {/* ── STATS ───────────────────────────────────────────────────────────── */}
+      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(139,0,0,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
+            {[
+              { value: 20, suffix: 'min', label: 'Syllabus ready in', prefix: '<' },
+              { value: 95, suffix: '%', label: 'Faculty satisfaction rate' },
+              { value: 500, suffix: '+', label: 'Courses generated' },
+              { value: 3, suffix: ' days', label: 'From signup to live' },
+            ].map(({ value, suffix, label, prefix }, i) => (
+              <div key={i} className={`stat-card fade-up ${statsInView ? 'visible' : ''}`}>
+                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: '#FF6B6B', lineHeight: 1 }}>
+                  {prefix || ''}{statsInView && <AnimatedNumber target={value} suffix={suffix} />}
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right — mascot */}
-          <div className={`w-full md:flex-1 flex justify-center md:justify-end transition-all duration-1000 ease-out delay-200
-            ${heroVisible ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-10'}`}>
-            <div className="relative">
-              {/* Glow */}
-              <div className="absolute inset-0 bg-[#8B0000]/10 rounded-full blur-3xl scale-110 pointer-events-none" />
-              <img
-                src={atlasMascot}
-                alt="ATLAS Mascot"
-                className="relative w-full max-w-[320px] md:max-w-[420px] object-contain drop-shadow-xl"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Divider ── */}
-      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#8B0000]/20 to-transparent" />
-
-      {/* ── Features ── */}
-      <section id="features" className="bg-gray-50/70 py-20 md:py-28">
-        <div className="max-w-6xl mx-auto px-4 md:px-8">
-          <SectionHeading
-            label="How It Works"
-            title="Everything Your Course Needs"
-            subtitle="From objectives to outcomes — ATLAS handles the full instructional design pipeline so you can focus on teaching."
-          />
-
-          <div className="divide-y divide-gray-100">
-            {features.map((f, i) => (
-              <FeatureRow key={f.title} {...f} reverse={i % 2 !== 0} index={i} />
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{label}</div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Divider ── */}
-      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#8B0000]/20 to-transparent" />
+      {/* ── FEATURES ────────────────────────────────────────────────────────── */}
+      <section id="features" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
+        <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.1)', top: '10%', right: -150 }} />
 
-      {/* ── Testimonials ── */}
-      <section id="testimonials" className="py-20 md:py-28">
-        <div className="max-w-6xl mx-auto px-4 md:px-8">
-          <SectionHeading
-            label="Early Access Feedback"
-            title="What Educators Are Saying"
-            subtitle="Feedback from faculty who participated in our early access and needs assessment phase."
-          />
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
+            <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
+              Everything You Need to<br />
+              <span className="glow-text">Teach Smarter</span>
+            </h2>
+            <div className="divider" />
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((t, i) => (
-              <TestimonialCard key={t.author} {...t} delay={i * 120} />
+          <div
+            ref={featRef}
+            className="features-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}
+          >
+            {FEATURES.map((f, i) => (
+              <div key={i} className={`feature-card fade-up ${featInView ? 'visible' : ''}`}>
+                <div style={{
+                  width: 52, height: 52,
+                  background: f.accent,
+                  border: '1px solid rgba(192,57,43,0.25)',
+                  borderRadius: 14,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '1.5rem',
+                  marginBottom: '1.2rem',
+                }}>
+                  {f.icon}
+                </div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#F0F0F0' }}>{f.title}</h3>
+                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── Divider ── */}
-      <div className="w-full h-px bg-gradient-to-r from-transparent via-[#8B0000]/20 to-transparent" />
+      {/* ── TESTIMONIALS ────────────────────────────────────────────────────── */}
+      <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
+            <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
+              What Educators Are Saying
+            </h2>
+            <div className="divider" />
+          </div>
 
-      {/* ── Team ── */}
-      <section id="team" className="bg-gray-50/70 py-20 md:py-28">
-        <div className="max-w-5xl mx-auto px-4 md:px-8">
-          <SectionHeading
-            label="The People Behind ATLAS"
-            title="Built by Students. Made for Teachers."
-          />
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-            {team.map((m, i) => (
-              <TeamCard key={m.name} {...m} delay={i * 100} />
+          <div
+            ref={testimonialsRef}
+            className="testimonials-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}
+          >
+            {TESTIMONIALS.map((t, i) => (
+              <div key={i} className={`testimonial-card fade-up ${testimonialsInView ? 'visible' : ''}`}>
+                <div style={{ color: '#FF4444', fontSize: '1rem', marginBottom: '1rem', letterSpacing: 2 }}>
+                  {'★'.repeat(t.stars)}
+                </div>
+                <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
+                  "{t.quote}"
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{
+                    width: 36, height: 36, borderRadius: '50%',
+                    background: 'rgba(192,57,43,0.25)',
+                    border: '1px solid rgba(192,57,43,0.4)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.9rem', color: '#FF8080', fontWeight: 700,
+                  }}>
+                    {t.author[0]}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#F0F0F0' }}>{t.author}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{t.role}</div>
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CTA Banner ── */}
-      <section className="bg-[#8B0000] py-16 md:py-20 relative overflow-hidden">
-        {/* Subtle pattern */}
-        <div className="absolute inset-0 opacity-5"
-          style={{ backgroundImage: 'radial-gradient(circle, #fff 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
+      {/* ── PRICING ─────────────────────────────────────────────────────────── */}
+      <section id="pricing" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
+        <Orb style={{ width: 600, height: 600, background: 'rgba(139,0,0,0.12)', bottom: -200, left: -150 }} />
 
-        <div className="max-w-6xl mx-auto px-4 md:px-8 relative">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-10">
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PRICING</p>
+            <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
+              Simple, Institutional Pricing
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.75rem', fontSize: '0.95rem' }}>
+              Billed per institution. Unlimited student access included.
+            </p>
+            <div className="divider" />
+          </div>
 
-            <div className="text-center md:text-left">
-              <h2 className="text-white text-3xl md:text-4xl font-extrabold mb-4 leading-tight">
-                Ready to Transform<br />Your Teaching?
-              </h2>
-              <p className="text-white/80 text-base mb-8 max-w-md">
-                Join educators who are already saving hours every week with ATLAS — your AI-powered instructional design partner.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 justify-center md:justify-start">
+          <div
+            ref={pricingRef}
+            className="pricing-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', alignItems: 'center' }}
+          >
+            {PLANS.map((plan, i) => (
+              <div
+                key={i}
+                className={`pricing-card fade-up ${pricingInView ? 'visible' : ''} ${plan.popular ? 'popular' : ''}`}
+                style={{
+                  border: `1px solid ${plan.border}`,
+                  background: plan.color,
+                  boxShadow: plan.popular ? `0 0 60px ${plan.glow}` : 'none',
+                  transform: plan.popular ? 'scale(1.04)' : 'scale(1)',
+                }}
+              >
+                {plan.popular && <div className="popular-badge">✦ MOST POPULAR</div>}
+
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF8080', margin: '0 0 0.4rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    {plan.name}
+                  </h3>
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', margin: '0 0 1.2rem' }}>{plan.tagline}</p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                    <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#F0F0F0', lineHeight: 1 }}>{plan.price}</span>
+                    {plan.period && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}>{plan.period}</span>}
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '2rem' }}>
+                  {plan.features.map((feat, j) => (
+                    <div key={j} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+                      <span className="check-icon" />
+                      <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.88rem', lineHeight: 1.5 }}>{feat}</span>
+                    </div>
+                  ))}
+                </div>
+
                 <button
-                  onClick={handleGetStarted}
-                  className="bg-white text-[#8B0000] font-bold py-3.5 px-8 rounded hover:bg-gray-100 transition-all shadow-md active:scale-95 text-base"
+                  className={plan.popular ? 'atlas-btn-primary' : 'atlas-btn-outline'}
+                  onClick={() => navigate(plan.price === 'Custom' ? '#contact' : '/signup')}
+                  style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700 }}
                 >
-                  Sign Up — It's Free
+                  {plan.cta}
                 </button>
-                <Link to={ROUTES.SIGN_IN}>
-                  <button className="border border-white/40 text-white font-semibold py-3.5 px-8 rounded hover:bg-white/10 transition-all text-base w-full sm:w-auto">
-                    Sign In
-                  </button>
-                </Link>
+              </div>
+            ))}
+          </div>
+
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', marginTop: '2.5rem' }}>
+            All plans include unlimited student access · No setup fees · Cancel anytime
+          </p>
+        </div>
+      </section>
+
+      {/* ── TEAM ────────────────────────────────────────────────────────────── */}
+      <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
+            <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
+              Built by Students.<br />Made for Teachers.
+            </h2>
+            <div className="divider" />
+          </div>
+
+          <div
+            ref={teamRef}
+            className="team-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', maxWidth: 900, margin: '0 auto' }}
+          >
+            {TEAM.map((member, i) => (
+              <div key={i} className={`team-card fade-up ${teamInView ? 'visible' : ''}`}>
+                <div style={{
+                  width: 72, height: 72,
+                  borderRadius: '50%',
+                  background: 'rgba(192,57,43,0.2)',
+                  border: '2px solid rgba(192,57,43,0.4)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  margin: '0 auto 1.2rem',
+                  fontSize: '1.3rem', fontWeight: 800, color: '#FF8080',
+                }}>
+                  {member.initials}
+                </div>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
+                <p style={{ color: '#FF6B6B', fontSize: '0.82rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CONTACT / CTA ───────────────────────────────────────────────────── */}
+      <section id="contact" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' }}>
+        <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.15)', top: -100, right: -100 }} />
+
+        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
+            <div>
+              <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
+              <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
+                Ready to Transform<br />
+                <span className="glow-text">Your Institution?</span>
+              </h2>
+              <p style={{ color: 'rgba(255,255,255,0.55)', lineHeight: 1.8, fontSize: '0.95rem', marginBottom: '2rem' }}>
+                Get in touch with our team to learn how ATLAS can help your institution
+                meet CHED OBE requirements while cutting faculty workload in half.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {[
+                  { icon: '📧', label: 'Email', value: 'hello@atlas.edu.ph' },
+                  { icon: '📍', label: 'Location', value: 'Philippines' },
+                  { icon: '⏱️', label: 'Response Time', value: 'Within 24 hours' },
+                ].map(({ icon, label, value }) => (
+                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 10,
+                      background: 'rgba(192,57,43,0.15)',
+                      border: '1px solid rgba(192,57,43,0.3)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '1.1rem', flexShrink: 0,
+                    }}>
+                      {icon}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>{label}</div>
+                      <div style={{ fontSize: '0.92rem', color: '#F0F0F0' }}>{value}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Mascot CTA */}
-            <div className="flex-shrink-0">
-              <img
-                src={atlasMascot}
-                alt="ATLAS Mascot"
-                className="w-48 md:w-56 object-contain drop-shadow-xl"
-                style={{ filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.3))' }}
-              />
-            </div>
+            <GlassCard style={{ padding: '2.5rem' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 1.5rem', color: '#F0F0F0' }}>Send us a message</h3>
+              <input className="contact-input" placeholder="Your Name" />
+              <input className="contact-input" type="email" placeholder="Institutional Email" />
+              <input className="contact-input" placeholder="Institution Name" />
+              <textarea className="contact-input" rows={4} placeholder="How can we help?" />
+              <button className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}>
+                Send Message
+              </button>
+            </GlassCard>
           </div>
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer className="bg-[#1a1a1a] text-white py-10">
-        <div className="max-w-6xl mx-auto px-4 md:px-8">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-            <img src={atlasLogo} alt="ATLAS" className="h-8 object-contain brightness-0 invert opacity-80" />
-
-            <div className="flex gap-6 text-sm text-white/50">
-              {['Privacy Policy', 'Terms and Conditions', 'Contact'].map(item => (
-                <a key={item} href="#" className="hover:text-white/80 transition-colors">{item}</a>
-              ))}
-            </div>
-
-            <p className="text-white/40 text-sm">
-              © 2026 ATLAS. All rights reserved.
-            </p>
+      {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
+      <footer style={{
+        borderTop: '1px solid rgba(255,255,255,0.07)',
+        padding: '2.5rem 2rem',
+        background: '#060607',
+      }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <img src={atlasLogo} alt="ATLAS" style={{ height: 24, filter: 'brightness(0) invert(0.6)' }} />
+            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
+          </div>
+          <div style={{ display: 'flex', gap: '2rem' }}>
+            {['Privacy Policy', 'Terms and Conditions', 'Contact'].map(label => (
+              <span key={label} style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', cursor: 'pointer', transition: 'color 0.2s' }}
+                onMouseEnter={e => e.target.style.color = 'rgba(255,255,255,0.7)'}
+                onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.3)'}
+              >
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </footer>
