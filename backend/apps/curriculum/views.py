@@ -1187,6 +1187,92 @@ def _build_plain_syllabus_docx(data):
     return doc
 
 
+def _build_plain_module_docx(data, fallback_title='', fallback_week=None):
+    """Generate a basic structured DOCX from module_content JSON."""
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.25)
+        section.right_margin = Inches(1.25)
+
+    MAROON = RGBColor(0x8B, 0x00, 0x00)
+
+    def heading(text, level=1):
+        p = doc.add_heading(text, level=level)
+        if level == 1:
+            run = p.runs[0] if p.runs else p.add_run(text)
+            run.font.color.rgb = MAROON
+        return p
+
+    module_title = str(data.get('module_title') or fallback_title or 'Teaching Module')
+    module_number = data.get('module_number')
+    week_number = data.get('week_number', fallback_week)
+
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_run = title.add_run(module_title)
+    title_run.bold = True
+    title_run.font.size = Pt(15)
+    title_run.font.color.rgb = MAROON
+
+    subtitle_parts = []
+    if module_number not in (None, ''):
+        subtitle_parts.append(f'Module {module_number}')
+    if week_number not in (None, ''):
+        subtitle_parts.append(f'Week {week_number}')
+    if subtitle_parts:
+        subtitle = doc.add_paragraph(' | '.join(subtitle_parts))
+        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if subtitle.runs:
+            subtitle.runs[0].font.size = Pt(10)
+
+    doc.add_paragraph()
+
+    introduction = str(data.get('introduction') or '').strip()
+    if introduction:
+        heading('Introduction', level=1)
+        doc.add_paragraph(introduction)
+
+    objectives = [str(o).strip() for o in (data.get('learning_objectives') or []) if str(o).strip()]
+    if objectives:
+        heading('Learning Objectives', level=1)
+        for obj in objectives:
+            doc.add_paragraph(obj, style='List Number')
+
+    subtopics = data.get('subtopics') or []
+    valid_subtopics = [s for s in subtopics if isinstance(s, dict) and (s.get('title') or s.get('content'))]
+    if valid_subtopics:
+        heading('Subtopics', level=1)
+        for idx, st in enumerate(valid_subtopics, start=1):
+            st_title = str(st.get('title') or f'Subtopic {idx}')
+            heading(st_title, level=2)
+            st_content = str(st.get('content') or '').strip()
+            if st_content:
+                doc.add_paragraph(st_content)
+
+    short_activity = data.get('short_activity') or {}
+    if isinstance(short_activity, dict) and any(short_activity.get(k) for k in ('title', 'duration', 'description')):
+        heading('Short Activity', level=1)
+        tbl = doc.add_table(rows=0, cols=2)
+        tbl.style = 'Table Grid'
+        for label, key in (('Title', 'title'), ('Duration', 'duration'), ('Description', 'description')):
+            val = str(short_activity.get(key) or '').strip()
+            if not val:
+                continue
+            r = tbl.add_row()
+            r.cells[0].text = label
+            r.cells[1].text = val
+            r.cells[0].paragraphs[0].runs[0].bold = True
+
+    return doc
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def export_syllabus_docx(request):
@@ -1321,6 +1407,121 @@ def export_syllabus_docx(request):
 
     except Exception as exc:
         logger.exception('Error generating DOCX for syllabus export')
+        return Response(
+            {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_module_docx(request):
+    """
+    Export module content as a DOCX file.
+
+    Endpoint: POST /api/curriculum/export-module-docx/
+
+    Body (multipart/form-data):
+        module_id   — optional UUID; if provided, export uses module_content from DB
+        module_data — optional JSON string fallback when no saved module is available
+        template    — optional DOCX template file with {{field}} placeholders
+
+    Returns: DOCX file attachment
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    module_id = request.data.get('module_id')
+
+    module_data = None
+    module_title = ''
+    week_number = None
+    course_code = 'module'
+
+    if module_id:
+        try:
+            module = Module.objects.select_related('syllabus__course').get(module_id=module_id)
+        except Module.DoesNotExist:
+            return Response(
+                {'success': False, 'error': 'Module not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        course = module.syllabus.course
+        _, error_response = _get_assigned_course_or_403(request, course.course_id)
+        if error_response:
+            return error_response
+
+        module_title = module.module_title or ''
+        week_number = module.week_number
+        course_code = (course.course_code or 'module')
+        if isinstance(module.module_content, dict):
+            module_data = module.module_content
+
+    if module_data is None:
+        raw_data = request.data.get('module_data', '{}')
+        if isinstance(raw_data, str):
+            try:
+                module_data = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return Response(
+                    {'success': False, 'error': 'Invalid module_data JSON.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            module_data = raw_data
+
+    if not isinstance(module_data, dict):
+        return Response(
+            {'success': False, 'error': 'module_data must be a JSON object.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not module_data:
+        return Response(
+            {'success': False, 'error': 'No module data found to export.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    template_file = request.FILES.get('template')
+    if template_file and not template_file.name.lower().endswith('.docx'):
+        return Response(
+            {'success': False, 'error': 'Template must be a DOCX file.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from io import BytesIO
+        from django.http import HttpResponse
+        from docx import Document
+
+        module_title = str(module_data.get('module_title') or module_title or 'module')
+        week_number = module_data.get('week_number', week_number)
+
+        safe_course = str(course_code or 'module').replace('/', '-').replace(' ', '_')
+        safe_title = module_title.replace('/', '-').replace(' ', '_')
+        week_suffix = f"_w{week_number}" if week_number not in (None, '') else ''
+        filename = f"{safe_course}{week_suffix}_{safe_title}_module.docx"
+
+        if template_file:
+            doc = Document(template_file)
+            _fill_docx_template(doc, module_data)
+        else:
+            doc = _build_plain_module_docx(module_data, fallback_title=module_title, fallback_week=week_number)
+
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        http_response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return http_response
+
+    except Exception as exc:
+        logger.exception('Error generating DOCX for module export')
         return Response(
             {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

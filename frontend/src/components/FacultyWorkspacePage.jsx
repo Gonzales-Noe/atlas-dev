@@ -762,6 +762,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [moduleContent, setModuleContent]           = useState(null) // JSON content
   const [moduleContentDirty, setModuleContentDirty] = useState(false)
   const [moduleSaving, setModuleSaving]             = useState(false)
+  const [moduleExporting, setModuleExporting]       = useState(false)
   const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
   // AI chatbox
@@ -1503,6 +1504,60 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       workspaceApi.execute()
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setModuleSaving(false) }
+  }
+
+  async function handleExportModuleDocx() {
+    if (!selectedModule?.module_id) {
+      setActionError('Open a module first before exporting.')
+      return
+    }
+
+    setModuleExporting(true)
+    setActionError('')
+
+    try {
+      const formData = new FormData()
+      formData.append('module_id', selectedModule.module_id)
+      formData.append('module_data', JSON.stringify(moduleContent || {}))
+
+      const response = await api.post('/curriculum/export-module-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const blob = response.data
+      const contentDisposition = response.headers?.['content-disposition'] || ''
+      const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+      const title = (moduleContent?.module_title || selectedModule?.module_title || 'module').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${title}_module.docx`
+
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      let message = 'Failed to export module.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const text = await blobData.text()
+          const parsed = JSON.parse(text)
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setActionError(message)
+    } finally {
+      setModuleExporting(false)
+    }
   }
 
   async function handleGenerateSubtopicContent(subtopicId, subtopicTitle) {
@@ -3101,6 +3156,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <ChatIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+                  <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
+                    disabled={moduleExporting || !moduleContent}
+                    onClick={handleExportModuleDocx}
+                    sx={{
+                      borderColor: MAROON,
+                      color: MAROON,
+                      borderRadius: 1.5,
+                      textTransform: 'none',
+                      fontSize: '0.78rem',
+                      px: 1.25,
+                      py: 0.4,
+                      borderWidth: '1px',
+                      borderStyle: 'solid',
+                      '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                    }}>
+                    {moduleExporting ? 'Exporting…' : 'Export DOCX'}
+                  </Button>
                   <Button size="small" startIcon={<SaveIcon sx={{ fontSize: '0.85rem !important' }} />}
                     disabled={!moduleContentDirty || moduleSaving}
                     onClick={handleSaveModuleContent}
