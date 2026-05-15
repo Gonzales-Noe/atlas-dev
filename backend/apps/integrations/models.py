@@ -122,6 +122,7 @@ class Module(models.Model):
     week_number = models.IntegerField()
     status = models.CharField(max_length=50, default='Draft')
     generated_at = models.DateTimeField(null=True, blank=True)
+    module_content = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'modules'

@@ -93,6 +93,9 @@ class LLMService:
                 },
                 timeout=90,
             )
+            if response.status_code == 402:
+                err = response.json().get("error", {})
+                raise ValueError(f"OpenRouter insufficient credits: {err.get('message', response.text)}")
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"]
@@ -133,4 +136,41 @@ class LLMService:
                 if block.get('type') == 'text' and block.get('text'):
                     return block['text']
             return ""
+
+    def generate_response_with_fallback(
+        self, messages, preferred_provider=None, system=None, max_tokens=2048
+    ):
+        """
+        Try providers in fallback order when the preferred one fails.
+        Fallback chain: preferred → gemini → groq → anthropic → gpt
+        """
+        fallback_order = ['gemini', 'groq', 'anthropic', 'gpt']
+        providers_to_try: list = []
+        if preferred_provider and preferred_provider.lower() not in fallback_order:
+            providers_to_try.append(preferred_provider)
+        if preferred_provider:
+            choice = preferred_provider.lower()
+            if choice in fallback_order:
+                providers_to_try.append(choice)
+        for p in fallback_order:
+            if p not in providers_to_try:
+                providers_to_try.append(p)
+
+        last_error = None
+        for provider in providers_to_try:
+            try:
+                result = self.generate_response(
+                    messages,
+                    provider_choice=provider,
+                    system=system,
+                    max_tokens=max_tokens,
+                )
+                if result:
+                    return result
+            except Exception as exc:
+                logger.warning("LLM provider '%s' failed: %s", provider, exc)
+                last_error = exc
+                continue
+
+        raise ValueError(f"All LLM providers failed. Last error: {last_error}")
 

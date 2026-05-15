@@ -8,8 +8,14 @@ import AutoAlert from './AutoAlert'
 import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import Drawer from '@mui/material/Drawer'
 import IconButton from '@mui/material/IconButton'
@@ -39,6 +45,13 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ChatIcon from '@mui/icons-material/Chat'
+import SendIcon from '@mui/icons-material/Send'
+import CloseIcon from '@mui/icons-material/Close'
+import SaveIcon from '@mui/icons-material/Save'
+import EditIcon from '@mui/icons-material/Edit'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
 import api from '../config/api'
@@ -75,7 +88,7 @@ const SYLLABUS_SECTIONS = [
   { key: 'policies',      label: 'Policies' },
 ]
 
-const PROVIDERS = ['ollama', 'gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
+const PROVIDERS = ['gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
 const AI_PROVIDERS = ['gemini', 'anthropic', 'groq', 'gpt']
 const AI_EXCLUDED_SECTIONS = new Set(['overview', 'iloatmatrix', 'ilofwmatrix', 'tos', 'grading'])
 const ASSESSMENT_TYPES = [
@@ -662,90 +675,6 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
   )
 }
 
-// ── TOS Topic combobox — free-type + suggestions from Weekly Schedule ────
-function TopicComboCell({ value, onChange, suggestions }) {
-  const [open, setOpen]         = useState(false)
-  const [inputVal, setInputVal] = useState(value || '')
-  const ref      = useRef(null)
-  const inputRef = useRef(null)
-
-  useEffect(() => { setInputVal(value || '') }, [value])
-
-  const lower    = inputVal.trim().toLowerCase()
-  const filtered = lower
-    ? suggestions.filter(s => s.toLowerCase().includes(lower))
-    : suggestions
-
-  const commit = (chosen) => {
-    const next = chosen !== undefined ? chosen : inputVal
-    setOpen(false)
-    setInputVal(next)
-    onChange(next)
-  }
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) commit()
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [open, inputVal])
-
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-block' }}>
-      <input
-        ref={inputRef}
-        type="text"
-        value={inputVal}
-        placeholder="Type or select topic…"
-        onChange={e => { setInputVal(e.target.value); setOpen(true) }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={e => {
-          if (e.key === 'Escape') { setOpen(false); return }
-          if (e.key === 'Enter')  { commit(); return }
-        }}
-        style={{
-          width: 190, fontSize: '0.8rem',
-          border: '1px solid #ddd', borderRadius: 4,
-          padding: '5px 8px', outline: 'none',
-          color: '#333', background: '#fff', fontFamily: 'inherit',
-          boxSizing: 'border-box',
-        }}
-      />
-      {open && filtered.length > 0 && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 2px)', left: 0, zIndex: 300,
-          background: '#fff', border: '1px solid #ddd', borderRadius: 6,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.13)',
-          minWidth: 260, maxWidth: 400, maxHeight: 220, overflowY: 'auto', padding: '4px 0',
-        }}>
-          {filtered.map((opt, idx) => {
-            const isSelected = inputVal === opt
-            return (
-              <div
-                key={idx}
-                onMouseDown={e => { e.preventDefault(); commit(opt) }}
-                style={{
-                  padding: '6px 12px', cursor: 'pointer', fontSize: '0.73rem',
-                  color: isSelected ? MAROON : '#333',
-                  background: isSelected ? MAROON_LIGHT : 'transparent',
-                  borderLeft: isSelected ? `3px solid ${MAROON}` : '3px solid transparent',
-                  lineHeight: 1.45,
-                }}
-                onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = BG }}
-                onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent' }}
-              >
-                {opt}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Main component ────────────────────────────────────────────────────────
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
   const navigate = useNavigate()
@@ -785,7 +714,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionLoading, setActionLoading] = useState(false)
 
   const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'ollama', top_k: 5, extra_instructions: '' })
-  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'ollama', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
   const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'ollama', top_k: 5, extra_instructions: '' })
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
@@ -822,10 +751,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [renamingDocId, setRenamingDocId]   = useState(null)
   const [renameValue, setRenameValue]       = useState('')
   const [deletingDocId, setDeletingDocId]   = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   // ── Module creation flow state ───────────────────────────────────────────
   const [moduleCreating, setModuleCreating]         = useState(false)
   const [moduleFromSchedule, setModuleFromSchedule] = useState(false)
+
+  // ── Module detail / viewer state ─────────────────────────────────────────
+  const [selectedModule, setSelectedModule]         = useState(null) // { module_id, ... }
+  const [moduleContent, setModuleContent]           = useState(null) // JSON content
+  const [moduleContentDirty, setModuleContentDirty] = useState(false)
+  const [moduleSaving, setModuleSaving]             = useState(false)
+  const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
+  const [subtopicGenerating, setSubtopicGenerating] = useState(null)
+  // AI chatbox
+  const [chatOpen, setChatOpen]       = useState(false)
+  const [chatMessages, setChatMessages] = useState([])
+  const [chatInput, setChatInput]     = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatField, setChatField]     = useState('')  // which section is focused
 
   // ── Curriculum quality metrics state ────────────────────────────────────
   const [qualityMetrics, setQualityMetrics]       = useState(null)
@@ -1435,17 +1379,135 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (!course) return
     setActionError(''); setActionLoading(true); setResultText('')
     try {
-      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
       const { data } = await api.post('/curriculum/generate-module/', {
-        course_name: course.course_title, module_title: moduleParams.module_title,
-        week_number: Number(moduleParams.week_number), provider: moduleParams.provider,
-        top_k: Number(moduleParams.top_k), extra_instructions: moduleParams.extra_instructions,
+        course_id: course.course_id,
+        course_name: course.course_title,
+        module_title: moduleParams.module_title,
+        week_number: Number(moduleParams.week_number) || 1,
+        provider: moduleParams.provider,
+        top_k: Number(moduleParams.top_k),
+        extra_instructions: moduleParams.extra_instructions,
         selected_doc_ids: selectedIds,
       })
-      setResultText(data.generated_module || '')
-      workspaceApi.execute()
+      if (data.success && data.module_content) {
+        // Open module viewer with the generated content
+        setSelectedModule({
+          module_id: data.module_id,
+          module_title: data.module_title,
+          week_number: data.week_number,
+          status: 'Generated',
+        })
+        setModuleContent(data.module_content)
+        setModuleContentDirty(false)
+        setExpandedSubtopics(new Set())
+        setChatMessages([])
+        setModuleCreating(false)
+        workspaceApi.execute()
+      }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
+  }
+
+  async function handleOpenModule(mod) {
+    setActionError('')
+    if (mod.module_content) {
+      setSelectedModule(mod)
+      setModuleContent(mod.module_content)
+      setModuleContentDirty(false)
+      setExpandedSubtopics(new Set())
+      setChatMessages([])
+      return
+    }
+    // Fetch from server if not loaded
+    try {
+      const { data } = await api.get(`/curriculum/module/${mod.module_id}/`)
+      if (data.success) {
+        setSelectedModule(data.module)
+        setModuleContent(data.module.module_content || null)
+        setModuleContentDirty(false)
+        setExpandedSubtopics(new Set())
+        setChatMessages([])
+      }
+    } catch (err) { setActionError(extractApiError(err)) }
+  }
+
+  async function handleSaveModuleContent() {
+    if (!selectedModule || !moduleContent) return
+    setModuleSaving(true)
+    try {
+      await api.put(`/curriculum/module/${selectedModule.module_id}/save/`, { module_content: moduleContent })
+      setModuleContentDirty(false)
+      workspaceApi.execute()
+    } catch (err) { setActionError(extractApiError(err)) }
+    finally { setModuleSaving(false) }
+  }
+
+  async function handleGenerateSubtopicContent(subtopicId, subtopicTitle) {
+    if (!selectedModule) return
+    setSubtopicGenerating(subtopicId)
+    try {
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+      const currentContent = moduleContent?.subtopics?.find(s => s.id === subtopicId)?.content || ''
+      const { data } = await api.post('/curriculum/generate-subtopic-content/', {
+        module_id: selectedModule.module_id,
+        subtopic_title: subtopicTitle,
+        subtopic_id: subtopicId,
+        existing_content: currentContent,
+        selected_doc_ids: selectedIds,
+        provider: moduleParams.provider,
+      })
+      if (data.success) {
+        setModuleContent(prev => ({
+          ...prev,
+          subtopics: prev.subtopics.map(st =>
+            st.id === subtopicId ? { ...st, content: data.content } : st
+          )
+        }))
+        setModuleContentDirty(true)
+        setExpandedSubtopics(prev => { const next = new Set(prev); next.add(subtopicId); return next })
+      }
+    } catch (err) { setActionError(extractApiError(err)) }
+    finally { setSubtopicGenerating(null) }
+  }
+
+  async function handleChatSend() {
+    if (!chatInput.trim() || !selectedModule) return
+    const userMsg = chatInput.trim()
+    setChatInput('')
+    setChatMessages(prev => [...prev, { role: 'user', content: userMsg }])
+    setChatLoading(true)
+    try {
+      const currentContent = chatField === 'introduction' ? moduleContent?.introduction || ''
+        : chatField === 'short_activity' ? JSON.stringify(moduleContent?.short_activity || {})
+        : (moduleContent?.learning_objectives || []).join('\n')
+      const { data } = await api.post('/curriculum/module-ai-assist/', {
+        module_id: selectedModule.module_id,
+        field: chatField || 'general',
+        current_content: currentContent,
+        instruction: userMsg,
+        provider: moduleParams.provider,
+      })
+      if (data.success) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.revised_content }])
+      }
+    } catch (err) {
+      setChatMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong.' }])
+    }
+    finally { setChatLoading(false) }
+  }
+
+  function updateModuleField(field, value) {
+    setModuleContent(prev => ({ ...prev, [field]: value }))
+    setModuleContentDirty(true)
+  }
+
+  function updateSubtopicField(subtopicId, key, value) {
+    setModuleContent(prev => ({
+      ...prev,
+      subtopics: prev.subtopics.map(st => st.id === subtopicId ? { ...st, [key]: value } : st)
+    }))
+    setModuleContentDirty(true)
   }
 
   async function handleGenerateAssessment() {
@@ -2123,7 +2185,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           if (_isLecture) {
                             if (!_existingMod) {
                               setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '' }))
+                              setModuleFromSchedule(true)
+                              setModuleCreating(true)
+                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
+                            } else {
+                              setModuleCreating(false)
+                              setModuleFromSchedule(false)
+                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             }
+                            setResultText('')
                             setActiveTab('module')
                           } else {
                             setActiveTab('assessment')
@@ -2205,13 +2275,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({ ...s, tos: s.tos.map(t => t.id !== examId ? t : { ...t, topics: t.topics.map(r => r.id !== rowId ? r : { ...r, ilos: checked ? [...(r.ilos || []), iloKey] : (r.ilos || []).filter(x => x !== iloKey) }) }) }))
       }
-
-      // Topics from Weekly Schedule rows labelled Lecture/Discussion
-      const lectureTopics = [...new Set(
-        (syllabusData.tla_chapters || [])
-          .filter(ch => ch.outcomes === 'Lecture/Discussion')
-          .flatMap(ch => (ch.topics || '').split('\n').map(s => s.trim()).filter(Boolean))
-      )]
 
       const totalHrs       = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0) : 0
       const totalMins      = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0) : 0
@@ -2402,11 +2465,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           {activeTos.topics.map(row => (
                             <tr key={row.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                               <td style={{ ...TABLE_TD, textAlign: 'left' }}>
-                                <TopicComboCell
-                                  value={row.topic || ''}
-                                  onChange={val => updTopicRow(activeTos.id, row.id, 'topic', val)}
-                                  suggestions={lectureTopics}
-                                />
+                                {inlineInput(row.topic || '', e => updTopicRow(activeTos.id, row.id, 'topic', e.target.value), 180)}
                               </td>
                               <td style={{ ...TABLE_TD, minWidth: 110 }}>
                                 <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -2914,48 +2973,378 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
 
     if (activeTab === 'module') {
-      return (
-        <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          <SectionCard title="Module Builder">
-            <Stack spacing={1.75}>
-              <LField label="Module Topic" value={moduleParams.module_title}
-                onChange={e => setModuleParams(p => ({ ...p, module_title: e.target.value }))} />
-              <LField type="number" label="Week Number" value={moduleParams.week_number}
-                onChange={e => setModuleParams(p => ({ ...p, week_number: e.target.value }))} />
-              <LField type="number" label="Knowledge References (top-k)" value={moduleParams.top_k}
-                onChange={e => setModuleParams(p => ({ ...p, top_k: e.target.value }))} />
-              <LField select label="Model Provider" value={moduleParams.provider}
-                onChange={e => setModuleParams(p => ({ ...p, provider: e.target.value }))}>
-                {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
-              </LField>
-              <LField label="Extra Instructions" multiline minRows={3} value={moduleParams.extra_instructions}
-                onChange={e => setModuleParams(p => ({ ...p, extra_instructions: e.target.value }))} />
-              <GenButton onClick={handleGenerateModule} disabled={actionLoading || !moduleParams.module_title.trim()}>
-                {actionLoading ? 'Generating...' : 'Generate Module'}
-              </GenButton>
+      // Lecture/Discussion topics from weekly schedule for dropdowns
+      const lectureWeeks = (syllabusData.tla_chapters || [])
+        .filter(ch => !ch.outcomes || ch.outcomes === 'Lecture/Discussion')
+        .filter(ch => ch.topics && ch.topics.trim())
+        .map(ch => ({ week: parseInt(ch.chapter, 10) || ch.chapter, topic: ch.topics.trim() }))
+
+      // ── DETAIL view ────────────────────────────────────────────────────
+      if (selectedModule && moduleContent) {
+        const mc = moduleContent
+        return (
+          <Box sx={{ position: 'relative' }}>
+            <Stack spacing={2}>
+              <AutoAlert message={actionError} onClose={() => setActionError('')} />
+
+              {/* Header bar */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <Tooltip title="Back to modules list">
+                  <IconButton size="small"
+                    onClick={() => { setSelectedModule(null); setModuleContent(null); setChatOpen(false) }}
+                    sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
+                    <ArrowBackIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
+                    Module {mc.module_number} · Week {selectedModule.week_number}
+                  </Typography>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.9rem' }}>
+                    {mc.module_title}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', gap: 0.75 }}>
+                  <Tooltip title="AI Chatbox">
+                    <IconButton size="small"
+                      onClick={() => setChatOpen(o => !o)}
+                      sx={{ color: chatOpen ? MAROON : '#666', border: `1px solid ${chatOpen ? MAROON : 'rgba(0,0,0,0.15)'}`, borderRadius: 1 }}>
+                      <ChatIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Button size="small" startIcon={<SaveIcon sx={{ fontSize: '0.85rem !important' }} />}
+                    disabled={!moduleContentDirty || moduleSaving}
+                    onClick={handleSaveModuleContent}
+                    sx={{ bgcolor: moduleContentDirty ? MAROON : '#ccc', color: '#fff', borderRadius: 1.5,
+                          textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
+                          '&:hover': { bgcolor: '#6a0000' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
+                    {moduleSaving ? 'Saving…' : 'Save'}
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Introduction */}
+              <SectionCard title="Introduction">
+                <TextField multiline minRows={3} fullWidth
+                  value={mc.introduction || ''}
+                  onChange={e => updateModuleField('introduction', e.target.value)}
+                  onClick={() => setChatField('introduction')}
+                  placeholder="Module introduction…"
+                  sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.84rem' } }} />
+              </SectionCard>
+
+              {/* Learning Objectives */}
+              <SectionCard title="Learning Objectives">
+                <Stack spacing={1}>
+                  {(mc.learning_objectives || []).map((obj, i) => (
+                    <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                      <Typography variant="body2" sx={{ color: MAROON, fontWeight: 700, mt: 0.8, flexShrink: 0 }}>{i + 1}.</Typography>
+                      <TextField fullWidth size="small"
+                        value={obj}
+                        onChange={e => {
+                          const arr = [...(mc.learning_objectives || [])]
+                          arr[i] = e.target.value
+                          updateModuleField('learning_objectives', arr)
+                        }}
+                        onClick={() => setChatField('learning_objectives')}
+                        sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.84rem' } }} />
+                      <IconButton size="small" sx={{ color: '#bbb', mt: 0.3 }}
+                        onClick={() => {
+                          const arr = (mc.learning_objectives || []).filter((_, j) => j !== i)
+                          updateModuleField('learning_objectives', arr)
+                        }}>
+                        <DeleteIcon sx={{ fontSize: '0.9rem' }} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  <Button size="small" startIcon={<AddIcon />}
+                    onClick={() => updateModuleField('learning_objectives', [...(mc.learning_objectives || []), ''])}
+                    sx={{ alignSelf: 'flex-start', color: MAROON, textTransform: 'none', fontSize: '0.78rem' }}>
+                    Add Objective
+                  </Button>
+                </Stack>
+              </SectionCard>
+
+              {/* Subtopics */}
+              <SectionCard title="Subtopics">
+                <Stack spacing={1}>
+                  {(mc.subtopics || []).map((st) => {
+                    const isExpanded = expandedSubtopics.has(st.id)
+                    const isGen = subtopicGenerating === st.id
+                    return (
+                      <Box key={st.id} sx={{ border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1.5, overflow: 'hidden' }}>
+                        {/* Subtopic header */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.9,
+                                   bgcolor: isExpanded ? MAROON_LIGHT : '#fafafa', cursor: 'pointer' }}
+                          onClick={() => setExpandedSubtopics(prev => {
+                            const next = new Set(prev)
+                            isExpanded ? next.delete(st.id) : next.add(st.id)
+                            return next
+                          })}>
+                          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600, color: '#333', fontSize: '0.84rem' }}>
+                            {st.title || '(Untitled)'}
+                          </Typography>
+                          <Tooltip title="Generate content from sources">
+                            <span>
+                              <IconButton size="small" disabled={isGen}
+                                onClick={e => { e.stopPropagation(); handleGenerateSubtopicContent(st.id, st.title) }}
+                                sx={{ color: MAROON, '&:hover': { bgcolor: MAROON_LIGHT } }}>
+                                {isGen
+                                  ? <CircularProgress size={14} sx={{ color: MAROON }} />
+                                  : <AutoAwesomeIcon sx={{ fontSize: '1rem' }} />}
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                          {isExpanded
+                            ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: '#666' }} />
+                            : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: '#666' }} />}
+                        </Box>
+                        {/* Subtopic content */}
+                        {isExpanded && (
+                          <Box sx={{ px: 1.5, py: 1, bgcolor: '#fff' }}>
+                            <TextField multiline minRows={5} fullWidth
+                              value={st.content || ''}
+                              onChange={e => updateSubtopicField(st.id, 'content', e.target.value)}
+                              onClick={() => setChatField(`subtopic:${st.id}`)}
+                              placeholder="Subtopic content will appear here after generation or manual editing…"
+                              sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.83rem' } }} />
+                          </Box>
+                        )}
+                      </Box>
+                    )
+                  })}
+                </Stack>
+              </SectionCard>
+
+              {/* Short Activity */}
+              <SectionCard title="Short Activity">
+                <Stack spacing={1.5}>
+                  <LField label="Activity Title"
+                    value={mc.short_activity?.title || ''}
+                    onChange={e => updateModuleField('short_activity', { ...mc.short_activity, title: e.target.value })}
+                    onClick={() => setChatField('short_activity')} />
+                  <LField label="Duration"
+                    value={mc.short_activity?.duration || ''}
+                    onChange={e => updateModuleField('short_activity', { ...mc.short_activity, duration: e.target.value })} />
+                  <LField label="Description" multiline minRows={3}
+                    value={mc.short_activity?.description || ''}
+                    onChange={e => updateModuleField('short_activity', { ...mc.short_activity, description: e.target.value })} />
+                </Stack>
+              </SectionCard>
             </Stack>
-          </SectionCard>
-          {resultText && (
-            <SectionCard title="Generated Output">
-              <TextField multiline minRows={12} fullWidth value={resultText} onChange={e => setResultText(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', fontFamily: 'monospace' } }} />
-            </SectionCard>
-          )}
-          {(workspaceApi.data?.modules || []).length > 0 && (
-            <SectionCard title="Existing Modules">
+
+            {/* AI Chatbox panel */}
+            {chatOpen && (
+              <Box sx={{
+                position: 'fixed', bottom: 24, right: 24, width: 340, zIndex: 1300,
+                bgcolor: '#fff', borderRadius: 2, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                border: `1.5px solid ${MAROON}33`, display: 'flex', flexDirection: 'column', maxHeight: 480,
+              }}>
+                {/* Chat header */}
+                <Box sx={{ px: 2, py: 1.25, bgcolor: MAROON, borderRadius: '8px 8px 0 0',
+                           display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AutoAwesomeIcon sx={{ color: '#fff', fontSize: '1rem' }} />
+                  <Typography variant="subtitle2" sx={{ color: '#fff', flex: 1, fontWeight: 700, fontSize: '0.84rem' }}>
+                    AI Module Assistant
+                  </Typography>
+                  {chatField && (
+                    <Chip label={chatField.startsWith('subtopic:') ? 'Subtopic' : chatField}
+                      size="small" sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: '0.65rem', height: 18 }} />
+                  )}
+                  <IconButton size="small" onClick={() => setChatOpen(false)} sx={{ color: '#fff', p: 0.25 }}>
+                    <CloseIcon sx={{ fontSize: '1rem' }} />
+                  </IconButton>
+                </Box>
+                {/* Messages */}
+                <Box sx={{ flex: 1, overflowY: 'auto', px: 1.5, py: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {chatMessages.length === 0 && (
+                    <Typography variant="caption" sx={{ color: '#aaa', textAlign: 'center', mt: 2 }}>
+                      Ask me to rewrite, expand, or improve any section of this module.
+                    </Typography>
+                  )}
+                  {chatMessages.map((msg, i) => (
+                    <Box key={i} sx={{
+                      alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start',
+                      maxWidth: '85%', bgcolor: msg.role === 'user' ? MAROON : '#f3f3f3',
+                      color: msg.role === 'user' ? '#fff' : '#333',
+                      borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                      px: 1.5, py: 0.75, fontSize: '0.8rem', lineHeight: 1.5,
+                    }}>
+                      {msg.content}
+                    </Box>
+                  ))}
+                  {chatLoading && (
+                    <Box sx={{ alignSelf: 'flex-start' }}>
+                      <CircularProgress size={16} sx={{ color: MAROON }} />
+                    </Box>
+                  )}
+                </Box>
+                {/* Input */}
+                <Box sx={{ px: 1.25, py: 1, borderTop: '1px solid rgba(0,0,0,0.08)', display: 'flex', gap: 0.75 }}>
+                  <TextField size="small" fullWidth multiline maxRows={3}
+                    placeholder="Ask the AI to modify this module…"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend() } }}
+                    sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8rem', borderRadius: 1.5 } }} />
+                  <IconButton size="small" disabled={!chatInput.trim() || chatLoading}
+                    onClick={handleChatSend}
+                    sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, alignSelf: 'flex-end',
+                          '&:hover': { bgcolor: '#6a0000' }, '&:disabled': { bgcolor: '#ddd' } }}>
+                    <SendIcon sx={{ fontSize: '1rem' }} />
+                  </IconButton>
+                </Box>
+              </Box>
+            )}
+          </Box>
+        )
+      }
+
+      // ── LIST view ──────────────────────────────────────────────────────
+      if (!moduleCreating) {
+        const modules = workspaceApi.data?.modules || []
+        return (
+          <Stack spacing={2}>
+            <AutoAlert message={actionError} onClose={() => setActionError('')} />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2"
+                sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Modules
+              </Typography>
+              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                onClick={() => {
+                  setModuleFromSchedule(false)
+                  setModuleParams(p => ({ ...p, module_title: '', week_number: '' }))
+                  setResultText('')
+                  setModuleCreating(true)
+                }}
+                sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                     px: 1.5, py: 0.4, '&:hover': { bgcolor: '#6a0000' } }}>
+                Create Module
+              </Button>
+            </Box>
+            {modules.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
+                <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No modules yet.</Typography>
+                <Typography variant="caption" sx={{ color: '#ccc' }}>
+                  Click <b>Create Module</b> above or use the ⚡ button in the Weekly Schedule.
+                </Typography>
+              </Box>
+            ) : (
               <Stack spacing={0.75}>
-                {workspaceApi.data.modules.map(m => (
-                  <Box key={m.module_id} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                {modules.map(m => (
+                  <Box key={m.module_id}
+                    onClick={() => handleOpenModule(m)}
+                    sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.75, py: 1.1,
+                          bgcolor: '#fff', borderRadius: 1.5, border: '1px solid rgba(0,0,0,0.07)',
+                          cursor: 'pointer',
+                          '&:hover': { borderColor: MAROON + '55', bgcolor: MAROON_LIGHT } }}>
                     <Chip label={'Wk ' + m.week_number} size="small"
-                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }} />
-                    <Typography variant="body2" sx={{ color: '#333', flex: 1 }}>{m.module_title}</Typography>
+                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500 }}>{m.module_title}</Typography>
                     <Chip label={m.status} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                   </Box>
                 ))}
               </Stack>
+            )}
+          </Stack>
+        )
+      }
+
+      // ── CREATE view ────────────────────────────────────────────────────
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
+          {/* Back + header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Back to modules list">
+              <IconButton size="small"
+                onClick={() => { setModuleCreating(false); setModuleFromSchedule(false); setResultText('') }}
+                sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="subtitle2"
+              sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Create Module
+            </Typography>
+          </Box>
+
+          {/* Module Generator > Module Builder */}
+          <SectionCard title="Module Generator">
+            <SectionCard title="Module Builder">
+              <Stack spacing={1.75}>
+                {/* Module Topic */}
+                {moduleFromSchedule ? (
+                  <LField label="Module Topic" value={moduleParams.module_title}
+                    InputProps={{ readOnly: true }}
+                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
+                ) : (
+                  <LField select label="Module Topic" value={moduleParams.module_title}
+                    onChange={e => {
+                      const sel = lectureWeeks.find(lw => lw.topic === e.target.value)
+                      setModuleParams(p => ({ ...p, module_title: e.target.value, week_number: sel ? sel.week : p.week_number }))
+                    }}>
+                    <MenuItem value=""><em>— Select a Lecture/Discussion topic —</em></MenuItem>
+                    {lectureWeeks.map((lw, i) => (
+                      <MenuItem key={i} value={lw.topic}>
+                        Wk {lw.week} — {lw.topic.length > 60 ? lw.topic.slice(0, 57) + '…' : lw.topic}
+                      </MenuItem>
+                    ))}
+                  </LField>
+                )}
+
+                {/* Week Number */}
+                {moduleFromSchedule ? (
+                  <LField label="Week Number" value={moduleParams.week_number}
+                    InputProps={{ readOnly: true }}
+                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
+                ) : (
+                  <LField select label="Week Number" value={moduleParams.week_number}
+                    onChange={e => {
+                      const sel = lectureWeeks.find(lw => String(lw.week) === String(e.target.value))
+                      setModuleParams(p => ({ ...p, week_number: e.target.value, module_title: sel ? sel.topic : p.module_title }))
+                    }}>
+                    <MenuItem value=""><em>— Select week —</em></MenuItem>
+                    {lectureWeeks.map((lw, i) => (
+                      <MenuItem key={i} value={lw.week}>
+                        Week {lw.week}{lw.topic ? ` — ${lw.topic.slice(0, 40)}` : ''}
+                      </MenuItem>
+                    ))}
+                  </LField>
+                )}
+
+                {/* Extra Instructions / Scope */}
+                <LField label="Extra Instructions / Scope" multiline minRows={3}
+                  value={moduleParams.extra_instructions}
+                  onChange={e => setModuleParams(p => ({ ...p, extra_instructions: e.target.value }))}
+                  placeholder="Describe subtopics, scope, or specific content the module should focus on…" />
+
+                {/* top-k */}
+                <LField type="number" label="Knowledge References (top-k)" value={moduleParams.top_k}
+                  onChange={e => setModuleParams(p => ({ ...p, top_k: e.target.value }))} />
+
+                {/* Provider */}
+                <LField select label="Model Provider" value={moduleParams.provider}
+                  onChange={e => setModuleParams(p => ({ ...p, provider: e.target.value }))}>
+                  {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+                </LField>
+
+                <GenButton onClick={handleGenerateModule} disabled={actionLoading || !moduleParams.module_title.toString().trim()}>
+                  {actionLoading ? 'Generating…' : 'Generate Module'}
+                </GenButton>
+                {actionLoading && (
+                  <Box sx={{ textAlign: 'center', py: 1.5 }}>
+                    <CircularProgress size={22} sx={{ color: MAROON }} />
+                    <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
+                      Running RAG pipeline and generating structured module…
+                    </Typography>
+                  </Box>
+                )}
+              </Stack>
             </SectionCard>
-          )}
+          </SectionCard>
         </Stack>
       )
     }
@@ -3070,29 +3459,93 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         {docs.length > 0 && (
           <Box>
-            <Typography variant="caption"
-              sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.62rem', display: 'block', mb: 1 }}>
-              Uploaded ({docs.length})
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.75 }}>
+              <Typography variant="caption"
+                sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.62rem' }}>
+                Uploaded ({docs.length})
+              </Typography>
+              {selectedDocIds.size > 0 && (
+                <Typography variant="caption" sx={{ color: MAROON, fontWeight: 600, fontSize: '0.62rem' }}>
+                  {selectedDocIds.size} selected for generation
+                </Typography>
+              )}
+            </Box>
+            {selectedDocIds.size === 0 && (
+              <Typography variant="caption" sx={{ color: '#bbb', display: 'block', mb: 0.75, fontSize: '0.6rem' }}>
+                Check sources to limit generation to selected files only.
+              </Typography>
+            )}
             <Stack spacing={0.5}>
-              {docs.map((doc, i) => (
-                <Box key={doc.id || doc.records_id || i}
-                  sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75,
-                        bgcolor: BG, borderRadius: 1.5, border: '1px solid rgba(0,0,0,0.07)' }}>
-                  <InsertDriveFileIcon sx={{ fontSize: 15, color: MAROON, flexShrink: 0 }} />
-                  <Typography variant="caption"
-                    sx={{ color: '#444', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {doc.storage_path || doc.file_name || 'Unnamed file'}
-                  </Typography>
-                  <Chip label={doc.rag_status || 'OK'} size="small"
-                    sx={{ height: 16, fontSize: '0.6rem',
-                         bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : '#FFF3E0',
-                         color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : '#E65100' }} />
-                </Box>
-              ))}
+              {docs.map((doc, i) => {
+                const docId = doc.records_id || doc.id || String(i)
+                const isChecked = selectedDocIds.has(docId)
+                const isDeleting = deletingDocId === docId
+                return (
+                  <Box key={docId}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5,
+                          bgcolor: isChecked ? MAROON_LIGHT : BG, borderRadius: 1.5,
+                          border: `1px solid ${isChecked ? MAROON + '44' : 'rgba(0,0,0,0.07)'}`,
+                          transition: 'all 0.15s' }}>
+                    <Checkbox
+                      size="small"
+                      checked={isChecked}
+                      onChange={() => {
+                        setSelectedDocIds(prev => {
+                          const next = new Set(prev)
+                          if (next.has(docId)) next.delete(docId)
+                          else next.add(docId)
+                          return next
+                        })
+                      }}
+                      sx={{ p: 0.25, color: MAROON, '&.Mui-checked': { color: MAROON }, flexShrink: 0 }}
+                    />
+                    <InsertDriveFileIcon sx={{ fontSize: 14, color: MAROON, flexShrink: 0 }} />
+                    <Typography variant="caption"
+                      sx={{ color: '#444', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            fontSize: '0.72rem' }}>
+                      {doc.storage_path || doc.file_name || 'Unnamed file'}
+                    </Typography>
+                    <Chip label={doc.rag_status || 'OK'} size="small"
+                      sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
+                           bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : '#FFF3E0',
+                           color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : '#E65100' }} />
+                    <Tooltip title="Delete source and its vectors">
+                      <IconButton size="small"
+                        disabled={isDeleting}
+                        onClick={() => setConfirmDeleteId(docId)}
+                        sx={{ p: 0.25, color: '#ccc', flexShrink: 0,
+                             '&:hover': { color: '#c62828', bgcolor: '#ffebee' } }}>
+                        {isDeleting
+                          ? <CircularProgress size={12} sx={{ color: '#c62828' }} />
+                          : <DeleteIcon sx={{ fontSize: 14 }} />}
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )
+              })}
             </Stack>
           </Box>
         )}
+
+        {/* Delete confirmation dialog */}
+        <Dialog open={Boolean(confirmDeleteId)} onClose={() => setConfirmDeleteId(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Source?</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ fontSize: '0.85rem' }}>
+              This will permanently remove the file and all its indexed vectors from the knowledge base.
+              Generation tools will no longer use it.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+            <Button size="small" onClick={() => setConfirmDeleteId(null)}
+              sx={{ textTransform: 'none', color: '#666' }}>Cancel</Button>
+            <Button size="small" variant="contained"
+              onClick={() => { const id = confirmDeleteId; setConfirmDeleteId(null); handleDeleteDoc(id) }}
+              sx={{ bgcolor: '#c62828', '&:hover': { bgcolor: '#b71c1c' }, textTransform: 'none', fontWeight: 600 }}>
+              Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Stack>
     )
   }
@@ -3178,7 +3631,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {WORKSPACE_TABS.map(({ key, label, Icon }) => {
             const on = activeTab === key
             return (
-              <Button key={key} onClick={() => { setActiveTab(key); setMobileNavOpen(false) }}
+              <Button key={key} onClick={() => { setActiveTab(key); setMobileNavOpen(false); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
                 startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
                 sx={{
                   justifyContent: 'flex-start', px: 1.5, py: 0.9,
@@ -3223,7 +3676,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               {WORKSPACE_TABS.map(({ key, label, Icon }) => {
                 const on = activeTab === key
                 return (
-                  <Button key={key} onClick={() => setActiveTab(key)}
+                  <Button key={key} onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
                     startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
                     sx={{
                       justifyContent: 'flex-start', px: 1.5, py: 0.9,
