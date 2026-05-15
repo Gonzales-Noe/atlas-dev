@@ -1,16 +1,12 @@
 // src/features/Superadmin/SystemManagement.jsx
 import { useState } from 'react'
 import {
-  Box, Card, CardContent, CardHeader, Grid, Typography, Stack, Button, Dialog, DialogTitle, DialogContent, DialogActions, Alert, Chip, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Switch, FormControlLabel, Divider, TextField,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Dialog, DialogTitle, DialogContent, DialogActions, TextField, Switch, FormControlLabel, Stack, Divider,
 } from '@mui/material'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
-} from 'recharts'
-import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety'
-import StorageIcon from '@mui/icons-material/Storage'
-import CloudIcon from '@mui/icons-material/Cloud'
-import WarningIcon from '@mui/icons-material/Warning'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
+import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
 
 const performanceData = [
   { time: '00:00', cpu: 45, memory: 62, disk: 78 },
@@ -23,234 +19,187 @@ const performanceData = [
 ]
 
 const serverData = [
-  { name: 'Server 1', status: 'Healthy', cpu: 45, memory: 62, uptime: '99.9%', requests: 12000 },
-  { name: 'Server 2', status: 'Healthy', cpu: 38, memory: 58, uptime: '99.8%', requests: 11500 },
-  { name: 'Server 3', status: 'Warning', cpu: 78, memory: 85, uptime: '99.2%', requests: 9800 },
-  { name: 'Database Server', status: 'Healthy', cpu: 32, memory: 67, uptime: '100%', requests: 5200 },
+  { name: 'Server 1',        status: 'Healthy', cpu: 45, memory: 62, uptime: '99.9%', requests: 12000 },
+  { name: 'Server 2',        status: 'Healthy', cpu: 38, memory: 58, uptime: '99.8%', requests: 11500 },
+  { name: 'Server 3',        status: 'Warning', cpu: 78, memory: 85, uptime: '99.2%', requests: 9800  },
+  { name: 'Database Server', status: 'Healthy', cpu: 32, memory: 67, uptime: '100%',  requests: 5200  },
 ]
 
-const getStatusColor = (status) => {
-  switch (status) {
-    case 'Healthy': return { bg: '#C8E6C9', color: '#2E7D32' }
-    case 'Warning': return { bg: '#FFF9C4', color: '#F57F17' }
-    case 'Critical': return { bg: '#FFCDD2', color: '#C62828' }
-    default: return { bg: '#E3F2FD', color: '#1565C0' }
-  }
-}
+const serverStatusType = s => ({ Healthy: 'success', Warning: 'warning', Critical: 'error' }[s] || 'default')
 
-const StatBox = ({ title, value, unit, icon: Icon }) => (
-  <Card sx={{ borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-    <CardContent sx={{ textAlign: 'center', p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
-        <Icon sx={{ fontSize: '2rem', color: '#922724' }} />
-      </Box>
-      <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>
-        {title}
-      </Typography>
-      <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1A1A1A' }}>
-        {value}
-        {unit && <span style={{ fontSize: '1rem', marginLeft: 4 }}>{unit}</span>}
-      </Typography>
-    </CardContent>
-  </Card>
-)
+const tooltipStyle = { background: '#16161E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#F0F0F2', fontFamily: 'var(--font-sans)', fontSize: '0.82rem' }
+const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans)' }
+const inputSx = { '& .MuiOutlinedInput-root': { background: 'rgba(255,255,255,0.05)', borderRadius: 2, fontSize: '0.875rem' }, '& .MuiInputLabel-root': { fontSize: '0.875rem' }, input: { color: '#F0F0F2' } }
 
 export default function SystemManagement() {
-  const [maintenanceOpen, setMaintenanceOpen] = useState(false)
-  const [backupDialogOpen, setBackupDialogOpen] = useState(false)
-  const [maintenanceMode, setMaintenanceMode] = useState(false)
-  const [backupSchedule, setBackupSchedule] = useState(true)
-
-  // Mockup Styles
-  const cardStyles = { borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
-  const cardHeaderProps = { fontSize: '1.2rem', fontWeight: 800, color: '#922724' };
+  const [maintenanceOpen, setMaintenanceOpen]   = useState(false)
+  const [backupOpen, setBackupOpen]             = useState(false)
+  const [maintenanceMode, setMaintenanceMode]   = useState(false)
+  const [backupSchedule, setBackupSchedule]     = useState(true)
 
   return (
     <SuperAdminLayout>
-      <Box>
-        {/* Page Title */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1A1A1A', mb: 1 }}>
-            System Management
-          </Typography>
-          <Typography sx={{ color: '#666', fontSize: '0.95rem' }}>
-            Monitor system health, manage resources, and perform maintenance
-          </Typography>
-        </Box>
+      <PageHeader
+        title="System Management"
+        subtitle="Monitor system health, manage resources, and perform maintenance"
+      />
 
-        {/* System Status Overview */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatBox title="Overall System Health" value="99.7" unit="%" icon={HealthAndSafetyIcon} />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatBox title="Disk Usage" value="78" unit="%" icon={StorageIcon} />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatBox title="Cloud Services" value="12" unit="Active" icon={CloudIcon} />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatBox title="Critical Alerts" value="0" unit="Issues" icon={() => <WarningIcon sx={{ fontSize: '2rem', color: '#2E7D32' }} />} />
-          </Grid>
-        </Grid>
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <StatCard title="System Health"    value="99.7%" icon="⚡" trend="Excellent" accent="#5EDA7E" />
+        <StatCard title="Disk Usage"       value="78%"   icon="💾" accent="#FFB74D" />
+        <StatCard title="Active Cloud Svc" value="12"    icon="☁️" accent="#60AAFF" />
+        <StatCard title="Critical Alerts"  value="0"     icon="🛡️" trend="All Clear" accent="#5EDA7E" />
+      </div>
 
-        {/* Performance Monitoring */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12}>
-            <Card sx={cardStyles}>
-              <CardHeader title="System Resources Over Time" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={400}>
-                  <AreaChart data={performanceData}>
-                    <defs>
-                      <linearGradient id="colorCpu" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B0000" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#8B0000" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorMemory" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#1976D2" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#1976D2" stopOpacity={0} />
-                      </linearGradient>
-                      <linearGradient id="colorDisk" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#F57C00" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#F57C00" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                    <XAxis dataKey="time" />
-                    <YAxis domain={[0, 100]} />
-                    <Tooltip />
-                    <Legend />
-                    <Area type="monotone" dataKey="cpu" stroke="#8B0000" fillOpacity={1} fill="url(#colorCpu)" name="CPU %" />
-                    <Area type="monotone" dataKey="memory" stroke="#1976D2" fillOpacity={1} fill="url(#colorMemory)" name="Memory %" />
-                    <Area type="monotone" dataKey="disk" stroke="#F57C00" fillOpacity={1} fill="url(#colorDisk)" name="Disk %" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+      {/* Resource usage chart */}
+      <GlassCard title="System Resources (24h)" style={{ marginBottom: 16 }}>
+        <ResponsiveContainer width="100%" height={320}>
+          <AreaChart data={performanceData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <defs>
+              <linearGradient id="gCpu"    x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#C0392B" stopOpacity={0.45}/><stop offset="95%" stopColor="#C0392B" stopOpacity={0}/></linearGradient>
+              <linearGradient id="gMemory" x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#0A84FF" stopOpacity={0.45}/><stop offset="95%" stopColor="#0A84FF" stopOpacity={0}/></linearGradient>
+              <linearGradient id="gDisk"   x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#FF9F0A" stopOpacity={0.4}/><stop offset="95%" stopColor="#FF9F0A" stopOpacity={0}/></linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+            <XAxis dataKey="time" tick={axisStyle} axisLine={false} tickLine={false} />
+            <YAxis domain={[0,100]} tick={axisStyle} axisLine={false} tickLine={false} />
+            <Tooltip contentStyle={tooltipStyle} />
+            <Legend formatter={v => <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>{v}</span>} />
+            <Area type="monotone" dataKey="cpu"    name="CPU %"    stroke="#C0392B" strokeWidth={2} fill="url(#gCpu)"    dot={false} />
+            <Area type="monotone" dataKey="memory" name="Memory %" stroke="#0A84FF" strokeWidth={2} fill="url(#gMemory)" dot={false} />
+            <Area type="monotone" dataKey="disk"   name="Disk %"   stroke="#FF9F0A" strokeWidth={2} fill="url(#gDisk)"   dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </GlassCard>
 
-        {/* Server Status */}
-        <Card sx={{ ...cardStyles, mb: 4 }}>
-          <CardHeader title="Server Status" titleTypographyProps={cardHeaderProps} />
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ background: '#FAFAFA', borderBottom: '2px solid #EEE' }}>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Server</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A' }}>Status</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'right' }}>CPU Usage</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'right' }}>Memory Usage</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'right' }}>Uptime</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: '#1A1A1A', textAlign: 'right' }}>Requests/min</TableCell>
+      {/* Resource gauges */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
+        {[
+          { label: 'CPU Usage',    value: 52, color: '#C0392B' },
+          { label: 'Memory Usage', value: 65, color: '#0A84FF' },
+          { label: 'Disk Usage',   value: 78, color: '#FF9F0A' },
+        ].map(({ label, value, color }) => (
+          <GlassCard key={label}>
+            <ProgressBar label={label} value={value} color={color} />
+          </GlassCard>
+        ))}
+      </div>
+
+      {/* Server status table */}
+      <GlassCard title="Server Status" style={{ marginBottom: 16, padding: 0 }}>
+        <div style={{ padding: '18px 22px 0' }}>
+          <h3 style={{ margin: '0 0 16px', fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Server Status</h3>
+        </div>
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                {['Server', 'Status', 'CPU', 'Memory', 'Uptime', 'Requests/min'].map(h => (
+                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4) !important', textTransform: 'uppercase', py: 1.5 }}>{h}</TableCell>
+                ))}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {serverData.map((srv, i) => (
+                <TableRow key={i} sx={{ '&:last-child td': { borderBottom: 'none !important' } }}>
+                  <TableCell sx={{ fontWeight: '700 !important' }}>{srv.name}</TableCell>
+                  <TableCell><StatusChip label={srv.status} type={serverStatusType(srv.status)} /></TableCell>
+                  <TableCell>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden', minWidth: 50 }}>
+                        <div style={{ height: '100%', width: `${srv.cpu}%`, background: srv.cpu > 70 ? '#FF453A' : '#C0392B', borderRadius: 99 }} />
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: 30 }}>{srv.cpu}%</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden', minWidth: 50 }}>
+                        <div style={{ height: '100%', width: `${srv.memory}%`, background: srv.memory > 80 ? '#FF9F0A' : '#0A84FF', borderRadius: 99 }} />
+                      </div>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: 30 }}>{srv.memory}%</span>
+                    </div>
+                  </TableCell>
+                  <TableCell sx={{ fontFamily: 'var(--font-mono) !important', fontSize: '0.82rem !important', color: 'var(--green) !important' }}>{srv.uptime}</TableCell>
+                  <TableCell sx={{ fontFamily: 'var(--font-mono) !important', fontSize: '0.82rem !important' }}>{srv.requests.toLocaleString()}</TableCell>
                 </TableRow>
-              </TableHead>
-              <TableBody>
-                {serverData.map((server, idx) => {
-                  const statusColor = getStatusColor(server.status)
-                  return (
-                    <TableRow key={idx} sx={{ '&:hover': { background: '#FAFAFA' } }}>
-                      <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{server.name}</TableCell>
-                      <TableCell>
-                        <Chip label={server.status} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} />
-                      </TableCell>
-                      <TableCell sx={{ textAlign: 'right', color: '#666' }}>{server.cpu}%</TableCell>
-                      <TableCell sx={{ textAlign: 'right', color: '#666' }}>{server.memory}%</TableCell>
-                      <TableCell sx={{ textAlign: 'right', color: '#666' }}>{server.uptime}</TableCell>
-                      <TableCell sx={{ textAlign: 'right', color: '#666' }}>{server.requests.toLocaleString()}</TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Card>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </GlassCard>
 
-        {/* System Maintenance & Backups */}
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Maintenance Mode" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <Stack spacing={2}>
-                  <Typography sx={{ color: '#666', fontSize: '0.9rem' }}>
-                    Enable maintenance mode to perform system updates and maintenance without affecting users.
-                  </Typography>
-                  <FormControlLabel
-                    control={<Switch checked={maintenanceMode} onChange={(e) => setMaintenanceMode(e.target.checked)} />}
-                    label="Enable Maintenance Mode"
-                  />
-                  <Typography sx={{ color: '#888', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                    When enabled: Users will see a maintenance page. API requests will be queued.
-                  </Typography>
-                  <Button variant="contained" disabled={!maintenanceMode} sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }} onClick={() => setMaintenanceOpen(true)}>
-                    Configure Maintenance
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+      {/* Maintenance + Backup */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <GlassCard title="Maintenance Mode">
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 0 }}>
+            Enable maintenance mode to perform system updates without affecting users.
+          </p>
+          <FormControlLabel
+            control={<Switch checked={maintenanceMode} onChange={e => setMaintenanceMode(e.target.checked)} />}
+            label={<span style={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Enable Maintenance Mode</span>}
+          />
+          <p style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem', fontStyle: 'italic' }}>
+            When enabled: users see a maintenance page, API requests are queued.
+          </p>
+          <PrimaryBtn onClick={() => setMaintenanceOpen(true)} disabled={!maintenanceMode} style={{ marginTop: 8 }}>
+            Configure Maintenance
+          </PrimaryBtn>
+        </GlassCard>
 
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Database & Backups" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <Stack spacing={2}>
-                  <Box>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>Last Backup</Typography>
-                    <Typography sx={{ color: '#666', fontSize: '0.9rem' }}>2026-05-10 at 02:00 AM (12 hours ago)</Typography>
-                  </Box>
-                  <Box>
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.9rem', mb: 1 }}>Backup Schedule</Typography>
-                    <FormControlLabel control={<Switch checked={backupSchedule} onChange={(e) => setBackupSchedule(e.target.checked)} />} label="Daily Automatic Backups (2 AM UTC)" />
-                  </Box>
-                  <Divider />
-                  <Button variant="outlined" sx={{ borderColor: '#922724', color: '#922724' }} onClick={() => setBackupDialogOpen(true)}>
-                    Trigger Manual Backup
-                  </Button>
-                  <Button variant="outlined" sx={{ borderColor: '#666', color: '#666' }}>
-                    View Backup History
-                  </Button>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+        <GlassCard title="Database & Backups">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.07em', marginBottom: 4 }}>LAST BACKUP</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>2026-05-10 at 02:00 AM</div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginTop: 2 }}>12 hours ago</div>
+            </div>
+            <FormControlLabel
+              control={<Switch checked={backupSchedule} onChange={e => setBackupSchedule(e.target.checked)} />}
+              label={<span style={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Daily Automatic Backups (2 AM UTC)</span>}
+            />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <PrimaryBtn onClick={() => setBackupOpen(true)}>Trigger Backup</PrimaryBtn>
+              <OutlineBtn>View History</OutlineBtn>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
 
-        {/* Dialogs */}
-        <Dialog open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Configure Maintenance Mode</DialogTitle>
-          <Divider />
-          <DialogContent sx={{ pt: 3 }}>
-            <Stack spacing={2}>
-              <Typography sx={{ color: '#666', fontSize: '0.9rem' }}>Maintenance mode will display a custom message to users and queue API requests.</Typography>
-              <TextField multiline rows={4} label="Maintenance Message" variant="outlined" fullWidth defaultValue="We are currently performing system maintenance. We'll be back online shortly." />
-              <Typography sx={{ color: '#666', fontSize: '0.9rem' }}>Estimated duration:</Typography>
-              <TextField type="number" label="Duration (hours)" variant="outlined" defaultValue={2} inputProps={{ min: 1, max: 24 }} />
-            </Stack>
-          </DialogContent>
-          <DialogActions sx={{ p: 2 }}>
-            <Button onClick={() => setMaintenanceOpen(false)}>Cancel</Button>
-            <Button variant="contained" sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }} onClick={() => setMaintenanceOpen(false)}>Enable Maintenance Mode</Button>
-          </DialogActions>
-        </Dialog>
+      {/* Maintenance dialog */}
+      <Dialog open={maintenanceOpen} onClose={() => setMaintenanceOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Configure Maintenance Mode</DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={2.5}>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: 0 }}>Maintenance mode displays a custom message and queues API requests.</p>
+            <TextField multiline rows={4} label="Maintenance Message" fullWidth defaultValue="We are currently performing system maintenance. We'll be back shortly." sx={inputSx} />
+            <TextField type="number" label="Duration (hours)" fullWidth defaultValue={2} inputProps={{ min: 1, max: 24 }} sx={inputSx} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <OutlineBtn onClick={() => setMaintenanceOpen(false)}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={() => setMaintenanceOpen(false)}>Enable Maintenance</PrimaryBtn>
+        </DialogActions>
+      </Dialog>
 
-        <Dialog open={backupDialogOpen} onClose={() => setBackupDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>Trigger Manual Backup</DialogTitle>
-          <Divider />
-          <DialogContent sx={{ pt: 3 }}>
-            <Typography sx={{ color: '#666', fontSize: '0.9rem', mb: 2 }}>This will create a full backup of all databases and user files. This process may take 10-15 minutes and will not affect user access.</Typography>
-            <Typography sx={{ fontWeight: 700, mb: 1 }}>Backup Size Estimate:</Typography>
-            <Typography sx={{ color: '#922724', fontSize: '1.2rem', fontWeight: 700 }}>~2.4 GB</Typography>
-          </DialogContent>
-          <DialogActions sx={{ p: 2 }}>
-            <Button onClick={() => setBackupDialogOpen(false)}>Cancel</Button>
-            <Button variant="contained" sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }} onClick={() => setBackupDialogOpen(false)}>Start Backup</Button>
-          </DialogActions>
-        </Dialog>
-
-      </Box>
+      {/* Backup dialog */}
+      <Dialog open={backupOpen} onClose={() => setBackupOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Trigger Manual Backup</DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 3 }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>This will create a full backup of all databases and user files. This may take 10–15 minutes and will not affect user access.</p>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.07em', marginBottom: 4 }}>ESTIMATED SIZE</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#FF6B6B' }}>~2.4 GB</div>
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <OutlineBtn onClick={() => setBackupOpen(false)}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={() => setBackupOpen(false)}>Start Backup</PrimaryBtn>
+        </DialogActions>
+      </Dialog>
     </SuperAdminLayout>
   )
 }
