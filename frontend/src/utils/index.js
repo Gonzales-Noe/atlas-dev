@@ -46,13 +46,34 @@ export function toInitials(name = '') {
 export function extractApiError(err) {
   if (!err?.response?.data) return err?.message || 'An unexpected error occurred.'
   const data = err.response.data
-  if (typeof data === 'string')  return data
-  if (data.detail)               return data.detail
-  if (data.non_field_errors)     return data.non_field_errors[0]
-  // Return first field error
+  if (typeof data === 'string') return data
+  if (data.detail) {
+    if (typeof data.detail === 'string') return data.detail
+    if (typeof data.detail === 'object') return extractApiError({ response: { data: data.detail } })
+  }
+  if (data.error) return data.error
+  if (data.errors) {
+    if (typeof data.errors === 'string') return data.errors
+    if (typeof data.errors === 'object') return extractApiError({ response: { data: data.errors } })
+  }
+  if (data.non_field_errors) return Array.isArray(data.non_field_errors)
+    ? data.non_field_errors[0]
+    : String(data.non_field_errors)
+
   const firstKey = Object.keys(data)[0]
-  if (firstKey) return `${firstKey}: ${data[firstKey][0]}`
-  return 'An unexpected error occurred.'
+  if (!firstKey) return 'An unexpected error occurred.'
+
+  const value = data[firstKey]
+  if (Array.isArray(value) && value.length > 0) {
+    return `${firstKey}: ${value[0]}`
+  }
+  if (typeof value === 'string') {
+    return `${firstKey}: ${value}`
+  }
+  if (typeof value === 'boolean' || value == null) {
+    return `${firstKey}: ${String(value)}`
+  }
+  return JSON.stringify(value)
 }
 
 // ── Bloom's taxonomy levels ────────────────────────────────────────────────
