@@ -1,6 +1,7 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import atlasLogo from '../assets/atlas-logo.png'
+import atlasHero from '../assets/atlas.png'
 import { useEffect, useRef, useState } from 'react'
 
 // ── Scroll-triggered animation hook ─────────────────────────────────────────
@@ -364,7 +365,6 @@ export default function LandingPage() {
           padding: 2.5rem;
           transition: all 0.35s ease;
           position: relative;
-          overflow: hidden;
         }
         .pricing-card:hover {
           transform: translateY(-6px);
@@ -460,7 +460,7 @@ export default function LandingPage() {
         @media (max-width: 768px) {
           .desktop-nav { display: none !important; }
           .hamburger { display: flex !important; }
-          .hero-title { font-size: 2.8rem !important; }
+          .hero-title { font-size: clamp(1.8rem, 8vw, 2.8rem) !important; }
           .hero-subtitle { font-size: 1.05rem !important; }
           .section-title { font-size: 2rem !important; }
           .features-grid { grid-template-columns: 1fr !important; }
@@ -468,10 +468,44 @@ export default function LandingPage() {
           .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
           .testimonials-grid { grid-template-columns: 1fr !important; }
           .team-grid { grid-template-columns: 1fr !important; }
+          .hero-container {
+            flex-direction: column;
+            text-align: center;
+            gap: 2.5rem;
+          }
+          .hero-text-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          .hero-title, .hero-subtitle {
+            text-align: center !important;
+          }
+          .hero-cta-group, .stats-chips {
+            justify-content: center !important;
+          }
         }
 
         @media (min-width: 769px) {
           .hamburger { display: none !important; }
+          .hero-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4rem;
+            text-align: left;
+          }
+          .hero-text-content {
+            flex: 1.2;
+            min-width: 0;
+          }
+          .hero-image-content {
+            flex: 1;
+            display: flex;
+            justify-content: flex-end;
+            position: relative;
+            z-index: 2;
+          }
         }
 
         .hero-badge {
@@ -497,7 +531,7 @@ export default function LandingPage() {
         .hero-cta-group {
           display: flex;
           gap: 1rem;
-          justify-content: center;
+          justify-content: flex-start;
           flex-wrap: wrap;
           margin-top: 2.5rem;
         }
@@ -674,70 +708,87 @@ export default function LandingPage() {
           zIndex: 0,
         }} />
 
-        <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '3rem 2rem', maxWidth: 800, margin: '0 auto' }}>
-          <div className="hero-badge">
-            <span style={{ width: 6, height: 6, background: '#FF6B6B', borderRadius: '50%', display: 'inline-block' }} />
-            NOW AVAILABLE FOR PHILIPPINE HIGHER EDUCATION
+        <div className="hero-container" style={{ position: 'relative', zIndex: 1, padding: '3rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
+          <div className="hero-text-content">
+            <div className="hero-badge" style={{ margin: '0 0 1.5rem' }}>
+              <span style={{ width: 6, height: 6, background: '#FF6B6B', borderRadius: '50%', display: 'inline-block' }} />
+              NOW AVAILABLE FOR PHILIPPINE HIGHER EDUCATION
+            </div>
+
+            <h1 className="hero-title" style={{
+            fontSize: 'clamp(2.8rem, 4.5vw, 4rem)',
+              fontWeight: 800,
+              lineHeight: 1.1,
+              maxWidth: 1000,
+              letterSpacing: '-0.02em',
+              margin: '0 0 1.2rem',
+              fontFamily: '"Plus Jakarta Sans", sans-serif',
+            }}>
+            <span style={{ whiteSpace: 'nowrap' }}>Bring the Passion.</span><br />
+            <span className="glow-text" style={{ whiteSpace: 'nowrap' }}>We'll Bring the Platform.</span>
+            </h1>
+
+            <p className="hero-subtitle" style={{
+              fontSize: '1.2rem',
+              color: 'rgba(255,255,255,0.6)',
+              lineHeight: 1.7,
+              margin: '0 0 2rem',
+              maxWidth: '100%',
+            }}>
+              The AI-powered OBE platform built for Philippine Higher Education —
+              syllabus generation, assessment building, and prescriptive analytics in one place.
+            </p>
+
+            <div className="hero-cta-group">
+              <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
+                Join ATLAS Now!
+              </button>
+              <button
+                className="atlas-btn-outline"
+                onClick={() => scrollTo('features')}
+                style={{ padding: '0.9rem 2rem', fontSize: '1rem' }}
+              >
+                See How It Works ↓
+              </button>
+            </div>
+
+            {/* Floating stats chips */}
+            <div className="stats-chips" style={{ display: 'flex', gap: '.5rem', marginTop: '3rem', flexWrap: 'nowrap' }}>
+              {[
+                { label: 'CHED OBE-Compliant', icon: '✓' },
+                { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
+                { label: 'Google Sheets Integration', icon: '✓' },
+              ].map(({ label, icon }) => (
+                <div key={label} style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 100,
+                  padding: '7px 9px',
+                  fontSize: '0.78rem',
+                  color: 'rgba(255,255,255,0.6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                }}>
+                  <span style={{ color: '#FF6B6B' }}>{icon}</span>
+                  {label}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <h1 className="hero-title" style={{
-            fontSize: '4.2rem',
-            fontWeight: 800,
-            lineHeight: 1.1,
-            letterSpacing: '-0.02em',
-            margin: '0 0 1.2rem',
-            fontFamily: '"Plus Jakarta Sans", sans-serif',
-          }}>
-            The Smarter Way to<br />
-            <span className="glow-text">Teach & Assess</span>
-          </h1>
-
-          <p className="hero-subtitle" style={{
-            fontSize: '1.2rem',
-            color: 'rgba(255,255,255,0.6)',
-            lineHeight: 1.7,
-            margin: '0 auto',
-            maxWidth: 580,
-          }}>
-            ATLAS is the AI-powered OBE platform built for Philippine higher education —
-            syllabus generation, assessment building, and prescriptive analytics in one place.
-          </p>
-
-          <div className="hero-cta-group">
-            <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
-              Get Started Free
-            </button>
-            <button
-              className="atlas-btn-outline"
-              onClick={() => scrollTo('features')}
-              style={{ padding: '0.9rem 2rem', fontSize: '1rem' }}
-            >
-              See How It Works ↓
-            </button>
-          </div>
-
-          {/* Floating stats chips */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '3rem', flexWrap: 'wrap' }}>
-            {[
-              { label: 'CHED OBE-Compliant', icon: '✓' },
-              { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
-              { label: 'Google Sheets Integration', icon: '✓' },
-            ].map(({ label, icon }) => (
-              <div key={label} style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 100,
-                padding: '6px 14px',
-                fontSize: '0.78rem',
-                color: 'rgba(255,255,255,0.6)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}>
-                <span style={{ color: '#FF6B6B' }}>{icon}</span>
-                {label}
-              </div>
-            ))}
+          <div className="hero-image-content">
+            <img
+              src={atlasHero}
+              alt="ATLAS Platform Character"
+              style={{
+                width: '100%',
+                maxWidth: 580,
+                display: 'block',
+                filter: 'drop-shadow(0 20px 40px rgba(139,0,0,0.25))',
+                transform: 'translateX(60px)'
+              }}
+            />
           </div>
         </div>
 
@@ -776,8 +827,8 @@ export default function LandingPage() {
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
             <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
-              Everything You Need to<br />
-              <span className="glow-text">Teach Smarter</span>
+              Everything Your Course Needs <br />
+              <span className="glow-text">to Teach Smarter</span>
             </h2>
             <div className="divider" />
           </div>
@@ -864,7 +915,7 @@ export default function LandingPage() {
               Simple, Institutional Pricing
             </h2>
             <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.75rem', fontSize: '0.95rem' }}>
-              Billed per institution. Unlimited student access included.
+              Billed per institution. Faculty access included.
             </p>
             <div className="divider" />
           </div>
@@ -919,7 +970,7 @@ export default function LandingPage() {
           </div>
 
           <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', marginTop: '2.5rem' }}>
-            All plans include unlimited student access · No setup fees · Cancel anytime
+            All plans include faculty access · No setup fees · Cancel anytime
           </p>
         </div>
       </section>
@@ -980,8 +1031,8 @@ export default function LandingPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {[
-                  { icon: '📧', label: 'Email', value: 'hello@atlas.edu.ph' },
-                  { icon: '📍', label: 'Location', value: 'Philippines' },
+                  { icon: '📧', label: 'Email', value: 'atlasdev@gmail.com' },
+                  { icon: '📍', label: 'Location', value: 'Lipa City, Batangas, Philippines' },
                   { icon: '⏱️', label: 'Response Time', value: 'Within 24 hours' },
                 ].map(({ icon, label, value }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
