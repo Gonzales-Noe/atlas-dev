@@ -12,4 +12,5 @@ urlpatterns = [
     path('rag-documents/', views.list_rag_documents, name='list_rag_documents'),
     path('course-rag-documents/', views.list_course_rag_documents, name='list_course_rag_documents'),
     path('semantic-search/', views.semantic_search, name='semantic_search'),
+    path('llm-provider-status/', views.llm_provider_status, name='llm_provider_status'),
 ]
