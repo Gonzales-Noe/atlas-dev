@@ -7,10 +7,19 @@ from rest_framework.response import Response
 
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
-from apps.integrations.models import Assessment, Course, CourseLoad, Module, Syllabus, UserRole
-from apps.integrations.rag_service import semantic_search
+from apps.integrations.models import (
+    Assessment,
+    Course,
+    CourseLoad,
+    Module,
+    ParentChunk,
+    Syllabus,
+    UserRole,
+)
+from apps.integrations.rag_service import semantic_search, semantic_search_with_summary
 
-from .serializers import GenerateModuleSerializer, GenerateSyllabusSerializer
+from .metrics import compute_metrics
+from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, GenerateSyllabusSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +49,25 @@ def _get_assigned_course_or_403(request, course_id):
             status=status.HTTP_404_NOT_FOUND,
         )
     return assignment.course, None
+
+
+def _load_course_rag_chunks(course, limit=3):
+    """Return parent chunks from faculty-uploaded course files as RAG context."""
+    parent_texts = list(
+        ParentChunk.objects
+        .filter(records__course=course, records__rag_status='COMPLETED')
+        .order_by('-records__records_id')
+        .values_list('parent_content', flat=True)[:limit]
+    )
+    return [
+        {
+            "text": text,
+            "document_title": "Uploaded course document",
+            "page_number": None,
+            "score": 0.5,
+        }
+        for text in parent_texts
+    ]
 
 
 @api_view(["GET"])
@@ -206,6 +234,7 @@ def generate_syllabus(request):
         )
 
     data = serializer.validated_data
+    course_id = data.get("course_id")
     course_name = data["course_name"]
     course_code = data.get("course_code", "")
     num_weeks = data.get("num_weeks", 16)
@@ -217,22 +246,38 @@ def generate_syllabus(request):
     )
 
     try:
-        # Step 1 — Semantic search
-        chunks = semantic_search(search_query, top_k=top_k)
+        # Step 1 — Global semantic search with progressive summary
+        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        global_chunks = rag_result["chunks"]
+        global_summary = rag_result["context_summary"]
+        course_chunks = []
+        if course_id:
+            course, error_response = _get_assigned_course_or_403(request, course_id)
+            if error_response:
+                return error_response
+            # If course_id is present, source canonical title/code and include faculty uploads.
+            course_name = course.course_title
+            course_code = course.course_code
+            course_chunks = _load_course_rag_chunks(course, limit=3)
+        chunks = global_chunks + course_chunks
         logger.info(
-            "Syllabus generation for %r: retrieved %d RAG chunk(s) using provider=%r",
+            "Syllabus generation for %r: global=%d (abstained=%s) course=%d total=%d provider=%r",
             course_name,
+            len(global_chunks),
+            rag_result["abstained"],
+            len(course_chunks),
             len(chunks),
             provider,
         )
 
-        # Step 2 — Build CoT prompt
+        # Step 2 — Build CoT prompt (pass summary for token-efficient context)
         system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_prompt(
             course_name=course_name,
             course_code=course_code,
             num_weeks=num_weeks,
             context_chunks=chunks,
             extra_instructions=extra_instructions,
+            context_summary=global_summary,
         )
 
         # Step 3 — Call LLM
@@ -305,23 +350,26 @@ def generate_module(request):
     )
 
     try:
-        # Step 1 — Semantic search
-        chunks = semantic_search(search_query, top_k=top_k)
+        # Step 1 — Semantic search with progressive summary
+        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        chunks = rag_result["chunks"]
         logger.info(
-            "Module generation for %r / %r (week %d): retrieved %d RAG chunk(s)",
+            "Module generation for %r / %r (week %d): retrieved %d RAG chunk(s) (abstained=%s)",
             course_name,
             module_title,
             week_number,
             len(chunks),
+            rag_result["abstained"],
         )
 
-        # Step 2 — Build CoT prompt
+        # Step 2 — Build CoT prompt (token-efficient via context summary)
         system_prompt, user_prompt = CoTPromptBuilder.build_module_prompt(
             course_name=course_name,
             module_title=module_title,
             week_number=week_number,
             context_chunks=chunks,
             extra_instructions=extra_instructions,
+            context_summary=rag_result["context_summary"],
         )
 
         # Step 3 — Call LLM
@@ -459,9 +507,10 @@ def generate_syllabus_field(request):
         return error_response
 
     try:
-        # ── Step 1: Global RAG ─────────────────────────────────────────────
+        # ── Step 1: Global RAG with progressive summary ────────────────────
         search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
-        global_chunks = semantic_search(search_query, top_k=top_k)
+        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        global_chunks = rag_result["chunks"]
 
         # ── Step 2: Course-specific RAG (uploaded faculty documents) ───────
         from apps.integrations.models import ParentChunk  # local import to avoid circular
@@ -483,7 +532,7 @@ def generate_syllabus_field(request):
 
         all_chunks = global_chunks + course_chunks
 
-        # ── Step 3: Build prompt ──────────────────────────────────────────
+        # ── Step 3: Build prompt (summary-first, token-efficient) ─────────
         system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name=course.course_title,
             course_code=course.course_code,
@@ -492,6 +541,7 @@ def generate_syllabus_field(request):
             existing_content=existing_content,
             mode=mode,
             context_chunks=all_chunks,
+            context_summary=rag_result["context_summary"],
         )
 
         # ── Step 4: Call LLM ─────────────────────────────────────────────
@@ -801,6 +851,78 @@ def parse_syllabus_upload(request):
         )
     except Exception as exc:
         logger.exception("Error in parse_syllabus_upload for course %r", course_id)
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def compute_curriculum_metrics(request):
+    """
+    Compute curriculum quality metrics (IC, AM, CBI, SC, FA, CRI) from syllabus content.
+
+    Endpoint: POST /api/curriculum/quality-metrics/
+
+    Body: { "course_id": "<uuid>" }  OR  { "syllabus_content": {...} }
+
+    Returns:
+    {
+        "success": true,
+        "ic": 0-100,
+        "am": 0-100,
+        "cbi": 0-100 | null,
+        "sc": 0-100,
+        "fa": 0-100,
+        "cri": 0-100,
+        "grades": { "ic": "pass"|"warn"|"fail", ... },
+        "bloom_summary": { "remember": n, ... },
+        "detail": { "ilo_count": n, "covered_ilo_count": n, ... }
+    }
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    serializer = CurriculumMetricsSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(
+            {"success": False, "errors": serializer.errors},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = serializer.validated_data
+    syllabus_content = data.get("syllabus_content")
+    course_id = data.get("course_id")
+
+    if not syllabus_content and course_id:
+        course, error_response = _get_assigned_course_or_403(request, course_id)
+        if error_response:
+            return error_response
+        syllabus = (
+            Syllabus.objects
+            .filter(course=course)
+            .order_by("-generated_at", "-syllabus_id")
+            .first()
+        )
+        if not syllabus or not syllabus.syllabus_content:
+            return Response(
+                {"success": False, "detail": "No saved syllabus found for this course."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        syllabus_content = syllabus.syllabus_content
+
+    if not syllabus_content:
+        return Response(
+            {"success": False, "detail": "syllabus_content or course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        metrics = compute_metrics(syllabus_content)
+        return Response({"success": True, **metrics}, status=status.HTTP_200_OK)
+    except Exception as exc:
+        logger.exception("Error computing curriculum metrics")
         return Response(
             {"success": False, "error": str(exc)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
