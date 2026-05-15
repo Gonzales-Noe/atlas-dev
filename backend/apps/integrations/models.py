@@ -87,6 +87,18 @@ class Ilo(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     ilo_code = models.CharField(max_length=50)
     ilo_description = models.TextField()
+    bloom_level = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Bloom's Taxonomy level: Remember/Understand/Apply/Analyze/Evaluate/Create",
+    )
+    bloom_verb = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="First action verb detected in the ILO statement",
+    )
 
     class Meta:
         db_table = 'ilo'
