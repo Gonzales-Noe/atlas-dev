@@ -52,10 +52,10 @@ export default function FacultyCoursesBoard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_code: '', course_title: '', description: '' })
+  const [form, setForm] = useState({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
 
   const openDialog = () => {
-    setForm({ course_code: '', course_title: '', description: '' })
+    setForm({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
     setCreateError('')
     setDialogOpen(true)
   }
@@ -236,35 +236,80 @@ export default function FacultyCoursesBoard() {
             <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
           )}
           <TextField
-            label="Course Code"
-            name="course_code"
-            value={form.course_code}
-            onChange={handleFormChange}
-            placeholder="e.g. BA401"
-            size="small"
-            autoFocus
-            disabled={creating}
-            inputProps={{ maxLength: 100 }}
-          />
-          <TextField
             label="Course Title"
             name="course_title"
             value={form.course_title}
             onChange={handleFormChange}
             placeholder="e.g. Business Analytics"
             size="small"
+            autoFocus
             disabled={creating}
             inputProps={{ maxLength: 255 }}
           />
           <TextField
-            label="Description (optional)"
+            label="Course Code"
+            name="course_code"
+            value={form.course_code}
+            onChange={handleFormChange}
+            placeholder="e.g. BA401"
+            size="small"
+            disabled={creating}
+            inputProps={{ maxLength: 100 }}
+          />
+          <TextField
+            label="Course information (Description)"
             name="description"
             value={form.description}
             onChange={handleFormChange}
+            placeholder="Optional description"
+            size="small"
             multiline
             minRows={2}
+            disabled={creating}
+          />
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+            <TextField
+              select
+              label="Year Level"
+              name="year_level"
+              value={form.year_level}
+              onChange={handleFormChange}
+              size="small"
+              disabled={creating}
+              fullWidth
+            >
+              <MenuItem value="1st Year">1st Year</MenuItem>
+              <MenuItem value="2nd Year">2nd Year</MenuItem>
+              <MenuItem value="3rd Year">3rd Year</MenuItem>
+              <MenuItem value="4th Year">4th Year</MenuItem>
+              <MenuItem value="5th Year">5th Year</MenuItem>
+              <MenuItem value="Others">Others</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label="Semester"
+              name="semester"
+              value={form.semester}
+              onChange={handleFormChange}
+              size="small"
+              disabled={creating}
+              fullWidth
+            >
+              <MenuItem value="1st Semester">1st Semester</MenuItem>
+              <MenuItem value="2nd Semester">2nd Semester</MenuItem>
+              <MenuItem value="3rd Semester">3rd Semester</MenuItem>
+              <MenuItem value="Others">Others</MenuItem>
+            </TextField>
+          </Box>
+          <TextField
+            label="Section / Block"
+            name="section"
+            value={form.section}
+            onChange={handleFormChange}
+            placeholder="e.g. A, B, Block 1"
             size="small"
             disabled={creating}
+            inputProps={{ maxLength: 100 }}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
