@@ -3,7 +3,7 @@
 
 import { useNavigate } from 'react-router-dom'
 import { useAuth }     from '../store/authStore'
-import { ROUTES }      from '../config/routes'
+import { ROUTES }      from '../config/route'
 
 const ROLE_DASHBOARD_MAP = {
   faculty:    ROUTES.FACULTY.DASHBOARD,
