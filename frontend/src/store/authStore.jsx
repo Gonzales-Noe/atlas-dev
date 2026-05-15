@@ -52,6 +52,36 @@ const initialState = {
   error:         null,
 }
 
+function getAuthErrorMessage(err, fallback) {
+  const status = err.response?.status
+  const data = err.response?.data
+  const detail = typeof data?.detail === 'string' ? data.detail : null
+  const nonField = Array.isArray(data?.non_field_errors) ? data.non_field_errors.join(' ') : null
+  const authMessage = detail || nonField
+
+  if (!err.response) {
+    return 'Unable to contact the authentication server. Check your network or try again later.'
+  }
+
+  if (status === 401) {
+    return authMessage || 'Incorrect email or password. Please try again.'
+  }
+
+  if (status === 403) {
+    return authMessage || 'Your account is not authorized to sign in yet.'
+  }
+
+  if (status === 400) {
+    return authMessage || 'Login request is missing required information. Please check your email and password.'
+  }
+
+  if (status >= 500) {
+    return authMessage || 'Authentication service is unavailable. Please try again later.'
+  }
+
+  return authMessage || fallback
+}
+
 // ── Reducer ────────────────────────────────────────────────────────────────
 function authReducer(state, action) {
   switch (action.type) {
@@ -162,7 +192,7 @@ export function AuthProvider({ children }) {
       dispatch({ type: 'AUTH_SUCCESS', payload: user })
       return user
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Invalid credentials. Please try again.'
+      const msg = getAuthErrorMessage(err, 'Login failed. Please try again.')
       dispatch({ type: 'AUTH_ERROR', payload: msg })
       throw new Error(msg)
     }
