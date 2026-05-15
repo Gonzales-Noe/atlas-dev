@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
 import { useAuth }      from '../../store/authStore'
-import { ROUTES }       from '../../config/routes'
+import { ROUTES }       from '../../config/route'
 import atlasLogo        from '../../assets/atlas-logo.png'
 
 // ── Shared design primitives ─────────────────────────────────────────────────

@@ -2,458 +2,467 @@
 // Sidebar + topbar shell used by Faculty, Admin, and Superadmin dashboards.
 // Pass `navItems` and `role` as props from each feature's layout.
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import Box             from '@mui/material/Box'
-import Drawer          from '@mui/material/Drawer'
-import AppBar          from '@mui/material/AppBar'
-import Toolbar         from '@mui/material/Toolbar'
-import List            from '@mui/material/List'
-import ListItem        from '@mui/material/ListItem'
-import ListItemButton  from '@mui/material/ListItemButton'
-import ListItemIcon    from '@mui/material/ListItemIcon'
-import ListItemText    from '@mui/material/ListItemText'
-import IconButton      from '@mui/material/IconButton'
-import Avatar          from '@mui/material/Avatar'
-import Tooltip         from '@mui/material/Tooltip'
-import Menu            from '@mui/material/Menu'
-import MenuItem        from '@mui/material/MenuItem'
-import Typography      from '@mui/material/Typography'
-import Divider         from '@mui/material/Divider'
-import Chip            from '@mui/material/Chip'
-import MenuIcon        from '@mui/icons-material/Menu'
-import LogoutIcon      from '@mui/icons-material/Logout'
-import AccountCircleIcon from '@mui/icons-material/AccountCircle'
-import SettingsIcon    from '@mui/icons-material/Settings'
-import HelpIcon        from '@mui/icons-material/Help'
-import LightModeIcon   from '@mui/icons-material/LightMode'
-import DarkModeIcon    from '@mui/icons-material/DarkMode'
 import atlasLogo       from '../assets/atlas-logo.png'
 import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
 
-const DRAWER_WIDTH = 240
-
-const ROLE_CHIP_COLOR = {
-  faculty:    { bg: 'rgba(139, 0, 0, 0.08)', color: '#8B0000', border: '1px solid rgba(139, 0, 0, 0.3)' },
-  admin:      { bg: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff', border: '1px solid rgba(10, 132, 255, 0.3)' },
-  superadmin: { bg: 'rgba(191, 90, 242, 0.15)', color: '#bf5af2', border: '1px solid rgba(191, 90, 242, 0.3)' },
+// ── Role config ───────────────────────────────────────────────────────────────
+const ROLE_META = {
+  superadmin: { label: 'Super Admin',   accent: '#FF453A', badge: 'SA' },
+  admin:      { label: 'Admin',          accent: '#FF9F0A', badge: 'AD' },
+  faculty:    { label: 'Faculty',        accent: '#30D158', badge: 'FA' },
 }
 
-export default function DashboardLayout({ children, navItems = [], role }) {
-  const location    = useLocation()
-  const navigate    = useNavigate()
-  const { user, logout } = useAuth()
+// ── Sidebar nav item ──────────────────────────────────────────────────────────
+function NavItem({ item, collapsed }) {
+  const location = useLocation()
+  const isActive = location.pathname === item.to ||
+    (item.to !== '/' && location.pathname.startsWith(item.to))
 
-  const [mobileOpen, setMobileOpen]   = useState(false)
-  const [anchorEl, setAnchorEl]       = useState(null)
-  const [isCollapsed, setIsCollapsed] = useState(false)
-  const [isDarkMode, setIsDarkMode]   = useState(() => localStorage.getItem('atlas_theme_mode') !== 'light')
-  const userMenuOpen = Boolean(anchorEl)
+  return (
+    <Link
+      to={item.to}
+      title={collapsed ? item.label : undefined}
+      style={{ textDecoration: 'none' }}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: collapsed ? 0 : 12,
+        padding: collapsed ? '10px 0' : '10px 14px',
+        justifyContent: collapsed ? 'center' : 'flex-start',
+        borderRadius: 12,
+        margin: '2px 8px',
+        background: isActive
+          ? 'linear-gradient(135deg, rgba(139,0,0,0.35), rgba(192,57,43,0.20))'
+          : 'transparent',
+        border: isActive
+          ? '1px solid rgba(192,57,43,0.35)'
+          : '1px solid transparent',
+        boxShadow: isActive ? '0 4px 16px rgba(139,0,0,0.2)' : 'none',
+        transition: 'all 200ms cubic-bezier(0.4,0,0.2,1)',
+        cursor: 'pointer',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+        onMouseEnter={e => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+          }
+        }}
+        onMouseLeave={e => {
+          if (!isActive) {
+            e.currentTarget.style.background = 'transparent'
+            e.currentTarget.style.borderColor = 'transparent'
+          }
+        }}
+      >
+        {/* Active indicator bar */}
+        {isActive && (
+          <div style={{
+            position: 'absolute',
+            left: 0, top: '20%', bottom: '20%',
+            width: 3,
+            background: 'linear-gradient(180deg, #FF6B6B, #8B0000)',
+            borderRadius: '0 3px 3px 0',
+          }} />
+        )}
+
+        {/* Icon */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 22,
+          height: 22,
+          flexShrink: 0,
+          color: isActive ? '#FF6B6B' : 'rgba(255,255,255,0.45)',
+          transition: 'color 200ms',
+        }}>
+          {React.cloneElement(item.icon, { style: { fontSize: 20 } })}
+        </div>
+
+        {/* Label */}
+        {!collapsed && (
+          <span style={{
+            fontSize: '0.875rem',
+            fontWeight: isActive ? 700 : 500,
+            color: isActive ? '#F0F0F2' : 'rgba(255,255,255,0.55)',
+            fontFamily: 'var(--font-sans)',
+            whiteSpace: 'nowrap',
+            transition: 'color 200ms',
+          }}>
+            {item.label}
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+// ── Main layout ───────────────────────────────────────────────────────────────
+export default function DashboardLayout({ children, navItems = [], role = 'faculty' }) {
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
+
+  const meta = ROLE_META[role] || ROLE_META.faculty
 
   useEffect(() => {
-    const handleThemeChange = () => setIsDarkMode(localStorage.getItem('atlas_theme_mode') !== 'light')
-    window.addEventListener('atlas_theme_changed', handleThemeChange)
-    return () => window.removeEventListener('atlas_theme_changed', handleThemeChange)
+    const check = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (mobile) setCollapsed(true)
+    }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
   }, [])
 
   function handleLogout() {
     logout()
-    navigate('/signin')
+    navigate('/')
   }
 
-  const toggleTheme = () => {
-    const newMode = !isDarkMode
-    setIsDarkMode(newMode)
-    localStorage.setItem('atlas_theme_mode', newMode ? 'dark' : 'light')
-    window.dispatchEvent(new Event('atlas_theme_changed'))
-  }
+  const sidebarW = collapsed ? 64 : 240
 
-  const chip = ROLE_CHIP_COLOR[role] || ROLE_CHIP_COLOR.faculty
-  const currentDrawerWidth = isCollapsed ? 80 : DRAWER_WIDTH
+  return (
+    <div style={{
+      display: 'flex',
+      minHeight: '100vh',
+      background: 'var(--bg-base)',
+      fontFamily: 'var(--font-sans)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
 
-  const sidebarContent = (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Brand */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: isCollapsed ? 'center' : 'space-between',
-          padding: isCollapsed ? '0' : '0 8px 0 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          minHeight: 57,
-          boxSizing: 'border-box'
-        }}
-      >
-        {!isCollapsed && (
-          <div style={{ overflow: 'hidden', display: 'flex' }}>
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', objectPosition: 'left' }} />
-          </div>
-        )}
-        <IconButton onClick={() => setIsCollapsed(!isCollapsed)} size="small" sx={{ color: isDarkMode ? '#fff' : '#111827' }}>
-          <MenuIcon />
-        </IconButton>
+      {/* ── Background orbs ─────────────────────────────────────────────── */}
+      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
+        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'rgba(139,0,0,0.08)', filter: 'blur(100px)', top: -100, left: -100 }} />
+        <div style={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'rgba(100,0,0,0.06)', filter: 'blur(80px)', bottom: -80, right: -80 }} />
+        {/* Subtle grid */}
+        <div style={{
+          position: 'absolute', inset: 0,
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+                            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px)`,
+          backgroundSize: '52px 52px',
+        }} />
       </div>
 
-      {/* User info */}
-      <div style={{ padding: isCollapsed ? '14px 0 10px' : '14px 20px 10px', display: 'flex', flexDirection: 'column', alignItems: isCollapsed ? 'center' : 'stretch' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
-          <Avatar
-            sx={{
-              width: 36, height: 36,
-              background: chip.color,
-              fontSize: '0.85rem',
-              fontWeight: 700,
+      {/* ── Mobile overlay ───────────────────────────────────────────────── */}
+      {isMobile && mobileOpen && (
+        <div
+          onClick={() => setMobileOpen(false)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 998,
+            background: 'rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(4px)',
+          }}
+        />
+      )}
+
+      {/* ── SIDEBAR ──────────────────────────────────────────────────────── */}
+      <aside style={{
+        position: 'fixed',
+        left: isMobile ? (mobileOpen ? 0 : -280) : 0,
+        top: 0,
+        bottom: 0,
+        width: isMobile ? 260 : sidebarW,
+        zIndex: 999,
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'rgba(10,10,14,0.92)',
+        borderRight: '1px solid rgba(255,255,255,0.07)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        transition: 'width 280ms cubic-bezier(0.4,0,0.2,1), left 280ms cubic-bezier(0.4,0,0.2,1)',
+        overflow: 'hidden',
+      }}>
+
+        {/* Logo area */}
+        <div style={{
+          height: 60,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
+          padding: collapsed && !isMobile ? '0 16px' : '0 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          flexShrink: 0,
+        }}>
+          {(!collapsed || isMobile) && (
+            <img
+              src={atlasLogo}
+              alt="ATLAS"
+              style={{ height: 26, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.9 }}
+            />
+          )}
+          {collapsed && !isMobile && (
+            <div style={{
+              width: 30, height: 30, borderRadius: 8,
+              background: 'linear-gradient(135deg, #8B0000, #C0392B)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.72rem', fontWeight: 800, color: '#fff',
+            }}>
+              {meta.badge}
+            </div>
+          )}
+          {(!collapsed || isMobile) && (
+            <button
+              onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(true)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: 'rgba(255,255,255,0.35)', padding: 4, borderRadius: 6,
+                display: 'flex', alignItems: 'center',
+                transition: 'color 200ms',
+              }}
+              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
+              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 12h18M3 6h18M3 18h18" />
+              </svg>
+            </button>
+          )}
+          {collapsed && !isMobile && (
+            <button
+              onClick={() => setCollapsed(false)}
+              style={{ display: 'none' }}
+            />
+          )}
+        </div>
+
+        {/* Expand button when collapsed (desktop) */}
+        {collapsed && !isMobile && (
+          <button
+            onClick={() => setCollapsed(false)}
+            style={{
+              margin: '12px auto', background: 'rgba(255,255,255,0.06)',
+              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
+              color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+              width: 40, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              transition: 'all 200ms',
             }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
           >
-            {toInitials(user?.name || user?.email || 'U')}
-          </Avatar>
-          {!isCollapsed && (
-            <div>
-              <Typography variant="body2" sx={{ fontWeight: 700, color: isDarkMode ? '#FFFFFF' : '#111827', lineHeight: 1.2 }}>
-                {user?.name || 'User'}
-              </Typography>
-              <Typography variant="caption" sx={{ color: isDarkMode ? 'rgba(255,255,255,0.6)' : '#6B7280', fontSize: '0.72rem' }}>
-                {user?.email}
-              </Typography>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        )}
+
+        {/* Role badge */}
+        {!collapsed && (
+          <div style={{ padding: '12px 16px 8px' }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: `${meta.accent}18`,
+              border: `1px solid ${meta.accent}40`,
+              borderRadius: 8, padding: '4px 10px',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.accent, boxShadow: `0 0 6px ${meta.accent}`, flexShrink: 0 }} />
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: meta.accent, letterSpacing: '0.06em' }}>
+                {meta.label.toUpperCase()}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Nav items */}
+        <nav style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
+          {navItems.map((item, i) => (
+            <NavItem key={i} item={item} collapsed={collapsed && !isMobile} />
+          ))}
+        </nav>
+
+        {/* User area */}
+        <div style={{
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: collapsed && !isMobile ? '12px 8px' : '12px 16px',
+          flexShrink: 0,
+          position: 'relative',
+        }}>
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              width: '100%', background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+              padding: collapsed && !isMobile ? '8px' : '8px 12px',
+              cursor: 'pointer', transition: 'all 200ms', justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+          >
+            {/* Avatar */}
+            <div style={{
+              width: 32, height: 32, borderRadius: '50%',
+              background: 'linear-gradient(135deg, #8B0000, #C0392B)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
+            }}>
+              {(user?.name || user?.email || 'U')[0].toUpperCase()}
+            </div>
+            {(!collapsed || isMobile) && (
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.name || user?.email?.split('@')[0] || 'User'}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.email || meta.label}
+                </div>
+              </div>
+            )}
+          </button>
+
+          {/* User dropdown */}
+          {userMenuOpen && (
+            <div style={{
+              position: 'absolute',
+              bottom: 'calc(100% + 8px)',
+              left: 8, right: 8,
+              background: '#16161E',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 14,
+              overflow: 'hidden',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+              zIndex: 10,
+            }}>
+              {[
+                { label: 'Profile Settings', icon: '👤' },
+                { label: 'Preferences', icon: '⚙️' },
+              ].map(({ label, icon }) => (
+                <button
+                  key={label}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '10px 14px', color: 'var(--text-primary)',
+                    fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 500,
+                    transition: 'background 150ms',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  <span>{icon}</span> {label}
+                </button>
+              ))}
+              <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />
+              <button
+                onClick={handleLogout}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '10px 14px', color: '#FF6B6B',
+                  fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 600,
+                  transition: 'background 150ms',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.08)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}
+              >
+                <span>🚪</span> Sign Out
+              </button>
             </div>
           )}
         </div>
-        {!isCollapsed && (
-          <Chip
-            label={role?.toUpperCase() || 'FACULTY'}
-            size="small"
-            sx={{
-              mt: 1.2,
-              background: chip.bg,
-              color: chip.color,
-              border: chip.border,
-              fontWeight: 700,
-              fontSize: '0.68rem',
-              letterSpacing: '0.06em',
-              height: 20,
+      </aside>
+
+      {/* ── TOPBAR ───────────────────────────────────────────────────────── */}
+      <header style={{
+        position: 'fixed',
+        top: 0,
+        left: isMobile ? 0 : sidebarW,
+        right: 0,
+        height: 60,
+        zIndex: 100,
+        background: 'rgba(8,8,10,0.85)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        display: 'flex',
+        alignItems: 'center',
+        padding: '0 24px',
+        gap: 16,
+        transition: 'left 280ms cubic-bezier(0.4,0,0.2,1)',
+      }}>
+        {/* Mobile hamburger */}
+        {isMobile && (
+          <button
+            onClick={() => setMobileOpen(true)}
+            style={{
+              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer',
+              width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
-          />
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M3 12h18M3 6h18M3 18h18" />
+            </svg>
+          </button>
         )}
-      </div>
 
-      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
+        <div style={{ flex: 1 }} />
 
-      {/* Nav items */}
-      <List sx={{ flex: 1, px: 1, py: 1, overflowX: 'hidden' }}>
-        {navItems.map((item) => {
-          const isActive = location.pathname === item.to ||
-            (item.to !== '/' && location.pathname.startsWith(item.to))
-          return (
-            <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
-              <Tooltip title={isCollapsed ? item.label : ''} placement="right" disableHoverListener={!isCollapsed}>
-              <ListItemButton
-                component={Link}
-                to={item.to}
-                onClick={() => setMobileOpen(false)}
-                sx={{
-                  borderRadius: 2,
-                  py: 1,
-                  px: isCollapsed ? 0 : 2,
-                  justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  background:    isActive ? chip.bg : 'transparent',
-                  color:         isActive ? chip.color : (isDarkMode ? 'rgba(255,255,255,0.7)' : '#4B5563'),
-                  '&:hover': {
-                    background: chip.bg,
-                    color: chip.color,
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: isCollapsed ? 0 : 36,
-                    mr: isCollapsed ? 0 : 1,
-                    justifyContent: 'center',
-                    color: isActive ? chip.color : 'inherit',
-                  }}
-                >
-                  {item.icon}
-                </ListItemIcon>
-                {!isCollapsed && (
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontSize: '0.88rem',
-                      fontWeight: isActive ? 700 : 500,
-                    }}
-                  />
-                )}
-                {/* Active indicator bar */}
-                {isActive && (
-                  <div
-                    style={{
-                      position: 'absolute', left: 0, width: 3, height: 20,
-                      background: chip.color, boxShadow: `0 0 8px ${chip.color}`,
-                      borderRadius: '0 2px 2px 0',
-                    }}
-                  />
-                )}
-              </ListItemButton>
-              </Tooltip>
-            </ListItem>
-          )
-        })}
-      </List>
-
-      {/* Bottom: Settings, Help, Sign out */}
-      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }} />
-      <List sx={{ px: 1, py: 1 }}>
-        {[
-          { label: 'Settings', icon: <SettingsIcon fontSize="small" />, action: () => {} },
-          { label: 'Help Center', icon: <HelpIcon fontSize="small" />, action: () => {} },
-          { label: 'Sign Out', icon: <LogoutIcon fontSize="small" />, action: handleLogout },
-        ].map((item) => (
-          <ListItem key={item.label} disablePadding sx={{ mb: 0.5 }}>
-            <Tooltip title={isCollapsed ? item.label : ''} placement="right" disableHoverListener={!isCollapsed}>
-              <ListItemButton
-                onClick={item.action}
-                sx={{
-                  justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  borderRadius: 2, py: 1, px: isCollapsed ? 0 : 2, color: isDarkMode ? 'rgba(255,255,255,0.7)' : '#4B5563',
-                  '&:hover': { background: chip.bg, color: chip.color },
-                }}
-              >
-                <ListItemIcon sx={{ minWidth: isCollapsed ? 0 : 36, mr: isCollapsed ? 0 : 1, justifyContent: 'center', color: 'inherit' }}>
-                  {item.icon}
-                </ListItemIcon>
-                {!isCollapsed && <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.88rem', fontWeight: 500 }} />}
-              </ListItemButton>
-            </Tooltip>
-          </ListItem>
-        ))}
-      </List>
-    </div>
-  )
-
-  return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', background: isDarkMode ? '#000000' : '#F7F9FC', backgroundImage: isDarkMode ? 'radial-gradient(circle at 15% 50%, rgba(255, 45, 85, 0.15), transparent 25%), radial-gradient(circle at 85% 30%, rgba(10, 132, 255, 0.15), transparent 25%)' : 'none' }}>
-      <style>{`
-        :root {
-          --border-color:      ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'};
-          --bg-card:           ${isDarkMode ? 'rgba(30, 30, 35, 0.4)' : '#ffffff'};
-          --bg-page:           ${isDarkMode ? '#000000' : '#F7F9FC'};
-          --bg-header:         ${isDarkMode ? 'rgba(255,255,255,0.05)' : '#F3F4F6'};
-          --text-primary:      ${isDarkMode ? '#ffffff' : '#111827'};
-          --text-secondary:    ${isDarkMode ? 'rgba(255,255,255,0.6)' : '#4B5563'};
-          --input-border:      ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.23)'};
-          --input-border-hover:${isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)'};
-          --scrollbar-thumb:   ${isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'};
-        }
-
-        /* ── Page & scrollbars ─────────────────────── */
-        body { background: var(--bg-page) !important; color: var(--text-primary) !important; }
-        * { scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
-        *::-webkit-scrollbar { width: 6px; height: 6px; }
-        *::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
-
-        /* ── Cards / Paper ─────────────────────────── */
-        .MuiPaper-root, .MuiCard-root {
-          background: var(--bg-card) !important;
-          backdrop-filter: ${isDarkMode ? 'blur(24px)' : 'none'} !important;
-          -webkit-backdrop-filter: ${isDarkMode ? 'blur(24px)' : 'none'} !important;
-          border: 1px solid var(--border-color) !important;
-          box-shadow: ${isDarkMode ? '0 8px 32px 0 rgba(0,0,0,0.3)' : '0 2px 8px rgba(0,0,0,0.08)'} !important;
-          color: var(--text-primary) !important;
-        }
-
-        /* ── Typography ────────────────────────────── */
-        .MuiTypography-root { color: var(--text-primary) !important; }
-        .MuiTypography-colorTextSecondary,
-        [class*="MuiTypography-"][class*="Secondary"] { color: var(--text-secondary) !important; }
-
-        /* ── Table ─────────────────────────────────── */
-        .MuiTableCell-root {
-          border-color: var(--border-color) !important;
-          color: var(--text-primary) !important;
-          background: transparent !important;
-        }
-        .MuiTableCell-head { background: var(--bg-header) !important; font-weight: 700 !important; }
-        .MuiDivider-root { border-color: var(--border-color) !important; }
-
-        /* ── Form inputs ───────────────────────────── */
-        .MuiInputBase-root { color: var(--text-primary) !important; background: transparent !important; }
-        .MuiInputBase-root.Mui-disabled { color: var(--text-secondary) !important; -webkit-text-fill-color: var(--text-secondary) !important; }
-        .MuiOutlinedInput-notchedOutline { border-color: var(--input-border) !important; }
-        .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: var(--input-border-hover) !important; }
-        .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: ${chip.color} !important; }
-        .MuiInputLabel-root { color: var(--text-secondary) !important; }
-        .MuiInputLabel-root.Mui-focused { color: ${chip.color} !important; }
-        .MuiInputBase-input::placeholder { color: var(--text-secondary) !important; opacity: 0.7 !important; }
-        .MuiSelect-icon { color: var(--text-secondary) !important; }
-
-        /* ── Chips: only override generic ones, not accent chips ── */
-        .MuiChip-root:not([style*="color"]) {
-          background: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'} !important;
-          color: var(--text-primary) !important;
-          border-color: var(--border-color) !important;
-        }
-
-        /* ── Alert ─────────────────────────────────── */
-        .MuiAlert-root { color: var(--text-primary) !important; }
-
-        /* ── List items ────────────────────────────── */
-        .MuiListItemText-primary, .MuiListItemText-secondary { color: inherit !important; }
-        .MuiMenuItem-root { color: var(--text-primary) !important; }
-
-        /* ── Recharts ──────────────────────────────── */
-        .recharts-text tspan { fill: var(--text-secondary) !important; }
-        .recharts-cartesian-grid-horizontal line,
-        .recharts-cartesian-grid-vertical line { stroke: var(--border-color) !important; }
-        .recharts-tooltip-wrapper .recharts-default-tooltip {
-          background: var(--bg-card) !important;
-          border-color: var(--border-color) !important;
-          color: var(--text-primary) !important;
-        }
-      `}</style>
-
-      {/* ── Sidebar desktop ─────────────────────────────────────── */}
-      <Drawer
-        variant="permanent"
-        sx={{
-          width: currentDrawerWidth,
-          flexShrink: 0,
-          display: { xs: 'none', md: 'block' },
-          '& .MuiDrawer-paper': {
-            width: currentDrawerWidth,
-            transition: 'width 0.2s',
-            overflowX: 'hidden',
-            boxSizing: 'border-box',
-            borderRight: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
-            background: isDarkMode ? 'rgba(20, 20, 25, 0.65)' : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-          },
-        }}
-      >
-        {sidebarContent}
-      </Drawer>
-
-      {/* ── Sidebar mobile drawer ────────────────────────────────── */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={() => setMobileOpen(false)}
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': {
-            width: DRAWER_WIDTH,
-            boxSizing: 'border-box',
-            background: isDarkMode ? 'rgba(20, 20, 25, 0.65)' : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
-            borderRight: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)'
-          },
-        }}
-      >
-        {sidebarContent}
-      </Drawer>
-
-      {/* ── Main content ──────────────────────────────────────────── */}
-      <Box
-        component="main"
-        sx={{
-          flexGrow: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: '100vh',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Top bar */}
-        <AppBar
-          position="sticky"
-          elevation={0}
-          sx={{
-            background: isDarkMode ? 'rgba(20, 20, 25, 0.65)' : 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(24px)',
-            WebkitBackdropFilter: 'blur(24px)',
-            borderBottom: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.08)',
-            zIndex: (theme) => theme.zIndex.drawer - 1,
+        {/* Topbar right: notifications + user badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Notification bell */}
+          <button style={{
+            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 10, color: 'var(--text-secondary)', cursor: 'pointer',
+            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            position: 'relative', transition: 'all 200ms',
           }}
-        >
-          <Toolbar sx={{ gap: 2, minHeight: '56px !important' }}>
-            {/* Mobile hamburger */}
-            <IconButton
-              edge="start"
-              onClick={() => setMobileOpen(true)}
-              sx={{ display: { md: 'none' }, color: isDarkMode ? '#fff' : '#111827' }}
-            >
-              <MenuIcon />
-            </IconButton>
+            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            <span style={{
+              position: 'absolute', top: 6, right: 6,
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#FF453A', boxShadow: '0 0 6px #FF453A',
+            }} />
+          </button>
 
-            {/* Page title (filled by children via context if needed) */}
-            <Box sx={{ flex: 1 }} />
+          {/* Role pill */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.09)',
+            borderRadius: 10, padding: '5px 12px',
+          }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.accent, boxShadow: `0 0 6px ${meta.accent}` }} />
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', letterSpacing: '0.05em' }}>
+              {meta.label}
+            </span>
+          </div>
+        </div>
+      </header>
 
-            {/* Theme Toggle */}
-            <Tooltip title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
-              <IconButton
-                onClick={toggleTheme}
-                size="small"
-                sx={{ color: isDarkMode ? '#fff' : '#111827', mr: 0.5 }}
-              >
-                {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-
-            {/* User avatar button */}
-            <Tooltip title="Account">
-              <IconButton
-                onClick={(e) => setAnchorEl(e.currentTarget)}
-                sx={{ p: 0.5 }}
-              >
-                <Avatar
-                  sx={{
-                    width: 32, height: 32,
-                  background: chip.color,
-                    fontSize: '0.78rem',
-                    fontWeight: 700,
-                  }}
-                >
-                  {toInitials(user?.name || user?.email || 'U')}
-                </Avatar>
-              </IconButton>
-            </Tooltip>
-
-            {/* User drop-down menu */}
-            <Menu
-              anchorEl={anchorEl}
-              open={userMenuOpen}
-              onClose={() => setAnchorEl(null)}
-              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-              PaperProps={{
-                sx: { mt: 1, borderRadius: 4, minWidth: 180, background: isDarkMode ? 'rgba(30, 30, 35, 0.8)' : '#ffffff', backdropFilter: 'blur(24px)', border: isDarkMode ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', color: isDarkMode ? '#fff' : '#111827' },
-              }}
-            >
-              <MenuItem disabled sx={{ opacity: 1, pb: 0 }}>
-                <div>
-                  <Typography variant="body2" fontWeight={700} sx={{ color: isDarkMode ? '#fff' : '#111827' }}>{user?.name}</Typography>
-                  <Typography variant="caption" sx={{ color: isDarkMode ? 'rgba(255,255,255,0.6)' : '#6B7280' }}>{user?.email}</Typography>
-                </div>
-              </MenuItem>
-              <Divider />
-              <MenuItem onClick={() => setAnchorEl(null)}>
-                <AccountCircleIcon fontSize="small" sx={{ mr: 1.5, color: isDarkMode ? 'rgba(255,255,255,0.6)' : '#6B7280' }} />
-                Profile
-              </MenuItem>
-              <MenuItem onClick={handleLogout} sx={{ color: chip.color }}>
-                <LogoutIcon fontSize="small" sx={{ mr: 1.5 }} />
-                Sign Out
-              </MenuItem>
-            </Menu>
-          </Toolbar>
-        </AppBar>
-
-        {/* Page content */}
-        <Box sx={{ flex: 1, p: { xs: 2, md: 3 }, overflow: 'auto' }}>
+      {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
+      <main style={{
+        marginLeft: isMobile ? 0 : sidebarW,
+        marginTop: 60,
+        minHeight: 'calc(100vh - 60px)',
+        width: isMobile ? '100%' : `calc(100% - ${sidebarW}px)`,
+        padding: '28px 28px',
+        transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
+        position: 'relative',
+        zIndex: 1,
+        boxSizing: 'border-box',
+        overflowX: 'hidden',
+      }}>
+        <div className="page-enter" style={{ minHeight: '100%' }}>
           {children}
-        </Box>
-      </Box>
-    </Box>
+        </div>
+      </main>
+    </div>
   )
 }

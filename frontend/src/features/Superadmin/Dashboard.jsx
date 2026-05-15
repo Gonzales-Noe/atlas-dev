@@ -1,16 +1,8 @@
 // src/features/Superadmin/Dashboard.jsx
-import { useState } from 'react'
-import {
-  Box, Grid, Card, CardContent, CardHeader, Typography, Divider, Chip, Stack, IconButton
-} from '@mui/material'
-import MoreHorizIcon from '@mui/icons-material/MoreHoriz'
-import {
-  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area
-} from 'recharts'
+import { AreaChart, Area, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
+import { StatCard, GlassCard, PageHeader, MetricRow } from '../../components/ui'
 
-// Mock data for stats remains UNCHANGED
 const systemStatsData = [
   { name: 'Jan', traffic: 4000, usage: 2400, uptime: 99.8 },
   { name: 'Feb', traffic: 3000, usage: 1398, uptime: 99.9 },
@@ -21,173 +13,104 @@ const systemStatsData = [
 ]
 
 const userTypeData = [
-  { name: 'Faculty', value: 1250 },
+  { name: 'Faculty',  value: 1250 },
   { name: 'Students', value: 8500 },
-  { name: 'Admins', value: 150 },
+  { name: 'Admins',   value: 150  },
 ]
 
-const COLORS = ['#8B0000', '#E57373', '#FFCDD2']
+const COLORS = ['#C0392B', '#FF6B6B', 'rgba(255,107,107,0.35)']
 
-// Styled to match the mockup cards (white bg, rounded, red title)
-const StatCard = ({ title, value, change, color = '#1A1A1A' }) => (
-  <Card sx={{ borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', height: '100%', position: 'relative' }}>
-    <IconButton sx={{ position: 'absolute', top: 12, right: 12, color: '#888' }} size="small">
-      <MoreHorizIcon />
-    </IconButton>
-    <CardContent sx={{ p: 3 }}>
-      <Typography sx={{ color: '#922724', fontSize: '1.2rem', mb: 2, fontWeight: 800 }}>
-        {title}
-      </Typography>
-      <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: color, mb: 1 }}>
-        {value}
-      </Typography>
-      <Chip
-        label={change}
-        size="small"
-        sx={{
-          background: change.includes('+') ? '#C8E6C9' : '#FFCDD2',
-          color: change.includes('+') ? '#2E7D32' : '#C62828',
-          fontWeight: 600,
-          fontSize: '0.75rem',
-        }}
-      />
-    </CardContent>
-  </Card>
-)
+const tooltipStyle = {
+  background: '#16161E',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 12,
+  color: '#F0F0F2',
+  fontFamily: 'var(--font-sans)',
+  fontSize: '0.82rem',
+  boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+}
+
+const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans)' }
 
 export default function SuperAdminDashboard() {
-  const [stats, setStats] = useState({
-    totalTraffic: 15540,
-    activeUsers: 10000,
-    systemHealth: 99.7,
-    institutionCount: 12,
-  })
-
-  // Shared styles for the layout cards
-  const cardStyles = { borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
-  const cardHeaderProps = { fontSize: '1.2rem', fontWeight: 800, color: '#922724' };
-
   return (
     <SuperAdminLayout>
-      <Box>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, color: '#1A1A1A', mb: 1 }}>
-            Super Admin Dashboard
-          </Typography>
-          <Typography sx={{ color: '#666', fontSize: '0.95rem' }}>
-            System-wide metrics, performance, and management
-          </Typography>
-        </Box>
+      <PageHeader
+        title="Super Admin Dashboard"
+        subtitle="System-wide metrics, performance monitoring, and institutional management"
+      />
 
-        {/* Key Stats Cards */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Total Institutions" value={stats.institutionCount} change="+2 this month" />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="Active Users" value={stats.activeUsers} change="+5.2%" />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="System Uptime" value={`${stats.systemHealth}%`} change="Excellent" />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <StatCard title="API Traffic" value={stats.totalTraffic} change="+12.5%" />
-          </Grid>
-        </Grid>
+      {/* Stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <StatCard title="Total Institutions" value="12"   icon="🏛️" trend="+2 this month" trendUp={true}  accent="#FF6B6B" />
+        <StatCard title="Active Users"        value="10k"  icon="👥" trend="+5.2%"        trendUp={true}  accent="#60AAFF" />
+        <StatCard title="System Uptime"       value="99.7%" icon="⚡" trend="Excellent"                   accent="#5EDA7E" />
+        <StatCard title="API Traffic"         value="15.5k" icon="📡" trend="+12.5%"       trendUp={true}  accent="#FFB74D" />
+      </div>
 
-        {/* User Distribution & Traffic */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={4}>
-            <Card sx={cardStyles}>
-              <CardHeader title="User Type Distribution" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie data={userTypeData} cx="50%" cy="50%" labelLine={false} label={({ name, value }) => `${name}: ${value}`} outerRadius={80} fill="#8884d8" dataKey="value">
-                      {userTypeData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
+      {/* Charts row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
 
-          <Grid item xs={12} md={8}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Statistics (Last 6 Months)" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={systemStatsData}>
-                    <defs>
-                      <linearGradient id="colorTraffic" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8B0000" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#8B0000" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="traffic" stroke="#8B0000" fillOpacity={1} fill="url(#colorTraffic)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+        {/* Pie chart */}
+        <GlassCard title="User Distribution">
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie data={userTypeData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={3}>
+                {userTypeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              </Pie>
+              <Tooltip contentStyle={tooltipStyle} />
+              <Legend
+                formatter={v => <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>{v}</span>}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </GlassCard>
 
-        {/* System Health & Uptime */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="System Health Over Time" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={systemStatsData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEE" />
-                    <XAxis dataKey="name" />
-                    <YAxis domain={[98, 100]} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="uptime" stroke="#2E7D32" strokeWidth={2} dot={{ fill: '#2E7D32', r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </Grid>
+        {/* Area chart */}
+        <GlassCard title="Traffic — Last 6 Months">
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={systemStatsData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gTraffic" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#C0392B" stopOpacity={0.5} />
+                  <stop offset="95%" stopColor="#C0392B" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
+              <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Area type="monotone" dataKey="traffic" stroke="#C0392B" strokeWidth={2} fill="url(#gTraffic)" dot={false} activeDot={{ r: 5, fill: '#FF6B6B' }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </GlassCard>
+      </div>
 
-          <Grid item xs={12} md={6}>
-            <Card sx={cardStyles}>
-              <CardHeader title="Performance Metrics" titleTypographyProps={cardHeaderProps} />
-              <CardContent>
-                <Stack spacing={2}>
-                  {[
-                    { label: 'API Response Time', value: '145ms', status: 'Excellent', color: '#2E7D32' },
-                    { label: 'Database Query Time', value: '23ms', status: 'Good', color: '#1976D2' },
-                    { label: 'Server CPU Usage', value: '34%', status: 'Normal', color: '#F57C00' },
-                    { label: 'Memory Usage', value: '62%', status: 'Acceptable', color: '#F57C00' },
-                    { label: 'Network Bandwidth', value: '2.3 Gbps', status: 'Good', color: '#1976D2' },
-                  ].map((metric, idx) => (
-                    <Box key={idx}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: '0.9rem' }}>{metric.label}</Typography>
-                        <Chip label={metric.status} size="small" sx={{ background: metric.color + '22', color: metric.color, fontWeight: 600, fontSize: '0.7rem' }} />
-                      </Box>
-                      <Typography sx={{ color: '#1A1A1A', fontWeight: 700, fontSize: '1.1rem' }}>{metric.value}</Typography>
-                      <Divider sx={{ mt: 1 }} />
-                    </Box>
-                  ))}
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-        
-        {/* Content preserved below... */}
-        
-      </Box>
+      {/* Bottom row */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+        {/* Uptime line chart */}
+        <GlassCard title="System Uptime Trend">
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={systemStatsData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+              <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
+              <YAxis domain={[98, 100]} tick={axisStyle} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Line type="monotone" dataKey="uptime" stroke="#34C759" strokeWidth={2.5} dot={false} activeDot={{ r: 5, fill: '#34C759' }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </GlassCard>
+
+        {/* Performance metrics */}
+        <GlassCard title="Performance Metrics">
+          <MetricRow label="API Response Time"    value="145ms"   status="Excellent" statusType="success" />
+          <MetricRow label="Database Query Time"  value="23ms"    status="Good"      statusType="success" />
+          <MetricRow label="Server CPU Usage"     value="34%"     status="Normal"    statusType="info" />
+          <MetricRow label="Memory Usage"         value="62%"     status="Acceptable" statusType="warning" />
+          <MetricRow label="Network Bandwidth"    value="2.3 Gbps" status="Good"     statusType="success" divider={false} />
+        </GlassCard>
+      </div>
     </SuperAdminLayout>
   )
 }
