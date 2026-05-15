@@ -14,5 +14,6 @@ urlpatterns = [
     path("courses/", views.create_course, name="create_course"),
     path("generate-syllabus-field/", views.generate_syllabus_field, name="generate_syllabus_field"),
     path("parse-syllabus-upload/", views.parse_syllabus_upload, name="parse_syllabus_upload"),
+    path("export-syllabus-docx/", views.export_syllabus_docx, name="export_syllabus_docx"),
     path("quality-metrics/", views.compute_curriculum_metrics, name="compute_curriculum_metrics"),
 ]
