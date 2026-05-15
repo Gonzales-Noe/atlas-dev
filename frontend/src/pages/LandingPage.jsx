@@ -2,7 +2,14 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import atlasLogo from '../assets/atlas-logo.png'
 import atlasHero from '../assets/atlas.png'
+import delacion from '../assets/Delacion.png'
+import esperida from '../assets/Esperida.png'
+import gonzales from '../assets/Gonzales.jpg'
 import { useEffect, useRef, useState } from 'react'
+
+import SignInPage from './auth/signInPage'
+import SignUpPage from './auth/signUpPage'
+import PasswordResetPage from './auth/passwordReset'
 
 // ── Scroll-triggered animation hook ─────────────────────────────────────────
 function useInView(threshold = 0.15) {
@@ -46,6 +53,7 @@ function Orb({ style }) {
       filter: 'blur(80px)',
       pointerEvents: 'none',
       zIndex: 0,
+      animation: 'orb-float 25s ease-in-out infinite',
       ...style,
     }} />
   )
@@ -55,7 +63,7 @@ function Orb({ style }) {
 function GlassCard({ children, style, className = '' }) {
   return (
     <div
-      className={className}
+      className={`neon-border-glow ${className}`}
       style={{
         background: 'rgba(255,255,255,0.04)',
         border: '1px solid rgba(255,255,255,0.10)',
@@ -85,7 +93,7 @@ const PLANS = [
       'Unlimited course creation',
       'OBE syllabus generator',
       'ILO-mapped assessments',
-      'Google Sheets integration',
+      'Built-in gradebook',
       'Email support',
     ],
     cta: 'Get Started',
@@ -102,13 +110,13 @@ const PLANS = [
     features: [
       'Up to 50 faculty accounts',
       'Everything in Starter',
-      'Prescriptive analytics dashboard',
+      'Performance analytics dashboard',
       'Bloom\'s Taxonomy tagging',
       'Admin dashboard & reports',
       'Priority support',
       'Custom branding',
     ],
-    cta: 'Most Popular',
+    cta: 'BUY NOW',
     popular: true,
   },
   {
@@ -154,8 +162,8 @@ const FEATURES = [
   },
   {
     icon: '📊',
-    title: 'Prescriptive Analytics',
-    desc: 'Connect your Google Sheets gradebook. ATLAS computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
+    title: 'Performance Analytics',
+    desc: 'Use the built-in ATLAS gradebook. The system computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
     accent: 'rgba(160,10,10,0.3)',
   },
   {
@@ -180,7 +188,7 @@ const TESTIMONIALS = [
     stars: 5,
   },
   {
-    quote: "The prescriptive dashboard showed me exactly which topics my class was failing on — by learning outcome, not just by score. I've never had that kind of clarity from any tool before.",
+    quote: "The analytics dashboard showed me exactly which topics my class was failing on — by learning outcome, not just by score. I've never had that kind of clarity from any tool before.",
     author: 'Instructor',
     role: 'College of Arts and Sciences',
     stars: 5,
@@ -194,9 +202,9 @@ const TESTIMONIALS = [
 ]
 
 const TEAM = [
-  { name: 'Hearty Isabel Delacion', title: 'Co-Founder & CEO', initials: 'HD' },
-  { name: 'Jasmin B. Esperida', title: 'Co-Founder & CEO', initials: 'JE' },
-  { name: 'Noe L. Gonzales', title: 'Co-Founder & CEO', initials: 'NG' },
+  { name: 'Hearty Isabel Delacion', title: 'Co-Founder | CEO', image: delacion },
+  { name: 'Jasmin B. Esperida', title: 'Co-Founder | CCO', image: esperida },
+  { name: 'Noe L. Gonzales', title: 'Co-Founder | CTO', image: gonzales },
 ]
 
 // ── NAV LINKS (mirrored from sign-in/sign-up pages) ──────────────────────────
@@ -212,6 +220,7 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
+  const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
 
   useEffect(() => {
     const handleScroll = () => {
@@ -235,7 +244,7 @@ export default function LandingPage() {
       else if (user?.role === 'admin') navigate('/admin/dashboard')
       else navigate('/faculty/dashboard')
     } else {
-      navigate('/signup')
+      setAuthModal('signup')
     }
   }
 
@@ -377,7 +386,7 @@ export default function LandingPage() {
           background: rgba(255,255,255,0.04);
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 20px;
-          padding: 2.5rem 2rem;
+          padding: 1.5rem 1.5rem 2rem;
           text-align: center;
           transition: all 0.3s ease;
         }
@@ -596,6 +605,70 @@ export default function LandingPage() {
           border-radius: 3px;
           margin: 1rem auto 0;
         }
+
+        .neon-border-glow {
+          position: relative;
+        }
+        .neon-border-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 2px; /* Border thickness */
+          background: linear-gradient(
+            90deg,
+            rgba(255, 107, 107, 0) 0%,
+            rgba(255, 107, 107, 0.8) 12.5%,
+            rgba(139, 0, 0, 0.8) 25%,
+            rgba(255, 107, 107, 0) 50%,
+            rgba(255, 107, 107, 0.8) 62.5%,
+            rgba(139, 0, 0, 0.8) 75%,
+            rgba(255, 107, 107, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        @keyframes neon-pan {
+          0% { background-position: 100% 0; }
+          100% { background-position: 0 0; }
+        }
+        
+        .subtle-neon-glow {
+          position: relative;
+        }
+        .subtle-neon-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            90deg,
+            rgba(255, 107, 107, 0) 0%,
+            rgba(255, 107, 107, 0.5) 12.5%,
+            rgba(139, 0, 0, 0.5) 25%,
+            rgba(255, 107, 107, 0) 50%,
+            rgba(255, 107, 107, 0.5) 62.5%,
+            rgba(139, 0, 0, 0.5) 75%,
+            rgba(255, 107, 107, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        
+        @keyframes orb-float {
+          0%, 100% { transform: translate(0px, 0px) scale(1); }
+          33% { transform: translate(40px, -60px) scale(1.1); }
+          66% { transform: translate(-30px, 30px) scale(0.9); }
+        }
       `}</style>
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
@@ -619,7 +692,7 @@ export default function LandingPage() {
         }}>
           {/* Logo */}
           <button onClick={() => scrollTo('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
           </button>
 
           {/* Desktop Nav */}
@@ -643,10 +716,10 @@ export default function LandingPage() {
               </button>
             ) : (
               <>
-                <button className="atlas-btn-outline" onClick={() => navigate('/signin')} style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
+                <button className="atlas-btn-outline" onClick={() => setAuthModal('signin')} style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
                   SIGN IN
                 </button>
-                <button className="atlas-btn-primary" onClick={() => navigate('/signup')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
+                <button className="atlas-btn-primary" onClick={() => setAuthModal('signup')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
                   SIGN UP
                 </button>
               </>
@@ -683,10 +756,10 @@ export default function LandingPage() {
           </button>
         ))}
         <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-          <button className="atlas-btn-outline" onClick={() => { navigate('/signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+          <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
             SIGN IN
           </button>
-          <button className="atlas-btn-primary" onClick={() => { navigate('/signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+          <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
             SIGN UP
           </button>
         </div>
@@ -708,7 +781,7 @@ export default function LandingPage() {
           zIndex: 0,
         }} />
 
-        <div className="hero-container" style={{ position: 'relative', zIndex: 1, padding: '3rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
+        <div className="hero-container" style={{ position: 'relative', zIndex: 1, padding: '2rem', maxWidth: 1200, margin: '0 auto', marginTop: '-4rem' }}>
           <div className="hero-text-content">
             <div className="hero-badge" style={{ margin: '0 0 1.5rem' }}>
               <span style={{ width: 6, height: 6, background: '#FF6B6B', borderRadius: '50%', display: 'inline-block' }} />
@@ -736,11 +809,11 @@ export default function LandingPage() {
               maxWidth: '100%',
             }}>
               The AI-powered OBE platform built for Philippine Higher Education —
-              syllabus generation, assessment building, and prescriptive analytics in one place.
+              syllabus generation, assessment building, and performance analytics in one place.
             </p>
 
             <div className="hero-cta-group">
-              <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
+              <button className="atlas-btn-primary subtle-neon-glow" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
                 Join ATLAS Now!
               </button>
               <button
@@ -757,7 +830,7 @@ export default function LandingPage() {
               {[
                 { label: 'CHED OBE-Compliant', icon: '✓' },
                 { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
-                { label: 'Google Sheets Integration', icon: '✓' },
+                { label: 'Built-in Gradebook', icon: '✓' },
               ].map(({ label, icon }) => (
                 <div key={label} style={{
                   background: 'rgba(255,255,255,0.05)',
@@ -808,7 +881,7 @@ export default function LandingPage() {
               { value: 500, suffix: '+', label: 'Courses generated' },
               { value: 3, suffix: ' days', label: 'From signup to live' },
             ].map(({ value, suffix, label, prefix }, i) => (
-              <div key={i} className={`stat-card fade-up ${statsInView ? 'visible' : ''}`}>
+              <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
                 <div style={{ fontSize: '2.4rem', fontWeight: 800, color: '#FF6B6B', lineHeight: 1 }}>
                   {prefix || ''}{statsInView && <AnimatedNumber target={value} suffix={suffix} />}
                 </div>
@@ -839,7 +912,7 @@ export default function LandingPage() {
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}
           >
             {FEATURES.map((f, i) => (
-              <div key={i} className={`feature-card fade-up ${featInView ? 'visible' : ''}`}>
+              <div key={i} className={`feature-card fade-up neon-border-glow ${featInView ? 'visible' : ''}`}>
                 <div style={{
                   width: 52, height: 52,
                   background: f.accent,
@@ -876,7 +949,7 @@ export default function LandingPage() {
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}
           >
             {TESTIMONIALS.map((t, i) => (
-              <div key={i} className={`testimonial-card fade-up ${testimonialsInView ? 'visible' : ''}`}>
+              <div key={i} className={`testimonial-card fade-up neon-border-glow ${testimonialsInView ? 'visible' : ''}`}>
                 <div style={{ color: '#FF4444', fontSize: '1rem', marginBottom: '1rem', letterSpacing: 2 }}>
                   {'★'.repeat(t.stars)}
                 </div>
@@ -928,7 +1001,7 @@ export default function LandingPage() {
             {PLANS.map((plan, i) => (
               <div
                 key={i}
-                className={`pricing-card fade-up ${pricingInView ? 'visible' : ''} ${plan.popular ? 'popular' : ''}`}
+                className={`pricing-card fade-up neon-border-glow ${pricingInView ? 'visible' : ''} ${plan.popular ? 'popular' : ''}`}
                 style={{
                   border: `1px solid ${plan.border}`,
                   background: plan.color,
@@ -960,7 +1033,7 @@ export default function LandingPage() {
 
                 <button
                   className={plan.popular ? 'atlas-btn-primary' : 'atlas-btn-outline'}
-                  onClick={() => navigate(plan.price === 'Custom' ? '#contact' : '/signup')}
+                  onClick={() => plan.price === 'Custom' ? scrollTo('contact') : setAuthModal('signup')}
                   style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700 }}
                 >
                   {plan.cta}
@@ -992,20 +1065,20 @@ export default function LandingPage() {
             style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', maxWidth: 900, margin: '0 auto' }}
           >
             {TEAM.map((member, i) => (
-              <div key={i} className={`team-card fade-up ${teamInView ? 'visible' : ''}`}>
+              <div key={i} className={`team-card fade-up subtle-neon-glow ${teamInView ? 'visible' : ''}`}>
                 <div style={{
-                  width: 72, height: 72,
-                  borderRadius: '50%',
-                  background: 'rgba(192,57,43,0.2)',
-                  border: '2px solid rgba(192,57,43,0.4)',
+                  width: '100%', height: 280,
+                  borderRadius: 16,
+                  background: 'rgba(192,57,43,0.1)',
+                  border: '1px solid rgba(192,57,43,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 1.2rem',
-                  fontSize: '1.3rem', fontWeight: 800, color: '#FF8080',
+                  margin: '0 auto 1.5rem',
+                  overflow: 'hidden',
                 }}>
-                  {member.initials}
+                  <img src={member.image} alt={member.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
-                <h3 style={{ fontWeight: 700, fontSize: '1rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
-                <p style={{ color: '#FF6B6B', fontSize: '0.82rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
+                <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
+                <p style={{ color: '#FF6B6B', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
               </div>
             ))}
           </div>
@@ -1031,7 +1104,7 @@ export default function LandingPage() {
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {[
-                  { icon: '📧', label: 'Email', value: 'atlasdev@gmail.com' },
+                  { icon: '📧', label: 'Email', value: 'atlasdegdev@gmail.com' },
                   { icon: '📍', label: 'Location', value: 'Lipa City, Batangas, Philippines' },
                   { icon: '⏱️', label: 'Response Time', value: 'Within 24 hours' },
                 ].map(({ icon, label, value }) => (
@@ -1076,7 +1149,7 @@ export default function LandingPage() {
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <img src={atlasLogo} alt="ATLAS" style={{ height: 24, filter: 'brightness(0) invert(0.6)' }} />
+            <img src={atlasLogo} alt="ATLAS" style={{ height: 24, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
@@ -1091,6 +1164,17 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* ── AUTH MODALS ─────────────────────────────────────────────────────── */}
+      {authModal === 'signin' && (
+        <SignInPage isModal onClose={() => setAuthModal(null)} onSwitch={setAuthModal} />
+      )}
+      {authModal === 'signup' && (
+        <SignUpPage isModal onClose={() => setAuthModal(null)} onSwitch={setAuthModal} />
+      )}
+      {authModal === 'reset' && (
+        <PasswordResetPage isModal onClose={() => setAuthModal(null)} onSwitch={setAuthModal} />
+      )}
     </div>
   )
 }

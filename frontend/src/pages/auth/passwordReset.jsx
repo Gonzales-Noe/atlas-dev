@@ -118,7 +118,7 @@ function StepDots({ current }) {
   )
 }
 
-export default function PasswordResetPage() {
+export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
   const navigate                              = useNavigate()
   const { sendOtp, verifyOtp, resetPassword } = useAuth()
 
@@ -204,7 +204,19 @@ export default function PasswordResetPage() {
   }
 
   return (
-    <div style={{
+    <div style={isModal ? {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(10,10,11,0.85)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      zIndex: 9999,
+      display: 'flex',
+      flexDirection: 'column',
+      color: '#F0F0F0',
+      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+      overflowY: 'auto',
+    } : {
       minHeight: '100vh',
       background: '#0A0A0B',
       color: '#F0F0F0',
@@ -423,16 +435,31 @@ export default function PasswordResetPage() {
       }} />
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
-      <nav style={{
-        position: 'relative', zIndex: 999,
-        background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
-        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
-        transition: 'all 0.3s ease',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
-      }}>
+      {isModal && (
+        <button onClick={onClose} style={{
+          position: 'absolute', top: 24, right: 24, background: 'rgba(255,255,255,0.1)', border: 'none',
+          color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
+          transition: 'background 0.2s'
+        }}
+        onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+        onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+        >
+          ✕
+        </button>
+      )}
+
+      {!isModal && (
+        <nav style={{
+          position: 'relative', zIndex: 999,
+          background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
+          borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          transition: 'all 0.3s ease',
+          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+        }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Link to="/">
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
           </Link>
           <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
             {NAV_LINKS.map(({ label, to }) => (
@@ -457,13 +484,14 @@ export default function PasswordResetPage() {
             <Link key={label} to={to} className="auth-nav-link" style={{ fontSize: '0.95rem', padding: '0.4rem 0' }} onClick={() => setIsMenuOpen(false)}>{label}</Link>
           ))}
         </div>
-      </nav>
+        </nav>
+      )}
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', zIndex: 1 }}>
         <div
           className="reset-split glass-card"
-          style={{ width: '100%', maxWidth: 900, display: 'flex', overflow: 'hidden', minHeight: 520 }}
+          style={{ width: '100%', maxWidth: 800, display: 'flex', overflow: 'hidden', minHeight: 500, transform: isModal ? 'scale(0.85)' : 'none' }}
         >
           {/* LEFT: Mascot panel */}
           <div
@@ -486,7 +514,7 @@ export default function PasswordResetPage() {
 
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
               {/* Logo */}
-              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, filter: 'brightness(0) invert(1)' }} />
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
 
               {/* Speech bubble — updates per step */}
               <div className="speech-bubble" style={{ maxWidth: 260 }}>
@@ -562,9 +590,15 @@ export default function PasswordResetPage() {
 
                   <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
                     Remembered it?{' '}
-                    <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
-                      Sign In
-                    </Link>
+                    {isModal ? (
+                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                        Sign In
+                      </button>
+                    ) : (
+                      <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
+                        Sign In
+                      </Link>
+                    )}
                   </p>
                 </form>
               </div>
@@ -703,7 +737,7 @@ export default function PasswordResetPage() {
                 </p>
                 <button
                   className="btn-primary"
-                  onClick={() => navigate(ROUTES.SIGN_IN)}
+                  onClick={() => isModal ? onSwitch('signin') : navigate(ROUTES.SIGN_IN)}
                 >
                   Go to Sign In →
                 </button>

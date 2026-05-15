@@ -51,7 +51,7 @@ const NAV_LINKS = [
 const PERKS = [
 ];
 
-export default function SignUpPage() {
+export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const navigate           = useNavigate();
   const { register }       = useAuth();
   const [agreed, setAgreed]     = useState(false);
@@ -99,7 +99,19 @@ export default function SignUpPage() {
   }
 
   return (
-    <div style={{
+    <div style={isModal ? {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(10,10,11,0.85)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      zIndex: 9999,
+      display: 'flex',
+      flexDirection: 'column',
+      color: '#F0F0F0',
+      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+      overflowY: 'auto',
+    } : {
       minHeight: '100vh',
       background: '#0A0A0B',
       color: '#F0F0F0',
@@ -354,6 +366,37 @@ export default function SignUpPage() {
           pointer-events: all;
         }
 
+        .subtle-neon-glow {
+          position: relative;
+        }
+        .subtle-neon-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            90deg,
+            rgba(255, 107, 107, 0) 0%,
+            rgba(255, 107, 107, 0.5) 12.5%,
+            rgba(139, 0, 0, 0.5) 25%,
+            rgba(255, 107, 107, 0) 50%,
+            rgba(255, 107, 107, 0.5) 62.5%,
+            rgba(139, 0, 0, 0.5) 75%,
+            rgba(255, 107, 107, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        @keyframes neon-pan {
+          0% { background-position: 100% 0; }
+          100% { background-position: 0 0; }
+        }
+
         .label-text {
           font-size: 0.75rem;
           color: rgba(255,255,255,0.4);
@@ -387,20 +430,35 @@ export default function SignUpPage() {
       }} />
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
-      <nav style={{
-        position: 'relative', zIndex: 999,
-        background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
-        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
-        transition: 'all 0.3s ease',
-      }}>
+      {isModal && (
+        <button onClick={onClose} style={{
+          position: 'absolute', top: 24, right: 24, background: 'rgba(255,255,255,0.1)', border: 'none',
+          color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
+          transition: 'background 0.2s'
+        }}
+        onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+        onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+        >
+          ✕
+        </button>
+      )}
+
+      {!isModal && (
+        <nav style={{
+          position: 'relative', zIndex: 999,
+          background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
+          borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+          transition: 'all 0.3s ease',
+        }}>
         <div style={{
           maxWidth: 1200, margin: '0 auto',
           padding: '0 2rem', height: 64,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <Link to="/">
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
           </Link>
 
           <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
@@ -438,20 +496,21 @@ export default function SignUpPage() {
             </Link>
           ))}
         </div>
-      </nav>
+        </nav>
+      )}
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', zIndex: 1 }}>
         <div
-          className="split-layout glass-panel"
-          style={{ width: '100%', maxWidth: 980, display: 'flex', overflow: 'hidden' }}
+          className="split-layout glass-panel subtle-neon-glow"
+          style={{ width: '100%', maxWidth: 980, display: 'flex', overflow: 'hidden', transform: isModal ? 'scale(0.85)' : 'none' }}
         >
           {/* LEFT: Form Panel */}
           <div style={{ flex: 1, padding: '2.5rem 2.5rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
 
             {success ? (
               <div className="form-enter" style={{ textAlign: 'center' }}>
-                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) invert(1)', marginBottom: '1.5rem' }} />
+                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.5rem' }} />
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 1rem' }}>
                   Application <span className="glow-text">Submitted!</span>
@@ -459,17 +518,23 @@ export default function SignUpPage() {
                 <div className="success-box">
                   Your institution registration has been received. The ATLAS team will review and provide credentials within <strong>2–3 business days</strong>.
                 </div>
-                <Link to={ROUTES.SIGN_IN}>
-                  <button className="btn-secondary" style={{ width: '100%' }}>
+                {isModal ? (
+                  <button className="btn-secondary" onClick={() => onSwitch('signin')} style={{ width: '100%' }}>
                     Back to Sign In
                   </button>
-                </Link>
+                ) : (
+                  <Link to={ROUTES.SIGN_IN} style={{ textDecoration: 'none' }}>
+                    <button className="btn-secondary" style={{ width: '100%' }}>
+                      Back to Sign In
+                    </button>
+                  </Link>
+                )}
               </div>
             ) : (
               <div className="form-enter">
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) invert(1)', marginBottom: '1.2rem' }} />
+                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.2rem' }} />
                   <h1 style={{ fontSize: '1.55rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
                     Get <span className="glow-text">ATLAS</span> for Your Institution
                   </h1>
@@ -522,7 +587,13 @@ export default function SignUpPage() {
                 {/* Sign In + Terms */}
                 <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.38)', margin: '1.25rem 0 0.75rem' }}>
                   Already have an account?{' '}
-                  <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                  {isModal ? (
+                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                      Sign In
+                    </button>
+                  ) : (
+                    <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                  )}
                 </p>
 
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer', justifyContent: 'center' }}>

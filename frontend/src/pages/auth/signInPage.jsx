@@ -41,7 +41,7 @@ const NAV_LINKS = [
   { label: 'CONTACT', to: '/contact' },
 ];
 
-export default function SignInPage() {
+export default function SignInPage({ isModal, onClose, onSwitch }) {
   const navigate                = useNavigate();
   const location                = useLocation();
   const { login }               = useAuth();
@@ -88,7 +88,19 @@ export default function SignInPage() {
   }
 
   return (
-    <div style={{
+    <div style={isModal ? {
+      position: 'fixed',
+      inset: 0,
+      background: 'rgba(10,10,11,0.85)',
+      backdropFilter: 'blur(10px)',
+      WebkitBackdropFilter: 'blur(10px)',
+      zIndex: 9999,
+      display: 'flex',
+      flexDirection: 'column',
+      color: '#F0F0F0',
+      fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
+      overflowY: 'auto',
+    } : {
       minHeight: '100vh',
       background: '#0A0A0B',
       color: '#F0F0F0',
@@ -260,6 +272,37 @@ export default function SignInPage() {
           pointer-events: all;
         }
 
+        .subtle-neon-glow {
+          position: relative;
+        }
+        .subtle-neon-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            90deg,
+            rgba(255, 107, 107, 0) 0%,
+            rgba(255, 107, 107, 0.5) 12.5%,
+            rgba(139, 0, 0, 0.5) 25%,
+            rgba(255, 107, 107, 0) 50%,
+            rgba(255, 107, 107, 0.5) 62.5%,
+            rgba(139, 0, 0, 0.5) 75%,
+            rgba(255, 107, 107, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
+        }
+        @keyframes neon-pan {
+          0% { background-position: 100% 0; }
+          100% { background-position: 0 0; }
+        }
+
         .speech-bubble {
           background: rgba(255,255,255,0.08);
           border: 1px solid rgba(255,255,255,0.14);
@@ -327,20 +370,35 @@ export default function SignInPage() {
       }} />
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
-      <nav style={{
-        position: 'relative', zIndex: 999,
-        background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
-        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
-        transition: 'all 0.3s ease',
-      }}>
+      {isModal && (
+        <button onClick={onClose} style={{
+          position: 'absolute', top: 24, right: 24, background: 'rgba(255,255,255,0.1)', border: 'none',
+          color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
+          transition: 'background 0.2s'
+        }}
+        onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+        onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+        >
+          ✕
+        </button>
+      )}
+
+      {!isModal && (
+        <nav style={{
+          position: 'relative', zIndex: 999,
+          background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
+          borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
+          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+          transition: 'all 0.3s ease',
+        }}>
         <div style={{
           maxWidth: 1200, margin: '0 auto',
           padding: '0 2rem', height: 64,
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <Link to="/">
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) invert(1)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
           </Link>
 
           <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
@@ -377,13 +435,14 @@ export default function SignInPage() {
             </Link>
           ))}
         </div>
-      </nav>
+        </nav>
+      )}
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', zIndex: 1 }}>
         <div
-          className="split-layout glass-panel"
-          style={{ width: '100%', maxWidth: 960, display: 'flex', overflow: 'hidden', minHeight: 580 }}
+          className="split-layout glass-panel subtle-neon-glow"
+          style={{ width: '100%', maxWidth: 960, display: 'flex', overflow: 'hidden', minHeight: 580, transform: isModal ? 'scale(0.85)' : 'none' }}
         >
 
           {/* LEFT: Mascot Panel */}
@@ -427,9 +486,9 @@ export default function SignInPage() {
 
               {/* Header */}
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 34, objectFit: 'contain', filter: 'brightness(0) invert(1)', marginBottom: '1.2rem' }} />
+                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 34, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.2rem' }} />
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
-                  Welcome Back to <span className="glow-text">ATLAS</span>
+                  Welcome Back to <span className="glow-text">ATLAS!</span>
                 </h1>
                 <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', margin: 0 }}>
                   Sign in to your institution's platform.
@@ -461,9 +520,15 @@ export default function SignInPage() {
                     <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.05em' }}>
                       PASSWORD
                     </label>
-                    <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#FF6B6B', fontWeight: 600, textDecoration: 'none' }}>
-                      Forgot password?
-                    </Link>
+                    {isModal ? (
+                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#FF6B6B', fontWeight: 600 }}>
+                        Forgot password?
+                      </button>
+                    ) : (
+                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#FF6B6B', fontWeight: 600, textDecoration: 'none' }}>
+                        Forgot password?
+                      </Link>
+                    )}
                   </div>
                   <input
                     className="dark-input"
@@ -495,9 +560,15 @@ export default function SignInPage() {
               {/* Sign Up */}
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
                 Don't have an account?{' '}
-                <Link to={ROUTES.SIGN_UP} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
-                  Sign Up
-                </Link>
+                {isModal ? (
+                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                    Sign Up
+                  </button>
+                ) : (
+                  <Link to={ROUTES.SIGN_UP} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
+                    Sign Up
+                  </Link>
+                )}
               </p>
             </div>
           </div>
