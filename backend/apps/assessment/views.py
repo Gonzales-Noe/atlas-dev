@@ -107,6 +107,17 @@ def generate_assessment(request):
             status=status.HTTP_200_OK,
         )
 
+    except ValueError as exc:
+        logger.warning(
+            "Provider configuration error generating %s for course %r: %s",
+            assessment_type,
+            course_name,
+            exc,
+        )
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     except Exception as exc:
         logger.exception(
             "Error generating %s for course %r", assessment_type, course_name
