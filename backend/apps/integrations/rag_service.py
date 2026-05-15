@@ -22,7 +22,7 @@ import re
 
 from pgvector.django import CosineDistance
 
-from .models import GlobalDocumentChunk
+from .models import GlobalDocumentChunk, ChildChunk, ParentChunk
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +376,142 @@ def semantic_search_with_summary(
             "for query %r — context may be weakly relevant",
             best_score, _SIMILARITY_THRESHOLD, query[:60],
         )
+
+    summary, sources = _progressive_context_summary(query, chunks)
+
+    return {
+        "abstained": abstained,
+        "chunks": chunks,
+        "context_summary": summary,
+        "summary_sources": sources,
+    }
+
+
+# ── Course-specific retrieval ─────────────────────────────────────────────────
+
+def _to_1536_dim(vector: list) -> list:
+    """Pad or trim a vector to 1536 dimensions (matches ChildChunk storage format)."""
+    if len(vector) == 1536:
+        return vector
+    if len(vector) > 1536:
+        return vector[:1536]
+    return vector + [0.0] * (1536 - len(vector))
+
+
+def course_semantic_search(
+    query: str,
+    course,          # Course model instance
+    top_k: int = 5,
+    selected_doc_ids: list | None = None,   # list of records_id UUID strings
+) -> list:
+    """
+    Search within course-specific ChildChunk embeddings.
+
+    Returns the top-k most relevant ParentChunk passages for *query*,
+    filtered to the given course (and optionally to specific uploaded files).
+
+    Returns:
+        list of dicts: text, document_title, score
+    """
+    try:
+        query_vec_768 = embed_query(query)
+        query_vec = _to_1536_dim(query_vec_768)
+
+        child_qs = (
+            ChildChunk.objects
+            .select_related("parent", "parent__records")
+            .filter(embedding_vector__isnull=False, parent__records__course=course)
+        )
+        if selected_doc_ids:
+            child_qs = child_qs.filter(parent__records__records_id__in=selected_doc_ids)
+
+        over_retrieve = top_k * _OVER_RETRIEVE_FACTOR
+        child_matches = list(
+            child_qs
+            .annotate(distance=CosineDistance("embedding_vector", query_vec))
+            .order_by("distance")[:over_retrieve]
+        )
+
+        if not child_matches:
+            return []
+
+        # Collect unique parents with best child similarity
+        parent_best: dict = {}
+        for child in child_matches:
+            sim = max(0.0, 1.0 - float(child.distance))
+            pid = str(child.parent_id)
+            prev = parent_best.get(pid)
+            if prev is None or sim > prev["sim"]:
+                parent_best[pid] = {"chunk": child.parent, "sim": sim}
+
+        if not parent_best:
+            return []
+
+        parent_chunks = [v["chunk"] for v in parent_best.values()]
+        dense_scores  = [v["sim"]   for v in parent_best.values()]
+
+        # Hybrid BM25 + dense scoring
+        if BM25_AVAILABLE and len(parent_chunks) > 1:
+            tokenized_corpus = [_tokenize_for_bm25(p.parent_content) for p in parent_chunks]
+            bm25 = BM25Okapi(tokenized_corpus)
+            query_tokens = _tokenize_for_bm25(query)
+            bm25_raw = bm25.get_scores(query_tokens).tolist()
+            max_bm25 = max(bm25_raw) if max(bm25_raw) > 0 else 1.0
+            bm25_norm = [s / max_bm25 for s in bm25_raw]
+            final_scores = [
+                _DENSE_WEIGHT * d + _BM25_WEIGHT * b
+                for d, b in zip(dense_scores, bm25_norm)
+            ]
+        else:
+            final_scores = dense_scores
+
+        ranked = sorted(
+            zip(final_scores, parent_chunks),
+            key=lambda x: x[0],
+            reverse=True,
+        )[:top_k]
+
+        results = []
+        for score, chunk in ranked:
+            results.append({
+                "text":           chunk.parent_content,
+                "document_title": getattr(chunk.records, "storage_path", "Course Upload").split("/")[-1],
+                "page_number":    None,
+                "score":          round(float(score), 4),
+            })
+
+        logger.info(
+            "course_semantic_search(%r, course=%s) → %d results",
+            query[:60], course, len(results),
+        )
+        return results
+
+    except Exception:
+        logger.exception("course_semantic_search failed; returning empty context")
+        return []
+
+
+def course_semantic_search_with_summary(
+    query: str,
+    course,
+    top_k: int = 5,
+    selected_doc_ids: list | None = None,
+) -> dict:
+    """
+    Like semantic_search_with_summary() but searches course-specific uploads.
+    """
+    chunks = course_semantic_search(query, course, top_k=top_k, selected_doc_ids=selected_doc_ids)
+
+    if not chunks:
+        return {
+            "abstained": True,
+            "chunks": [],
+            "context_summary": "",
+            "summary_sources": [],
+        }
+
+    best_score = max(c["score"] for c in chunks)
+    abstained = best_score < _SIMILARITY_THRESHOLD
 
     summary, sources = _progressive_context_summary(query, chunks)
 

@@ -26,7 +26,11 @@ class AnthropicService:
             self.client = None
         else:
             try:
-                self.client = Anthropic(api_key=self.api_key)
+                import httpx
+                self.client = Anthropic(
+                    api_key=self.api_key,
+                    http_client=httpx.Client(),
+                )
             except Exception as exc:  # noqa: BLE001 - environment/sdk mismatch guard
                 logger.warning("Anthropic client initialization failed: %s", exc)
                 self.client = None

@@ -1,5 +1,8 @@
+import json
 import logging
+import re
 
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -10,13 +13,18 @@ from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
     Assessment,
     Course,
+    CourseFile,
     CourseLoad,
     Module,
     ParentChunk,
     Syllabus,
     UserRole,
 )
-from apps.integrations.rag_service import semantic_search, semantic_search_with_summary
+from apps.integrations.rag_service import (
+    course_semantic_search_with_summary,
+    semantic_search,
+    semantic_search_with_summary,
+)
 
 from .metrics import compute_metrics
 from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, GenerateSyllabusSerializer
@@ -128,7 +136,7 @@ def faculty_course_workspace(request, course_id):
     modules = (
         Module.objects.filter(syllabus__course=course)
         .order_by('week_number', '-generated_at')
-        .values('module_id', 'module_title', 'week_number', 'status', 'generated_at')
+        .values('module_id', 'module_title', 'week_number', 'status', 'generated_at', 'module_content')
     )
     assessments = (
         Assessment.objects.filter(course=course)
@@ -286,7 +294,7 @@ def generate_syllabus(request):
             messages=[{"role": "user", "content": user_prompt}],
             provider_choice=provider,
             system=system_prompt,
-            max_tokens=3000,
+            max_tokens=2048,
         )
 
         return Response(
@@ -314,23 +322,24 @@ def generate_syllabus(request):
 @permission_classes([IsAuthenticated])
 def generate_module(request):
     """
-    Generate a detailed OBE-aligned teaching module using RAG + CoT + LLM.
+    Generate a JSON-structured teaching module using RAG + CoT + LLM.
 
-    Endpoint: POST /api/curriculum/generate-module/
+    Pipeline:
+      1. Validate input and resolve the course.
+      2. Semantic search over global knowledge base.
+      3. Semantic search over course-specific uploads (filtered by selected_doc_ids).
+      4. Build JSON CoT prompt with combined context.
+      5. Call LLM with auto-fallback across providers.
+      6. Parse the JSON response (strip any markdown fences).
+      7. Save result to Module.module_content and return it.
 
-    Body (JSON):
-    {
-        "course_name": "Data Structures and Algorithms",
-        "module_title": "Binary Search Trees",
-        "week_number": 7,                 // optional, default 1
-        "provider": "gemini",             // optional
-        "top_k": 5,                       // optional
-        "search_query": "...",            // optional override
-        "extra_instructions": "..."       // optional
-    }
-
-    Pipeline: same as generate_syllabus but targets a single weekly module.
+    Returns:
+      { success, module_id, module_content: { module_number, module_title,
+        introduction, learning_objectives, subtopics, short_activity } }
     """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
     serializer = GenerateModuleSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -339,65 +348,369 @@ def generate_module(request):
         )
 
     data = serializer.validated_data
+    course_id = data["course_id"]
     course_name = data["course_name"]
     module_title = data["module_title"]
     week_number = data.get("week_number", 1)
     top_k = data.get("top_k", 5)
     provider = data.get("provider") or None
     extra_instructions = data.get("extra_instructions", "")
-    search_query = data.get("search_query") or (
-        f"{course_name} {module_title} teaching module learning outcomes activities"
+    selected_doc_ids = [str(uid) for uid in (data.get("selected_doc_ids") or [])]
+    # Use module title (not course name) as the RAG anchor — course names like
+    # "ATLAS Smoke Testing Fundamentals" are not real academic subjects and pollute search.
+    _custom_search_query = data.get("search_query")
+    search_query = _custom_search_query or f"{module_title} concepts principles applications"
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    # Determine module number (sequential within course)
+    existing_count = Module.objects.filter(syllabus__course=course).count()
+    module_number = existing_count + 1
+
+    # ── Extract real course data for prompt enrichment ─────────────────────
+    course_description: str = course.description or ""
+    syllabus_ilos: list = []
+    week_topic: str = ""
+    latest_syllabus_for_data = (
+        Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
+        .order_by("-syllabus_id")
+        .first()
     )
+    if latest_syllabus_for_data and latest_syllabus_for_data.syllabus_content:
+        sc = latest_syllabus_for_data.syllabus_content
+        if not course_description:
+            course_description = sc.get("description") or ""
+        syllabus_ilos = [str(i) for i in (sc.get("ilos") or []) if i]
+        for entry in (sc.get("tla_chapters") or []):
+            weeks_val = str(entry.get("weeks", "")).strip()
+            if weeks_val == str(week_number):
+                week_topic = entry.get("topics") or ""
+                break
+            if "-" in weeks_val:
+                parts = weeks_val.split("-")
+                if len(parts) == 2:
+                    try:
+                        if int(parts[0]) <= week_number <= int(parts[1]):
+                            week_topic = entry.get("topics") or ""
+                            break
+                    except ValueError:
+                        pass
+
+    # Enhance the default search query with week topic once we have it
+    if not _custom_search_query and week_topic:
+        search_query = f"{module_title} {week_topic} concepts principles applications"
 
     try:
-        # Step 1 — Semantic search with progressive summary
-        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
-        chunks = rag_result["chunks"]
-        logger.info(
-            "Module generation for %r / %r (week %d): retrieved %d RAG chunk(s) (abstained=%s)",
-            course_name,
-            module_title,
-            week_number,
-            len(chunks),
-            rag_result["abstained"],
+        # ── Step 1: Global knowledge base RAG ──────────────────────────────
+        global_rag = semantic_search_with_summary(search_query, top_k=top_k)
+        global_chunks = global_rag["chunks"]
+        global_summary = global_rag["context_summary"]
+
+        # ── Step 2: Course-specific RAG ────────────────────────────────────
+        course_rag = course_semantic_search_with_summary(
+            query=search_query,
+            course=course,
+            top_k=top_k,
+            selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
+        )
+        course_chunks = course_rag["chunks"]
+        course_summary = course_rag["context_summary"]
+
+        # Combine: course-specific chunks first (higher priority), then global
+        all_chunks = course_chunks + global_chunks
+        combined_summary = (
+            "\n\n".join(filter(None, [course_summary, global_summary])) or ""
         )
 
-        # Step 2 — Build CoT prompt (token-efficient via context summary)
-        system_prompt, user_prompt = CoTPromptBuilder.build_module_prompt(
+        logger.info(
+            "Module generation for %r / %r wk%d: course=%d global=%d provider=%r",
+            course_name, module_title, week_number,
+            len(course_chunks), len(global_chunks), provider,
+        )
+
+        # ── Step 3: Build JSON CoT prompt ──────────────────────────────────
+        system_prompt, user_prompt = CoTPromptBuilder.build_module_json_prompt(
             course_name=course_name,
             module_title=module_title,
             week_number=week_number,
-            context_chunks=chunks,
+            module_number=module_number,
+            context_chunks=all_chunks,
             extra_instructions=extra_instructions,
-            context_summary=rag_result["context_summary"],
+            context_summary=combined_summary,
+            ilos=syllabus_ilos,
+            course_description=course_description,
+            week_topic=week_topic,
         )
 
-        # Step 3 — Call LLM
+        # ── Step 4: LLM call with auto-fallback ────────────────────────────
         llm = LLMService()
-        generated_text = llm.generate_response(
+        raw_text = llm.generate_response_with_fallback(
             messages=[{"role": "user", "content": user_prompt}],
-            provider_choice=provider,
+            preferred_provider=provider,
             system=system_prompt,
-            max_tokens=2500,
+            max_tokens=2048,
+        )
+
+        # ── Step 5: Parse JSON (strip markdown fences if present) ──────────
+        clean = raw_text.strip()
+        clean = re.sub(r"^```(?:json)?\s*", "", clean)
+        clean = re.sub(r"\s*```$", "", clean)
+        clean = clean.strip()
+
+        try:
+            module_content = json.loads(clean)
+        except json.JSONDecodeError:
+            # Attempt to extract the first JSON object from the response
+            match = re.search(r"\{.*\}", clean, re.DOTALL)
+            if match:
+                module_content = json.loads(match.group(0))
+            else:
+                raise ValueError("LLM did not return valid JSON.")
+
+        # Ensure subtopic IDs are present
+        for idx, st in enumerate(module_content.get("subtopics", [])):
+            if "id" not in st:
+                st["id"] = f"st_{idx}"
+
+        # ── Step 6: Save to DB ─────────────────────────────────────────────
+        syllabus = (
+            Syllabus.objects.filter(course=course, status="Draft")
+            .order_by("-syllabus_id")
+            .first()
+        )
+        if not syllabus:
+            syllabus = Syllabus.objects.create(
+                course=course, status="Draft", term="", version=1
+            )
+
+        module = Module.objects.create(
+            syllabus=syllabus,
+            module_title=module_title,
+            week_number=week_number,
+            status="Generated",
+            generated_at=timezone.now(),
+            module_content=module_content,
         )
 
         return Response(
             {
                 "success": True,
-                "course_name": course_name,
+                "module_id": str(module.module_id),
                 "module_title": module_title,
                 "week_number": week_number,
                 "provider_used": provider or llm.default_provider,
-                "rag_chunks_used": len(chunks),
-                "generated_module": generated_text,
+                "rag_chunks_used": len(all_chunks),
+                "module_content": module_content,
             },
-            status=status.HTTP_200_OK,
+            status=status.HTTP_201_CREATED,
         )
 
     except Exception as exc:
-        logger.exception(
-            "Error generating module %r for course %r", module_title, course_name
+        logger.exception("Error generating module %r for course %r", module_title, course_name)
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_module_detail(request, module_id):
+    """Return a single module with its full JSON content."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    try:
+        module = Module.objects.select_related("syllabus__course").get(module_id=module_id)
+    except Module.DoesNotExist:
+        return Response({"success": False, "detail": "Module not found."}, status=404)
+
+    # Verify faculty owns this course
+    course = module.syllabus.course
+    _, error = _get_assigned_course_or_403(request, course.course_id)
+    if error:
+        return error
+
+    return Response(
+        {
+            "success": True,
+            "module": {
+                "module_id": str(module.module_id),
+                "module_title": module.module_title,
+                "week_number": module.week_number,
+                "status": module.status,
+                "generated_at": module.generated_at,
+                "module_content": module.module_content,
+            },
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def save_module_content(request, module_id):
+    """Save edited module_content JSON to the database."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    try:
+        module = Module.objects.select_related("syllabus__course").get(module_id=module_id)
+    except Module.DoesNotExist:
+        return Response({"success": False, "detail": "Module not found."}, status=404)
+
+    course = module.syllabus.course
+    _, error = _get_assigned_course_or_403(request, course.course_id)
+    if error:
+        return error
+
+    content = request.data.get("module_content")
+    if content is None:
+        return Response(
+            {"success": False, "detail": "module_content is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    module.module_content = content
+    module.status = "Edited"
+    module.save(update_fields=["module_content", "status"])
+
+    return Response({"success": True, "module_id": str(module.module_id)})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_subtopic_content(request):
+    """
+    Generate or expand content for a single subtopic using course-specific + global RAG.
+
+    Body: { module_id, subtopic_title, subtopic_id, existing_content, selected_doc_ids, provider }
+    Returns: { success, content: "<plain text paragraphs>" }
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    module_id = request.data.get("module_id")
+    subtopic_title = (request.data.get("subtopic_title") or "").strip()
+    existing_content = (request.data.get("existing_content") or "").strip()
+    selected_doc_ids = request.data.get("selected_doc_ids") or []
+    provider = request.data.get("provider") or None
+
+    if not module_id or not subtopic_title:
+        return Response(
+            {"success": False, "detail": "module_id and subtopic_title are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        module = Module.objects.select_related("syllabus__course").get(module_id=module_id)
+    except Module.DoesNotExist:
+        return Response({"success": False, "detail": "Module not found."}, status=404)
+
+    course = module.syllabus.course
+    _, error = _get_assigned_course_or_403(request, course.course_id)
+    if error:
+        return error
+
+    search_query = f"{module.module_title} {subtopic_title} concepts explanation"
+
+    try:
+        global_rag = semantic_search_with_summary(search_query, top_k=5)
+        course_rag = course_semantic_search_with_summary(
+            query=search_query,
+            course=course,
+            top_k=5,
+            selected_doc_ids=[str(d) for d in selected_doc_ids] if selected_doc_ids else None,
+        )
+        all_chunks = course_rag["chunks"] + global_rag["chunks"]
+        combined_summary = "\n\n".join(filter(None, [
+            course_rag["context_summary"], global_rag["context_summary"]
+        ]))
+
+        system_prompt, user_prompt = CoTPromptBuilder.build_subtopic_content_prompt(
+            course_name=course.course_title,
+            module_title=module.module_title,
+            subtopic_title=subtopic_title,
+            existing_content=existing_content,
+            context_chunks=all_chunks,
+            context_summary=combined_summary,
+        )
+
+        llm = LLMService()
+        content = llm.generate_response_with_fallback(
+            messages=[{"role": "user", "content": user_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=1500,
+        )
+
+        return Response({"success": True, "content": content.strip()})
+
+    except Exception as exc:
+        logger.exception("Error generating subtopic content for %r", subtopic_title)
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def module_ai_assist(request):
+    """
+    AI chatbox assistant for editing a module section.
+
+    Body: { module_id, field, current_content, instruction, provider }
+    Returns: { success, revised_content }
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    module_id = request.data.get("module_id")
+    field = (request.data.get("field") or "").strip()
+    current_content = (request.data.get("current_content") or "").strip()
+    instruction = (request.data.get("instruction") or "").strip()
+    provider = request.data.get("provider") or None
+
+    if not module_id or not instruction:
+        return Response(
+            {"success": False, "detail": "module_id and instruction are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        module = Module.objects.select_related("syllabus__course").get(module_id=module_id)
+    except Module.DoesNotExist:
+        return Response({"success": False, "detail": "Module not found."}, status=404)
+
+    course = module.syllabus.course
+    _, error = _get_assigned_course_or_403(request, course.course_id)
+    if error:
+        return error
+
+    try:
+        system_prompt, user_prompt = CoTPromptBuilder.build_module_ai_assist_prompt(
+            field=field,
+            current_content=current_content,
+            instruction=instruction,
+            course_name=course.course_title,
+            module_title=module.module_title,
+        )
+
+        llm = LLMService()
+        revised = llm.generate_response_with_fallback(
+            messages=[{"role": "user", "content": user_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=1000,
+        )
+
+        return Response({"success": True, "revised_content": revised.strip()})
+
+    except Exception as exc:
+        logger.exception("Error in module AI assist for module %s", module_id)
         return Response(
             {"success": False, "error": str(exc)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -20,6 +20,7 @@ class GenerateSyllabusSerializer(serializers.Serializer):
 
 
 class GenerateModuleSerializer(serializers.Serializer):
+    course_id = serializers.UUIDField(required=True)
     course_name = serializers.CharField(required=True, max_length=255)
     module_title = serializers.CharField(required=True, max_length=255)
     week_number = serializers.IntegerField(required=False, default=1, min_value=1, max_value=52)
@@ -30,6 +31,9 @@ class GenerateModuleSerializer(serializers.Serializer):
     search_query = serializers.CharField(required=False, allow_blank=True, max_length=500, default="")
     extra_instructions = serializers.CharField(
         required=False, allow_blank=True, max_length=1000, default=""
+    )
+    selected_doc_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_empty=True, default=list
     )
 
 

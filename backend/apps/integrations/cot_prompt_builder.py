@@ -281,6 +281,234 @@ OUTPUT — Return the module plan using exactly this structure:
         return system, user
 
     # ------------------------------------------------------------------
+    # JSON Module generation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_module_json_prompt(
+        course_name: str,
+        module_title: str,
+        week_number: int,
+        module_number: int,
+        context_chunks: list,
+        extra_instructions: str = "",
+        context_summary: str = "",
+        ilos: list = None,
+        course_description: str = "",
+        week_topic: str = "",
+    ) -> tuple:
+        """
+        Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
+
+        Args:
+            ilos:               List of ILO/CLO strings from the course syllabus.
+            course_description: The course description text.
+            week_topic:         The topic for this specific week from the syllabus schedule.
+
+        JSON schema returned by the LLM:
+        {
+          "module_number": <int>,
+          "module_title": "<string>",
+          "introduction": "<2-3 sentence paragraph>",
+          "learning_objectives": ["<measurable objective>", ...],
+          "subtopics": [
+            {
+              "id": "st_0",
+              "title": "<subtopic title>",
+              "content": "<detailed explanation, 3-5 paragraphs>"
+            },
+            ...
+          ],
+          "short_activity": {
+            "title": "<activity title>",
+            "description": "<step-by-step activity instructions>",
+            "duration": "<e.g. 15 minutes>"
+          }
+        }
+
+        Returns:
+            (system_prompt: str, user_prompt: str)
+        """
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
+        extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
+
+        # Build the COURSE DATA block from real syllabus data
+        course_data_parts = []
+        if course_description:
+            course_data_parts.append(f"COURSE DESCRIPTION:\n{course_description.strip()}")
+        if ilos:
+            ilo_lines = "\n".join(f"  ILO-{i + 1}: {ilo}" for i, ilo in enumerate(ilos) if ilo)
+            course_data_parts.append(f"COURSE INTENDED LEARNING OUTCOMES (ILOs):\n{ilo_lines}")
+        if week_topic:
+            course_data_parts.append(
+                f"WEEK {week_number} SYLLABUS TOPIC: {week_topic.strip()}"
+            )
+
+        course_context_block = (
+            "\n\nCOURSE DATA (authoritative — ground all content here):\n"
+            + "\n\n".join(course_data_parts)
+        ) if course_data_parts else ""
+
+        # Build the ILO alignment step text
+        if ilos:
+            ilo_step = (
+                "\nStep 2 — Review the Course ILOs in COURSE DATA. "
+                "Map each learning objective you write to one or more of those ILOs."
+            )
+        else:
+            ilo_step = (
+                "\nStep 2 — Define measurable learning objectives "
+                "using Bloom's Taxonomy action verbs."
+            )
+
+        system = (
+            "You are an expert instructional designer specialising in Outcome-Based Education "
+            "for Philippine higher education. You produce structured, detailed teaching modules. "
+            "You MUST respond with ONLY valid JSON — no markdown fences, no extra text, no "
+            "commentary outside the JSON structure."
+        )
+
+        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{context}{course_context_block}
+
+TASK: Generate a complete, ready-to-deliver teaching module as strict JSON.
+
+Course       : {course_name}
+Module Number: {module_number}
+Module Title : {module_title}
+Week Number  : {week_number}{extra}
+
+THINK STEP BY STEP before writing JSON:
+
+Step 1 — Analyse the reference material and COURSE DATA above to identify the core \
+concepts specific to "{module_title}" in {course_name}.{ilo_step}
+Step 3 — Write a 2-3 sentence introduction that places this module in the context of \
+{course_name}. Be specific — do NOT use generic filler.
+Step 4 — Break "{module_title}" into 3-5 logical subtopics. For each, write detailed \
+content (3-5 paragraphs) grounded in the reference material and course context.
+Step 5 — Design a short formative activity (15-20 min) aligned to this module's \
+objectives and the Course ILOs.
+
+OUTPUT RULES:
+- Respond with ONLY valid JSON — no markdown, no preamble, no text outside the braces.
+- Every string value must be specific to {course_name} and "{module_title}".
+- Replace every "..." in the template below with real content.
+- The "subtopics" array MUST have at least 3 items.
+
+{{
+  "module_number": {module_number},
+  "module_title": "{module_title}",
+  "introduction": "...",
+  "learning_objectives": [
+    "...",
+    "...",
+    "..."
+  ],
+  "subtopics": [
+    {{
+      "id": "st_0",
+      "title": "...",
+      "content": "..."
+    }},
+    {{
+      "id": "st_1",
+      "title": "...",
+      "content": "..."
+    }},
+    {{
+      "id": "st_2",
+      "title": "...",
+      "content": "..."
+    }}
+  ],
+  "short_activity": {{
+    "title": "...",
+    "description": "...",
+    "duration": "15 minutes"
+  }}
+}}
+"""
+        return system, user
+
+    @staticmethod
+    def build_subtopic_content_prompt(
+        course_name: str,
+        module_title: str,
+        subtopic_title: str,
+        existing_content: str,
+        context_chunks: list,
+        extra_instructions: str = "",
+        context_summary: str = "",
+    ) -> tuple:
+        """
+        Build a prompt to generate or expand content for a single subtopic.
+        Returns plain text content (not JSON).
+        """
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
+        extra = f"\n\nAdditional instructions: {extra_instructions}" if extra_instructions else ""
+
+        system = (
+            "You are an expert instructional designer. Generate rich, detailed educational "
+            "content for a specific subtopic. Write clear paragraphs suitable for a university "
+            "course module. Use the reference material to ground explanations in verified content."
+        )
+
+        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{context}
+
+TASK: Generate or expand content for the following subtopic.
+
+Course        : {course_name}
+Module Title  : {module_title}
+Subtopic Title: {subtopic_title}{extra}
+
+{"EXISTING CONTENT TO EXPAND:\\n" + existing_content if existing_content else ""}
+
+Write 3-5 well-structured paragraphs covering:
+1. Core concept definition and explanation
+2. Key principles or mechanisms
+3. Practical examples or applications
+4. Connection to broader course themes
+
+Output ONLY the content paragraphs — no headers, no JSON, no preamble.
+"""
+        return system, user
+
+    @staticmethod
+    def build_module_ai_assist_prompt(
+        field: str,
+        current_content: str,
+        instruction: str,
+        course_name: str,
+        module_title: str,
+    ) -> tuple:
+        """
+        Build a prompt for the AI chatbox to modify a specific module section.
+        Returns the revised content as plain text.
+        """
+        system = (
+            "You are an expert instructional designer assistant. Help faculty improve "
+            "their course module content. Follow the faculty's instruction precisely. "
+            "Output ONLY the revised content — no preamble, no explanations."
+        )
+
+        user = f"""You are helping revise a section of a course module.
+
+Course       : {course_name}
+Module Title : {module_title}
+Section      : {field}
+
+CURRENT CONTENT:
+{current_content}
+
+FACULTY INSTRUCTION:
+{instruction}
+
+Provide the revised content for this section only. Output ONLY the new content.
+"""
+        return system, user
+
+    # ------------------------------------------------------------------
     # Assessment generation
     # ------------------------------------------------------------------
 
