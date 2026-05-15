@@ -713,9 +713,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionError, setActionError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'ollama', top_k: 5, extra_instructions: '' })
+  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'groq', top_k: 5, extra_instructions: '' })
   const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
-  const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'ollama', top_k: 5, extra_instructions: '' })
+  const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'groq', top_k: 5, extra_instructions: '' })
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)
@@ -792,6 +792,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
   const [activeFwKey, setActiveFwKey] = useState('SO')
+
+  // ── Syllabus export & template state (session-based, no DB save) ────────
+  const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
+  const [syllabusExporting, setSyllabusExporting] = useState(false)
+  const [syllabusExportError, setSyllabusExportError] = useState('')
 
   function setSyl(field, value) {
     setIsDirty(true)
@@ -1045,7 +1050,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       await api.delete(`/integrations/course-rag-documents/${recordsId}/delete/`)
       setSelectedDocIds(prev => { const next = new Set(prev); next.delete(recordsId); return next })
       docsApi.execute()
-    } catch (err) { setUploadError(extractApiError(err)) }
+    } catch (err) { console.error('[handleDeleteDoc] error:', err?.response?.status, err?.response?.data, err); setUploadError(extractApiError(err)) }
     finally { setDeletingDocId(null) }
   }
 
@@ -1119,6 +1124,63 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } finally {
       setSyllabusUploading(false)
       if (syllabusUploadRef.current) syllabusUploadRef.current.value = ''
+    }
+  }
+
+  async function handleExportDocx() {
+    if (!courseId) {
+      setSyllabusExportError('Select a course first before exporting.')
+      return
+    }
+    setSyllabusExporting(true)
+    setSyllabusExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      if (syllabusTemplateFile) {
+        formData.append('template', syllabusTemplateFile)
+      }
+
+      const response = await api.post('/curriculum/export-syllabus-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const blob = response.data
+      const contentDisposition = response.headers?.['content-disposition'] || ''
+      const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+      const isXlsx = syllabusTemplateFile?.name?.toLowerCase().endsWith('.xlsx')
+      const ext = isXlsx ? 'xlsx' : 'docx'
+      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${baseName}_syllabus.${ext}`
+
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      let message = 'Failed to export syllabus.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const text = await blobData.text()
+          const parsed = JSON.parse(text)
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setSyllabusExportError(message)
+    } finally {
+      setSyllabusExporting(false)
     }
   }
 
@@ -2781,6 +2843,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </Button>
                   </span>
                 </Tooltip>
+                <Tooltip title={syllabusExporting ? 'Exporting…' : 'Export syllabus as DOCX'}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={syllabusExporting}
+                      startIcon={syllabusExporting ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <InsertDriveFileIcon sx={{ fontSize: '1rem !important' }} />}
+                      onClick={handleExportDocx}
+                      sx={{
+                        textTransform: 'none',
+                        borderColor: MAROON,
+                        color: MAROON,
+                        fontSize: '0.75rem',
+                        py: 0.5,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        borderRadius: 1.5,
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      }}
+                    >
+                      {syllabusExporting ? 'Exporting…' : 'Export DOCX'}
+                    </Button>
+                  </span>
+                </Tooltip>
               </Box>
             )}
             {syllabusUploadError && (
@@ -2788,6 +2874,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
             {syllabusUploadSuccess && (
               <AutoAlert message="Syllabus imported! Review the fields below and save when ready." severity="success" onClose={() => setSyllabusUploadSuccess(false)} sx={{ mb: 1.5 }} />
+            )}
+            {syllabusExportError && (
+              <AutoAlert message={syllabusExportError} onClose={() => setSyllabusExportError('')} sx={{ mb: 1.5 }} />
             )}
             <Box sx={{ borderBottom: '2px solid rgba(0,0,0,0.08)', mb: 2.5 }}>
               <Tabs
@@ -3546,6 +3635,42 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* ── Templates Section (lower right) ──────────────────────────────────────── */}
+        <Divider sx={{ my: 2 }} />
+        <Typography variant="caption"
+          sx={{ fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.62rem', display: 'block', mb: 1.5 }}>
+          Export Templates
+        </Typography>
+
+        <Stack spacing={1.5}>
+          <Box>
+            <Typography variant="caption" sx={{ color: '#666', display: 'block', mb: 0.75, fontSize: '0.75rem' }}>
+              Upload a DOCX or XLSX template with {'{{fieldName}}'} placeholders. Leave empty for default format.
+            </Typography>
+            <Button variant="outlined" component="label" fullWidth
+              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5, fontSize: '0.8rem',
+                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
+              {syllabusTemplateFile ? '✓ Template Loaded' : 'Choose Template'}
+              <input hidden type="file"
+                accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={e => setSyllabusTemplateFile(e.target.files?.[0] || null)} />
+            </Button>
+            {syllabusTemplateFile && (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, px: 1, py: 0.5, bgcolor: MAROON_LIGHT, borderRadius: 1 }}>
+                <InsertDriveFileIcon sx={{ fontSize: 14, color: MAROON, flexShrink: 0 }} />
+                <Typography variant="caption" sx={{ color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
+                  {syllabusTemplateFile.name}
+                </Typography>
+                <IconButton size="small"
+                  onClick={() => setSyllabusTemplateFile(null)}
+                  sx={{ p: 0.25, color: MAROON, flexShrink: 0 }}>
+                  <CloseIcon sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Box>
+            )}
+          </Box>
+        </Stack>
       </Stack>
     )
   }
