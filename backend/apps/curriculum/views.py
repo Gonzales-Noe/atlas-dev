@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+from collections import defaultdict
 
 from django.utils import timezone
 from rest_framework import status
@@ -12,6 +13,7 @@ from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
     Assessment,
+    AssessmentItem,
     Course,
     CourseFile,
     CourseLoad,
@@ -713,6 +715,1655 @@ def module_ai_assist(request):
         logger.exception("Error in module AI assist for module %s", module_id)
         return Response(
             {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+def _to_int(value, default=0):
+    try:
+        if value in (None, ''):
+            return default
+        return int(float(value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _largest_remainder_allocation(total, weights):
+    """Allocate integer counts by weights using largest-remainder rounding."""
+    total = max(0, int(total or 0))
+    if total == 0 or not weights:
+        return [0 for _ in weights]
+
+    safe_weights = [float(w) if float(w) > 0 else 0.0 for w in weights]
+    weight_sum = sum(safe_weights)
+    if weight_sum <= 0:
+        base = total // len(weights)
+        rem = total % len(weights)
+        return [base + (1 if i < rem else 0) for i in range(len(weights))]
+
+    raw = [(w / weight_sum) * total for w in safe_weights]
+    alloc = [int(v) for v in raw]
+    remaining = total - sum(alloc)
+    fractions = sorted(
+        [(idx, raw[idx] - alloc[idx]) for idx in range(len(raw))],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    for i in range(remaining):
+        alloc[fractions[i][0]] += 1
+    return alloc
+
+
+def _match_assessment_entry(entries, code='', label=''):
+    """Return the best matching assessment-task entry by code or label."""
+    entries = entries if isinstance(entries, list) else []
+    code = (code or '').strip().lower()
+    label = (label or '').strip().lower()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry_code = str(entry.get('code') or '').strip().lower()
+        entry_label = str(entry.get('task') or entry.get('label') or '').strip().lower()
+        sub_codes = [str(sub.get('code') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
+        sub_labels = [str(sub.get('label') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
+        if code and (code == entry_code or code in sub_codes):
+            return entry
+        if label and (label == entry_label or label in sub_labels):
+            return entry
+    return entries[0] if entries else None
+
+
+def _is_major_exam_entry(entry):
+    """Return True when a TOS exam entry is a major examination."""
+    if not isinstance(entry, dict):
+        return False
+
+    if isinstance(entry.get('isMajor'), bool):
+        return entry.get('isMajor') is True
+
+    exam_code = str(entry.get('examCode') or '').strip().lower()
+    exam_label = str(entry.get('examLabel') or entry.get('label') or '').strip().lower()
+    text = f"{exam_code} {exam_label}"
+
+    major_keywords = [
+        'major',
+        'midterm',
+        'prelim',
+        'pre-final',
+        'pre final',
+        'final',
+    ]
+    if any(keyword in text for keyword in major_keywords):
+        return True
+
+    compact_code = re.sub(r'[^a-z0-9]+', '', exam_code)
+    return compact_code in {'me', 'mt', 'fe', 'prelim', 'prelims'}
+
+
+def _major_tos_entries(tos_entries):
+    """Keep only major examination rows from TOS."""
+    safe_entries = tos_entries if isinstance(tos_entries, list) else []
+    return [entry for entry in safe_entries if _is_major_exam_entry(entry)]
+
+
+def _tos_exam_total_items(exam_entry):
+    """Resolve total items for a TOS exam from explicit total or topic rows."""
+    if not isinstance(exam_entry, dict):
+        return 0
+
+    explicit_total = _to_int(exam_entry.get('totalTestItems'))
+    if explicit_total > 0:
+        return explicit_total
+
+    topic_rows = [row for row in (exam_entry.get('topics') or []) if isinstance(row, dict)]
+    by_points = sum(_to_int(row.get('total_points')) for row in topic_rows)
+    if by_points > 0:
+        return by_points
+
+    by_weight = sum(_to_int(row.get('weight')) for row in topic_rows)
+    if by_weight > 0:
+        return by_weight
+
+    bloom_keys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    by_bloom = 0
+    for row in topic_rows:
+        bloom_items = row.get('bloom_items') or {}
+        by_bloom += sum(_to_int(bloom_items.get(key)) for key in bloom_keys)
+    return by_bloom
+
+
+def _flatten_tos_sections(tos_entry):
+    """Build section candidates from a single syllabus TOS entry."""
+    entries = [tos_entry] if isinstance(tos_entry, dict) else []
+    matched = []
+
+    for exam in entries:
+        if not isinstance(exam, dict):
+            continue
+        exam_label = str(exam.get('examLabel') or exam.get('examCode') or 'Assessment').strip()
+        topics = exam.get('topics') or []
+        for row in topics:
+            if not isinstance(row, dict):
+                continue
+            section_title = str(row.get('topic') or '').strip()
+            if not section_title:
+                continue
+            bloom_items = row.get('bloom_items') or {}
+            bloom_counts = {
+                'remember': _to_int(bloom_items.get('remember')),
+                'understand': _to_int(bloom_items.get('understand')),
+                'apply': _to_int(bloom_items.get('apply')),
+                'analyze': _to_int(bloom_items.get('analyze')),
+                'evaluate': _to_int(bloom_items.get('evaluate')),
+                'create': _to_int(bloom_items.get('create')),
+            }
+            row_total = sum(bloom_counts.values())
+            if row_total <= 0:
+                row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
+
+            matched.append(
+                {
+                    'exam_label': exam_label,
+                    'section_title': section_title,
+                    'ilos': [str(v) for v in (row.get('ilos') or []) if str(v).strip()],
+                    'bloom_counts': bloom_counts,
+                    'weight': row_total if row_total > 0 else 1,
+                }
+            )
+
+    if matched:
+        return matched
+
+    # Fallback: no matching exam by type; use all TOS rows.
+    for exam in entries:
+        if not isinstance(exam, dict):
+            continue
+        exam_label = str(exam.get('examLabel') or exam.get('examCode') or 'Assessment').strip()
+        for row in (exam.get('topics') or []):
+            if not isinstance(row, dict):
+                continue
+            section_title = str(row.get('topic') or '').strip()
+            if not section_title:
+                continue
+            bloom_items = row.get('bloom_items') or {}
+            bloom_counts = {
+                'remember': _to_int(bloom_items.get('remember')),
+                'understand': _to_int(bloom_items.get('understand')),
+                'apply': _to_int(bloom_items.get('apply')),
+                'analyze': _to_int(bloom_items.get('analyze')),
+                'evaluate': _to_int(bloom_items.get('evaluate')),
+                'create': _to_int(bloom_items.get('create')),
+            }
+            row_total = sum(bloom_counts.values())
+            if row_total <= 0:
+                row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
+
+            matched.append(
+                {
+                    'exam_label': exam_label,
+                    'section_title': section_title,
+                    'ilos': [str(v) for v in (row.get('ilos') or []) if str(v).strip()],
+                    'bloom_counts': bloom_counts,
+                    'weight': row_total if row_total > 0 else 1,
+                }
+            )
+
+    return matched
+
+
+def _sections_from_assessment_tasks(syllabus_content):
+    """Fallback section seeds from assessment_tasks when TOS is missing."""
+    out = []
+    tasks = syllabus_content.get('assessment_tasks') or []
+    for idx, task in enumerate(tasks, start=1):
+        if not isinstance(task, dict):
+            continue
+        label = str(task.get('task') or task.get('code') or f'Section {idx}').strip()
+        if not label:
+            continue
+        out.append(
+            {
+                'exam_label': 'Assessment',
+                'section_title': label,
+                'ilos': [str(v) for v in (task.get('ilo_values') or []) if str(v).strip()],
+                'bloom_counts': {
+                    'remember': 0,
+                    'understand': 0,
+                    'apply': 0,
+                    'analyze': 0,
+                    'evaluate': 0,
+                    'create': 0,
+                },
+                'weight': _to_int(task.get('weight')) or 1,
+            }
+        )
+    return out
+
+
+def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items, ilos=None, ilo_bloom=None, assessment_label='Assessment'):
+    """
+    Build sectioned assessment items using explicit topic rows from TOS or faculty input.
+    Returns sections with allocated items and Bloom labels.
+    """
+    sections = []
+    for row in (topic_rows or []):
+        if not isinstance(row, dict):
+            continue
+        section_title = str(row.get('topic') or row.get('label') or '').strip()
+        if not section_title:
+            continue
+        bloom_items = row.get('bloom_items') or {}
+        bloom_counts = {
+            'remember': _to_int(bloom_items.get('remember')),
+            'understand': _to_int(bloom_items.get('understand')),
+            'apply': _to_int(bloom_items.get('apply')),
+            'analyze': _to_int(bloom_items.get('analyze')),
+            'evaluate': _to_int(bloom_items.get('evaluate')),
+            'create': _to_int(bloom_items.get('create')),
+        }
+        row_total = sum(bloom_counts.values())
+        if row_total <= 0:
+            row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
+
+        sections.append(
+            {
+                'exam_label': assessment_label,
+                'section_title': section_title,
+                'ilos': [str(v) for v in (row.get('ilos') or []) if str(v).strip()],
+                'bloom_counts': bloom_counts,
+                'weight': row_total if row_total > 0 else 1,
+            }
+        )
+
+    if not sections:
+        sections = [
+            {
+                'exam_label': assessment_label or assessment_type.title() if assessment_type else 'Assessment',
+                'section_title': 'General Section',
+                'ilos': [],
+                'bloom_counts': {
+                    'remember': 0,
+                    'understand': 0,
+                    'apply': 0,
+                    'analyze': 0,
+                    'evaluate': 0,
+                    'create': 0,
+                },
+                'weight': 1,
+            }
+        ]
+
+    total_items = max(1, int(total_items or 1))
+    section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
+
+    ilo_bloom_map = {}
+    ilos = ilos or []
+    ilo_bloom = ilo_bloom or []
+    for idx, text in enumerate(ilos):
+        if not text:
+            continue
+        key = str(idx + 1)
+        bloom = ilo_bloom[idx] if idx < len(ilo_bloom) and isinstance(ilo_bloom[idx], dict) else {}
+        ilo_bloom_map[key] = {
+            'level': str(bloom.get('level') or '').strip(),
+            'verb': str(bloom.get('verb') or '').strip(),
+        }
+
+    running_item_no = 1
+    section_payloads = []
+    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+
+    for idx, section in enumerate(sections):
+        allocated = max(0, section_alloc[idx])
+        blooms = section['bloom_counts']
+        bloom_alloc = _largest_remainder_allocation(
+            allocated,
+            [blooms.get(k, 0) for k in bloom_order],
+        )
+        if sum(bloom_alloc) == 0 and allocated > 0:
+            bloom_alloc = _largest_remainder_allocation(allocated, [1] * len(bloom_order))
+
+        items = []
+        for bloom_key, count in zip(bloom_order, bloom_alloc):
+            for local_idx in range(count):
+                inferred_verb = ''
+                for ilo_ref in section['ilos']:
+                    ref_num = re.sub(r'\D+', '', str(ilo_ref))
+                    if ref_num in ilo_bloom_map and ilo_bloom_map[ref_num].get('verb'):
+                        inferred_verb = ilo_bloom_map[ref_num]['verb']
+                        break
+
+                item = {
+                    'item_number': running_item_no,
+                    'item_type': assessment_type,
+                    'section_title': section['section_title'],
+                    'exam_label': section['exam_label'],
+                    'bloom_level': bloom_key.title(),
+                    'bloom_verb': inferred_verb,
+                    'ilo_refs': section['ilos'],
+                    'question_text': (
+                        f"[{section['section_title']}] {assessment_type.title()} item "
+                        f"{local_idx + 1} ({bloom_key.title()})"
+                    ).strip(),
+                }
+                items.append(item)
+                running_item_no += 1
+
+        section_payloads.append(
+            {
+                'section_title': section['section_title'],
+                'exam_label': section['exam_label'],
+                'allocated_items': allocated,
+                'bloom_distribution': {
+                    bloom_order[i].title(): bloom_alloc[i] for i in range(len(bloom_order))
+                },
+                'items': items,
+            }
+        )
+
+    return section_payloads
+
+
+def _normalize_bloom_key(value):
+    text = str(value or '').strip().lower()
+    aliases = {
+        'remembering': 'remember',
+        'understanding': 'understand',
+        'applying': 'apply',
+        'analyzing': 'analyze',
+        'analysing': 'analyze',
+        'evaluating': 'evaluate',
+        'creating': 'create',
+    }
+    return aliases.get(text, text)
+
+
+def _tos_topic_bloom_targets(topic_rows):
+    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    targets = {}
+
+    for row in (topic_rows or []):
+        if not isinstance(row, dict):
+            continue
+        topic = str(row.get('topic') or row.get('label') or '').strip()
+        if not topic:
+            continue
+
+        bloom_items = row.get('bloom_items') or {}
+        bloom_targets = {
+            key: max(0, _to_int(bloom_items.get(key)))
+            for key in bloom_order
+        }
+
+        row_total = sum(bloom_targets.values())
+        if row_total <= 0:
+            row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
+            if row_total > 0:
+                bloom_targets['remember'] = row_total
+
+        topic_key = _normalize_topic_key(topic)
+        if topic_key not in targets:
+            targets[topic_key] = {
+                'topic': topic,
+                'bloom': {key: 0 for key in bloom_order},
+            }
+
+        for key in bloom_order:
+            targets[topic_key]['bloom'][key] += bloom_targets[key]
+
+    return targets
+
+
+def _assessment_existing_topic_bloom_counts(assessment):
+    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    counts = {}
+
+    for saved_item in AssessmentItem.objects.filter(assessment=assessment):
+        metadata = saved_item.rubric if isinstance(saved_item.rubric, dict) else {}
+        topic = str(metadata.get('section_title') or '').strip()
+        bloom_level = _normalize_bloom_key(metadata.get('bloom_level'))
+        topic_key = _normalize_topic_key(topic)
+        if not topic_key or bloom_level not in bloom_order:
+            continue
+
+        if topic_key not in counts:
+            counts[topic_key] = {key: 0 for key in bloom_order}
+        counts[topic_key][bloom_level] += 1
+
+    return counts
+
+
+def _build_tos_counters(topic_rows, existing_counts=None):
+    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    targets = _tos_topic_bloom_targets(topic_rows)
+    existing_counts = existing_counts or {}
+
+    topics = []
+    overall_target = 0
+    overall_current = 0
+    for topic_key, target_data in targets.items():
+        current_map = existing_counts.get(topic_key) or {}
+        bloom_entries = []
+        topic_target = 0
+        topic_current = 0
+        for bloom in bloom_order:
+            target = max(0, _to_int(target_data['bloom'].get(bloom)))
+            current = max(0, _to_int(current_map.get(bloom)))
+            remaining = max(0, target - current)
+            bloom_entries.append(
+                {
+                    'level': bloom.title(),
+                    'target': target,
+                    'current': current,
+                    'remaining': remaining,
+                    'is_full': current >= target,
+                }
+            )
+            topic_target += target
+            topic_current += current
+
+        topics.append(
+            {
+                'topic': target_data['topic'],
+                'target_total': topic_target,
+                'current_total': topic_current,
+                'remaining_total': max(0, topic_target - topic_current),
+                'is_full': topic_current >= topic_target,
+                'bloom': bloom_entries,
+            }
+        )
+        overall_target += topic_target
+        overall_current += topic_current
+
+    topics.sort(key=lambda item: str(item.get('topic') or '').lower())
+    return {
+        'topics': topics,
+        'target_total': overall_target,
+        'current_total': overall_current,
+        'remaining_total': max(0, overall_target - overall_current),
+        'is_complete': overall_current >= overall_target and overall_target > 0,
+    }
+
+
+def _next_item_number_for_assessment(assessment):
+    next_number = 1
+    for saved_item in AssessmentItem.objects.filter(assessment=assessment):
+        metadata = saved_item.rubric if isinstance(saved_item.rubric, dict) else {}
+        item_no = _to_int(metadata.get('item_number'), 0)
+        if item_no >= next_number:
+            next_number = item_no + 1
+    return next_number
+
+
+def _manual_item_payloads(manual_items, topic_rows, existing_counts, default_item_type):
+    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    targets = _tos_topic_bloom_targets(topic_rows)
+    pending_counts = {
+        topic_key: dict(counts)
+        for topic_key, counts in (existing_counts or {}).items()
+    }
+
+    normalized_items = []
+    errors = []
+
+    for idx, item in enumerate(manual_items or [], start=1):
+        if not isinstance(item, dict):
+            errors.append(f'manual_items[{idx}] must be an object.')
+            continue
+
+        topic = str(item.get('section_title') or item.get('topic') or '').strip()
+        bloom = _normalize_bloom_key(item.get('bloom_level'))
+        question_text = str(item.get('question_text') or '').strip()
+        answer_key = str(item.get('answer_key') or '').strip()
+        correct_answer = str(item.get('correct_answer') or '').strip()[:1].upper()
+
+        if not topic:
+            errors.append(f'manual_items[{idx}].section_title is required.')
+            continue
+        if bloom not in bloom_order:
+            errors.append(
+                f'manual_items[{idx}].bloom_level must be one of: Remember, Understand, Apply, Analyze, Evaluate, Create.'
+            )
+            continue
+        if not question_text:
+            errors.append(f'manual_items[{idx}].question_text is required.')
+            continue
+        if not answer_key and not correct_answer:
+            errors.append(f'manual_items[{idx}] must include answer_key or correct_answer.')
+            continue
+
+        topic_key = _normalize_topic_key(topic)
+        target_topic = targets.get(topic_key)
+        if not target_topic:
+            errors.append(
+                f'manual_items[{idx}] topic "{topic}" is not part of the selected TOS exam topics.'
+            )
+            continue
+
+        if topic_key not in pending_counts:
+            pending_counts[topic_key] = {key: 0 for key in bloom_order}
+
+        target_for_bucket = _to_int(target_topic['bloom'].get(bloom), 0)
+        current_for_bucket = _to_int(pending_counts[topic_key].get(bloom), 0)
+        if target_for_bucket <= 0:
+            errors.append(
+                f'manual_items[{idx}] exceeds TOS allocation: topic "{target_topic["topic"]}" has 0 items for Bloom {bloom.title()}.'
+            )
+            continue
+        if current_for_bucket >= target_for_bucket:
+            errors.append(
+                f'manual_items[{idx}] exceeds TOS allocation: topic "{target_topic["topic"]}" already reached {target_for_bucket} item(s) for Bloom {bloom.title()}.'
+            )
+            continue
+
+        pending_counts[topic_key][bloom] = current_for_bucket + 1
+        normalized_items.append(
+            {
+                'section_title': target_topic['topic'],
+                'bloom_level': bloom.title(),
+                'item_type': str(item.get('item_type') or default_item_type or 'Multiple Choice'),
+                'question_text': question_text,
+                'choices': item.get('choices') or [],
+                'correct_answer': correct_answer,
+                'answer_key': answer_key,
+                'ilo_refs': [str(v).strip() for v in (item.get('ilo_refs') or []) if str(v).strip()],
+                'points': max(0, _to_int(item.get('points'), 0)),
+                'bloom_verb': str(item.get('bloom_verb') or '').strip(),
+            }
+        )
+
+    return normalized_items, errors, pending_counts
+
+
+def _normalize_choices(choices):
+    raw_choices = choices if isinstance(choices, list) else []
+    normalized = []
+    for idx, choice in enumerate(raw_choices[:5]):
+        text = str(choice or '').strip()
+        if not text:
+            continue
+        prefix = chr(65 + idx)
+        if re.match(r'^[A-E][\.|\)]\s+', text):
+            normalized.append(text)
+        else:
+            normalized.append(f'{prefix}. {text}')
+    if len(normalized) < 4:
+        defaults = ['A. Option A', 'B. Option B', 'C. Option C', 'D. Option D']
+        normalized.extend(defaults[len(normalized):4])
+    return normalized[:5]
+
+
+def _normalize_topic_key(value):
+    return re.sub(r'[^a-z0-9]+', ' ', str(value or '').lower()).strip()
+
+
+def _topic_tokens(value):
+    stopwords = {
+        'the', 'and', 'for', 'with', 'from', 'into', 'that', 'this', 'your', 'their',
+        'course', 'module', 'section', 'topic', 'assessment', 'exam', 'items', 'item',
+        'question', 'questions', 'week', 'part', 'unit', 'chapter', 'of', 'to', 'in',
+    }
+    return {
+        token
+        for token in re.findall(r'[a-z0-9]+', str(value or '').lower())
+        if len(token) > 2 and token not in stopwords
+    }
+
+
+def _flatten_json_text(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return '\n'.join(_flatten_json_text(v) for v in value if v is not None)
+    if isinstance(value, dict):
+        return '\n'.join(_flatten_json_text(v) for v in value.values() if v is not None)
+    return str(value or '')
+
+
+def _module_match_blob(module):
+    module_content = module.module_content if isinstance(module.module_content, dict) else {}
+    parts = [
+        str(module.module_title or ''),
+        str(module_content.get('introduction') or ''),
+    ]
+    learning_objectives = module_content.get('learning_objectives') or []
+    parts.extend(str(v) for v in learning_objectives if str(v).strip())
+    for subtopic in (module_content.get('subtopics') or []):
+        if not isinstance(subtopic, dict):
+            continue
+        parts.append(str(subtopic.get('title') or ''))
+        parts.append(str(subtopic.get('content') or ''))
+    return ' '.join(parts)
+
+
+def _module_prompt_excerpt(module, char_limit=1200):
+    module_content = module.module_content if isinstance(module.module_content, dict) else {}
+    lines = [
+        f"Module Title: {module.module_title}",
+        f"Week: {module.week_number}",
+    ]
+    introduction = str(module_content.get('introduction') or '').strip()
+    if introduction:
+        lines.append(f"Introduction: {introduction[:260]}")
+
+    objectives = [str(v).strip() for v in (module_content.get('learning_objectives') or []) if str(v).strip()]
+    if objectives:
+        lines.append('Learning Objectives: ' + '; '.join(objectives[:4]))
+
+    subtopic_titles = []
+    for subtopic in (module_content.get('subtopics') or []):
+        if isinstance(subtopic, dict):
+            title = str(subtopic.get('title') or '').strip()
+            if title:
+                subtopic_titles.append(title)
+    if subtopic_titles:
+        lines.append('Subtopics: ' + '; '.join(subtopic_titles[:6]))
+
+    short_activity = module_content.get('short_activity') if isinstance(module_content.get('short_activity'), dict) else {}
+    activity_desc = str(short_activity.get('description') or '').strip()
+    if activity_desc:
+        lines.append(f"Short Activity: {activity_desc[:220]}")
+
+    text = '\n'.join(lines)
+    return text[:char_limit]
+
+
+def _match_sections_to_course_modules(course, sections):
+    """Match each assessment section topic to the strongest saved module in the same course."""
+    modules = list(
+        Module.objects.filter(syllabus__course=course)
+        .order_by('week_number', '-generated_at', '-module_id')
+    )
+    if not modules:
+        return {}
+
+    module_cache = []
+    for module in modules:
+        blob = _module_match_blob(module)
+        module_cache.append(
+            {
+                'module': module,
+                'title_key': _normalize_topic_key(module.module_title),
+                'tokens': _topic_tokens(blob),
+                'blob_key': _normalize_topic_key(blob),
+            }
+        )
+
+    matches = {}
+    for section in (sections or []):
+        section_title = str(section.get('section_title') or '').strip()
+        section_key = _normalize_topic_key(section_title)
+        section_tokens = _topic_tokens(section_title)
+        if not section_key:
+            continue
+
+        best_score = 0
+        best_module = None
+        for candidate in module_cache:
+            score = 0
+            if section_key and section_key in candidate['title_key']:
+                score += 18
+            if section_key and section_key in candidate['blob_key']:
+                score += 10
+
+            overlap = len(section_tokens & candidate['tokens'])
+            score += overlap * 4
+
+            if score > best_score:
+                best_score = score
+                best_module = candidate['module']
+
+        if best_module and best_score > 0:
+            matches[section_key] = best_module
+
+    return matches
+
+
+def _build_section_module_context(sections, section_module_matches):
+    blocks = []
+    for section in (sections or []):
+        section_title = str(section.get('section_title') or '').strip()
+        section_key = _normalize_topic_key(section_title)
+        module = section_module_matches.get(section_key)
+        if not module:
+            continue
+        blocks.append(
+            '\n'.join(
+                [
+                    f"Section Topic: {section_title}",
+                    _module_prompt_excerpt(module),
+                ]
+            )
+        )
+    return '\n\n'.join(blocks)
+
+
+def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam_label='', faculty_topics=None):
+    """Derive assessment name, item count, and source topics from syllabus data."""
+    tos_entries = _major_tos_entries(syllabus_content.get('tos') or [])
+    assessment_tasks = syllabus_content.get('assessment_tasks') or []
+
+    selected_exam = _match_assessment_entry(tos_entries, source_exam_code, source_exam_label)
+    selected_task = _match_assessment_entry(assessment_tasks, source_exam_code, source_exam_label)
+
+    exam_label = ''
+    exam_code = ''
+    topic_rows = []
+    if isinstance(selected_exam, dict):
+        exam_label = str(selected_exam.get('examLabel') or selected_exam.get('examCode') or '').strip()
+        exam_code = str(selected_exam.get('examCode') or '').strip()
+        topic_rows = [row for row in (selected_exam.get('topics') or []) if isinstance(row, dict)]
+
+    if not topic_rows and faculty_topics:
+        topic_rows = [
+            {
+                'topic': str(topic).strip(),
+                'ilos': [],
+                'weight': '',
+                'bloom_items': {},
+                'total_points': '',
+            }
+            for topic in faculty_topics
+            if str(topic).strip()
+        ]
+
+    total_items = 0
+    if isinstance(selected_exam, dict):
+        total_items = _tos_exam_total_items(selected_exam)
+    if total_items <= 0:
+        total_items = sum(
+            _to_int(row.get('total_points')) or _to_int(row.get('weight'))
+            for row in topic_rows
+        )
+    if total_items <= 0 and isinstance(selected_task, dict):
+        total_items = _to_int(selected_task.get('weight'))
+    if total_items <= 0:
+        total_items = max(1, len(topic_rows))
+
+    assessment_name = exam_label or str(selected_task.get('task') or selected_task.get('label') or '').strip() if isinstance(selected_task, dict) else ''
+    if not assessment_name and source_exam_label:
+        assessment_name = source_exam_label
+    if not assessment_name and source_exam_code:
+        assessment_name = source_exam_code
+    if not assessment_name:
+        assessment_name = 'Assessment'
+
+    assessment_type = assessment_name.lower()
+    source_task_code = str(selected_task.get('code') or '').strip() if isinstance(selected_task, dict) else ''
+    source_task_label = str(selected_task.get('task') or selected_task.get('label') or '').strip() if isinstance(selected_task, dict) else ''
+
+    return {
+        'assessment_name': assessment_name,
+        'assessment_type': assessment_type,
+        'assessment_code': exam_code or source_task_code,
+        'assessment_task_label': source_task_label,
+        'assessment_task_weight': _to_int(selected_task.get('weight')) if isinstance(selected_task, dict) else 0,
+        'total_items': total_items,
+        'topic_rows': topic_rows,
+        'selected_exam': selected_exam,
+        'selected_task': selected_task,
+    }
+
+
+def _assessment_detail_payload(assessment):
+    items_qs = AssessmentItem.objects.filter(assessment=assessment)
+    raw_items = []
+    for item in items_qs:
+        metadata = item.rubric if isinstance(item.rubric, dict) else {}
+        raw_items.append(
+            {
+                'item_id': str(item.item_id),
+                'item_number': _to_int(metadata.get('item_number'), 0),
+                'item_type': item.item_type,
+                'section_title': metadata.get('section_title') or 'General Section',
+                'exam_label': metadata.get('exam_label') or assessment.title,
+                'bloom_level': metadata.get('bloom_level') or '',
+                'bloom_verb': metadata.get('bloom_verb') or '',
+                'ilo_refs': metadata.get('ilo_refs') or [],
+                'question_text': item.question_text,
+                'choices': metadata.get('choices') or [],
+                'correct_answer': metadata.get('correct_answer') or '',
+                'answer_key': metadata.get('answer_key') or '',
+                'points': _to_int(metadata.get('points'), 0),
+                'matched_module_id': metadata.get('matched_module_id'),
+                'matched_module_title': metadata.get('matched_module_title') or '',
+                'matched_module_week': metadata.get('matched_module_week'),
+            }
+        )
+
+    raw_items.sort(key=lambda x: (x['item_number'] if x['item_number'] > 0 else 10**9, x['question_text']))
+
+    grouped = defaultdict(list)
+    for item in raw_items:
+        grouped[item['section_title']].append(item)
+
+    sections = []
+    for section_title, items in grouped.items():
+        bloom_counts = defaultdict(int)
+        exam_label = ''
+        for item in items:
+            level = str(item.get('bloom_level') or '').strip()
+            if level:
+                bloom_counts[level] += 1
+            if not exam_label and item.get('exam_label'):
+                exam_label = item['exam_label']
+        sections.append(
+            {
+                'section_title': section_title,
+                'exam_label': exam_label or assessment.title,
+                'allocated_items': len(items),
+                'bloom_distribution': dict(sorted(bloom_counts.items())),
+                'items': items,
+            }
+        )
+
+    sections.sort(key=lambda s: s['section_title'].lower())
+
+    return {
+        'assessment_id': str(assessment.assessment_id),
+        'title': assessment.title,
+        'assessment_type': assessment.assessment_type,
+        'term': assessment.term,
+        'status': assessment.status,
+        'generated_at': assessment.generated_at,
+        'sections': sections,
+        'total_items': sum(len(s['items']) for s in sections),
+    }
+
+
+def _build_plain_assessment_docx(assessment_payload):
+    from docx import Document
+    from docx.shared import Pt, RGBColor, Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    doc = Document()
+    for section in doc.sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.1)
+        section.right_margin = Inches(1.1)
+
+    maroon = RGBColor(0x8B, 0x00, 0x00)
+
+    title = doc.add_paragraph()
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = title.add_run(assessment_payload.get('title') or 'Assessment')
+    run.bold = True
+    run.font.size = Pt(15)
+    run.font.color.rgb = maroon
+
+    subtitle = doc.add_paragraph(
+        f"Type: {assessment_payload.get('assessment_type', '')} | "
+        f"Total Items: {assessment_payload.get('total_items', 0)}"
+    )
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if subtitle.runs:
+        subtitle.runs[0].font.size = Pt(10)
+
+    doc.add_paragraph()
+
+    for section in assessment_payload.get('sections', []):
+        sec_heading = doc.add_heading(section.get('section_title') or 'Section', level=1)
+        if sec_heading.runs:
+            sec_heading.runs[0].font.color.rgb = maroon
+
+        bloom_dist = section.get('bloom_distribution') or {}
+        if bloom_dist:
+            bloom_line = ', '.join(f"{k}: {v}" for k, v in bloom_dist.items())
+            doc.add_paragraph(f"Bloom Distribution: {bloom_line}")
+
+        for item in section.get('items', []):
+            text = f"{item.get('item_number')}. {item.get('question_text') or ''}".strip()
+            p = doc.add_paragraph(text, style='List Number')
+            for choice in (item.get('choices') or []):
+                choice_text = str(choice or '').strip()
+                if choice_text:
+                    doc.add_paragraph(choice_text, style='List Bullet 2')
+            meta_parts = []
+            if item.get('bloom_level'):
+                meta_parts.append(f"Bloom: {item['bloom_level']}")
+            if item.get('bloom_verb'):
+                meta_parts.append(f"Verb: {item['bloom_verb']}")
+            if item.get('ilo_refs'):
+                refs = ', '.join(str(v) for v in item['ilo_refs'])
+                meta_parts.append(f"ILO: {refs}")
+            if item.get('correct_answer'):
+                meta_parts.append(f"Correct Answer: {item['correct_answer']}")
+            if meta_parts:
+                meta = doc.add_paragraph(' | '.join(meta_parts))
+                if meta.runs:
+                    meta.runs[0].italic = True
+                    meta.runs[0].font.size = Pt(9)
+            if item.get('answer_key'):
+                answer_key = doc.add_paragraph(f"Answer Key: {item['answer_key']}")
+                if answer_key.runs:
+                    answer_key.runs[0].font.size = Pt(9)
+            if p.runs:
+                p.runs[0].font.size = Pt(11)
+
+        doc.add_paragraph()
+
+    return doc
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_assessment(request):
+    """
+    Generate sectioned assessment items from syllabus "Assessment and Score Distribution"
+    and "TOS" data, then persist as Assessment + AssessmentItems.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get('course_id')
+    assessment_type = str(request.data.get('assessment_type') or '').strip().lower()
+    term_override = str(request.data.get('term') or '').strip()
+    provider = request.data.get('provider') or None
+    extra_instructions = str(request.data.get('extra_instructions') or '').strip()
+    selected_doc_ids = [str(uid) for uid in (request.data.get('selected_doc_ids') or [])]
+    source_exam_code = str(request.data.get('source_exam_code') or '').strip()
+    source_exam_label = str(request.data.get('source_exam_label') or '').strip()
+    faculty_topics = request.data.get('faculty_topics') or request.data.get('topics') or []
+    manual_items = request.data.get('manual_items') or []
+    assessment_id = request.data.get('assessment_id')
+    use_manual_input = isinstance(manual_items, list) and len(manual_items) > 0
+    if isinstance(faculty_topics, str):
+        faculty_topics = [line.strip() for line in faculty_topics.splitlines() if line.strip()]
+
+    if not course_id:
+        return Response(
+            {'success': False, 'detail': 'course_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not assessment_type:
+        return Response(
+            {'success': False, 'detail': 'assessment_type is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    latest_syllabus = (
+        Syllabus.objects.filter(course=course)
+        .order_by('-generated_at', '-syllabus_id')
+        .first()
+    )
+    if not latest_syllabus or not isinstance(latest_syllabus.syllabus_content, dict):
+        return Response(
+            {
+                'success': False,
+                'detail': 'No syllabus content found. Please save syllabus first.',
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    syllabus_content = latest_syllabus.syllabus_content
+    source = _derive_assessment_source(
+        syllabus_content,
+        source_exam_code=source_exam_code,
+        source_exam_label=source_exam_label,
+        faculty_topics=faculty_topics,
+    )
+    if not isinstance(source.get('selected_exam'), dict):
+        return Response(
+            {
+                'success': False,
+                'detail': 'No major examination found in TOS. Please define a major exam (e.g., Midterm/Final) with total items first.',
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    total_items = source['total_items'] or 1
+    sections = _build_sectioned_assessment_payload(
+        source['topic_rows'],
+        assessment_type or source['assessment_type'],
+        total_items,
+        ilos=syllabus_content.get('ilos') or [],
+        ilo_bloom=syllabus_content.get('ilo_bloom') or [],
+        assessment_label=source['assessment_name'],
+    )
+    section_module_matches = _match_sections_to_course_modules(course, sections)
+    total_generated = sum(len(s['items']) for s in sections)
+    assessment_title = f"{course.course_code} {source['assessment_name']}"
+    term = term_override or str(syllabus_content.get('semester_year') or latest_syllabus.term or '').strip()
+
+    if use_manual_input:
+        target_assessment = None
+        if assessment_id:
+            target_assessment = Assessment.objects.filter(
+                assessment_id=assessment_id,
+                course=course,
+            ).first()
+            if not target_assessment:
+                return Response(
+                    {
+                        'success': False,
+                        'detail': 'assessment_id was not found for this course.',
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        else:
+            target_assessment = Assessment.objects.create(
+                course=course,
+                title=assessment_title,
+                assessment_type=source['assessment_type'],
+                term=term,
+                status='Draft',
+                generated_at=timezone.now(),
+            )
+
+        existing_counts = _assessment_existing_topic_bloom_counts(target_assessment)
+        normalized_manual_items, manual_errors, projected_counts = _manual_item_payloads(
+            manual_items,
+            source['topic_rows'],
+            existing_counts,
+            source['assessment_type'],
+        )
+        if manual_errors:
+            return Response(
+                {
+                    'success': False,
+                    'detail': 'Manual item validation failed against TOS topic/Bloom allocations.',
+                    'errors': manual_errors,
+                    'manual_entry_allowed': True,
+                    'assessment_id': str(target_assessment.assessment_id),
+                    'tos_counters': _build_tos_counters(source['topic_rows'], existing_counts),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        next_item_number = _next_item_number_for_assessment(target_assessment)
+        create_items = []
+        for item in normalized_manual_items:
+            section_key = _normalize_topic_key(item.get('section_title'))
+            matched_module = section_module_matches.get(section_key)
+            create_items.append(
+                AssessmentItem(
+                    assessment=target_assessment,
+                    module=matched_module,
+                    question_text=item['question_text'],
+                    item_type=item['item_type'],
+                    difficulty=item.get('bloom_level') or '',
+                    rubric={
+                        'item_number': next_item_number,
+                        'section_title': item.get('section_title'),
+                        'exam_label': source['assessment_name'],
+                        'bloom_level': item.get('bloom_level'),
+                        'bloom_verb': item.get('bloom_verb') or '',
+                        'ilo_refs': item.get('ilo_refs') or [],
+                        'choices': _normalize_choices(item.get('choices')),
+                        'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                        'answer_key': item.get('answer_key') or '',
+                        'points': item.get('points') or 0,
+                        'assessment_name': source['assessment_name'],
+                        'assessment_code': source['assessment_code'],
+                        'assessment_task_label': source['assessment_task_label'],
+                        'manual_input': True,
+                        'matched_module_id': str(matched_module.module_id) if matched_module else None,
+                        'matched_module_title': matched_module.module_title if matched_module else '',
+                        'matched_module_week': matched_module.week_number if matched_module else None,
+                    },
+                )
+            )
+            next_item_number += 1
+
+        if create_items:
+            AssessmentItem.objects.bulk_create(create_items)
+
+        final_counters = _build_tos_counters(source['topic_rows'], projected_counts)
+        if final_counters.get('is_complete'):
+            target_assessment.status = 'Generated'
+            target_assessment.generated_at = timezone.now()
+            target_assessment.save(update_fields=['status', 'generated_at'])
+
+        return Response(
+            {
+                'success': True,
+                'manual_entry_mode': True,
+                'assessment': {
+                    'assessment_id': str(target_assessment.assessment_id),
+                    'title': target_assessment.title,
+                    'assessment_type': target_assessment.assessment_type,
+                    'term': target_assessment.term,
+                    'status': target_assessment.status,
+                    'generated_at': target_assessment.generated_at,
+                },
+                'saved_items': len(create_items),
+                'tos_counters': final_counters,
+                'total_items': final_counters.get('current_total', 0),
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    # Build assessment-generation context like the module pipeline: combine course-specific
+    # document chunks with global knowledge-base context, then ask the LLM to populate the
+    # section blueprint with actual item text, rubrics, and answer keys.
+    search_query = request.data.get('search_query') or f"{course.course_title} {source['assessment_name']} assessment items TOS blooms score distribution"
+    global_rag = semantic_search_with_summary(search_query, top_k=max(1, _to_int(request.data.get('top_k'), 5)))
+    course_rag = course_semantic_search_with_summary(
+        query=search_query,
+        course=course,
+        top_k=max(1, _to_int(request.data.get('top_k'), 5)),
+        selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
+    )
+    all_chunks = course_rag['chunks'] + global_rag['chunks']
+    combined_summary = "\n\n".join(filter(None, [course_rag['context_summary'], global_rag['context_summary']]))
+    section_module_context = _build_section_module_context(sections, section_module_matches)
+
+    logger.info(
+        'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s',
+        len(section_module_matches),
+        len(sections),
+        str(course.course_id),
+    )
+
+    system_prompt = (
+        "You are an expert university assessment designer with deep knowledge of Outcome-Based Education, "
+        "Bloom's Taxonomy, and the Table of Specifications (TOS). You create rigorous, fair assessments "
+        "that are aligned to syllabus section blueprints. Return ONLY valid JSON. No markdown fences, no commentary."
+    )
+
+    # Update blueprint to require MCQ structure
+    # Add MCQ fields to each item in each section
+    def _mcqify_section(section):
+        for item in section.get('items', []):
+            item.setdefault('item_type', 'Multiple Choice')
+            item.setdefault('choices', ["A. ...", "B. ...", "C. ...", "D. ..."])
+            item.setdefault('correct_answer', "A")
+        return section
+
+    mcq_sections = [_mcqify_section(dict(s)) for s in sections]
+    blueprint_json = json.dumps(
+        {
+            'title': assessment_title,
+            'assessment_type': source['assessment_type'],
+            'term': term,
+            'total_items': total_generated,
+            'sections': mcq_sections,
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    user_prompt = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{CoTPromptBuilder._format_context(all_chunks, combined_summary)}
+
+SAVED COURSE MODULE CONTEXT (same course, matched by section topic):
+{section_module_context or 'No saved module matched the current section topics. Use the knowledge-base context and keep topic alignment strict.'}
+
+TASK: Produce a complete assessment using the syllabus blueprint below.
+
+Course Name      : {course.course_title}
+Course Code      : {course.course_code}
+Assessment Type  : {source['assessment_name']}
+Total Items      : {total_generated}
+Term             : {term or 'N/A'}
+Extra Instructions: {extra_instructions or 'None'}
+
+SYLLABUS BLUEPRINT (must be preserved exactly in structure):
+{blueprint_json}
+
+REQUIREMENTS:
+1. ALL items must be MULTIPLE CHOICE QUESTIONS (MCQs) with 4 or 5 choices each.
+2. For each item, provide:
+     - The question stem in "question_text"
+     - A "choices" array (e.g., ["A. ...", "B. ...", "C. ...", "D. ..."])
+     - The correct answer letter in "correct_answer" (e.g., "B")
+     - An explanation or answer key in "answer_key"
+3. Keep the same sections and item numbers as the blueprint.
+4. For each section, ground item content primarily on that section's matched saved module context. If no module is matched, use the closest RAG evidence.
+5. Write original MCQs that match each section title, Bloom level, and ILO references.
+6. If a section has multiple items, vary the stems but keep them aligned to the section topic.
+7. Use points that sum to 100 across the full assessment.
+8. Return strict JSON with this exact top-level shape:
+     {{
+         "title": string,
+         "assessment_type": string,
+         "term": string,
+         "total_items": number,
+         "sections": [
+             {{
+                 "section_title": string,
+                 "exam_label": string,
+                 "allocated_items": number,
+                 "bloom_distribution": {{...}},
+                 "items": [
+                     {{
+                         "item_number": number,
+                         "item_type": string,
+                         "question_text": string,
+                         "choices": [string],
+                         "correct_answer": string,
+                         "bloom_level": string,
+                         "bloom_verb": string,
+                         "ilo_refs": [string],
+                         "points": number,
+                         "answer_key": string
+                     }}
+                 ]
+             }}
+         ]
+     }}
+"""
+
+    llm = LLMService()
+    generated_payload = None
+    llm_json_retry_used = False
+    llm_json_retry_success = False
+    section_retry_used = False
+    section_retry_success = False
+
+    def _parse_assessment_json(text):
+        """Parse LLM response into JSON payload, supporting fenced blocks."""
+        if not isinstance(text, str) or not text.strip():
+            return None, 'empty'
+
+        clean = text.strip()
+        clean = re.sub(r'^```(?:json)?\s*', '', clean)
+        clean = re.sub(r'\s*```$', '', clean)
+        clean = clean.strip()
+
+        try:
+            return json.loads(clean), None
+        except json.JSONDecodeError as decode_err:
+            match = re.search(r'\{.*\}', clean, re.DOTALL)
+            if match:
+                try:
+                    return json.loads(match.group(0)), None
+                except json.JSONDecodeError as nested_decode_err:
+                    return None, f'primary={decode_err}; nested={nested_decode_err}'
+            return None, str(decode_err)
+
+    def _build_section_generation_prompt(section):
+        section_title = str(section.get('section_title') or '').strip()
+        section_key = _normalize_topic_key(section_title)
+        matched_module = section_module_matches.get(section_key)
+        section_blueprint = json.dumps(section, ensure_ascii=False, indent=2)
+        module_excerpt = _module_prompt_excerpt(matched_module) if matched_module else 'No matched saved module for this section.'
+        summary_excerpt = combined_summary[:2500] if combined_summary else 'No summary available.'
+        return f"""Generate ONLY one assessment section as valid JSON.
+
+Course Name: {course.course_title}
+Course Code: {course.course_code}
+Assessment: {source['assessment_name']}
+Section Topic: {section_title}
+
+REFERENCE SUMMARY:
+{summary_excerpt}
+
+MATCHED SAVED MODULE:
+{module_excerpt}
+
+SECTION BLUEPRINT:
+{section_blueprint}
+
+Requirements:
+1. Return one JSON object with keys \"section_title\", \"exam_label\", \"allocated_items\", \"bloom_distribution\", and \"items\".
+2. Preserve the same section title and item numbers from the blueprint.
+3. Every item must be an MCQ with 4 or 5 choices.
+4. Every item must include: item_number, item_type, question_text, choices, correct_answer, bloom_level, bloom_verb, ilo_refs, points, answer_key.
+5. Write complete question stems and plausible distractors grounded in the section topic.
+6. Return ONLY valid JSON. No markdown, no prose.
+"""
+
+    def _generate_sections_individually():
+        generated_sections = []
+        for section in mcq_sections:
+            section_prompt = _build_section_generation_prompt(section)
+            section_raw = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': section_prompt}],
+                preferred_provider=provider,
+                system=system_prompt,
+                max_tokens=2500,
+            )
+            parsed_section, section_error = _parse_assessment_json(section_raw)
+            if not isinstance(parsed_section, dict):
+                raise ValueError(f"Section generation failed for {section.get('section_title')}: {section_error}")
+            generated_sections.append(parsed_section)
+        return {
+            'title': assessment_title,
+            'assessment_type': source['assessment_type'],
+            'term': term,
+            'total_items': total_generated,
+            'sections': generated_sections,
+        }
+
+    try:
+        raw_text = llm.generate_response_with_fallback(
+            messages=[{'role': 'user', 'content': user_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=4000,
+        )
+        generated_payload, parse_error = _parse_assessment_json(raw_text)
+
+        if not generated_payload:
+            llm_json_retry_used = True
+            logger.warning(
+                'Assessment LLM initial response was not valid JSON; retrying once with strict JSON-only repair prompt. error=%s',
+                parse_error,
+            )
+
+            repair_prompt = f"""Your previous response was not valid JSON.
+
+Return ONLY valid JSON, with no markdown fences and no extra commentary.
+Keep the exact same top-level shape and semantics requested earlier.
+
+Required top-level shape:
+{{
+  "title": string,
+  "assessment_type": string,
+  "term": string,
+  "total_items": number,
+  "sections": [
+    {{
+      "section_title": string,
+      "exam_label": string,
+      "allocated_items": number,
+      "bloom_distribution": object,
+      "items": [
+        {{
+          "item_number": number,
+          "item_type": string,
+          "question_text": string,
+                    "choices": [string],
+                    "correct_answer": string,
+          "bloom_level": string,
+          "bloom_verb": string,
+          "ilo_refs": [string],
+          "points": number,
+          "answer_key": string
+        }}
+      ]
+    }}
+  ]
+}}
+
+Original task prompt:
+{user_prompt}
+
+Previous invalid response:
+{raw_text}
+"""
+
+            repaired_text = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': repair_prompt}],
+                preferred_provider=provider,
+                system=system_prompt,
+                max_tokens=4000,
+            )
+            generated_payload, retry_error = _parse_assessment_json(repaired_text)
+            if generated_payload:
+                llm_json_retry_success = True
+            else:
+                logger.warning(
+                    'Assessment LLM retry also returned invalid JSON; attempting per-section MCQ generation. error=%s',
+                    retry_error,
+                )
+                section_retry_used = True
+                generated_payload = _generate_sections_individually()
+                section_retry_success = True
+    except Exception:
+        logger.exception('Assessment LLM generation failed before valid MCQ payload was produced')
+
+    llm_json_blueprint_fallback_used = not (
+        isinstance(generated_payload, dict)
+        and isinstance(generated_payload.get('sections'), list)
+    )
+    logger.info(
+        'Assessment LLM JSON metrics: retry_used=%s retry_success=%s section_retry_used=%s section_retry_success=%s blueprint_fallback=%s course_id=%s assessment=%s',
+        llm_json_retry_used,
+        llm_json_retry_success,
+        section_retry_used,
+        section_retry_success,
+        llm_json_blueprint_fallback_used,
+        str(course.course_id),
+        source['assessment_name'],
+    )
+
+    if llm_json_blueprint_fallback_used:
+        fallback_assessment = Assessment.objects.create(
+            course=course,
+            title=assessment_title,
+            assessment_type=source['assessment_type'],
+            term=term,
+            status='Draft',
+            generated_at=timezone.now(),
+        )
+        return Response(
+            {
+                'success': False,
+                'detail': 'Assessment generation did not return valid MCQ JSON. Please retry with fewer items or narrower topics.',
+                'manual_entry_allowed': True,
+                'assessment_id': str(fallback_assessment.assessment_id),
+                'tos_counters': _build_tos_counters(source['topic_rows'], {}),
+                'manual_item_schema': {
+                    'manual_items': [
+                        {
+                            'section_title': 'Topic from TOS',
+                            'bloom_level': 'Remember|Understand|Apply|Analyze|Evaluate|Create',
+                            'question_text': 'Question stem',
+                            'choices': ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
+                            'correct_answer': 'A',
+                            'answer_key': 'Explanation of the answer',
+                            'ilo_refs': ['ILO 1'],
+                            'points': 1,
+                        }
+                    ],
+                    'assessment_id': str(fallback_assessment.assessment_id),
+                },
+            },
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
+
+    if isinstance(generated_payload, dict) and isinstance(generated_payload.get('sections'), list):
+        # Normalize the returned JSON against the blueprint so the UI can render it reliably.
+        sections_by_title = {str(s.get('section_title')): s for s in mcq_sections}
+        normalized_sections = []
+        running_total = 0
+        for section in generated_payload.get('sections', []):
+            if not isinstance(section, dict):
+                continue
+            title_key = str(section.get('section_title') or '').strip()
+            blueprint_section = sections_by_title.get(title_key)
+            if not blueprint_section:
+                continue
+            items = []
+            for idx, item in enumerate(section.get('items') or [], start=1):
+                if not isinstance(item, dict):
+                    continue
+                points = _to_int(item.get('points'), 0)
+                running_total += points
+                items.append(
+                    {
+                        'item_number': _to_int(item.get('item_number'), idx),
+                        'item_type': str(item.get('item_type') or 'Multiple Choice'),
+                        'section_title': blueprint_section['section_title'],
+                        'exam_label': str(item.get('exam_label') or blueprint_section['exam_label']),
+                        'bloom_level': str(item.get('bloom_level') or '').strip(),
+                        'bloom_verb': str(item.get('bloom_verb') or '').strip(),
+                        'ilo_refs': [str(v) for v in (item.get('ilo_refs') or blueprint_section.get('ilos') or []) if str(v).strip()],
+                        'question_text': str(item.get('question_text') or '').strip(),
+                        'choices': _normalize_choices(item.get('choices')),
+                        'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                        'answer_key': str(item.get('answer_key') or '').strip(),
+                        'points': points,
+                    }
+                )
+
+            normalized_sections.append(
+                {
+                    'section_title': blueprint_section['section_title'],
+                    'exam_label': blueprint_section['exam_label'],
+                    'allocated_items': blueprint_section['allocated_items'],
+                    'bloom_distribution': blueprint_section['bloom_distribution'],
+                    'items': items or blueprint_section['items'],
+                }
+            )
+
+        if normalized_sections:
+            sections = normalized_sections
+            total_generated = sum(len(s['items']) for s in sections)
+
+    assessment = Assessment.objects.create(
+        course=course,
+        title=assessment_title,
+        assessment_type=source['assessment_type'],
+        term=term,
+        status='Generated',
+        generated_at=timezone.now(),
+    )
+
+    create_items = []
+    for section in sections:
+        section_key = _normalize_topic_key(section.get('section_title'))
+        matched_module = section_module_matches.get(section_key)
+        for item in section['items']:
+            create_items.append(
+                AssessmentItem(
+                    assessment=assessment,
+                    module=matched_module,
+                    question_text=str(item.get('question_text') or '').strip() or f"{item.get('item_number')}. Item",
+                    item_type=source['assessment_type'],
+                    difficulty=item.get('bloom_level') or '',
+                    rubric={
+                        'item_number': item.get('item_number'),
+                        'section_title': item.get('section_title'),
+                        'exam_label': item.get('exam_label'),
+                        'bloom_level': item.get('bloom_level'),
+                        'bloom_verb': item.get('bloom_verb'),
+                        'ilo_refs': item.get('ilo_refs') or [],
+                        'choices': _normalize_choices(item.get('choices')),
+                        'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                        'answer_key': item.get('answer_key') or '',
+                        'points': item.get('points') or 0,
+                        'assessment_name': source['assessment_name'],
+                        'assessment_code': source['assessment_code'],
+                        'assessment_task_label': source['assessment_task_label'],
+                        'matched_module_id': str(matched_module.module_id) if matched_module else None,
+                        'matched_module_title': matched_module.module_title if matched_module else '',
+                        'matched_module_week': matched_module.week_number if matched_module else None,
+                    },
+                )
+            )
+
+    if create_items:
+        AssessmentItem.objects.bulk_create(create_items)
+
+    return Response(
+        {
+            'success': True,
+            'assessment': {
+                'assessment_id': str(assessment.assessment_id),
+                'title': assessment.title,
+                'assessment_type': assessment.assessment_type,
+                'term': assessment.term,
+                'status': assessment.status,
+                'generated_at': assessment.generated_at,
+            },
+            'sections': sections,
+            'total_items': total_generated,
+        },
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_assessment_detail(request, assessment_id):
+    """Return one assessment grouped by sections with Bloom/item metadata."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    try:
+        assessment = Assessment.objects.select_related('course').get(assessment_id=assessment_id)
+    except Assessment.DoesNotExist:
+        return Response(
+            {'success': False, 'detail': 'Assessment not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    _, error_response = _get_assigned_course_or_403(request, assessment.course.course_id)
+    if error_response:
+        return error_response
+
+    return Response({'success': True, 'assessment': _assessment_detail_payload(assessment)})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def export_assessment_docx(request):
+    """
+    Export assessment sections/items as DOCX.
+
+    Body:
+      assessment_id     optional UUID
+      assessment_data   optional JSON payload matching assessment detail shape
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    assessment_id = request.data.get('assessment_id')
+    payload = None
+
+    if assessment_id:
+        try:
+            assessment = Assessment.objects.select_related('course').get(assessment_id=assessment_id)
+        except Assessment.DoesNotExist:
+            return Response(
+                {'success': False, 'error': 'Assessment not found.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        _, error_response = _get_assigned_course_or_403(request, assessment.course.course_id)
+        if error_response:
+            return error_response
+        payload = _assessment_detail_payload(assessment)
+
+    if payload is None:
+        raw_data = request.data.get('assessment_data', '{}')
+        if isinstance(raw_data, str):
+            try:
+                payload = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return Response(
+                    {'success': False, 'error': 'Invalid assessment_data JSON.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            payload = raw_data
+
+    if not isinstance(payload, dict):
+        return Response(
+            {'success': False, 'error': 'assessment_data must be a JSON object.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from io import BytesIO
+        from django.http import HttpResponse
+
+        doc = _build_plain_assessment_docx(payload)
+        safe_title = str(payload.get('title') or 'assessment').replace('/', '-').replace(' ', '_')
+        filename = f'{safe_title}_assessment.docx'
+
+        buffer = BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+
+        http_response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return http_response
+    except Exception as exc:
+        logger.exception('Error generating DOCX for assessment export')
+        return Response(
+            {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
