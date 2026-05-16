@@ -68,6 +68,32 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         profile = serializer.save()
+
+        # Send an alert to the platform admins for verification
+        send_mail(
+            subject=f'New ATLAS Registration: {profile.institution.name}',
+            message=(
+                f'A new institution has requested an account and is awaiting verification.\n\n'
+                f'Institution: {profile.institution.name}\n'
+                f'Registered Email: {profile.email}\n'
+                f'Role: {profile.role}\n\n'
+                f'Please review this account in the admin panel.'
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=['atlasdegdev@gmail.com'],
+            fail_silently=True,
+            html_message=(
+                f'<h3>New Institution Registration</h3>'
+                f'<p>A new institution has requested an account and is awaiting verification.</p>'
+                f'<ul>'
+                f'<li><strong>Institution:</strong> {profile.institution.name}</li>'
+                f'<li><strong>Registered Email:</strong> {profile.email}</li>'
+                f'<li><strong>Role:</strong> {profile.role}</li>'
+                f'</ul>'
+                f'<p>Please review and verify this account in the admin panel.</p>'
+            )
+        )
+
         return Response(
             {
                 'detail': 'Registration received.',
@@ -98,6 +124,10 @@ class PasswordResetRequestView(APIView):
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[email],
                 fail_silently=False,
+                html_message=(
+                    f'<p>Your ATLAS password reset code is: <strong style="font-size: 1.5em; color: #8B0000;">{otp}</strong></p>'
+                    f'<p>This code expires in 10 minutes.</p>'
+                )
             )
         else:
             otp = None
