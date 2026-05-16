@@ -455,6 +455,31 @@ def upload_course_rag_document(request):
         )
 
 
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_course_rag_document(request, records_id):
+    """Delete a CourseFile and all its parent/child chunks (cascade)."""
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    course_file = CourseFile.objects.filter(records_id=records_id, uploader=request.user).first()
+    if not course_file:
+        return Response(
+            {'success': False, 'detail': 'Document not found or you do not have permission to delete it.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        course_file.delete()
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    except Exception as exc:
+        logger.exception('Error deleting course RAG document')
+        return Response(
+            {'success': False, 'error': f'Failed to delete document: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def list_course_rag_documents(request):
