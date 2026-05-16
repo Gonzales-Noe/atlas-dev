@@ -85,7 +85,9 @@ class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     institution_name = serializers.CharField(max_length=255)
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
-    role = serializers.CharField(required=False, default=UserRole.FACULTY)
+    
+    # 1. CHANGED DEFAULT TO ADMIN
+    role = serializers.CharField(required=False, default=UserRole.ADMIN) 
 
     def validate_email(self, value):
         normalized = value.strip().lower()
@@ -105,7 +107,10 @@ class RegisterSerializer(serializers.Serializer):
     @transaction.atomic
     def create(self, validated_data):
         institution_name = validated_data.pop('institution_name').strip()
-        role = validated_data.pop('role', UserRole.FACULTY)
+        
+        # 2. CHANGED FALLBACK TO ADMIN
+        role = validated_data.pop('role', UserRole.ADMIN) 
+        
         password = validated_data.pop('password')
         validated_data.pop('full_name', None)
 
@@ -123,7 +128,7 @@ class RegisterSerializer(serializers.Serializer):
             email=validated_data['email'],
             password_hash=make_password(password),
             role=role,
-            is_active=True,
+            is_active=False,  # Kept as False so they remain 'pending' until approved!
         )
 
 
