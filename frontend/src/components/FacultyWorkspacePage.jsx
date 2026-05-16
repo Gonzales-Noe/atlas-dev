@@ -775,6 +775,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [assessmentDetail, setAssessmentDetail] = useState(null)
   const [assessmentExporting, setAssessmentExporting] = useState(false)
+  const [editingItemId, setEditingItemId] = useState(null)
+  const [editingItemDraft, setEditingItemDraft] = useState(null)
+  const [itemSaving, setItemSaving] = useState(false)
   // AI chatbox
   const [chatOpen, setChatOpen]       = useState(false)
   const [chatMessages, setChatMessages] = useState([])
@@ -1760,9 +1763,89 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (data?.success && data?.assessment) {
         setSelectedAssessment(assessmentSummary)
         setAssessmentDetail(data.assessment)
+        setEditingItemId(null)
+        setEditingItemDraft(null)
       }
     } catch (err) {
       setActionError(extractApiError(err))
+    }
+  }
+
+  function handleStartItemEdit(item) {
+    const existingChoices = Array.isArray(item.choices) ? item.choices : []
+    const normalizedChoices = existingChoices.length >= 4 ? existingChoices : [...existingChoices, ...Array(4 - existingChoices.length).fill('')]
+    setEditingItemId(item.item_id)
+    setEditingItemDraft({
+      question_text: item.question_text || '',
+      choices: normalizedChoices,
+      correct_answer: (item.correct_answer || '').toUpperCase(),
+      answer_key: item.answer_key || '',
+    })
+  }
+
+  function handleEditChoiceChange(index, value) {
+    setEditingItemDraft(prev => {
+      if (!prev) return prev
+      const nextChoices = [...(prev.choices || [])]
+      nextChoices[index] = value
+      return { ...prev, choices: nextChoices }
+    })
+  }
+
+  async function handleSaveItemEdit() {
+    if (!editingItemDraft || !editingItemId) return
+    const cleanedQuestion = String(editingItemDraft.question_text || '').trim()
+    if (!cleanedQuestion) {
+      setActionError('Question cannot be empty.')
+      return
+    }
+
+    const cleanedChoices = Array.isArray(editingItemDraft.choices)
+      ? editingItemDraft.choices.map(choice => String(choice || '').trim())
+      : []
+
+    const rawAnswer = String(editingItemDraft.correct_answer || '').trim().toUpperCase()
+    const normalizedAnswer = rawAnswer ? (rawAnswer.match(/[A-E]/)?.[0] || '') : ''
+    if (rawAnswer && !normalizedAnswer) {
+      setActionError('Correct answer must be one of A, B, C, D, or E.')
+      return
+    }
+
+    setItemSaving(true)
+    setActionError('')
+    try {
+      const { data } = await api.patch(`/curriculum/assessment-item/${editingItemId}/`, {
+        question_text: cleanedQuestion,
+        choices: cleanedChoices,
+        correct_answer: normalizedAnswer,
+        answer_key: String(editingItemDraft.answer_key || '').trim(),
+      })
+      if (data.success) {
+        setAssessmentDetail(prev => {
+          const updated = { ...prev }
+          updated.sections = (prev.sections || []).map(sec => ({
+            ...sec,
+            items: sec.items.map(it =>
+              it.item_id === editingItemId ? { ...it, ...data.item } : it
+            ),
+          }))
+          return updated
+        })
+        setEditingItemId(null)
+        setEditingItemDraft(null)
+      } else {
+        setActionError(data.detail || 'Failed to save item.')
+      }
+    } catch (err) {
+      const statusCode = err?.response?.status
+      const responseText = typeof err?.response?.data === 'string' ? err.response.data : ''
+      if (statusCode === 404 && responseText.includes('Page not found')) {
+        setActionError('Save endpoint is unavailable on the running backend. Restart the Django API server, then try saving again.')
+      } else {
+        setActionError(extractApiError(err) || 'Failed to save item.')
+      }
+    } finally {
+      setItemSaving(false)
     }
   }
 
@@ -3701,7 +3784,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Tooltip title="Back to assessments list">
                 <IconButton
                   size="small"
-                  onClick={() => { setSelectedAssessment(null); setAssessmentDetail(null) }}
+                  onClick={() => {
+                    setSelectedAssessment(null)
+                    setAssessmentDetail(null)
+                    setEditingItemId(null)
+                    setEditingItemDraft(null)
+                  }}
                   sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
                   <ArrowBackIcon fontSize="small" />
                 </IconButton>
@@ -3757,50 +3845,150 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       ))}
                     </Box>
                     <Stack spacing={0.6}>
-                      {(section.items || []).map(item => (
-                        <Box
-                          key={item.item_id || `${section.section_title}-${item.item_number}`}
-                          sx={{ px: 1.25, py: 0.9, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}
-                        >
-                          <Typography variant="body2" sx={{ color: '#2f2f2f', fontWeight: 600 }}>
-                            {item.item_number}. {item.question_text}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: '#777' }}>
-                            Bloom: {item.bloom_level || 'N/A'}{item.bloom_verb ? ` (${item.bloom_verb})` : ''}
-                          </Typography>
-                          {!!item.matched_module_title && (
-                            <Typography variant="caption" display="block" sx={{ color: '#8a5a00', mt: 0.35 }}>
-                              Grounded on module: {item.matched_module_title}{item.matched_module_week ? ` (Week ${item.matched_module_week})` : ''}
-                            </Typography>
-                          )}
-                          {(item.choices || []).length > 0 && (
-                            <Stack spacing={0.35} sx={{ mt: 0.9 }}>
-                              {(item.choices || []).map((choice, choiceIndex) => (
-                                <Typography
-                                  key={`${item.item_id || item.item_number}-choice-${choiceIndex}`}
-                                  variant="body2"
-                                  sx={{ color: '#4a4a4a', pl: 0.5 }}>
-                                  {choice}
-                                </Typography>
-                              ))}
-                            </Stack>
-                          )}
-                          {(item.correct_answer || item.answer_key) && (
-                            <Box sx={{ mt: 0.8 }}>
-                              {!!item.correct_answer && (
-                                <Typography variant="caption" display="block" sx={{ color: '#2e7d32', fontWeight: 700 }}>
-                                  Correct Answer: {item.correct_answer}
-                                </Typography>
-                              )}
-                              {!!item.answer_key && (
-                                <Typography variant="caption" display="block" sx={{ color: '#666', mt: 0.2 }}>
-                                  Explanation: {item.answer_key}
-                                </Typography>
+                      {(section.items || []).map(item => {
+                        const isEditing = editingItemId === item.item_id
+                        const draft = isEditing ? editingItemDraft : null
+                        return (
+                          <Box
+                            key={item.item_id || `${section.section_title}-${item.item_number}`}
+                            sx={{ px: 1.25, py: 0.9, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.8 }}>
+                              <Typography variant="caption" sx={{ color: '#777', fontWeight: 700, flex: 1 }}>
+                                Item {item.item_number}
+                              </Typography>
+                              {!isEditing ? (
+                                <Button
+                                  size="small"
+                                  startIcon={<EditIcon sx={{ fontSize: '0.8rem !important' }} />}
+                                  onClick={() => handleStartItemEdit(item)}
+                                  sx={{ textTransform: 'none', color: MAROON, fontSize: '0.72rem', px: 1, minWidth: 0 }}
+                                >
+                                  Edit
+                                </Button>
+                              ) : (
+                                <Stack direction="row" spacing={0.6}>
+                                  <Button
+                                    size="small"
+                                    startIcon={<CloseIcon sx={{ fontSize: '0.8rem !important' }} />}
+                                    disabled={itemSaving}
+                                    onClick={() => {
+                                      setEditingItemId(null)
+                                      setEditingItemDraft(null)
+                                    }}
+                                    sx={{ textTransform: 'none', color: '#666', fontSize: '0.72rem', px: 1, minWidth: 0 }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    startIcon={<SaveIcon sx={{ fontSize: '0.8rem !important' }} />}
+                                    disabled={itemSaving}
+                                    onClick={handleSaveItemEdit}
+                                    sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, fontSize: '0.72rem', px: 1.2, minWidth: 0 }}
+                                  >
+                                    {itemSaving ? 'Saving…' : 'Save'}
+                                  </Button>
+                                </Stack>
                               )}
                             </Box>
-                          )}
-                        </Box>
-                      ))}
+
+                            {!isEditing ? (
+                              <>
+                                <Typography variant="body2" sx={{ color: '#2f2f2f', fontWeight: 600 }}>
+                                  {item.item_number}. {item.question_text}
+                                </Typography>
+                                <Typography variant="caption" sx={{ color: '#777' }}>
+                                  Bloom: {item.bloom_level || 'N/A'}{item.bloom_verb ? ` (${item.bloom_verb})` : ''}
+                                </Typography>
+                                {!!item.matched_module_title && (
+                                  <Typography variant="caption" display="block" sx={{ color: '#8a5a00', mt: 0.35 }}>
+                                    Grounded on module: {item.matched_module_title}{item.matched_module_week ? ` (Week ${item.matched_module_week})` : ''}
+                                  </Typography>
+                                )}
+                                {(item.choices || []).length > 0 && (
+                                  <Stack spacing={0.35} sx={{ mt: 0.9 }}>
+                                    {(item.choices || []).map((choice, choiceIndex) => (
+                                      <Typography
+                                        key={`${item.item_id || item.item_number}-choice-${choiceIndex}`}
+                                        variant="body2"
+                                        sx={{ color: '#4a4a4a', pl: 0.5 }}>
+                                        {choice}
+                                      </Typography>
+                                    ))}
+                                  </Stack>
+                                )}
+                                {(item.correct_answer || item.answer_key) && (
+                                  <Box sx={{ mt: 0.8 }}>
+                                    {!!item.correct_answer && (
+                                      <Typography variant="caption" display="block" sx={{ color: '#2e7d32', fontWeight: 700 }}>
+                                        Correct Answer: {item.correct_answer}
+                                      </Typography>
+                                    )}
+                                    {!!item.answer_key && (
+                                      <Typography variant="caption" display="block" sx={{ color: '#666', mt: 0.2 }}>
+                                        Explanation: {item.answer_key}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                )}
+                              </>
+                            ) : (
+                              <Stack spacing={0.85}>
+                                <TextField
+                                  size="small"
+                                  fullWidth
+                                  multiline
+                                  minRows={2}
+                                  label="Question"
+                                  value={draft?.question_text || ''}
+                                  onChange={e => setEditingItemDraft(prev => ({ ...prev, question_text: e.target.value }))}
+                                />
+                                <Stack spacing={0.55}>
+                                  {(draft?.choices || []).map((choice, choiceIndex) => (
+                                    <TextField
+                                      key={`${item.item_id || item.item_number}-choice-edit-${choiceIndex}`}
+                                      size="small"
+                                      fullWidth
+                                      label={`Choice ${String.fromCharCode(65 + choiceIndex)}`}
+                                      value={choice}
+                                      onChange={e => handleEditChoiceChange(choiceIndex, e.target.value)}
+                                    />
+                                  ))}
+                                </Stack>
+                                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={0.8}>
+                                  <TextField
+                                    size="small"
+                                    select
+                                    label="Correct Answer"
+                                    value={draft?.correct_answer || ''}
+                                    onChange={e => setEditingItemDraft(prev => ({
+                                      ...prev,
+                                      correct_answer: (e.target.value || '').toUpperCase(),
+                                    }))}
+                                    sx={{ maxWidth: { sm: 180 } }}
+                                  >
+                                    <MenuItem value="">No answer</MenuItem>
+                                    <MenuItem value="A">A</MenuItem>
+                                    <MenuItem value="B">B</MenuItem>
+                                    <MenuItem value="C">C</MenuItem>
+                                    <MenuItem value="D">D</MenuItem>
+                                    <MenuItem value="E">E</MenuItem>
+                                  </TextField>
+                                  <TextField
+                                    size="small"
+                                    fullWidth
+                                    label="Explanation / Answer Key"
+                                    value={draft?.answer_key || ''}
+                                    onChange={e => setEditingItemDraft(prev => ({ ...prev, answer_key: e.target.value }))}
+                                  />
+                                </Stack>
+                              </Stack>
+                            )}
+                          </Box>
+                        )
+                      })}
                     </Stack>
                   </SectionCard>
                 ))}
