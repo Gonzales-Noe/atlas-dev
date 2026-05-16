@@ -2293,6 +2293,100 @@ def get_assessment_detail(request, assessment_id):
     return Response({'success': True, 'assessment': _assessment_detail_payload(assessment)})
 
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_assessment_item(request, item_id):
+    """
+    Update an assessment item's question text, choices, correct answer, and/or answer key.
+
+    PATCH /curriculum/assessment-item/<item_id>/
+
+    Body (all fields optional):
+      question_text   str
+      choices         list[str]  (4–5 items)
+      correct_answer  str        single letter A-E
+      answer_key      str        explanation/rationale
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    try:
+        item = AssessmentItem.objects.select_related('assessment__course').get(item_id=item_id)
+    except AssessmentItem.DoesNotExist:
+        return Response(
+            {'success': False, 'detail': 'Assessment item not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    _, error_response = _get_assigned_course_or_403(request, item.assessment.course.course_id)
+    if error_response:
+        return error_response
+
+    data = request.data
+    update_fields = []
+
+    if 'question_text' in data:
+        question_text = str(data['question_text'] or '').strip()
+        if not question_text:
+            return Response(
+                {'success': False, 'detail': 'question_text cannot be empty.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item.question_text = question_text
+        update_fields.append('question_text')
+
+    rubric = item.rubric if isinstance(item.rubric, dict) else {}
+
+    if 'choices' in data:
+        raw_choices = data['choices']
+        if not isinstance(raw_choices, list):
+            return Response(
+                {'success': False, 'detail': 'choices must be a list.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        rubric['choices'] = _normalize_choices(raw_choices)
+
+    if 'correct_answer' in data:
+        answer = str(data['correct_answer'] or '').strip()[:1].upper()
+        if answer and answer not in 'ABCDE':
+            return Response(
+                {'success': False, 'detail': 'correct_answer must be A–E.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        rubric['correct_answer'] = answer
+
+    if 'answer_key' in data:
+        rubric['answer_key'] = str(data['answer_key'] or '').strip()
+
+    if any(k in data for k in ('choices', 'correct_answer', 'answer_key')):
+        item.rubric = rubric
+        update_fields.append('rubric')
+
+    if not update_fields:
+        return Response(
+            {'success': False, 'detail': 'No updatable fields provided.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    item.save(update_fields=update_fields)
+
+    metadata = item.rubric if isinstance(item.rubric, dict) else {}
+    return Response({
+        'success': True,
+        'item': {
+            'item_id': str(item.item_id),
+            'item_number': _to_int(metadata.get('item_number'), 0),
+            'item_type': item.item_type,
+            'question_text': item.question_text,
+            'choices': metadata.get('choices') or [],
+            'correct_answer': metadata.get('correct_answer') or '',
+            'answer_key': metadata.get('answer_key') or '',
+            'bloom_level': metadata.get('bloom_level') or '',
+            'bloom_verb': metadata.get('bloom_verb') or '',
+        },
+    })
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def export_assessment_docx(request):
