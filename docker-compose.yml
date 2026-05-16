@@ -4,7 +4,7 @@ services:
   db:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: atlas_db
+      POSTGRES_DB: atlas_dev
       POSTGRES_USER: atlas_user
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:

@@ -8,8 +8,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
 import Box             from '@mui/material/Box'
 import { useAuth }     from '../store/authStore'
-import { ROUTES }      from '../config/routes'
-import { getDashboardRoute, normalizeRole } from '../utils'
+import { ROUTES }      from '../config/route'
 
 export default function ProtectedRoute({ children, role }) {
   const { isAuthenticated, isLoading, user } = useAuth()
@@ -35,9 +34,14 @@ export default function ProtectedRoute({ children, role }) {
     return <Navigate to={ROUTES.SIGN_IN} state={{ from: location }} replace />
   }
 
-  if (role && normalizeRole(user?.role) !== normalizeRole(role)) {
+  if (role && user?.role !== role) {
     // Redirect to their correct dashboard
-    return <Navigate to={getDashboardRoute(user?.role) || ROUTES.SIGN_IN} replace />
+    const dashboards = {
+      faculty:    ROUTES.FACULTY.DASHBOARD,
+      admin:      ROUTES.ADMIN.DASHBOARD,
+      superadmin: ROUTES.SUPERADMIN.DASHBOARD,
+    }
+    return <Navigate to={dashboards[user.role] || ROUTES.SIGN_IN} replace />
   }
 
   return children
