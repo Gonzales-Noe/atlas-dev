@@ -1,34 +1,29 @@
 import { useEffect, useState } from 'react'
 import {
-  Box,
-  Card,
-  CardContent,
-  CardHeader,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Typography,
-  Paper,
+  Box, Card, CardContent, CardHeader, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, Paper, CircularProgress
 } from '@mui/material'
 import AdminLayout from './AdminLayout'
-
-const mockLogs = [
-  { id: 1, timestamp: '2026-05-10 10:30:00', user: 'faculty@atlas.local', action: 'Created syllabus', details: 'Course: CS101' },
-  { id: 2, timestamp: '2026-05-10 09:15:00', user: 'faculty@atlas.local', action: 'Generated assessment', details: 'Module: Week 1' },
-  { id: 3, timestamp: '2026-05-09 14:45:00', user: 'admin@atlas.local', action: 'Updated faculty account', details: 'User: prof.john' },
-  { id: 4, timestamp: '2026-05-09 11:20:00', user: 'faculty@atlas.local', action: 'Added module', details: 'Course: MATH201' },
-  { id: 5, timestamp: '2026-05-08 16:00:00', user: 'faculty@atlas.local', action: 'Graded submission', details: 'Assessment: Quiz 1' },
-]
+import api from '../../../config/api'
 
 export default function AdminAuditLogs() {
   const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   useEffect(() => {
-    // Mock data - in real app, fetch from API
-    setLogs(mockLogs)
+    const fetchLogs = async () => {
+      try {
+        // NOTE: You will need to create this endpoint in Django!
+        const { data } = await api.get('/auth/audit-logs/')
+        setLogs(data)
+      } catch (err) {
+        console.error("Failed to fetch audit logs:", err)
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchLogs()
   }, [])
 
   return (
@@ -57,14 +52,34 @@ export default function AdminAuditLogs() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {logs.map((log) => (
-                    <TableRow key={log.id}>
-                      <TableCell>{log.timestamp}</TableCell>
-                      <TableCell>{log.user}</TableCell>
-                      <TableCell>{log.action}</TableCell>
-                      <TableCell>{log.details}</TableCell>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={4} sx={{ textAlign: 'center', py: 5 }}>
+                        <CircularProgress sx={{ color: '#8B0000' }} />
+                      </TableCell>
                     </TableRow>
-                  ))}
+                  ) : error ? (
+                    <TableRow>
+                      <TableCell colSpan={4} sx={{ textAlign: 'center', py: 5, color: '#888' }}>
+                        The Audit Logs API endpoint has not been created in Django yet! 
+                      </TableCell>
+                    </TableRow>
+                  ) : logs.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} sx={{ textAlign: 'center', py: 5, color: '#888' }}>
+                        No recent activity found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    logs.map((log) => (
+                      <TableRow key={log.id}>
+                        <TableCell>{new Date(log.timestamp).toLocaleString()}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{log.user}</TableCell>
+                        <TableCell>{log.action}</TableCell>
+                        <TableCell sx={{ color: '#666' }}>{log.details}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </TableContainer>

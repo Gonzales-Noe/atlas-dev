@@ -6,11 +6,13 @@ import {
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle' // <-- Added for the Approve button
 import SuperAdminLayout from './SuperAdminLayout'
-import api from '../../config/api' // <-- Added API import
+import api from '../../config/api'
 
+// Updated to make pending accounts orange!
 const getStatusColor = (status) => {
-  return status === 'active' ? { bg: '#C8E6C9', color: '#2E7D32' } : { bg: '#F5F5F5', color: '#888' }
+  return status === 'active' ? { bg: '#C8E6C9', color: '#2E7D32' } : { bg: '#FFF3E0', color: '#E65100' }
 }
 
 const getPlanColor = (plan) => {
@@ -18,12 +20,12 @@ const getPlanColor = (plan) => {
     case 'premium': return { bg: '#FFF8E1', color: '#F57F17' }
     case 'professional': return { bg: '#E3F2FD', color: '#1565C0' }
     case 'standard': return { bg: '#F3E5F5', color: '#6A1B9A' }
-    default: return { bg: '#EEEEEE', color: '#616161' } // free tier
+    default: return { bg: '#EEEEEE', color: '#616161' } 
   }
 }
 
 export default function AccountManagement() {
-  const [accounts, setAccounts] = useState([]) // <-- Replaced mockAccounts with State
+  const [accounts, setAccounts] = useState([]) 
   const [loading, setLoading] = useState(true)
   
   const [page, setPage] = useState(0)
@@ -37,36 +39,47 @@ export default function AccountManagement() {
   const [anchorEl, setAnchorEl] = useState(null)
   const [menuAccount, setMenuAccount] = useState(null)
 
-  // Fetch data from Django backend
-  useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        // Adjust this URL if your urls.py uses something slightly different
-        const { data } = await api.get('/auth/accounts/') 
-        
-        // Normalize backend data to fit the frontend UI
-        const formattedData = data.map(acc => ({
-          id: acc.id || acc.user_id,
-          institution: acc.institution?.name || 'Unknown Institution',
-          admin: acc.full_name || 'Platform Admin',
-          email: acc.email,
-          status: acc.is_active ? 'active' : 'inactive',
-          subscriptionPlan: acc.institution?.plan_tier || 'Free',
-          users: acc.total_users || 1, // Fallback if backend doesn't send this yet
-          createdAt: new Date(acc.created_at).toLocaleDateString(),
-          lastLogin: acc.last_login ? new Date(acc.last_login).toLocaleString() : 'Never logged in'
-        }))
-        
-        setAccounts(formattedData)
-      } catch (error) {
-        console.error("Failed to fetch accounts:", error)
-      } finally {
-        setLoading(false)
-      }
+  const fetchAccounts = async () => {
+    try {
+      const { data } = await api.get('/auth/accounts/') 
+      
+      const formattedData = data.map(acc => ({
+        id: acc.id || acc.user_id,
+        // Pulls the institution_name we added to serializers.py
+        institution: acc.institution_name || acc.institution?.name || 'Unknown Institution',
+        admin: acc.full_name || 'Platform Admin',
+        email: acc.email,
+        // 🚨 CRITICAL FIX: Maps to 'pending' instead of 'inactive'
+        status: acc.is_active ? 'active' : 'pending',
+        subscriptionPlan: acc.plan_tier || acc.institution?.plan_tier || 'Free',
+        users: acc.total_users || 1, 
+        createdAt: new Date(acc.created_at).toLocaleDateString(),
+        lastLogin: acc.last_login ? new Date(acc.last_login).toLocaleString() : 'Never logged in'
+      }))
+      
+      setAccounts(formattedData)
+    } catch (error) {
+      console.error("Failed to fetch accounts:", error)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchAccounts()
   }, [])
+
+  // 🚨 NEW API CALL: Activates the account and refreshes the table
+  const handleActivateAccount = async (accountId) => {
+    try {
+      await api.patch(`/auth/accounts/${accountId}/`, { is_active: true })
+      fetchAccounts() 
+      handleMenuClose()
+    } catch (error) {
+      console.error("Failed to activate account:", error)
+      alert("Failed to activate account. Check your console.")
+    }
+  }
 
   const filteredAccounts = accounts.filter((account) => {
     const matchesSearch = account.institution.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -119,8 +132,8 @@ export default function AccountManagement() {
           <Grid item xs={12} sm={6} md={3}>
             <Card sx={cardStyles}>
               <CardContent>
-                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Total Users</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1976D2' }}>{accounts.reduce((sum, a) => sum + a.users, 0).toLocaleString()}</Typography>
+                <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Pending Accounts</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#E65100' }}>{accounts.filter((a) => a.status === 'pending').length}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -142,7 +155,7 @@ export default function AccountManagement() {
               <TextField select label="Filter by Status" variant="outlined" size="small" value={filterStatus} onChange={(e) => { setFilterStatus(e.target.value); setPage(0) }} SelectProps={{ native: true }} sx={{ minWidth: 150 }}>
                 <option value="">All Statuses</option>
                 <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
+                <option value="pending">Pending</option>
               </TextField>
               <Button variant="contained" startIcon={<AddIcon />} onClick={() => setCreateDialogOpen(true)} sx={{ background: '#922724', '&:hover': { background: '#6B0000' } }}>
                 New Account
@@ -187,14 +200,35 @@ export default function AccountManagement() {
                       <TableRow key={account.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
                         <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{account.institution}</TableCell>
                         <TableCell sx={{ color: '#666' }}>{account.admin}<br/><span style={{fontSize: '0.75rem', color: '#999'}}>{account.email}</span></TableCell>
-                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
-                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan?.toUpperCase()} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 700, fontSize: '0.7rem' }} /></TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan?.toUpperCase()} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 700, fontSize: '0.7rem' }} /></TableCell>
                         <TableCell sx={{ textAlign: 'right', fontWeight: 600, color: '#1A1A1A' }}>{account.users}</TableCell>
                         <TableCell sx={{ color: '#666', fontSize: '0.9rem' }}>{account.lastLogin}</TableCell>
                         <TableCell sx={{ textAlign: 'center' }}>
+                          
+                          {/* 🚨 NEW: The Approve Button! */}
+                          {account.status === 'pending' && (
+                            <Button 
+                              size="small" 
+                              variant="contained" 
+                              color="success" 
+                              startIcon={<CheckCircleIcon />}
+                              onClick={() => handleActivateAccount(account.id)}
+                              sx={{ mr: 1, textTransform: 'none', fontWeight: 600 }}
+                            >
+                              Approve
+                            </Button>
+                          )}
+
                           <IconButton size="small" onClick={(e) => handleMenuOpen(e, account)}><MoreVertIcon fontSize="small" /></IconButton>
                           <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === account.id} onClose={handleMenuClose}>
                             <MenuItem onClick={() => handleViewDetails(account)}>View Details</MenuItem>
+                            {/* 🚨 NEW: The Approve option inside the dropdown menu! */}
+                            {account.status === 'pending' && (
+                              <MenuItem onClick={() => handleActivateAccount(account.id)} sx={{ color: '#2E7D32', fontWeight: 600 }}>
+                                Approve & Activate
+                              </MenuItem>
+                            )}
                             <MenuItem onClick={() => handleEdit(account)}>Edit Account</MenuItem>
                             <MenuItem>Manage Subscription</MenuItem>
                             <MenuItem>View Usage</MenuItem>
@@ -225,7 +259,15 @@ export default function AccountManagement() {
               </Stack>
             )}
           </DialogContent>
-          <DialogActions sx={{ p: 2 }}><Button onClick={() => setDetailsDialogOpen(false)}>Close</Button></DialogActions>
+          <DialogActions sx={{ p: 2 }}>
+            <Button onClick={() => setDetailsDialogOpen(false)}>Close</Button>
+            {/* 🚨 NEW: Added Approve button to details view as well */}
+            {selectedAccount?.status === 'pending' && (
+              <Button variant="contained" color="success" onClick={() => { handleActivateAccount(selectedAccount.id); setDetailsDialogOpen(false); }}>
+                Approve Account
+              </Button>
+            )}
+          </DialogActions>
         </Dialog>
 
         {/* Create/Edit Account Dialog */}
