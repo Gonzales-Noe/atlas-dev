@@ -1,8 +1,9 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 
 /* ── CSS Tokens ─────────────────────────────────────────── */
 :root {
@@ -102,8 +103,26 @@ html, body, #root {
   font-weight: 700 !important;
 }
 
-.MuiCardHeader-subheader {
-  color: var(--text-secondary) !important;
+/* Subtle scrollbars globally */
+*::-webkit-scrollbar { width: 4px; height: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 4px; }
+*::-webkit-scrollbar-thumb:hover { background: #aaa; }
+* { scrollbar-width: thin; scrollbar-color: #d4d4d4 transparent; }
+
+/* Subtle scrollbar for schedule textareas */
+.subtle-scroll::-webkit-scrollbar { width: 3px; }
+.subtle-scroll::-webkit-scrollbar-track { background: transparent; }
+.subtle-scroll::-webkit-scrollbar-thumb { background: #d4d4d4; border-radius: 4px; }
+.subtle-scroll::-webkit-scrollbar-thumb:hover { background: #aaa; }
+.subtle-scroll { scrollbar-width: thin; scrollbar-color: #d4d4d4 transparent; }
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .MuiCardContent-root {
