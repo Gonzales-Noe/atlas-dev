@@ -6,10 +6,22 @@ to LLMService.generate_response().  RAG context chunks retrieved via rag_service
 are embedded in the user prompt so the LLM grounds its output in the knowledge base.
 
 Generation pipeline:
-    1. Caller runs semantic_search(query) → context_chunks
-    2. Caller calls the appropriate CoTPromptBuilder.build_*() method
-    3. system_prompt + user_prompt are forwarded to LLMService.generate_response()
+    1. Caller runs semantic_search_with_summary(query) → rag_result
+    2. Caller calls the appropriate CoTPromptBuilder.build_*() method,
+       passing rag_result["chunks"] and rag_result["context_summary"].
+    3. build_*() injects the summary (token-efficient) when available;
+       falls back to formatted raw chunks within a 2 000-token budget.
+    4. system_prompt + user_prompt are forwarded to LLMService.generate_response()
 """
+
+# Maximum tokens of RAG context to inject into a prompt.
+# Keeps total prompt within typical 8 K-context LLM windows.
+_CONTEXT_TOKEN_BUDGET: int = 2_000
+
+
+def _count_tokens(text: str) -> int:
+    """Fast token estimate: 1 token ≈ 4 characters (no external dependency)."""
+    return max(1, len(text) // 4)
 
 
 class CoTPromptBuilder:
@@ -20,13 +32,22 @@ class CoTPromptBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _format_context(chunks: list) -> str:
+    def _format_context(chunks: list, context_summary: str = "") -> str:
         """
-        Format a list of RAG chunk dicts into a readable block for the prompt.
+        Build the RAG context block for a prompt.
 
-        Each chunk dict must have 'text', 'document_title', and optionally 'page_number'.
-        Returns a placeholder string when no chunks are provided.
+        Priority order (mirrors PEA _assemble_prompt):
+          1. context_summary — pre-computed progressive summary (most token-efficient).
+             Injected as-is when provided and non-empty.
+          2. chunks list — formatted with source citations, trimmed to
+             _CONTEXT_TOKEN_BUDGET tokens so the prompt stays within LLM limits.
+          3. Fallback placeholder — when neither is available.
         """
+        # ── 1. Use pre-computed summary (token-efficient) ─────────────────
+        if context_summary and context_summary.strip():
+            return f"[CURRICULUM CONTEXT SUMMARY]\n{context_summary.strip()}"
+
+        # ── 2. Format raw chunks with token budget ────────────────────────
         if not chunks:
             return (
                 "(No reference material was retrieved from the knowledge base. "
@@ -34,12 +55,25 @@ class CoTPromptBuilder:
             )
 
         parts = []
+        tokens_used = 0
         for i, chunk in enumerate(chunks, 1):
             source = f"[Source: {chunk['document_title']}"
             if chunk.get("page_number"):
                 source += f", p. {chunk['page_number']}"
             source += f" | Relevance: {chunk.get('score', 0):.2f}]"
-            parts.append(f"--- Reference {i} {source} ---\n{chunk['text']}")
+            header = f"--- Reference {i} {source} ---\n"
+            body = chunk['text']
+            entry_tokens = _count_tokens(header + body)
+            remaining = _CONTEXT_TOKEN_BUDGET - tokens_used
+            if entry_tokens > remaining:
+                if not parts:
+                    # Always include at least one chunk, truncated to budget
+                    body = body[: remaining * 4] + "…"
+                    parts.append(header + body)
+                # Budget exhausted
+                break
+            parts.append(header + body)
+            tokens_used += entry_tokens
 
         return "\n\n".join(parts)
 
@@ -54,14 +88,20 @@ class CoTPromptBuilder:
         num_weeks: int,
         context_chunks: list,
         extra_instructions: str = "",
+        context_summary: str = "",
     ) -> tuple:
         """
         Build a CoT prompt for generating a complete university course syllabus.
 
+        Args:
+            context_summary: Pre-computed progressive summary from
+                semantic_search_with_summary().  When provided, it is used
+                instead of raw chunks for token-efficient context injection.
+
         Returns:
             (system_prompt: str, user_prompt: str)
         """
-        context = CoTPromptBuilder._format_context(context_chunks)
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
 
         system = (
@@ -74,7 +114,7 @@ class CoTPromptBuilder:
         user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
 {context}
 
-TASK: Generate a comprehensive university course syllabus.
+TASK: Generate a comprehensive, OBE-aligned university course syllabus.
 
 Course Name : {course_name}
 Course Code : {course_code or "N/A"}
@@ -86,38 +126,77 @@ Step 1 — Course Scope
   Using the reference material above, identify the core purpose, coverage, and level
   of the course. Note any prerequisite knowledge implied by the content.
 
-Step 2 — Course Learning Outcomes (CLOs)
+Step 2 — Course Rationale
+  Write a dedicated rationale paragraph (2–3 sentences) explaining WHY this course
+  exists in the curriculum — its role in the program, the professional competencies
+  it develops, and its contribution to graduate attributes or societal needs.
+  This is separate from the course description.
+
+Step 3 — Course Learning Outcomes (CLOs / ILOs)
   Formulate 4–6 measurable CLOs using Bloom's Taxonomy action verbs.
-  For each CLO specify: CLO number | Statement | Bloom's Level.
+  For each CLO specify:
+    CLO number | Statement | Bloom's Taxonomy Level (Remember/Understand/Apply/
+                              Analyze/Evaluate/Create) | Primary Bloom Verb
+  Ensure CLOs span at least three Bloom's levels. Higher-order levels (Apply and
+  above) should account for at least 50% of the CLOs.
 
-Step 3 — Weekly Schedule
+Step 4 — Weekly Schedule with ILO References
   Plan a {num_weeks}-week schedule where topics build progressively on each other.
-  Ensure every CLO is addressed at least once across the schedule.
+  For EACH week specify: Week | Topic / Subject Matter | Key Learning Activities |
+  Delivery Method | ILO References (list CLO numbers covered that week, e.g. "1,3").
+  Every CLO must be covered at least once.
 
-Step 4 — Assessment Design
+Step 5 — Assessment Design with Sub-tasks and I/R/D
   Design assessments (quizzes, midterm exam, final exam, projects, activities) that
-  directly map to the CLOs. Specify which CLOs each assessment covers.
+  directly map to the CLOs. For each assessment component specify:
+    • Code (e.g. ME, QZ, FP)
+    • Task name
+    • I/R/D designation (I = Introduced, R = Reinforced, D = Demonstrated)
+    • Category (Formative / Summative / Performance / Project)
+    • Sub-tasks if applicable (e.g. Written Exam, Lab Report, Presentation)
+    • CLOs covered
 
-Step 5 — Grading Breakdown
+Step 6 — Table of Specifications (TOS)
+  For each major assessment component, provide a TOS showing how points are
+  distributed across Bloom's levels:
+    Topic | Total Points | Remember% | Understand% | Apply% | Analyze% | Evaluate% | Create%
+  Percentages per row must sum to 100%.
+
+Step 7 — Grading Breakdown
   Assign weights to each assessment component such that they total exactly 100%.
 
-Step 6 — References
+Step 8 — Framework Alignment
+  Note the alignment of CLOs to:
+    • Student Outcomes (SO) — ABET/CHED attributes
+    • Institutional Graduate Attributes (IGA)
+    • CDIO Skills
+    • Sustainable Development Goals (SDG)
+
+Step 9 — References
   List required and recommended textbooks, articles, or online resources.
 
 OUTPUT — Return the syllabus using exactly this structure:
 
 1. COURSE DESCRIPTION (3–4 sentences)
 
-2. COURSE LEARNING OUTCOMES
-   CLO | Statement | Bloom's Level
+2. COURSE RATIONALE (2–3 sentences — why this course matters in the program)
 
-3. WEEKLY SCHEDULE
-   Week | Topic / Subject Matter | Key Learning Activities | Assessment / Output
+3. COURSE LEARNING OUTCOMES (CLOs)
+   CLO | Statement | Bloom's Level | Primary Bloom Verb
 
-4. ASSESSMENT BREAKDOWN
-   Component | Weight (%) | CLOs Covered
+4. WEEKLY SCHEDULE
+   Week | Topic / Subject Matter | Key Learning Activities | Delivery | ILO Refs
 
-5. REQUIRED MATERIALS & REFERENCES
+5. ASSESSMENT BREAKDOWN
+   Code | Task | I/R/D | Category | Sub-tasks | Weight (%) | CLOs Covered
+
+6. TABLE OF SPECIFICATIONS (TOS)
+   Topic | Total Pts | Remember% | Understand% | Apply% | Analyze% | Evaluate% | Create%
+
+7. FRAMEWORK ALIGNMENT
+   CLO | SO | IGA | CDIO | SDG
+
+8. REQUIRED MATERIALS & REFERENCES
 """
         return system, user
 
@@ -132,14 +211,18 @@ OUTPUT — Return the syllabus using exactly this structure:
         week_number: int,
         context_chunks: list,
         extra_instructions: str = "",
+        context_summary: str = "",
     ) -> tuple:
         """
         Build a CoT prompt for generating a detailed teaching module.
 
+        Args:
+            context_summary: Pre-computed progressive summary (token-efficient).
+
         Returns:
             (system_prompt: str, user_prompt: str)
         """
-        context = CoTPromptBuilder._format_context(context_chunks)
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
 
         system = (
@@ -198,6 +281,234 @@ OUTPUT — Return the module plan using exactly this structure:
         return system, user
 
     # ------------------------------------------------------------------
+    # JSON Module generation
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def build_module_json_prompt(
+        course_name: str,
+        module_title: str,
+        week_number: int,
+        module_number: int,
+        context_chunks: list,
+        extra_instructions: str = "",
+        context_summary: str = "",
+        ilos: list = None,
+        course_description: str = "",
+        week_topic: str = "",
+    ) -> tuple:
+        """
+        Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
+
+        Args:
+            ilos:               List of ILO/CLO strings from the course syllabus.
+            course_description: The course description text.
+            week_topic:         The topic for this specific week from the syllabus schedule.
+
+        JSON schema returned by the LLM:
+        {
+          "module_number": <int>,
+          "module_title": "<string>",
+          "introduction": "<2-3 sentence paragraph>",
+          "learning_objectives": ["<measurable objective>", ...],
+          "subtopics": [
+            {
+              "id": "st_0",
+              "title": "<subtopic title>",
+              "content": "<detailed explanation, 3-5 paragraphs>"
+            },
+            ...
+          ],
+          "short_activity": {
+            "title": "<activity title>",
+            "description": "<step-by-step activity instructions>",
+            "duration": "<e.g. 15 minutes>"
+          }
+        }
+
+        Returns:
+            (system_prompt: str, user_prompt: str)
+        """
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
+        extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
+
+        # Build the COURSE DATA block from real syllabus data
+        course_data_parts = []
+        if course_description:
+            course_data_parts.append(f"COURSE DESCRIPTION:\n{course_description.strip()}")
+        if ilos:
+            ilo_lines = "\n".join(f"  ILO-{i + 1}: {ilo}" for i, ilo in enumerate(ilos) if ilo)
+            course_data_parts.append(f"COURSE INTENDED LEARNING OUTCOMES (ILOs):\n{ilo_lines}")
+        if week_topic:
+            course_data_parts.append(
+                f"WEEK {week_number} SYLLABUS TOPIC: {week_topic.strip()}"
+            )
+
+        course_context_block = (
+            "\n\nCOURSE DATA (authoritative — ground all content here):\n"
+            + "\n\n".join(course_data_parts)
+        ) if course_data_parts else ""
+
+        # Build the ILO alignment step text
+        if ilos:
+            ilo_step = (
+                "\nStep 2 — Review the Course ILOs in COURSE DATA. "
+                "Map each learning objective you write to one or more of those ILOs."
+            )
+        else:
+            ilo_step = (
+                "\nStep 2 — Define measurable learning objectives "
+                "using Bloom's Taxonomy action verbs."
+            )
+
+        system = (
+            "You are an expert instructional designer specialising in Outcome-Based Education "
+            "for Philippine higher education. You produce structured, detailed teaching modules. "
+            "You MUST respond with ONLY valid JSON — no markdown fences, no extra text, no "
+            "commentary outside the JSON structure."
+        )
+
+        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{context}{course_context_block}
+
+TASK: Generate a complete, ready-to-deliver teaching module as strict JSON.
+
+Course       : {course_name}
+Module Number: {module_number}
+Module Title : {module_title}
+Week Number  : {week_number}{extra}
+
+THINK STEP BY STEP before writing JSON:
+
+Step 1 — Analyse the reference material and COURSE DATA above to identify the core \
+concepts specific to "{module_title}" in {course_name}.{ilo_step}
+Step 3 — Write a 2-3 sentence introduction that places this module in the context of \
+{course_name}. Be specific — do NOT use generic filler.
+Step 4 — Break "{module_title}" into 3-5 logical subtopics. For each, write detailed \
+content (3-5 paragraphs) grounded in the reference material and course context.
+Step 5 — Design a short formative activity (15-20 min) aligned to this module's \
+objectives and the Course ILOs.
+
+OUTPUT RULES:
+- Respond with ONLY valid JSON — no markdown, no preamble, no text outside the braces.
+- Every string value must be specific to {course_name} and "{module_title}".
+- Replace every "..." in the template below with real content.
+- The "subtopics" array MUST have at least 3 items.
+
+{{
+  "module_number": {module_number},
+  "module_title": "{module_title}",
+  "introduction": "...",
+  "learning_objectives": [
+    "...",
+    "...",
+    "..."
+  ],
+  "subtopics": [
+    {{
+      "id": "st_0",
+      "title": "...",
+      "content": "..."
+    }},
+    {{
+      "id": "st_1",
+      "title": "...",
+      "content": "..."
+    }},
+    {{
+      "id": "st_2",
+      "title": "...",
+      "content": "..."
+    }}
+  ],
+  "short_activity": {{
+    "title": "...",
+    "description": "...",
+    "duration": "15 minutes"
+  }}
+}}
+"""
+        return system, user
+
+    @staticmethod
+    def build_subtopic_content_prompt(
+        course_name: str,
+        module_title: str,
+        subtopic_title: str,
+        existing_content: str,
+        context_chunks: list,
+        extra_instructions: str = "",
+        context_summary: str = "",
+    ) -> tuple:
+        """
+        Build a prompt to generate or expand content for a single subtopic.
+        Returns plain text content (not JSON).
+        """
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
+        extra = f"\n\nAdditional instructions: {extra_instructions}" if extra_instructions else ""
+
+        system = (
+            "You are an expert instructional designer. Generate rich, detailed educational "
+            "content for a specific subtopic. Write clear paragraphs suitable for a university "
+            "course module. Use the reference material to ground explanations in verified content."
+        )
+
+        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{context}
+
+TASK: Generate or expand content for the following subtopic.
+
+Course        : {course_name}
+Module Title  : {module_title}
+Subtopic Title: {subtopic_title}{extra}
+
+{"EXISTING CONTENT TO EXPAND:\\n" + existing_content if existing_content else ""}
+
+Write 3-5 well-structured paragraphs covering:
+1. Core concept definition and explanation
+2. Key principles or mechanisms
+3. Practical examples or applications
+4. Connection to broader course themes
+
+Output ONLY the content paragraphs — no headers, no JSON, no preamble.
+"""
+        return system, user
+
+    @staticmethod
+    def build_module_ai_assist_prompt(
+        field: str,
+        current_content: str,
+        instruction: str,
+        course_name: str,
+        module_title: str,
+    ) -> tuple:
+        """
+        Build a prompt for the AI chatbox to modify a specific module section.
+        Returns the revised content as plain text.
+        """
+        system = (
+            "You are an expert instructional designer assistant. Help faculty improve "
+            "their course module content. Follow the faculty's instruction precisely. "
+            "Output ONLY the revised content — no preamble, no explanations."
+        )
+
+        user = f"""You are helping revise a section of a course module.
+
+Course       : {course_name}
+Module Title : {module_title}
+Section      : {field}
+
+CURRENT CONTENT:
+{current_content}
+
+FACULTY INSTRUCTION:
+{instruction}
+
+Provide the revised content for this section only. Output ONLY the new content.
+"""
+        return system, user
+
+    # ------------------------------------------------------------------
     # Assessment generation
     # ------------------------------------------------------------------
 
@@ -209,14 +520,18 @@ OUTPUT — Return the module plan using exactly this structure:
         clos: list,
         context_chunks: list,
         extra_instructions: str = "",
+        context_summary: str = "",
     ) -> tuple:
         """
         Build a CoT prompt for generating a full assessment with items and rubric.
 
+        Args:
+            context_summary: Pre-computed progressive summary (token-efficient).
+
         Returns:
             (system_prompt: str, user_prompt: str)
         """
-        context = CoTPromptBuilder._format_context(context_chunks)
+        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
 
         if clos:
             clo_block = "\n".join(f"  - {c}" for c in clos)
@@ -333,6 +648,7 @@ OUTPUT — Return the assessment using exactly this structure:
         existing_content: str,
         mode: str,
         context_chunks: list,
+        context_summary: str = "",
     ) -> tuple:
         """
         Build a prompt to generate or continue a single syllabus field.
@@ -345,11 +661,12 @@ OUTPUT — Return the assessment using exactly this structure:
             existing_content: Current value of the field (used for 'continue' mode).
             mode:             'generate' (fresh) or 'continue' (extend existing).
             context_chunks:   RAG chunks (global + course-specific).
+            context_summary:  Pre-computed progressive summary (token-efficient).
 
         Returns:
             (system_prompt: str, user_prompt: str)
         """
-        context = cls._format_context(context_chunks)
+        context = cls._format_context(context_chunks, context_summary)
 
         hint_template = cls._SECTION_HINTS.get(
             section,
@@ -441,7 +758,8 @@ OUTPUT — Return the assessment using exactly this structure:
             '  "period_of_study": "period of study string",\n'
             '\n'
             '  // ── 4. Course Overview ──\n'
-            '  "description": "full course description / rationale paragraph(s)",\n'
+            '  "description": "full course description paragraph(s)",\n'
+            '  "rationale": "standalone rationale paragraph explaining WHY this course exists in the program",\n'
             '  "lecture_hours": "number of lecture hours per week",\n'
             '  "lab_hours": "number of lab/laboratory hours per week",\n'
             '\n'
@@ -451,10 +769,16 @@ OUTPUT — Return the assessment using exactly this structure:
             '\n'
             '  // ── 6. Expected Outcomes ──\n'
             '  "ilos": ["ILO 1 text", "ILO 2 text", "..."],\n'
+            '  // ilo_bloom: parallel array to ilos — one entry per ILO with Bloom level name and primary verb\n'
+            '  "ilo_bloom": [{"level": "Apply", "verb": "implement"}],\n'
             '  // assessment_tasks: one row per assessment task in the Assessment Method and Distribution Map\n'
             '  // ilo_values: one entry per ILO (same count as ilos array above), value is the assessment code abbreviation (e.g. "ME", "LA", "FP", "AR") or empty string\n'
             '  // c/p/a = Cognitive / Psychomotor / Affective domain values (abbreviations)\n'
-            '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "weight": "60", "ilo_values": ["ME", "", ""], "c": "ME", "p": "", "a": ""}],\n'
+            '  // subs: sub-task names within this assessment component (may be empty array)\n'
+            '  // category: Formative / Summative / Performance / Project\n'
+            '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "category": "Summative", "weight": "60", "ilo_values": ["ME", "", ""], "subs": [], "c": "ME", "p": "", "a": ""}],\n'
+            '  // tos: Table of Specifications — one row per major assessment topic\n'
+            '  "tos": [{"topic": "Module 1: Introduction", "total_points": "20", "bloom_dist": {"remember": "20", "understand": "30", "apply": "30", "analyze": "20", "evaluate": "0", "create": "0"}}],\n'
             '\n'
             '  // ── 7. References & Frameworks ──\n'
             '  "references": ["full citation string 1", "full citation string 2"],\n'
@@ -474,10 +798,11 @@ OUTPUT — Return the assessment using exactly this structure:
             '  // topics: topics and reading list text\n'
             '  // weeks: week number(s) e.g. "1", "2-3", "4"\n'
             '  // outcomes: topic outcomes text\n'
-            '  // ilo: ILO references e.g. "1, 2, 3"\n'
+            '  // ilo: ILO references as comma-separated string e.g. "1, 2, 3"\n'
+            '  // ilo_refs: ILO references as an array of ILO numbers e.g. [1, 2, 3] (same data as ilo but structured)\n'
             '  // so: SO references e.g. "1, 2"\n'
             '  // delivery: delivery method e.g. "Lecture, Hands-on Laboratory"\n'
-            '  "tla_chapters": [{"chapter": "1", "topics": "Topic / Reading List text", "weeks": "2-3", "outcomes": "outcome text", "ilo": "1, 2", "so": "1, 2", "delivery": "Lecture, Hands-on Laboratory"}],\n'
+            '  "tla_chapters": [{"chapter": "1", "topics": "Topic / Reading List text", "weeks": "2-3", "outcomes": "outcome text", "ilo": "1, 2", "ilo_refs": [1, 2], "so": "1, 2", "delivery": "Lecture, Hands-on Laboratory"}],\n'
             '\n'
             '  // ── 10. Schedules & Mappings ──\n'
             '  // Assessment Schedule: SCHEDULE_WEEKS is [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18] (16 entries)\n'
@@ -515,19 +840,29 @@ OUTPUT — Return the assessment using exactly this structure:
             "CRITICAL INSTRUCTIONS:\n"
             "1. Extract EVERY field — leave nothing empty if the text contains the data.\n"
             "2. For ILOs: extract each numbered ILO as a separate array element.\n"
-            "3. For assessment_tasks: extract every row from the Assessment Method and Distribution Map table. "
-            "The ilo_values array must have exactly one entry per ILO (same length as the ilos array).\n"
-            "4. For tla_chapters: extract EVERY row from the TLA Activities table (including orientation, exams, and all chapters).\n"
-            "5. For schedule_methods: the values array has 16 entries for weeks 3-18. "
+            "3. For ilo_bloom: for each ILO, infer the Bloom's Taxonomy level and primary verb from the ILO statement "
+            "(e.g. 'implement' → Apply, 'analyze' → Analyze). Create one entry per ILO parallel to the ilos array.\n"
+            "4. For rationale: extract or infer the course rationale (why this course exists in the program). "
+            "If the document has a combined description+rationale, split them: description = what the course covers, "
+            "rationale = why it is important/required.\n"
+            "5. For assessment_tasks: extract every row from the Assessment Method and Distribution Map table. "
+            "The ilo_values array must have exactly one entry per ILO (same length as the ilos array). "
+            "Infer category (Formative/Summative/Performance/Project) from the task name. "
+            "Extract subs (sub-task names) if listed within the component.\n"
+            "6. For tos: extract the Table of Specifications if present. Each row needs topic, total_points, "
+            "and bloom_dist percentages. If no TOS is present, derive one from the assessment breakdown.\n"
+            "7. For tla_chapters: extract EVERY row from the TLA Activities table (including orientation, exams, and all chapters). "
+            "Set ilo_refs as an integer array matching the ilo string field (e.g. ilo='1,2' → ilo_refs=[1,2]).\n"
+            "8. For schedule_methods: the values array has 16 entries for weeks 3-18. "
             "Find the assessment schedule grid and place each score in the correct week index "
             "(index 0=wk3, index 1=wk4, index 2=wk5, ..., index 13=wk16, index 14=wk17, index 15=wk18). "
             "Put empty string '' for weeks with no value.\n"
-            "6. For mapping tables (so_cpa_rows, iga_rows, cdio_sdg_rows): "
+            "9. For mapping tables (so_cpa_rows, iga_rows, cdio_sdg_rows): "
             "extract the column header numbers/codes into *_headers arrays, "
             "and create one row per ILO with the assessment abbreviations in the correct column slots.\n"
-            "7. Use empty string '' (never null) for missing scalar values. "
+            "10. Use empty string '' (never null) for missing scalar values. "
             "Use [] for empty arrays, but always include at least one element.\n"
-            "8. Preserve exact text — do not summarize.\n\n"
+            "11. Preserve exact text — do not summarize.\n\n"
             f"SYLLABUS TEXT:\n{extracted_text}\n\n"
             f"Return a JSON object with EXACTLY these keys and structure:\n{schema}"
         )

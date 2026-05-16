@@ -52,10 +52,10 @@ export default function FacultyCoursesBoard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
+  const [form, setForm] = useState({ course_code: '', course_title: '', description: '', year_level: '' })
 
   const openDialog = () => {
-    setForm({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
+    setForm({ course_code: '', course_title: '', description: '', year_level: '' })
     setCreateError('')
     setDialogOpen(true)
   }
@@ -311,6 +311,21 @@ export default function FacultyCoursesBoard() {
             disabled={creating}
             inputProps={{ maxLength: 100 }}
           />
+          <TextField
+            select
+            label="Year Level"
+            name="year_level"
+            value={form.year_level || ''}
+            onChange={handleFormChange}
+            size="small"
+            disabled={creating}
+          >
+            <MenuItem value="">— Not specified —</MenuItem>
+            <MenuItem value="1st Year">1st Year</MenuItem>
+            <MenuItem value="2nd Year">2nd Year</MenuItem>
+            <MenuItem value="3rd Year">3rd Year</MenuItem>
+            <MenuItem value="4th Year">4th Year</MenuItem>
+          </TextField>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={closeDialog} disabled={creating} sx={{ color: '#666' }}>
