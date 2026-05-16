@@ -71,7 +71,7 @@ const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
-  { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
+  // { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
 ]
 
 const SYLLABUS_SECTIONS = [
@@ -715,7 +715,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'groq', top_k: 5, extra_instructions: '' })
   const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
-  const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'groq', top_k: 5, extra_instructions: '' })
+  const [assessmentParams, setAssessmentParams] = useState({
+    faculty_topics: '',
+    extra_instructions: '',
+    provider: 'gemini',
+    source_exam_code: '',
+    source_exam_label: '',
+  })
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)
@@ -765,6 +771,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [moduleExporting, setModuleExporting]       = useState(false)
   const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
+  const [assessmentCreating, setAssessmentCreating] = useState(false)
+  const [selectedAssessment, setSelectedAssessment] = useState(null)
+  const [assessmentDetail, setAssessmentDetail] = useState(null)
+  const [assessmentExporting, setAssessmentExporting] = useState(false)
   // AI chatbox
   const [chatOpen, setChatOpen]       = useState(false)
   const [chatMessages, setChatMessages] = useState([])
@@ -1627,21 +1637,189 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setModuleContentDirty(true)
   }
 
+  function parseFacultyTopics(text) {
+    return String(text || '')
+      .split(/\r?\n|;/)
+      .map(t => t.trim())
+      .filter(Boolean)
+  }
+
+  function getMajorTosExams() {
+    const tos = syllabusData?.tos || []
+    const isMajorExam = (entry) => {
+      const examCode = String(entry?.examCode || '').toLowerCase().trim()
+      const examLabel = String(entry?.examLabel || entry?.label || '').toLowerCase().trim()
+      const text = `${examCode} ${examLabel}`
+      if (typeof entry?.isMajor === 'boolean') return entry.isMajor
+      if (/(major|midterm|prelim|pre[-\s]?final|final)/i.test(text)) return true
+      const compact = examCode.replace(/[^a-z0-9]/g, '')
+      return ['me', 'mt', 'fe', 'prelim', 'prelims'].includes(compact)
+    }
+
+    const toInt = (v) => {
+      const n = Number(v)
+      return Number.isFinite(n) ? Math.trunc(n) : 0
+    }
+
+    const totalFromTopics = (topics) => {
+      const rows = Array.isArray(topics) ? topics : []
+      const byPoints = rows.reduce((sum, row) => sum + toInt(row?.total_points), 0)
+      if (byPoints > 0) return byPoints
+      const byWeight = rows.reduce((sum, row) => sum + toInt(row?.weight), 0)
+      if (byWeight > 0) return byWeight
+      const bloomKeys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+      return rows.reduce((sum, row) => {
+        const bloom = row?.bloom_items || {}
+        return sum + bloomKeys.reduce((inner, key) => inner + toInt(bloom?.[key]), 0)
+      }, 0)
+    }
+
+    return tos
+      .filter(entry => entry && typeof entry === 'object' && isMajorExam(entry))
+      .map((entry, idx) => {
+        const examCode = String(entry.examCode || '').trim()
+        const examLabel = String(entry.examLabel || examCode || `Major Exam ${idx + 1}`).trim()
+        const totalExplicit = toInt(entry.totalTestItems)
+        const totalItems = totalExplicit > 0 ? totalExplicit : totalFromTopics(entry.topics)
+        return {
+          examCode,
+          examLabel,
+          totalItems: totalItems > 0 ? totalItems : 0,
+          topics: Array.isArray(entry.topics) ? entry.topics : [],
+        }
+      })
+  }
+
+  function getAssessmentBlueprint() {
+    const majorExams = getMajorTosExams()
+    const selectedByCode = majorExams.find(exam => exam.examCode && exam.examCode === assessmentParams.source_exam_code)
+    const selectedByLabel = !selectedByCode
+      ? majorExams.find(exam => exam.examLabel && exam.examLabel === assessmentParams.source_exam_label)
+      : null
+    const selectedExam = selectedByCode || selectedByLabel || majorExams[0] || null
+
+    const assessmentName = selectedExam?.examLabel || 'Major Examination'
+    const assessmentType = assessmentName.toLowerCase()
+    const totalItems = Number(selectedExam?.totalItems || 0)
+
+    return {
+      hasMajorExam: Boolean(selectedExam),
+      assessmentName,
+      assessmentType,
+      totalItems,
+      examCode: selectedExam?.examCode || '',
+      sourceTaskLabel: selectedExam?.examLabel || '',
+      sourceMode: selectedExam ? 'TOS Major Examination' : 'No Major TOS Exam Found',
+    }
+  }
+
   async function handleGenerateAssessment() {
     if (!course) return
-    setActionError(''); setActionLoading(true); setResultText('')
+
+    const blueprint = getAssessmentBlueprint()
+    if (!blueprint.hasMajorExam) {
+      setActionError('No major examination found in TOS. Add a major exam (e.g., Midterm/Final) with total items first.')
+      return
+    }
+
+    setActionError('')
+    setActionLoading(true)
+
     try {
-      const clos = assessmentParams.clos.split('\n').map(l => l.trim()).filter(Boolean)
-      const { data } = await api.post('/assessment/generate-assessment/', {
-        course_name: course.course_title, assessment_type: assessmentParams.assessment_type,
-        num_items: Number(assessmentParams.num_items), clos,
-        provider: assessmentParams.provider, top_k: Number(assessmentParams.top_k),
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+      const facultyTopics = parseFacultyTopics(assessmentParams.faculty_topics)
+      const { data } = await api.post('/curriculum/generate-assessment/', {
+        course_id: course.course_id,
+        assessment_type: blueprint.assessmentType,
+        provider: assessmentParams.provider,
         extra_instructions: assessmentParams.extra_instructions,
+        selected_doc_ids: selectedIds,
+        source_exam_code: blueprint.examCode,
+        source_exam_label: blueprint.assessmentName,
+        faculty_topics: facultyTopics,
       })
-      setResultText(data.generated_assessment || '')
-      workspaceApi.execute()
-    } catch (err) { setActionError(extractApiError(err)) }
-    finally { setActionLoading(false) }
+
+      if (data?.success) {
+        setAssessmentCreating(false)
+        workspaceApi.execute()
+        if (data?.assessment?.assessment_id) {
+          await handleOpenAssessment(data.assessment)
+        }
+      }
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  async function handleOpenAssessment(assessmentSummary) {
+    setActionError('')
+    try {
+      const { data } = await api.get(`/curriculum/assessment/${assessmentSummary.assessment_id}/`)
+      if (data?.success && data?.assessment) {
+        setSelectedAssessment(assessmentSummary)
+        setAssessmentDetail(data.assessment)
+      }
+    } catch (err) {
+      setActionError(extractApiError(err))
+    }
+  }
+
+  async function handleExportAssessmentDocx() {
+    if (!assessmentDetail) {
+      setActionError('Open an assessment first before exporting.')
+      return
+    }
+
+    setAssessmentExporting(true)
+    setActionError('')
+
+    try {
+      const formData = new FormData()
+      if (assessmentDetail.assessment_id) {
+        formData.append('assessment_id', assessmentDetail.assessment_id)
+      }
+      formData.append('assessment_data', JSON.stringify(assessmentDetail))
+
+      const response = await api.post('/curriculum/export-assessment-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const blob = response.data
+      const contentDisposition = response.headers?.['content-disposition'] || ''
+      const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+      const safeTitle = (assessmentDetail.title || 'assessment').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${safeTitle}_assessment.docx`
+
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      let message = 'Failed to export assessment.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const text = await blobData.text()
+          const parsed = JSON.parse(text)
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setActionError(message)
+    } finally {
+      setAssessmentExporting(false)
+    }
   }
 
   async function handleUpload(e) {
@@ -3511,87 +3689,306 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     if (activeTab === 'assessment') {
-      return (
-        <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          <SectionCard title="Assessment Builder">
-            <Stack spacing={1.75}>
-              <LField select label="Assessment Type" value={assessmentParams.assessment_type}
-                onChange={e => setAssessmentParams(p => ({ ...p, assessment_type: e.target.value }))}>
-                {ASSESSMENT_TYPES.map(t => <MenuItem key={t} value={t}>{cap(t)}</MenuItem>)}
-              </LField>
-              <LField type="number" label="Number of Items" value={assessmentParams.num_items}
-                onChange={e => setAssessmentParams(p => ({ ...p, num_items: e.target.value }))} />
-              <LField type="number" label="Knowledge References (top-k)" value={assessmentParams.top_k}
-                onChange={e => setAssessmentParams(p => ({ ...p, top_k: e.target.value }))} />
-              <LField select label="Model Provider" value={assessmentParams.provider}
-                onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}>
-                {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
-              </LField>
-              <LField label="Course Learning Outcomes (one per line)" multiline minRows={3} value={assessmentParams.clos}
-                onChange={e => setAssessmentParams(p => ({ ...p, clos: e.target.value }))} />
-              <LField label="Extra Instructions" multiline minRows={2} value={assessmentParams.extra_instructions}
-                onChange={e => setAssessmentParams(p => ({ ...p, extra_instructions: e.target.value }))} />
-              <GenButton onClick={handleGenerateAssessment} disabled={actionLoading}>
-                {actionLoading ? 'Generating...' : 'Generate Assessment'}
-              </GenButton>
-            </Stack>
-          </SectionCard>
-          {resultText && (
-            <SectionCard title="Generated Output">
-              <TextField multiline minRows={12} fullWidth value={resultText} onChange={e => setResultText(e.target.value)}
-                sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.82rem', fontFamily: 'monospace' } }} />
-            </SectionCard>
-          )}
-          {(workspaceApi.data?.assessments || []).length > 0 && (
-            <SectionCard title="Existing Assessments">
+      const majorExams = getMajorTosExams()
+      const blueprint = getAssessmentBlueprint()
+      const assessments = workspaceApi.data?.assessments || []
+
+      if (selectedAssessment && assessmentDetail) {
+        return (
+          <Stack spacing={2}>
+            <AutoAlert message={actionError} onClose={() => setActionError('')} />
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+              <Tooltip title="Back to assessments list">
+                <IconButton
+                  size="small"
+                  onClick={() => { setSelectedAssessment(null); setAssessmentDetail(null) }}
+                  sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
+                  <ArrowBackIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
+                  {assessmentDetail.assessment_type || 'assessment'} · {assessmentDetail.total_items || 0} items
+                </Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.9rem' }}>
+                  {assessmentDetail.title || 'Assessment'}
+                </Typography>
+              </Box>
+              <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
+                disabled={assessmentExporting}
+                onClick={handleExportAssessmentDocx}
+                sx={{
+                  borderColor: MAROON,
+                  color: MAROON,
+                  borderRadius: 1.5,
+                  textTransform: 'none',
+                  fontSize: '0.78rem',
+                  px: 1.25,
+                  py: 0.4,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                }}>
+                {assessmentExporting ? 'Exporting…' : 'Export DOCX'}
+              </Button>
+            </Box>
+
+            {(assessmentDetail.sections || []).length === 0 ? (
+              <SectionCard title="Assessment Items">
+                <Typography variant="body2" sx={{ color: '#999' }}>
+                  No sectioned items found for this assessment.
+                </Typography>
+              </SectionCard>
+            ) : (
+              <Stack spacing={1.2}>
+                {(assessmentDetail.sections || []).map((section, secIndex) => (
+                  <SectionCard
+                    key={`${section.section_title}-${secIndex}`}
+                    title={`${section.section_title} (${section.allocated_items || (section.items || []).length} items)`}
+                  >
+                    <Box sx={{ mb: 1.25, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                      {Object.entries(section.bloom_distribution || {}).map(([level, count]) => (
+                        <Chip
+                          key={`${section.section_title}-${level}`}
+                          size="small"
+                          label={`${level}: ${count}`}
+                          sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }}
+                        />
+                      ))}
+                    </Box>
+                    <Stack spacing={0.6}>
+                      {(section.items || []).map(item => (
+                        <Box
+                          key={item.item_id || `${section.section_title}-${item.item_number}`}
+                          sx={{ px: 1.25, py: 0.9, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}
+                        >
+                          <Typography variant="body2" sx={{ color: '#2f2f2f', fontWeight: 600 }}>
+                            {item.item_number}. {item.question_text}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: '#777' }}>
+                            Bloom: {item.bloom_level || 'N/A'}{item.bloom_verb ? ` (${item.bloom_verb})` : ''}
+                          </Typography>
+                          {!!item.matched_module_title && (
+                            <Typography variant="caption" display="block" sx={{ color: '#8a5a00', mt: 0.35 }}>
+                              Grounded on module: {item.matched_module_title}{item.matched_module_week ? ` (Week ${item.matched_module_week})` : ''}
+                            </Typography>
+                          )}
+                          {(item.choices || []).length > 0 && (
+                            <Stack spacing={0.35} sx={{ mt: 0.9 }}>
+                              {(item.choices || []).map((choice, choiceIndex) => (
+                                <Typography
+                                  key={`${item.item_id || item.item_number}-choice-${choiceIndex}`}
+                                  variant="body2"
+                                  sx={{ color: '#4a4a4a', pl: 0.5 }}>
+                                  {choice}
+                                </Typography>
+                              ))}
+                            </Stack>
+                          )}
+                          {(item.correct_answer || item.answer_key) && (
+                            <Box sx={{ mt: 0.8 }}>
+                              {!!item.correct_answer && (
+                                <Typography variant="caption" display="block" sx={{ color: '#2e7d32', fontWeight: 700 }}>
+                                  Correct Answer: {item.correct_answer}
+                                </Typography>
+                              )}
+                              {!!item.answer_key && (
+                                <Typography variant="caption" display="block" sx={{ color: '#666', mt: 0.2 }}>
+                                  Explanation: {item.answer_key}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      ))}
+                    </Stack>
+                  </SectionCard>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        )
+      }
+
+      if (!assessmentCreating) {
+        return (
+          <Stack spacing={2}>
+            <AutoAlert message={actionError} onClose={() => setActionError('')} />
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography variant="subtitle2"
+                sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Assessments
+              </Typography>
+              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                onClick={() => {
+                  setAssessmentCreating(true)
+                  setSelectedAssessment(null)
+                  setAssessmentDetail(null)
+                  if (majorExams.length > 0) {
+                    setAssessmentParams(p => ({
+                      ...p,
+                      source_exam_code: p.source_exam_code || majorExams[0].examCode || '',
+                      source_exam_label: p.source_exam_label || majorExams[0].examLabel || '',
+                    }))
+                  }
+                }}
+                sx={{
+                  bgcolor: MAROON,
+                  color: '#fff',
+                  borderRadius: 1.5,
+                  textTransform: 'none',
+                  fontSize: '0.78rem',
+                  px: 1.5,
+                  py: 0.4,
+                  '&:hover': { bgcolor: '#6a0000' },
+                }}>
+                Create Assessment
+              </Button>
+            </Box>
+
+            {assessments.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 6 }}>
+                <AssignmentIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
+                <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No assessments yet.</Typography>
+                <Typography variant="caption" sx={{ color: '#ccc' }}>
+                  Click Create Assessment to build items from your syllabus TOS and score distribution.
+                </Typography>
+              </Box>
+            ) : (
               <Stack spacing={0.75}>
-                {workspaceApi.data.assessments.map(a => (
-                  <Box key={a.assessment_id} sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                {assessments.map(a => (
+                  <Box
+                    key={a.assessment_id}
+                    onClick={() => handleOpenAssessment(a)}
+                    sx={{
+                      display: 'flex',
+                      gap: 1,
+                      alignItems: 'center',
+                      px: 1.75,
+                      py: 1.1,
+                      bgcolor: '#fff',
+                      borderRadius: 1.5,
+                      border: '1px solid rgba(0,0,0,0.07)',
+                      cursor: 'pointer',
+                      '&:hover': { borderColor: MAROON + '55', bgcolor: MAROON_LIGHT },
+                    }}>
                     <Chip label={a.assessment_type} size="small"
-                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }} />
-                    <Typography variant="body2" sx={{ color: '#333', flex: 1 }}>{a.title}</Typography>
+                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500 }}>{a.title}</Typography>
                     <Chip label={a.status} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                   </Box>
                 ))}
               </Stack>
-            </SectionCard>
-          )}
+            )}
+          </Stack>
+        )
+      }
+
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Tooltip title="Back to assessments list">
+              <IconButton size="small"
+                onClick={() => { setAssessmentCreating(false) }}
+                sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
+                <ArrowBackIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Typography variant="subtitle2"
+              sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              Create Assessment
+            </Typography>
+          </Box>
+          <SectionCard title="Assessment Builder">
+            <Stack spacing={1.75}>
+              <LField
+                select
+                label="Major Examination (from TOS)"
+                value={assessmentParams.source_exam_code || assessmentParams.source_exam_label || blueprint.examCode || blueprint.assessmentName || ''}
+                onChange={e => {
+                  const selected = majorExams.find(exam => (exam.examCode || exam.examLabel) === e.target.value)
+                  setAssessmentParams(p => ({
+                    ...p,
+                    source_exam_code: selected?.examCode || '',
+                    source_exam_label: selected?.examLabel || '',
+                  }))
+                }}
+              >
+                {majorExams.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No major examinations found in TOS
+                  </MenuItem>
+                ) : (
+                  majorExams.map(exam => (
+                    <MenuItem key={`${exam.examCode || exam.examLabel}`} value={exam.examCode || exam.examLabel}>
+                      {exam.examLabel} ({exam.totalItems || 0} items)
+                    </MenuItem>
+                  ))
+                )}
+              </LField>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.25 }}>
+                {[
+                  { label: 'Assessment Name', value: blueprint.assessmentName },
+                  { label: 'Assessment Type', value: blueprint.assessmentType },
+                  { label: 'Number of Items', value: blueprint.totalItems },
+                ].map(card => (
+                  <Box key={card.label} sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+                    <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem' }}>{card.label}</Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#222', mt: 0.25 }}>{card.value || 'Auto'}</Typography>
+                  </Box>
+                ))}
+              </Box>
+              <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.5 }}>
+                  Assessment Source
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#222' }}>
+                  {blueprint.sourceMode} {blueprint.examCode ? `· ${blueprint.examCode}` : ''} {blueprint.sourceTaskLabel ? `· ${blueprint.sourceTaskLabel}` : ''}
+                </Typography>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.5 }}>
+                  Topics are taken from the selected TOS exam. If no TOS topics are available, faculty topic input below is used.
+                </Typography>
+              </Box>
+              <LField
+                label="Faculty topics override (optional)"
+                multiline
+                minRows={3}
+                value={assessmentParams.faculty_topics}
+                onChange={e => setAssessmentParams(p => ({ ...p, faculty_topics: e.target.value }))}
+                placeholder="One topic per line or separated by semicolons. Leave blank to use the TOS topics automatically."
+              />
+              <LField label="Extra Instructions" multiline minRows={2} value={assessmentParams.extra_instructions}
+                onChange={e => setAssessmentParams(p => ({ ...p, extra_instructions: e.target.value }))} />
+              <LField select label="Model Provider" value={assessmentParams.provider}
+                onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}>
+                {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+              </LField>
+              <GenButton onClick={handleGenerateAssessment} disabled={actionLoading}>
+                {actionLoading ? 'Generating...' : 'Generate Assessment from Syllabus'}
+              </GenButton>
+              <Typography variant="caption" sx={{ color: '#888' }}>
+                Generation uses the syllabus assessment distribution for the exam name and item count, then fills topics from TOS or faculty input. For strict MCQ JSON, Gemini or GPT are usually more reliable than Groq.
+              </Typography>
+            </Stack>
+          </SectionCard>
+
         </Stack>
+
+        )
+      }
+
+      return (
+        <BubbleSheetPanel courseId={courseId} assessments={workspaceApi.data?.assessments || []} />
       )
     }
 
-    return (
-      <BubbleSheetPanel courseId={courseId} assessments={workspaceApi.data?.assessments || []} />
-    )
-  }
-
-  // ── Right panel ───────────────────────────────────────────────────────────
   function renderUploadPanel() {
-    const docs = docsApi.data?.documents || []
+    const docs = docsApi.data?.documents || docsApi.data?.results || []
     return (
-      <Stack spacing={2}>
-        <Typography variant="caption"
-          sx={{ fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.62rem', display: 'block' }}>
-          Course Knowledge Base
-        </Typography>
+    <>
 
-        <AutoAlert message={uploadError}   onClose={() => setUploadError('')}   sx={{ fontSize: '0.8rem' }} />
-        <AutoAlert message={uploadSuccess} severity="success" onClose={() => setUploadSuccess('')} sx={{ fontSize: '0.8rem' }} />
-        {uploadStatus  && (
-          <Box>
-            <Typography variant="caption"
-              sx={{ color: uploading ? '#1565C0' : '#2E7D32', display: 'block', mb: 0.75 }}>
-              {uploadStatus}
-            </Typography>
-            {uploading && (
-              <LinearProgress variant="determinate" value={uploadProgress}
-                sx={{ bgcolor: '#f5f5f5', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
-            )}
-          </Box>
-        )}
-
-        <Box component="form" onSubmit={handleUpload}>
+          <Box component="form" onSubmit={handleUpload}>
           <Stack spacing={1.5}>
             <Button variant="outlined" component="label" disabled={uploading} fullWidth
               sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5,
@@ -3743,7 +4140,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Box>
         </Stack>
-      </Stack>
+      </>
     )
   }
 
