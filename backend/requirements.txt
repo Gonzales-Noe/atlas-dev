@@ -25,7 +25,7 @@ PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)
 
 # ── Text Processing & Embeddings ───────────────────────────
-tiktoken==0.7.0                 # Token counting for Anthropic
+tiktoken==0.8.0                 # Token counting for Anthropic
 langchain-text-splitters>=0.2.0 # Semantic-aware recursive chunking
 langchain-experimental>=0.0.60  # SemanticChunker for topic-boundary splitting
 # ── Google APIs ─────────────────────────────────────────────
@@ -34,7 +34,7 @@ google-auth==2.35.0
 google-auth-httplib2==0.2.0
 
 # ── Database ────────────────────────────────────────────────
-psycopg2-binary==2.9.9          # PostgreSQL adapter
+psycopg2-binary==2.9.10          # PostgreSQL adapter
 pgvector==0.3.2                 # pgvector Python client
 
 # ── Utilities ───────────────────────────────────────────────

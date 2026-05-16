@@ -1,36 +1,31 @@
 // src/features/Superadmin/AccountManagement.jsx
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  Box, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Button, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Menu, MenuItem, IconButton, Grid, Typography, Divider, Switch, FormControlLabel
+  Box, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination, TextField, Stack, Button, Dialog, DialogTitle, DialogContent, DialogActions, Chip, Menu, MenuItem, IconButton, Grid, Typography, Divider, Switch, FormControlLabel, CircularProgress
 } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import SuperAdminLayout from './SuperAdminLayout'
-
-// Mock account data
-const mockAccounts = [
-  { id: 1, institution: 'State University', admin: 'Dr. Maria Santos', email: 'maria@stateuniv.edu', status: 'active', subscriptionPlan: 'Professional', users: 450, createdAt: '2025-03-15', lastLogin: '2026-05-10 09:45' },
-  { id: 2, institution: 'Tech College', admin: 'Prof. John Doe', email: 'john@techcollege.edu', status: 'active', subscriptionPlan: 'Premium', users: 320, createdAt: '2025-04-20', lastLogin: '2026-05-09 14:30' },
-  { id: 3, institution: 'Modern Academy', admin: 'Ms. Lisa Chen', email: 'lisa@modernacad.edu', status: 'active', subscriptionPlan: 'Standard', users: 180, createdAt: '2025-05-10', lastLogin: '2026-05-08 11:20' },
-  { id: 4, institution: 'National University', admin: 'Dr. Ahmed Hassan', email: 'ahmed@nationaluni.edu', status: 'inactive', subscriptionPlan: 'Standard', users: 125, createdAt: '2025-01-22', lastLogin: '2026-04-15 16:00' },
-  { id: 5, institution: 'Excellence School', admin: 'Mrs. Paula Garcia', email: 'paula@excellence.edu', status: 'active', subscriptionPlan: 'Professional', users: 220, createdAt: '2025-06-05', lastLogin: '2026-05-10 08:15' },
-]
+import api from '../../config/api' // <-- Added API import
 
 const getStatusColor = (status) => {
   return status === 'active' ? { bg: '#C8E6C9', color: '#2E7D32' } : { bg: '#F5F5F5', color: '#888' }
 }
 
 const getPlanColor = (plan) => {
-  switch (plan) {
-    case 'Premium': return { bg: '#FFF8E1', color: '#F57F17' }
-    case 'Professional': return { bg: '#E3F2FD', color: '#1565C0' }
-    case 'Standard': return { bg: '#F3E5F5', color: '#6A1B9A' }
-    default: return { bg: '#EEEEEE', color: '#616161' }
+  switch (plan?.toLowerCase()) {
+    case 'premium': return { bg: '#FFF8E1', color: '#F57F17' }
+    case 'professional': return { bg: '#E3F2FD', color: '#1565C0' }
+    case 'standard': return { bg: '#F3E5F5', color: '#6A1B9A' }
+    default: return { bg: '#EEEEEE', color: '#616161' } // free tier
   }
 }
 
 export default function AccountManagement() {
+  const [accounts, setAccounts] = useState([]) // <-- Replaced mockAccounts with State
+  const [loading, setLoading] = useState(true)
+  
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
@@ -42,8 +37,41 @@ export default function AccountManagement() {
   const [anchorEl, setAnchorEl] = useState(null)
   const [menuAccount, setMenuAccount] = useState(null)
 
-  const filteredAccounts = mockAccounts.filter((account) => {
-    const matchesSearch = account.institution.toLowerCase().includes(searchTerm.toLowerCase()) || account.admin.toLowerCase().includes(searchTerm.toLowerCase()) || account.email.toLowerCase().includes(searchTerm.toLowerCase())
+  // Fetch data from Django backend
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        // Adjust this URL if your urls.py uses something slightly different
+        const { data } = await api.get('/auth/accounts/') 
+        
+        // Normalize backend data to fit the frontend UI
+        const formattedData = data.map(acc => ({
+          id: acc.id || acc.user_id,
+          institution: acc.institution?.name || 'Unknown Institution',
+          admin: acc.full_name || 'Platform Admin',
+          email: acc.email,
+          status: acc.is_active ? 'active' : 'inactive',
+          subscriptionPlan: acc.institution?.plan_tier || 'Free',
+          users: acc.total_users || 1, // Fallback if backend doesn't send this yet
+          createdAt: new Date(acc.created_at).toLocaleDateString(),
+          lastLogin: acc.last_login ? new Date(acc.last_login).toLocaleString() : 'Never logged in'
+        }))
+        
+        setAccounts(formattedData)
+      } catch (error) {
+        console.error("Failed to fetch accounts:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAccounts()
+  }, [])
+
+  const filteredAccounts = accounts.filter((account) => {
+    const matchesSearch = account.institution.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          account.admin.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          account.email.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesFilter = !filterStatus || account.status === filterStatus
     return matchesSearch && matchesFilter
   })
@@ -56,7 +84,6 @@ export default function AccountManagement() {
   const handleViewDetails = (account) => { setSelectedAccount(account); setDetailsDialogOpen(true); handleMenuClose() }
   const handleEdit = (account) => { setSelectedAccount(account); setEditDialogOpen(true); handleMenuClose() }
 
-  // New styling to match the mockup perfectly
   const cardStyles = { borderRadius: 4, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' };
 
   return (
@@ -77,7 +104,7 @@ export default function AccountManagement() {
             <Card sx={cardStyles}>
               <CardContent>
                 <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Total Accounts</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1A1A1A' }}>{mockAccounts.length}</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1A1A1A' }}>{accounts.length}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -85,7 +112,7 @@ export default function AccountManagement() {
             <Card sx={cardStyles}>
               <CardContent>
                 <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Active Accounts</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#2E7D32' }}>{mockAccounts.filter((a) => a.status === 'active').length}</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#2E7D32' }}>{accounts.filter((a) => a.status === 'active').length}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -93,7 +120,7 @@ export default function AccountManagement() {
             <Card sx={cardStyles}>
               <CardContent>
                 <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>Total Users</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1976D2' }}>{mockAccounts.reduce((sum, a) => sum + a.users, 0).toLocaleString()}</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#1976D2' }}>{accounts.reduce((sum, a) => sum + a.users, 0).toLocaleString()}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -101,7 +128,7 @@ export default function AccountManagement() {
             <Card sx={cardStyles}>
               <CardContent>
                 <Typography sx={{ color: '#922724', fontSize: '1rem', mb: 1, fontWeight: 700 }}>MRR Revenue</Typography>
-                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#F57C00' }}>${(mockAccounts.length * 299).toLocaleString()}</Typography>
+                <Typography sx={{ fontSize: '2.5rem', fontWeight: 700, color: '#F57C00' }}>${(accounts.length * 299).toLocaleString()}</Typography>
               </CardContent>
             </Card>
           </Grid>
@@ -140,30 +167,44 @@ export default function AccountManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredAccounts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((account) => {
-                  const statusColor = getStatusColor(account.status)
-                  const planColor = getPlanColor(account.subscriptionPlan)
-                  return (
-                    <TableRow key={account.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
-                      <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{account.institution}</TableCell>
-                      <TableCell sx={{ color: '#666' }}>{account.admin}</TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
-                      <TableCell sx={{ textAlign: 'right', fontWeight: 600, color: '#1A1A1A' }}>{account.users}</TableCell>
-                      <TableCell sx={{ color: '#666', fontSize: '0.9rem' }}>{account.lastLogin}</TableCell>
-                      <TableCell sx={{ textAlign: 'center' }}>
-                        <IconButton size="small" onClick={(e) => handleMenuOpen(e, account)}><MoreVertIcon fontSize="small" /></IconButton>
-                        <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === account.id} onClose={handleMenuClose}>
-                          <MenuItem onClick={() => handleViewDetails(account)}>View Details</MenuItem>
-                          <MenuItem onClick={() => handleEdit(account)}>Edit Account</MenuItem>
-                          <MenuItem>Manage Subscription</MenuItem>
-                          <MenuItem>View Usage</MenuItem>
-                          <MenuItem sx={{ color: '#C62828' }}>Suspend Account</MenuItem>
-                        </Menu>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} sx={{ textAlign: 'center', py: 5 }}>
+                      <CircularProgress sx={{ color: '#922724' }} />
+                    </TableCell>
+                  </TableRow>
+                ) : filteredAccounts.length === 0 ? (
+                   <TableRow>
+                    <TableCell colSpan={7} sx={{ textAlign: 'center', py: 5, color: '#888' }}>
+                      No accounts found.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredAccounts.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((account) => {
+                    const statusColor = getStatusColor(account.status)
+                    const planColor = getPlanColor(account.subscriptionPlan)
+                    return (
+                      <TableRow key={account.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
+                        <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{account.institution}</TableCell>
+                        <TableCell sx={{ color: '#666' }}>{account.admin}<br/><span style={{fontSize: '0.75rem', color: '#999'}}>{account.email}</span></TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}><Chip label={account.subscriptionPlan?.toUpperCase()} size="small" sx={{ background: planColor.bg, color: planColor.color, fontWeight: 600, fontSize: '0.7rem' }} /></TableCell>
+                        <TableCell sx={{ textAlign: 'right', fontWeight: 600, color: '#1A1A1A' }}>{account.users}</TableCell>
+                        <TableCell sx={{ color: '#666', fontSize: '0.9rem' }}>{account.lastLogin}</TableCell>
+                        <TableCell sx={{ textAlign: 'center' }}>
+                          <IconButton size="small" onClick={(e) => handleMenuOpen(e, account)}><MoreVertIcon fontSize="small" /></IconButton>
+                          <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === account.id} onClose={handleMenuClose}>
+                            <MenuItem onClick={() => handleViewDetails(account)}>View Details</MenuItem>
+                            <MenuItem onClick={() => handleEdit(account)}>Edit Account</MenuItem>
+                            <MenuItem>Manage Subscription</MenuItem>
+                            <MenuItem>View Usage</MenuItem>
+                            <MenuItem sx={{ color: '#C62828' }}>Suspend Account</MenuItem>
+                          </Menu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
+                )}
               </TableBody>
             </Table>
           </TableContainer>
