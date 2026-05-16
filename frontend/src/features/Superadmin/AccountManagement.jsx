@@ -24,6 +24,20 @@ const getPlanColor = (plan) => {
   }
 }
 
+const getRoleDisplayName = (role) => {
+  switch (role?.toLowerCase()) {
+    case 'superadmin':
+    case 'super_admin':
+      return 'Platform Admin'
+    case 'admin':
+      return 'Institution Admin'
+    case 'faculty':
+      return 'Faculty'
+    default:
+      return 'User'
+  }
+}
+
 export default function AccountManagement() {
   const [accounts, setAccounts] = useState([]) 
   const [loading, setLoading] = useState(true)
@@ -45,11 +59,12 @@ export default function AccountManagement() {
       
       const formattedData = data.map(acc => ({
         id: acc.id || acc.user_id,
-        // Pulls the institution_name we added to serializers.py
         institution: acc.institution_name || acc.institution?.name || 'Unknown Institution',
-        admin: acc.full_name || 'Platform Admin',
+        
+        // 🚨 CRITICAL FIX: Replace the hardcoded string with the helper function
+        admin: acc.full_name || getRoleDisplayName(acc.role || acc.role_code),
+        
         email: acc.email,
-        // 🚨 CRITICAL FIX: Maps to 'pending' instead of 'inactive'
         status: acc.is_active ? 'active' : 'pending',
         subscriptionPlan: acc.plan_tier || acc.institution?.plan_tier || 'Free',
         users: acc.total_users || 1, 
