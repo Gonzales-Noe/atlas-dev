@@ -26,6 +26,7 @@ export const ROUTES = {
     DASHBOARD:          '/admin/dashboard',
     ACCOUNT_MANAGEMENT: '/admin/account-management',
     AUDIT_LOGS:         '/admin/audit-logs',
+    KNOWLEDGE_BASE:     '/admin/knowledge-base',
   },
 
   // Super Admin (ATLAS team)

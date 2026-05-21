@@ -2,7 +2,7 @@
 // 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#8B0000).
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useContext } from 'react'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import Alert from '@mui/material/Alert'
@@ -53,6 +53,8 @@ import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import MenuIcon from '@mui/icons-material/Menu'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
@@ -73,6 +75,7 @@ import atlasLogo from '../assets/atlas-logo.png'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import { ThemeContext } from '../App'
 
 
 const WORKSPACE_TABS = [
@@ -707,7 +710,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
-  const [isDarkMode, setIsDarkMode] = useState(() => localStorage.getItem('atlas_theme_mode') !== 'light')
+
+  const { mode, toggleColorMode } = useContext(ThemeContext)
+  const isDarkMode = mode === 'dark'
 
   function toggleLeftPanel() {
     setLeftCollapsed(v => !v)
@@ -4506,22 +4511,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     <Box ref={containerRef}
       sx={{ height: '100vh', display: 'flex', overflow: 'hidden', background: isDarkMode ? '#0a0a0f' : '#F7F9FC', backgroundImage: isDarkMode ? 'radial-gradient(circle at 15% 50%, rgba(255, 45, 85, 0.12), transparent 30%), radial-gradient(circle at 85% 30%, rgba(10, 132, 255, 0.08), transparent 30%)' : 'none' }}>
       <style>{`
-        :root {
-          --border-color:       ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)'};
-          --bg-card:            ${isDarkMode ? '#1a1a22' : '#ffffff'};
-          --bg-page:            ${isDarkMode ? '#0a0a0f' : '#F7F9FC'};
-          --bg-header:          ${isDarkMode ? 'rgba(255,255,255,0.06)' : '#F3F4F6'};
-          --text-primary:       ${isDarkMode ? '#ffffff' : '#111827'};
-          --text-secondary:     ${isDarkMode ? 'rgba(255,255,255,0.6)' : '#4B5563'};
-          --active-color:       ${isDarkMode ? '#ff2d55' : '#8B0000'};
-          --active-color-hover: ${isDarkMode ? '#d01e40' : '#6B0000'};
-          --active-bg:          ${isDarkMode ? 'rgba(255,45,85,0.15)' : '#FFF5F5'};
-          --input-border:       ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.23)'};
-          --input-bg:           ${isDarkMode ? 'rgba(255,255,255,0.04)' : '#ffffff'};
-          --sidebar-bg:         ${isDarkMode ? '#111118' : '#ffffff'};
-          --topbar-bg:          ${isDarkMode ? 'rgba(17,17,24,0.85)' : 'rgba(255,255,255,0.92)'};
-        }
-
         /* ── Scrollbars ─────────────────────────────── */
         * { scrollbar-width: thin; scrollbar-color: ${isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'} transparent; }
         *::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -4683,16 +4672,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </IconButton>
               </Tooltip>
             )}
-
-            <Tooltip title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
-              <IconButton
-                onClick={toggleTheme}
-                size="small"
-                sx={{ color: 'var(--text-primary)', mr: 0.5 }}
-              >
-                {isDarkMode ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
-              </IconButton>
-            </Tooltip>
 
             {/* User avatar button */}
             <Tooltip title="Account">

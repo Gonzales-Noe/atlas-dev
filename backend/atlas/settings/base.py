@@ -16,8 +16,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Third-party apps
-    'anymail',
+    # # Third-party apps
+    # 'anymail',
     'rest_framework',
     'corsheaders',
     'channels',

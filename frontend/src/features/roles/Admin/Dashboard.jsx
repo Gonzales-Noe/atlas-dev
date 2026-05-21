@@ -2,44 +2,30 @@
 // src/features/Admin/Dashboard.jsx
 // ═══════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react'
-import {
-  Box, Card, CardContent, CardHeader, Grid, Typography, CircularProgress
-} from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
-import SchoolIcon from '@mui/icons-material/School'
-import AssessmentIcon from '@mui/icons-material/Assessment'
-import ViewModuleIcon from '@mui/icons-material/ViewModule'
-import AdminLayout from './AdminLayout'
 import { useAuth } from '../../../store/authStore'
-import api from '../../../config/api'
+import AdminLayout from './AdminLayout'
+import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
-// A fun helper function to pick the right icon based on the text Django sends us
-const getIconForLabel = (label) => {
-  const lowerText = label.toLowerCase();
-  if (lowerText.includes('faculty')) return <SchoolIcon sx={{ color: '#8B0000' }} />
-  if (lowerText.includes('user') || lowerText.includes('account')) return <PeopleIcon sx={{ color: '#8B0000' }} />
-  if (lowerText.includes('assessment')) return <AssessmentIcon sx={{ color: '#8B0000' }} />
-  return <ViewModuleIcon sx={{ color: '#8B0000' }} />
-}
+const activityData = [
+  { day: 'Mon', actions: 14 },
+  { day: 'Tue', actions: 22 },
+  { day: 'Wed', actions: 18 },
+  { day: 'Thu', actions: 31 },
+  { day: 'Fri', actions: 27 },
+  { day: 'Sat', actions: 9  },
+  { day: 'Sun', actions: 5  },
+]
+
+const tooltipStyle = { background: '#16161E', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, color: '#F0F0F2', fontFamily: 'var(--font-sans)', fontSize: '0.82rem' }
+const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans)' }
 
 export default function AdminDashboard() {
   const { user } = useAuth()
-  const [dashboardData, setDashboardData] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ totalFaculty: 0, totalCourses: 0, totalAssessments: 0, totalModules: 0 })
 
   useEffect(() => {
-    const fetchDashboardStats = async () => {
-      try {
-        // Calls the DashboardSummaryView in your Django views.py
-        const { data } = await api.get('/auth/dashboard/summary/')
-        setDashboardData(data)
-      } catch (error) {
-        console.error("Failed to fetch dashboard data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchDashboardStats()
+    setStats({ totalFaculty: 15, totalCourses: 8, totalAssessments: 24, totalModules: 32 })
   }, [])
 
   const recentActivity = [
@@ -51,42 +37,48 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <Box sx={{ p: 3 }}>
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: '#1A1A1A' }}>
-            {dashboardData?.title || 'Institutional Admin Dashboard'}
-          </Typography>
-          <Typography sx={{ color: '#666', fontSize: '0.95rem' }}>
-            Welcome back, {user?.name || 'Admin'} — {dashboardData?.subtitle || "overview of your institution's activity."}
-          </Typography>
-        </Box>
+      <PageHeader
+        title={`Welcome, ${user?.name || 'Admin'} 👋`}
+        subtitle="Institutional overview — manage faculty, courses, and activity"
+      />
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#8B0000' }} />
-          </Box>
-        ) : (
-          <Grid container spacing={3}>
-            {/* Dynamically render exactly the cards Django tells us to! */}
-            {dashboardData?.cards?.map((card, index) => (
-              <Grid item xs={12} md={3} key={index}>
-                <Card sx={{ boxShadow: 'none', border: '1px solid #EEE', minHeight: 120 }}>
-                  <CardHeader
-                    title={card.label}
-                    titleTypographyProps={{ fontWeight: 700, fontSize: '1rem' }}
-                    avatar={getIconForLabel(card.label)}
-                  />
-                  <CardContent>
-                    <Typography variant="h3" sx={{ fontWeight: 700, color: '#8B0000' }}>
-                      {card.value}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <StatCard title="Faculty Members"   value={stats.totalFaculty}      icon="👨‍🏫" accent="#FF6B6B" />
+        <StatCard title="Active Courses"    value={stats.totalCourses}      icon="📚" accent="#60AAFF" />
+        <StatCard title="Assessments"       value={stats.totalAssessments}  icon="📝" accent="#FFB74D" />
+        <StatCard title="Modules Created"   value={stats.totalModules}      icon="🧩" accent="#5EDA7E" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16 }}>
+        <GlassCard title="Activity This Week">
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="day" tick={axisStyle} axisLine={false} tickLine={false} />
+              <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+              <Bar dataKey="actions" fill="#8B0000" radius={[6,6,0,0]} barSize={28} />
+            </BarChart>
+          </ResponsiveContainer>
+        </GlassCard>
+
+        <GlassCard title="Recent Activity">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {recentActivity.map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderBottom: i < recentActivity.length - 1 ? '1px solid var(--border-color)' : 'none' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(139,0,0,0.15)', border: '1px solid rgba(192,57,43,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.95rem', flexShrink: 0 }}>
+                  {item.type}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.user}</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{item.action}</div>
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap', flexShrink: 0 }}>{item.time}</div>
+              </div>
             ))}
-          </Grid>
-        )}
-      </Box>
+          </div>
+        </GlassCard>
+      </div>
     </AdminLayout>
   )
 }

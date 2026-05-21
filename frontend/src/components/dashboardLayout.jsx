@@ -2,11 +2,14 @@
 // Sidebar + topbar shell used by Faculty, Admin, and Superadmin dashboards.
 // Pass `navItems` and `role` as props from each feature's layout.
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useContext } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import atlasLogo       from '../assets/atlas-logo.png'
 import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
+import { ThemeContext } from '../App'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
@@ -49,8 +52,8 @@ function NavItem({ item, collapsed }) {
       }}
         onMouseEnter={e => {
           if (!isActive) {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+            e.currentTarget.style.background = 'var(--bg-header)'
+            e.currentTarget.style.borderColor = 'var(--border-color)'
           }
         }}
         onMouseLeave={e => {
@@ -79,7 +82,7 @@ function NavItem({ item, collapsed }) {
           width: 22,
           height: 22,
           flexShrink: 0,
-          color: isActive ? '#FF6B6B' : 'rgba(255,255,255,0.45)',
+          color: isActive ? 'var(--active-color)' : 'var(--text-secondary)',
           transition: 'color 200ms',
         }}>
           {React.cloneElement(item.icon, { style: { fontSize: 20 } })}
@@ -90,7 +93,7 @@ function NavItem({ item, collapsed }) {
           <span style={{
             fontSize: '0.875rem',
             fontWeight: isActive ? 700 : 500,
-            color: isActive ? '#F0F0F2' : 'rgba(255,255,255,0.55)',
+          color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
             fontFamily: 'var(--font-sans)',
             whiteSpace: 'nowrap',
             transition: 'color 200ms',
@@ -111,6 +114,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const { mode, toggleColorMode } = useContext(ThemeContext)
 
   const meta = ROLE_META[role] || ROLE_META.faculty
 
@@ -136,7 +140,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
     <div style={{
       display: 'flex',
       minHeight: '100vh',
-      background: 'var(--bg-base)',
+      background: 'var(--bg-page)',
       fontFamily: 'var(--font-sans)',
       position: 'relative',
       overflow: 'hidden',
@@ -149,8 +153,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         {/* Subtle grid */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(var(--border-color) 1px, transparent 1px),
+                            linear-gradient(90deg, var(--border-color) 1px, transparent 1px)`,
           backgroundSize: '52px 52px',
         }} />
       </div>
@@ -177,8 +181,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         zIndex: 999,
         display: 'flex',
         flexDirection: 'column',
-        background: 'rgba(10,10,14,0.92)',
-        borderRight: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--sidebar-bg)',
+        borderRight: '1px solid var(--border-color)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         transition: 'width 280ms cubic-bezier(0.4,0,0.2,1), left 280ms cubic-bezier(0.4,0,0.2,1)',
@@ -192,14 +196,14 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           alignItems: 'center',
           justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
           padding: collapsed && !isMobile ? '0 16px' : '0 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--border-color)',
           flexShrink: 0,
         }}>
           {(!collapsed || isMobile) && (
             <img
               src={atlasLogo}
               alt="ATLAS"
-              style={{ height: 26, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.9 }}
+              style={{ height: 26, objectFit: 'contain', filter: mode === 'dark' ? 'brightness(0) invert(1)' : 'none', opacity: 0.9 }}
             />
           )}
           {collapsed && !isMobile && (
@@ -217,12 +221,12 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
               onClick={() => isMobile ? setMobileOpen(false) : setCollapsed(true)}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
-                color: 'rgba(255,255,255,0.35)', padding: 4, borderRadius: 6,
+              color: 'var(--text-secondary)', padding: 4, borderRadius: 6,
                 display: 'flex', alignItems: 'center',
                 transition: 'color 200ms',
               }}
-              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-              onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.35)'}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-secondary)'}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M3 12h18M3 6h18M3 18h18" />
@@ -242,14 +246,14 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           <button
             onClick={() => setCollapsed(false)}
             style={{
-              margin: '12px auto', background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
-              color: 'rgba(255,255,255,0.4)', cursor: 'pointer',
+            margin: '12px auto', background: 'var(--input-bg)',
+            border: '1px solid var(--border-color)', borderRadius: 8,
+            color: 'var(--text-secondary)', cursor: 'pointer',
               width: 40, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'all 200ms',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+          onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'var(--bg-header)' }}
+          onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-secondary)'; e.currentTarget.style.background = 'var(--input-bg)' }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M9 18l6-6-6-6" />
@@ -283,7 +287,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
 
         {/* User area */}
         <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.06)',
+          borderTop: '1px solid var(--border-color)',
           padding: collapsed && !isMobile ? '12px 8px' : '12px 16px',
           flexShrink: 0,
           position: 'relative',
@@ -292,13 +296,13 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
             onClick={() => setUserMenuOpen(!userMenuOpen)}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
-              width: '100%', background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+              width: '100%', background: 'var(--input-bg)',
+              border: '1px solid var(--border-color)', borderRadius: 12,
               padding: collapsed && !isMobile ? '8px' : '8px 12px',
               cursor: 'pointer', transition: 'all 200ms', justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
             }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-header)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--input-bg)'}
           >
             {/* Avatar */}
             <div style={{
@@ -314,7 +318,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {user?.name || user?.email?.split('@')[0] || 'User'}
                 </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {user?.email || meta.label}
                 </div>
               </div>
@@ -327,11 +331,11 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
               position: 'absolute',
               bottom: 'calc(100% + 8px)',
               left: 8, right: 8,
-              background: '#16161E',
-              border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
               borderRadius: 14,
               overflow: 'hidden',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.15)',
               zIndex: 10,
             }}>
               {[
@@ -347,13 +351,13 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
                     fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 500,
                     transition: 'background 150ms',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-header)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}
                 >
                   <span>{icon}</span> {label}
                 </button>
               ))}
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />
+            <div style={{ height: 1, background: 'var(--border-color)', margin: '4px 0' }} />
               <button
                 onClick={handleLogout}
                 style={{
@@ -363,7 +367,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
                   fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 600,
                   transition: 'background 150ms',
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.08)'}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--active-bg)'}
                 onMouseLeave={e => e.currentTarget.style.background = 'none'}
               >
                 <span>🚪</span> Sign Out
@@ -381,8 +385,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         right: 0,
         height: 60,
         zIndex: 100,
-        background: 'rgba(8,8,10,0.85)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--topbar-bg)',
+        borderBottom: '1px solid var(--border-color)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         display: 'flex',
@@ -396,7 +400,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           <button
             onClick={() => setMobileOpen(true)}
             style={{
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+            background: 'var(--input-bg)', border: '1px solid var(--border-color)',
               borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer',
               width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
@@ -413,13 +417,13 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {/* Notification bell */}
           <button style={{
-            background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+            background: 'var(--input-bg)', border: '1px solid var(--border-color)',
             borderRadius: 10, color: 'var(--text-secondary)', cursor: 'pointer',
             width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
             position: 'relative', transition: 'all 200ms',
           }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-header)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'var(--input-bg)'}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
@@ -434,8 +438,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           {/* Role pill */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(255,255,255,0.05)',
-            border: '1px solid rgba(255,255,255,0.09)',
+            background: 'var(--input-bg)',
+            border: '1px solid var(--border-color)',
             borderRadius: 10, padding: '5px 12px',
           }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: meta.accent, boxShadow: `0 0 6px ${meta.accent}` }} />
