@@ -258,19 +258,18 @@ def claude_api_test(request):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        # Call Claude API
+
         response = claude_service.send_message(
             messages=[{"role": "user", "content": user_message}],
             model=model,
             max_tokens=max_tokens,
-            system=system_prompt
+            system=system_prompt,
         )
-        
+
         logger.info(f"Claude API test successful for user {request.user.username}")
-        
+
         return Response(response, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         logger.error(f"Error in Claude API test: {str(e)}")
         return Response(
@@ -280,6 +279,29 @@ def claude_api_test(request):
             },
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def llm_provider_status(request):
+    """Return configuration status for supported LLM providers."""
+    llm = LLMService()
+    providers = {
+        'ollama': bool(llm.is_ollama_available()),
+        'openrouter': bool(llm.openrouter_configured),
+        'gemini': bool(llm.openrouter_configured),
+        'gpt': bool(llm.openrouter_configured),
+        'groq': bool(llm.groq_configured),
+        'anthropic': bool(llm.anthropic_service.is_configured()),
+    }
+    return Response(
+        {
+            'success': True,
+            'providers': providers,
+            'default_provider': llm.default_provider,
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(['POST'])
@@ -429,6 +451,31 @@ def upload_course_rag_document(request):
         logger.exception('Error uploading course RAG document')
         return Response(
             {'success': False, 'error': f'Failed to upload course document: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def delete_course_rag_document(request, records_id):
+    """Delete a CourseFile and all its parent/child chunks (cascade)."""
+    if not _is_faculty_user(request):
+        return _forbidden_faculty_only_response()
+
+    course_file = CourseFile.objects.filter(records_id=records_id, uploader=request.user).first()
+    if not course_file:
+        return Response(
+            {'success': False, 'detail': 'Document not found or you do not have permission to delete it.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        course_file.delete()
+        return Response({'success': True}, status=status.HTTP_200_OK)
+    except Exception as exc:
+        logger.exception('Error deleting course RAG document')
+        return Response(
+            {'success': False, 'error': f'Failed to delete document: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

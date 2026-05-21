@@ -8,7 +8,7 @@ import { Navigate, useLocation } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
 import Box             from '@mui/material/Box'
 import { useAuth }     from '../store/authStore'
-import { ROUTES }      from '../config/routes'
+import { ROUTES }      from '../config/route'
 
 export default function ProtectedRoute({ children, role }) {
   const { isAuthenticated, isLoading, user } = useAuth()

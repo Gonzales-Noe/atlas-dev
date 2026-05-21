@@ -16,8 +16,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Third-party apps
-    'anymail',
+    # # Third-party apps
+    # 'anymail',
     'rest_framework',
     'corsheaders',
     'channels',
@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'apps.assessment.apps.AssessmentConfig',
     'apps.analytics.apps.AnalyticsConfig',
     'apps.integrations.apps.IntegrationsConfig',
+    'apps.grading.apps.GradingConfig',
 ]
 
 MIDDLEWARE = [
@@ -125,6 +126,21 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+
+# ── OMR Grading ─────────────────────────────────────────────────────────────
+# Command used to invoke OMRChecker.  Can be a string or list.
+# Examples:
+#   "omrchecker"                           – installed via pip
+#   ["python", "/opt/OMRChecker/main.py"]  – path to a repo checkout
+# Override via environment: OMR_CHECKER_CMD
+_omr_checker_cmd_raw = os.environ.get('OMR_CHECKER_CMD', 'omrchecker')
+OMR_CHECKER_CMD = (
+    _omr_checker_cmd_raw.split()
+    if isinstance(_omr_checker_cmd_raw, str)
+    else _omr_checker_cmd_raw
+)
+# Maximum seconds allowed for a single OMRChecker subprocess run.
+OMR_JOB_TIMEOUT_SECONDS = int(os.environ.get('OMR_JOB_TIMEOUT_SECONDS', '300'))
 
 CHANNEL_LAYERS = {
     'default': {

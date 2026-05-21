@@ -1,6 +1,7 @@
 import logging
 import hashlib
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 
@@ -58,10 +59,47 @@ class DocumentProcessor:
     """Service for processing and chunking documents."""
     
     # Constants
-    CHUNK_SIZE = 1000  # characters per chunk
-    CHUNK_OVERLAP = 200  # characters of overlap between chunks
+    CHUNK_SIZE = 1536  # characters per chunk (≈ 384 tokens, matching PEA pipeline)
+    CHUNK_OVERLAP = 256  # characters of overlap (≈ 64 tokens)
     MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
     SUPPORTED_TYPES = ['pdf', 'docx']
+
+    # Curriculum section keywords for section-aware extraction
+    _SECTION_KEYWORDS = frozenset({
+        'ilo', 'clo', 'outcome', 'objective', 'competenc',
+        'assessment', 'grading', 'evaluation', 'rubric',
+        'schedule', 'timetable', 'weekly', 'syllabus',
+        'rationale', 'description', 'prerequisite',
+        'reference', 'bibliography', 'resource',
+        'policy', 'policies', 'conduct', 'attendance',
+        'bloom', 'taxonomy', 'obe', 'teaching', 'learning',
+    })
+
+    @staticmethod
+    def preprocess_text(text: str) -> str:
+        """
+        Normalize raw extracted text before chunking.
+
+        Cleans whitespace, control characters, and purely decorative lines
+        while preserving all content words and academic terminology.
+        Does NOT remove stop words from stored text — stop-word filtering
+        is applied only at BM25 retrieval time (via _tokenize_for_bm25).
+        """
+        # Unify line endings
+        text = re.sub(r'\r\n|\r', '\n', text)
+        # Collapse 3+ blank lines to two (preserve paragraph breaks)
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        # Collapse in-line runs of spaces/tabs to one space
+        text = re.sub(r'[ \t]{2,}', ' ', text)
+        # Strip non-printable control characters (keep \n and \t)
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+        # Strip leading/trailing whitespace per line
+        lines = [line.strip() for line in text.split('\n')]
+        # Drop lines that are purely decorative: only digits, dashes, pipes, dots
+        lines = [ln for ln in lines if not re.fullmatch(r'[\s\d\.\-\–\—\|_=~*#]+', ln)]
+        # Drop standalone page number lines (e.g., "Page 5", "PAGE 12", "5")
+        lines = [ln for ln in lines if not re.fullmatch(r'\s*(page\s+\d+|\d+)\s*', ln, re.IGNORECASE)]
+        return '\n'.join(lines).strip()
     
     # Token encoder for Claude
     ENCODER = tiktoken.get_encoding("cl100k_base") if TIKTOKEN_AVAILABLE else None
@@ -388,6 +426,8 @@ class DocumentProcessor:
         segment_index = 0
         
         for page_text, page_num in pages:
+            # Preprocess text before chunking (normalize whitespace, strip garbage lines)
+            page_text = DocumentProcessor.preprocess_text(page_text)
             # Chunk the page, passing embedder so SemanticChunker can be used
             chunks = DocumentProcessor.chunk_text(page_text, embedder=embedder)
             
@@ -449,10 +489,10 @@ class DocumentProcessor:
                 }
         """
         # ── Character budgets (~4 chars / token for English prose) ─────────
-        PARENT_CHUNK_CHARS = 4_800   # ≈ 1 200 tokens
+        PARENT_CHUNK_CHARS = 4_800   # ≈ 1 200 tokens — full context for LLM
         PARENT_OVERLAP_CHARS = 400
-        CHILD_CHUNK_CHARS = 800      # ≈ 200 tokens
-        CHILD_OVERLAP_CHARS = 200
+        CHILD_CHUNK_CHARS = 1_536    # ≈ 384 tokens — matches PEA retrieval chunk size
+        CHILD_OVERLAP_CHARS = 256    # ≈ 64 tokens overlap
 
         if LANGCHAIN_SPLITTER_AVAILABLE:
             parent_splitter = RecursiveCharacterTextSplitter(
@@ -509,7 +549,8 @@ class DocumentProcessor:
 
         parents = []
         for section in raw_sections:
-            section_text = section.get("content", "")
+            # Preprocess text: normalize whitespace, strip decorative lines
+            section_text = DocumentProcessor.preprocess_text(section.get("content", ""))
             section_page = section.get("page_number")
             if not section_text.strip():
                 continue

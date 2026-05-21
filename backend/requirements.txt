@@ -16,6 +16,7 @@ django-redis==5.4.0             # Django Redis cache backend
 # ── LLM & AI ────────────────────────────────────────────────
 anthropic==0.30.0               # Anthropic Claude SDK
 openai>=1.0.0                   # OpenAI SDK (OpenAI/OpenRouter compatible)
+requests>=2.31.0                # HTTP client for Ollama/OpenRouter API calls
 groq>=0.9.0                     # Groq Python SDK
 # ── Document Processing ────────────────────────────────────
 python-docx==0.8.11             # DOCX file parsing
@@ -25,9 +26,11 @@ PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)
 
 # ── Text Processing & Embeddings ───────────────────────────
-tiktoken==0.8.0                 # Token counting for Anthropic
+tiktoken==0.8.0                # Token counting for LLM
+sentence-transformers>=2.2.0    # BGE embedding & reranker models
 langchain-text-splitters>=0.2.0 # Semantic-aware recursive chunking
 langchain-experimental>=0.0.60  # SemanticChunker for topic-boundary splitting
+rank-bm25>=0.2.2                # BM25Okapi for hybrid dense+keyword retrieval
 # ── Google APIs ─────────────────────────────────────────────
 google-api-python-client==2.140.0
 google-auth==2.35.0
@@ -36,6 +39,12 @@ google-auth-httplib2==0.2.0
 # ── Database ────────────────────────────────────────────────
 psycopg2-binary==2.9.10          # PostgreSQL adapter
 pgvector==0.3.2                 # pgvector Python client
+
+# ── Bubble Sheet Generation & Scanning ─────────────────────
+reportlab>=4.2.0                # PDF generation for bubble sheets
+qrcode[pil]>=7.4.2              # QR code generation (PIL backend)
+opencv-python-headless>=4.9.0   # Computer vision for bubble sheet scanning
+numpy>=1.26.0                   # Numerical ops for image processing
 
 # ── Utilities ───────────────────────────────────────────────
 python-decouple==3.8            # .env variable loading

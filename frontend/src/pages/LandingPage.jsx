@@ -93,7 +93,7 @@ const PLANS = [
       'Unlimited course creation',
       'OBE syllabus generator',
       'ILO-mapped assessments',
-      'Built-in gradebook',
+      'Assesment Generation',
       'Email support',
     ],
     cta: 'Get Started',
@@ -163,7 +163,7 @@ const FEATURES = [
   {
     icon: '📊',
     title: 'Performance Analytics',
-    desc: 'Use the built-in ATLAS gradebook. The system computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
+    desc: 'The system computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
     accent: 'rgba(160,10,10,0.3)',
   },
   {
@@ -225,10 +225,17 @@ export default function LandingPage() {
   useEffect(() => {
     const handleScroll = () => {
       setScrolled(window.scrollY > 40)
-      const sections = ['home', 'features', 'testimonials', 'team', 'pricing', 'contact']
-      for (const id of sections.reverse()) {
+
+      const scrollHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+      if (window.innerHeight + Math.round(window.scrollY) >= scrollHeight - 50) {
+        setActiveSection('contact')
+        return
+      }
+
+      const sections = ['home', 'pricing', 'contact']
+      for (const id of [...sections].reverse()) {
         const el = document.getElementById(id)
-        if (el && window.scrollY >= el.offsetTop - 120) {
+        if (el && el.getBoundingClientRect().top <= 300) {
           setActiveSection(id)
           break
         }
@@ -830,7 +837,7 @@ export default function LandingPage() {
               {[
                 { label: 'CHED OBE-Compliant', icon: '✓' },
                 { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
-                { label: 'Built-in Gradebook', icon: '✓' },
+                { label: 'Assessment Generation', icon: '✓' },
               ].map(({ label, icon }) => (
                 <div key={label} style={{
                   background: 'rgba(255,255,255,0.05)',

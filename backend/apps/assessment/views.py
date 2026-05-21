@@ -7,7 +7,7 @@ from rest_framework.response import Response
 
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
-from apps.integrations.rag_service import semantic_search
+from apps.integrations.rag_service import semantic_search, semantic_search_with_summary
 
 from .serializers import GenerateAssessmentSerializer
 
@@ -63,18 +63,21 @@ def generate_assessment(request):
     )
 
     try:
-        # Step 1 — Semantic search
-        chunks = semantic_search(search_query, top_k=top_k)
+        # Step 1 — Semantic search with progressive summary
+        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        chunks = rag_result["chunks"]
         logger.info(
-            "Assessment generation for %r (%s, %d items): retrieved %d RAG chunk(s), provider=%r",
+            "Assessment generation for %r (%s, %d items): retrieved %d RAG chunk(s) "
+            "(abstained=%s), provider=%r",
             course_name,
             assessment_type,
             num_items,
             len(chunks),
+            rag_result["abstained"],
             provider,
         )
 
-        # Step 2 — Build CoT prompt
+        # Step 2 — Build CoT prompt (token-efficient via progressive summary)
         system_prompt, user_prompt = CoTPromptBuilder.build_assessment_prompt(
             course_name=course_name,
             assessment_type=assessment_type,
@@ -82,6 +85,7 @@ def generate_assessment(request):
             clos=clos,
             context_chunks=chunks,
             extra_instructions=extra_instructions,
+            context_summary=rag_result["context_summary"],
         )
 
         # Step 3 — Call LLM
@@ -107,6 +111,17 @@ def generate_assessment(request):
             status=status.HTTP_200_OK,
         )
 
+    except ValueError as exc:
+        logger.warning(
+            "Provider configuration error generating %s for course %r: %s",
+            assessment_type,
+            course_name,
+            exc,
+        )
+        return Response(
+            {"success": False, "error": str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     except Exception as exc:
         logger.exception(
             "Error generating %s for course %r", assessment_type, course_name
