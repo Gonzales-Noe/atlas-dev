@@ -190,8 +190,8 @@ export function OutlineBtn({ children, onClick, disabled, small, style = {} }) {
       disabled={disabled}
       style={{
         background: 'transparent',
-        color: 'rgba(255,255,255,0.75)',
-        border: '1px solid rgba(255,255,255,0.18)',
+        color: 'var(--text-primary)',
+        border: '1px solid var(--border-color)',
         borderRadius: 10,
         padding: small ? '6px 13px' : '8px 17px',
         fontSize: small ? '0.8rem' : '0.88rem',
@@ -204,8 +204,8 @@ export function OutlineBtn({ children, onClick, disabled, small, style = {} }) {
         whiteSpace: 'nowrap',
         ...style,
       }}
-      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'rgba(255,255,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)' } }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)' }}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.background = 'var(--bg-header)'; e.currentTarget.style.borderColor = 'var(--active-color)' } }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border-color)' }}
     >
       {children}
     </button>
