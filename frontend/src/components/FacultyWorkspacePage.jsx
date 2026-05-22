@@ -721,6 +721,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     provider: 'gemini',
     source_exam_code: '',
     source_exam_label: '',
+    item_by_item: true,
+    target_item_number: 1,
+    related_item_number: '',
+    relation_instruction: '',
+    overwrite_item: true,
   })
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
@@ -772,6 +777,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
   const [assessmentCreating, setAssessmentCreating] = useState(false)
+  const [assessmentSessionId, setAssessmentSessionId] = useState(null)
+  const [assessmentToolsTab, setAssessmentToolsTab] = useState('builder')
+  const [manualAssessmentItem, setManualAssessmentItem] = useState({
+    question_text: '',
+    choices: ['', '', '', ''],
+    correct_answer: 'A',
+    answer_key: '',
+    points: '1',
+    bloom_level: 'Remember',
+    bloom_verb: '',
+  })
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [assessmentDetail, setAssessmentDetail] = useState(null)
   const [assessmentExporting, setAssessmentExporting] = useState(false)
@@ -1725,6 +1741,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return
     }
 
+    const targetItemNumber = Number(assessmentParams.target_item_number || 0)
+    if (!Number.isFinite(targetItemNumber) || targetItemNumber < 1) {
+      setActionError('Target item number must be at least 1.')
+      return
+    }
+    if (blueprint.totalItems > 0 && targetItemNumber > blueprint.totalItems) {
+      setActionError(`Target item number must be between 1 and ${blueprint.totalItems}.`)
+      return
+    }
+
+    const relatedItemNumber = Number(assessmentParams.related_item_number || 0)
+    if (relatedItemNumber && relatedItemNumber === targetItemNumber) {
+      setActionError('Related item number cannot be the same as target item number.')
+      return
+    }
+
     setActionError('')
     setActionLoading(true)
 
@@ -1740,9 +1772,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         source_exam_code: blueprint.examCode,
         source_exam_label: blueprint.assessmentName,
         faculty_topics: facultyTopics,
+        assessment_id: assessmentSessionId || undefined,
+        item_by_item: true,
+        target_item_number: targetItemNumber,
+        related_item_number: relatedItemNumber || undefined,
+        relation_instruction: assessmentParams.relation_instruction,
+        overwrite_item: Boolean(assessmentParams.overwrite_item),
       })
 
       if (data?.success) {
+        const newAssessmentId = data?.assessment?.assessment_id || assessmentSessionId
+        if (newAssessmentId) setAssessmentSessionId(newAssessmentId)
+        if (Number.isFinite(Number(data?.next_item_number)) && Number(data.next_item_number) > 0) {
+          const nextNum = Number(data.next_item_number)
+          setAssessmentParams(p => ({
+            ...p,
+            target_item_number: nextNum,
+            related_item_number: (Number(p.related_item_number || 0) >= nextNum) ? '' : p.related_item_number,
+          }))
+        }
         setAssessmentCreating(false)
         workspaceApi.execute()
         if (data?.assessment?.assessment_id) {
@@ -1763,6 +1811,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (data?.success && data?.assessment) {
         setSelectedAssessment(assessmentSummary)
         setAssessmentDetail(data.assessment)
+        setAssessmentSessionId(data.assessment.assessment_id || assessmentSummary.assessment_id)
+        setAssessmentToolsTab('builder')
         setEditingItemId(null)
         setEditingItemDraft(null)
       }
@@ -1847,6 +1897,338 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } finally {
       setItemSaving(false)
     }
+  }
+
+  function updateManualChoice(index, value) {
+    setManualAssessmentItem(prev => {
+      const nextChoices = [...(prev.choices || ['', '', '', ''])]
+      nextChoices[index] = value
+      return { ...prev, choices: nextChoices }
+    })
+  }
+
+  async function handleAddManualAssessmentItem() {
+    if (!course) return
+    const assessmentId = assessmentSessionId || assessmentDetail?.assessment_id
+    if (!assessmentId) {
+      setActionError('Open or create an assessment session first.')
+      return
+    }
+
+    const questionText = String(manualAssessmentItem.question_text || '').trim()
+    if (!questionText) {
+      setActionError('Manual item question cannot be empty.')
+      return
+    }
+
+    const choices = (manualAssessmentItem.choices || []).map(choice => String(choice || '').trim())
+    const hasAtLeastTwoChoices = choices.filter(Boolean).length >= 2
+    if (!hasAtLeastTwoChoices) {
+      setActionError('Provide at least two choices for the manual item.')
+      return
+    }
+
+    setActionLoading(true)
+    setActionError('')
+    try {
+      const targetItemNumber = Number(assessmentParams.target_item_number || 0)
+      const relatedItemNumber = Number(assessmentParams.related_item_number || 0)
+      const payload = {
+        course_id: course.course_id,
+        assessment_type: getAssessmentBlueprint().assessmentType,
+        provider: assessmentParams.provider,
+        extra_instructions: assessmentParams.extra_instructions,
+        selected_doc_ids: selectedDocIds.size > 0 ? [...selectedDocIds] : [],
+        source_exam_code: assessmentParams.source_exam_code || getAssessmentBlueprint().examCode,
+        source_exam_label: assessmentParams.source_exam_label || getAssessmentBlueprint().assessmentName,
+        assessment_id: assessmentId,
+        item_by_item: true,
+        target_item_number: targetItemNumber,
+        related_item_number: relatedItemNumber || undefined,
+        relation_instruction: assessmentParams.relation_instruction,
+        overwrite_item: Boolean(assessmentParams.overwrite_item),
+        manual_item: {
+          question_text: questionText,
+          choices,
+          correct_answer: String(manualAssessmentItem.correct_answer || 'A').trim().toUpperCase(),
+          answer_key: String(manualAssessmentItem.answer_key || '').trim(),
+          points: manualAssessmentItem.points,
+          bloom_level: manualAssessmentItem.bloom_level,
+          bloom_verb: manualAssessmentItem.bloom_verb,
+        },
+      }
+
+      const { data } = await api.post('/curriculum/generate-assessment/', payload)
+      if (data?.success) {
+        const newAssessmentId = data?.assessment?.assessment_id || assessmentId
+        if (newAssessmentId) setAssessmentSessionId(newAssessmentId)
+        if (Number.isFinite(Number(data?.next_item_number)) && Number(data.next_item_number) > 0) {
+          setAssessmentParams(p => ({
+            ...p,
+            target_item_number: Number(data.next_item_number),
+            related_item_number: '',
+          }))
+        }
+        setManualAssessmentItem(prev => ({
+          ...prev,
+          question_text: '',
+          choices: ['', '', '', ''],
+          correct_answer: 'A',
+          answer_key: '',
+          points: '1',
+          bloom_level: 'Remember',
+          bloom_verb: '',
+        }))
+        workspaceApi.execute()
+        if (data?.assessment?.assessment_id) {
+          await handleOpenAssessment(data.assessment)
+        }
+      }
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  function renderAssessmentToolsPanel() {
+    const blueprint = getAssessmentBlueprint()
+    const totalTarget = Number(assessmentDetail?.target_total_items || blueprint.totalItems || assessmentDetail?.total_items || 0)
+    const currentCount = Number(assessmentDetail?.total_items || 0)
+    const remainingCount = Math.max(0, totalTarget - currentCount)
+    const targetItemValue = Number(assessmentParams.target_item_number || currentCount + 1 || 1)
+    const relatedOptions = Array.from({ length: Math.max(0, targetItemValue - 1) }, (_, idx) => String(idx + 1))
+
+    if (!selectedAssessment || !assessmentDetail) {
+      return renderUploadPanel()
+    }
+
+    return (
+      <Stack spacing={1.5}>
+        <Tabs
+          value={assessmentToolsTab}
+          onChange={(_, value) => setAssessmentToolsTab(value)}
+          variant="fullWidth"
+          sx={{ minHeight: 34, mb: 0.5, '& .MuiTab-root': { minHeight: 34, textTransform: 'none', fontSize: '0.74rem', fontWeight: 700 } }}
+        >
+          <Tab value="builder" label="Builder" />
+          <Tab value="manual" label="Manual" />
+          <Tab value="sources" label="Sources" />
+        </Tabs>
+
+        {assessmentToolsTab === 'builder' && (
+          <Stack spacing={1.15}>
+            <Box sx={{ p: 1.1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+              <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.68rem' }}>
+                Progress
+              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: MAROON, lineHeight: 1.25 }}>
+                {currentCount}/{totalTarget || currentCount || 0}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.25, fontSize: '0.68rem' }}>
+                {remainingCount} item{remainingCount === 1 ? '' : 's'} left
+              </Typography>
+            </Box>
+
+            <LField
+              select
+              label="Major Examination"
+              value={assessmentParams.source_exam_code || assessmentParams.source_exam_label || blueprint.examCode || blueprint.assessmentName || ''}
+              onChange={e => {
+                const selected = getMajorTosExams().find(exam => (exam.examCode || exam.examLabel) === e.target.value)
+                setAssessmentParams(p => ({
+                  ...p,
+                  source_exam_code: selected?.examCode || '',
+                  source_exam_label: selected?.examLabel || '',
+                }))
+              }}
+            >
+              {getMajorTosExams().length === 0 ? (
+                <MenuItem value="" disabled>
+                  No major examinations found in TOS
+                </MenuItem>
+              ) : getMajorTosExams().map(exam => (
+                <MenuItem key={`${exam.examCode || exam.examLabel}`} value={exam.examCode || exam.examLabel}>
+                  {exam.examLabel} ({exam.totalItems || 0} items)
+                </MenuItem>
+              ))}
+            </LField>
+
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
+              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Target Item</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{targetItemValue}</Typography>
+              </Box>
+              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Current</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{currentCount}</Typography>
+              </Box>
+              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Remaining</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{remainingCount}</Typography>
+              </Box>
+            </Box>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <LField
+                type="number"
+                label="Target Item Number"
+                value={assessmentParams.target_item_number}
+                onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
+                inputProps={{ min: 1, max: totalTarget || undefined }}
+              />
+              <LField
+                select
+                label="Related to Item (optional)"
+                value={assessmentParams.related_item_number}
+                onChange={e => setAssessmentParams(p => ({ ...p, related_item_number: e.target.value }))}
+              >
+                <MenuItem value="">None</MenuItem>
+                {relatedOptions.map(n => (
+                  <MenuItem key={`right-related-${n}`} value={String(n)}>
+                    Item {n}
+                  </MenuItem>
+                ))}
+              </LField>
+            </Stack>
+
+            <LField
+              label="Relation Instruction"
+              multiline
+              minRows={2}
+              value={assessmentParams.relation_instruction}
+              onChange={e => setAssessmentParams(p => ({ ...p, relation_instruction: e.target.value }))}
+              placeholder="How should this item relate to the selected item?"
+            />
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Checkbox
+                size="small"
+                checked={Boolean(assessmentParams.overwrite_item)}
+                onChange={e => setAssessmentParams(p => ({ ...p, overwrite_item: e.target.checked }))}
+                sx={{ color: MAROON, '&.Mui-checked': { color: MAROON }, p: 0.2 }}
+              />
+              <Typography variant="caption" sx={{ color: '#666' }}>Overwrite existing item</Typography>
+            </Box>
+
+            <LField
+              label="Extra Instructions"
+              multiline
+              minRows={2}
+              value={assessmentParams.extra_instructions}
+              onChange={e => setAssessmentParams(p => ({ ...p, extra_instructions: e.target.value }))}
+            />
+
+            <LField
+              select
+              label="Model Provider"
+              value={assessmentParams.provider}
+              onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}
+            >
+              {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+            </LField>
+
+            <GenButton
+              onClick={handleGenerateAssessment}
+              disabled={actionLoading || remainingCount <= 0}
+            >
+              {actionLoading ? 'Generating…' : remainingCount > 0 ? 'Generate Item' : 'Assessment Complete'}
+            </GenButton>
+          </Stack>
+        )}
+
+        {assessmentToolsTab === 'manual' && (
+          <Stack spacing={1.1}>
+            <Box sx={{ p: 1.1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+              <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.68rem' }}>
+                Manual Item Entry
+              </Typography>
+              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: MAROON, lineHeight: 1.25 }}>
+                {currentCount}/{totalTarget || currentCount || 0}
+              </Typography>
+            </Box>
+
+            <LField
+              type="number"
+              label="Target Item Number"
+              value={assessmentParams.target_item_number}
+              onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
+              inputProps={{ min: 1, max: totalTarget || undefined }}
+            />
+
+            <LField
+              label="Question"
+              multiline
+              minRows={3}
+              value={manualAssessmentItem.question_text}
+              onChange={e => setManualAssessmentItem(p => ({ ...p, question_text: e.target.value }))}
+            />
+
+            {manualAssessmentItem.choices.map((choice, index) => (
+              <LField
+                key={`manual-choice-${index}`}
+                label={`Choice ${String.fromCharCode(65 + index)}`}
+                value={choice}
+                onChange={e => updateManualChoice(index, e.target.value)}
+              />
+            ))}
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <LField
+                select
+                label="Correct Answer"
+                value={manualAssessmentItem.correct_answer}
+                onChange={e => setManualAssessmentItem(p => ({ ...p, correct_answer: e.target.value }))}
+              >
+                <MenuItem value="A">A</MenuItem>
+                <MenuItem value="B">B</MenuItem>
+                <MenuItem value="C">C</MenuItem>
+                <MenuItem value="D">D</MenuItem>
+                <MenuItem value="E">E</MenuItem>
+              </LField>
+              <LField
+                type="number"
+                label="Points"
+                value={manualAssessmentItem.points}
+                onChange={e => setManualAssessmentItem(p => ({ ...p, points: e.target.value }))}
+              />
+            </Stack>
+
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <LField
+                select
+                label="Bloom Level"
+                value={manualAssessmentItem.bloom_level}
+                onChange={e => setManualAssessmentItem(p => ({ ...p, bloom_level: e.target.value }))}
+              >
+                {['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'].map(level => (
+                  <MenuItem key={level} value={level}>{level}</MenuItem>
+                ))}
+              </LField>
+              <LField
+                label="Bloom Verb"
+                value={manualAssessmentItem.bloom_verb}
+                onChange={e => setManualAssessmentItem(p => ({ ...p, bloom_verb: e.target.value }))}
+              />
+            </Stack>
+
+            <LField
+              label="Explanation / Answer Key"
+              multiline
+              minRows={3}
+              value={manualAssessmentItem.answer_key}
+              onChange={e => setManualAssessmentItem(p => ({ ...p, answer_key: e.target.value }))}
+            />
+
+            <GenButton onClick={handleAddManualAssessmentItem} disabled={actionLoading || remainingCount <= 0}>
+              {actionLoading ? 'Saving…' : remainingCount > 0 ? 'Add Manual Item' : 'Assessment Complete'}
+            </GenButton>
+          </Stack>
+        )}
+
+        {assessmentToolsTab === 'sources' && renderUploadPanel()}
+      </Stack>
+    )
   }
 
   async function handleExportAssessmentDocx() {
@@ -3787,6 +4169,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   onClick={() => {
                     setSelectedAssessment(null)
                     setAssessmentDetail(null)
+                    setAssessmentSessionId(null)
+                    setAssessmentToolsTab('builder')
                     setEditingItemId(null)
                     setEditingItemDraft(null)
                   }}
@@ -3801,6 +4185,37 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.9rem' }}>
                   {assessmentDetail.title || 'Assessment'}
                 </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                <Chip
+                  size="small"
+                  label={`${assessmentDetail.total_items || 0}/${assessmentDetail.target_total_items || assessmentDetail.total_items || 0}`}
+                  sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
+                />
+                <Chip
+                  size="small"
+                  label={`${Math.max(0, (assessmentDetail.target_total_items || assessmentDetail.total_items || 0) - (assessmentDetail.total_items || 0))} left`}
+                  sx={{ bgcolor: '#f3f5f8', color: '#555', fontWeight: 600, height: 22, fontSize: '0.68rem' }}
+                />
+                <Button
+                  size="small"
+                  startIcon={<AddIcon sx={{ fontSize: '0.8rem !important' }} />}
+                  onClick={() => setAssessmentToolsTab('builder')}
+                  disabled={(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) <= (assessmentDetail.total_items || 0)}
+                  sx={{
+                    borderColor: MAROON,
+                    color: MAROON,
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontSize: '0.75rem',
+                    px: 1.2,
+                    py: 0.35,
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                    '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                  }}>
+                  {(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) > (assessmentDetail.total_items || 0) ? 'Add Item' : 'Complete'}
+                </Button>
               </Box>
               <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
                 disabled={assessmentExporting}
@@ -3920,18 +4335,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   </Stack>
                                 )}
                                 {(item.correct_answer || item.answer_key) && (
-                                  <Box sx={{ mt: 0.8 }}>
+                                  <Stack spacing={0.2} sx={{ mt: 0.8 }}>
                                     {!!item.correct_answer && (
-                                      <Typography variant="caption" display="block" sx={{ color: '#2e7d32', fontWeight: 700 }}>
+                                      <Typography variant="caption" sx={{ color: '#2e7d32', fontWeight: 700 }}>
                                         Correct Answer: {item.correct_answer}
                                       </Typography>
                                     )}
                                     {!!item.answer_key && (
-                                      <Typography variant="caption" display="block" sx={{ color: '#666', mt: 0.2 }}>
+                                      <Typography variant="caption" sx={{ color: '#666' }}>
                                         Explanation: {item.answer_key}
                                       </Typography>
                                     )}
-                                  </Box>
+                                  </Stack>
                                 )}
                               </>
                             ) : (
@@ -4010,6 +4425,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
                 onClick={() => {
                   setAssessmentCreating(true)
+                  setAssessmentSessionId(null)
                   setSelectedAssessment(null)
                   setAssessmentDetail(null)
                   if (majorExams.length > 0) {
@@ -4017,6 +4433,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       ...p,
                       source_exam_code: p.source_exam_code || majorExams[0].examCode || '',
                       source_exam_label: p.source_exam_label || majorExams[0].examLabel || '',
+                      item_by_item: true,
+                      target_item_number: 1,
+                      related_item_number: '',
+                      relation_instruction: '',
+                      overwrite_item: true,
                     }))
                   }
                 }}
@@ -4079,6 +4500,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Tooltip title="Back to assessments list">
               <IconButton size="small"
                 onClick={() => { setAssessmentCreating(false) }}
+                
                 sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
                 <ArrowBackIcon fontSize="small" />
               </IconButton>
@@ -4138,6 +4560,62 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   Topics are taken from the selected TOS exam. If no TOS topics are available, faculty topic input below is used.
                 </Typography>
               </Box>
+              <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.5 }}>
+                  Generation Mode
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#222', mb: 0.75 }}>
+                  One item at a time (token-managed)
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.1}>
+                  <LField
+                    type="number"
+                    label="Target Item Number"
+                    value={assessmentParams.target_item_number}
+                    onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
+                    inputProps={{ min: 1, max: blueprint.totalItems || undefined }}
+                  />
+                  <LField
+                    select
+                    label="Related to Item (optional)"
+                    value={assessmentParams.related_item_number}
+                    onChange={e => setAssessmentParams(p => ({ ...p, related_item_number: e.target.value }))}
+                  >
+                    <MenuItem value="">None</MenuItem>
+                    {Array.from({ length: Math.max(0, Number(assessmentParams.target_item_number || 0) - 1) }, (_, idx) => idx + 1).map(n => (
+                      <MenuItem key={`related-item-${n}`} value={String(n)}>
+                        Item {n}
+                      </MenuItem>
+                    ))}
+                  </LField>
+                </Stack>
+                <Box sx={{ mt: 1 }}>
+                  <LField
+                    label="Relation Instruction (optional)"
+                    multiline
+                    minRows={2}
+                    value={assessmentParams.relation_instruction}
+                    onChange={e => setAssessmentParams(p => ({ ...p, relation_instruction: e.target.value }))}
+                    placeholder="Example: Make this item an application follow-up of the related item."
+                  />
+                </Box>
+                <Box sx={{ mt: 0.9, display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                  <Checkbox
+                    size="small"
+                    checked={Boolean(assessmentParams.overwrite_item)}
+                    onChange={e => setAssessmentParams(p => ({ ...p, overwrite_item: e.target.checked }))}
+                    sx={{ color: MAROON, '&.Mui-checked': { color: MAROON }, p: 0.2 }}
+                  />
+                  <Typography variant="caption" sx={{ color: '#666' }}>
+                    Overwrite item if it already exists
+                  </Typography>
+                </Box>
+                {!!assessmentSessionId && (
+                  <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.6 }}>
+                    Continuing draft assessment session.
+                  </Typography>
+                )}
+              </Box>
               <LField
                 label="Faculty topics override (optional)"
                 multiline
@@ -4153,10 +4631,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
               </LField>
               <GenButton onClick={handleGenerateAssessment} disabled={actionLoading}>
-                {actionLoading ? 'Generating...' : 'Generate Assessment from Syllabus'}
+                {actionLoading ? 'Generating...' : 'Generate Selected Item'}
               </GenButton>
               <Typography variant="caption" sx={{ color: '#888' }}>
-                Generation uses the syllabus assessment distribution for the exam name and item count, then fills topics from TOS or faculty input. For strict MCQ JSON, Gemini or GPT are usually more reliable than Groq.
+                This mode generates one item per request, keeps numbering from 1 to N, and supports optional item-to-item relationship prompts.
               </Typography>
             </Stack>
           </SectionCard>
@@ -4434,7 +4912,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {/* Mobile upload Drawer */}
       <Drawer anchor="right" open={isMobile && mobileUploadOpen} onClose={() => setMobileUploadOpen(false)}
         PaperProps={{ sx: { width: 300 } }}>
-        <Box sx={{ p: 2 }}>{renderUploadPanel()}</Box>
+        <Box sx={{ p: 2 }}>
+          {activeTab === 'assessment' && selectedAssessment && assessmentDetail
+            ? renderAssessmentToolsPanel()
+            : renderUploadPanel()}
+        </Box>
       </Drawer>
 
       {/* Three-panel area */}
@@ -4533,14 +5015,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {!isMobile && !rightCollapsed && (
           <Box sx={{ width: rightWidth, flexShrink: 0, bgcolor: '#fff', borderLeft: '1px solid rgba(0,0,0,0.08)', overflow: 'auto', p: 0 }}>
             <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1f1f1f' }}>Sources</Typography>
+              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1f1f1f' }}>
+                {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : 'Sources'}
+              </Typography>
               <Tooltip title="Collapse panel">
                 <IconButton size="small" onClick={toggleRightPanel} sx={{ color: '#666' }}>
                   <PanelRightIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
             </Box>
-            <Box sx={{ p: 2 }}>{renderUploadPanel()}</Box>
+            <Box sx={{ p: 2 }}>
+              {activeTab === 'assessment' && selectedAssessment && assessmentDetail
+                ? renderAssessmentToolsPanel()
+                : renderUploadPanel()}
+            </Box>
           </Box>
         )}
 
