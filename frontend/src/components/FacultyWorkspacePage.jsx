@@ -712,7 +712,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
 
   const { mode, toggleColorMode } = useContext(ThemeContext)
-  const isDarkMode = mode === 'dark'
 
   function toggleLeftPanel() {
     setLeftCollapsed(v => !v)
@@ -3241,8 +3240,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             }}>
               {saveError
                 ? <>
-                    <Typography variant="caption" sx={{ color: isDarkMode ? '#ff453a' : '#c62828', flex: 1 }}>{saveError}</Typography>
-                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: isDarkMode ? '#ff453a' : '#c62828', p: 0.25 }}>
+                    <Typography variant="caption" sx={{ color: '#c62828', flex: 1 }}>{saveError}</Typography>
+                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#c62828', p: 0.25 }}>
                       <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
                     </IconButton>
                   </>
@@ -3266,9 +3265,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {showAiFooter && (
             <Box sx={{
               position: 'sticky', bottom: 0,
-              bgcolor: isDarkMode ? 'rgba(30, 30, 35, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              bgcolor: 'rgba(255, 255, 255, 0.95)',
               borderTop: `2px solid ${activeColor}`,
-              boxShadow: isDarkMode ? '0 -4px 20px rgba(0,0,0,0.3)' : '0 -4px 12px rgba(0,0,0,0.08)',
+              boxShadow: '0 -4px 12px rgba(0,0,0,0.08)',
               px: 2, py: 1,
               display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
               zIndex: 20,
@@ -3283,7 +3282,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Typography>
               </Box>
               {aiError && (
-                <Typography variant="caption" sx={{ color: isDarkMode ? '#ef9a9a' : '#d32f2f', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aiError}</Typography>
+                <Typography variant="caption" sx={{ color: '#d32f2f', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aiError}</Typography>
               )}
               {/* ILO Bloom Verb assistant — visible only when an ILO field is active */}
               {aiField?.arrField === 'ilos' && (
@@ -3292,8 +3291,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     value={iloBloomVerb}
                     onChange={e => setIloBloomVerb(e.target.value)}
                     style={{
-                      background: '#2a2a2a', color: '#fff',
-                      border: '1px solid #555', borderRadius: 4,
+                      background: 'var(--input-bg)',
+                      color: 'var(--text-primary)',
+                      border: '1px solid var(--input-border)',
+                      borderRadius: 4,
                       fontSize: '0.75rem', padding: '4px 8px', height: 30,
                       minWidth: 150, flexShrink: 0, cursor: 'pointer',
                     }}
@@ -3315,9 +3316,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     sx={{
                       flex: '1 1 180px', minWidth: 160, maxWidth: 320,
                       '& .MuiOutlinedInput-root': {
-                        color: '#fff', fontSize: '0.75rem', background: '#2a2a2a',
-                        '& fieldset': { borderColor: '#555' },
-                        '&:hover fieldset': { borderColor: '#888' },
+                        color: 'var(--text-primary)',
+                        fontSize: '0.75rem',
+                        background: 'var(--input-bg)',
+                        '& fieldset': { borderColor: 'var(--input-border)' },
+                        '&:hover fieldset': { borderColor: 'var(--border-color)' },
                         '&.Mui-focused fieldset': { borderColor: MAROON },
                       },
                       '& .MuiInputBase-input': { py: 0.5, px: 1 },
@@ -3331,17 +3334,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 value={aiProvider}
                 onChange={e => setAiProvider(e.target.value)}
                 sx={{
-                  bgcolor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', color: 'var(--text-primary)', fontSize: '0.75rem', height: 30,
+                  bgcolor: 'rgba(0,0,0,0.05)', color: 'var(--text-primary)', fontSize: '0.75rem', height: 30,
                   minWidth: 110, flexShrink: 0,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.1)' },
                   '& .MuiSvgIcon-root': { color: 'var(--text-secondary)' },
                   '& .MuiSelect-select': { py: 0.5 },
                 }}
                 MenuProps={{ PaperProps: { sx: { bgcolor: 'var(--bg-card)', color: 'var(--text-primary)' } } }}
               >
                 {AI_PROVIDERS.map(p => (
-                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: '#444' } }}>
+                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: 'var(--bg-card-hover)' } }}>
                     {cap(p)}
                   </MenuItem>
                 ))}
@@ -3352,7 +3355,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   variant="outlined"
                   disabled={aiGenerating}
                   onClick={() => handleAiGenerate('continue')}
-                sx={{ textTransform: 'none', color: 'var(--text-primary)', borderColor: 'var(--border-color)', fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.3)', bgcolor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' } }}
+                sx={{ textTransform: 'none', color: 'var(--text-primary)', borderColor: 'var(--border-color)', fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: 'rgba(0,0,0,0.3)', bgcolor: 'rgba(0,0,0,0.05)' } }}
                 >
                   Continue
                 </Button>
@@ -3587,7 +3590,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                   {chatField && (
                     <Chip label={chatField.startsWith('subtopic:') ? 'Subtopic' : chatField}
-                      size="small" sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', fontSize: '0.65rem', height: 18 }} />
+                      size="small" sx={{ bgcolor: 'var(--bg-card-hover)', color: 'var(--text-primary)', fontSize: '0.65rem', height: 18 }} />
                   )}
                   <IconButton size="small" onClick={() => setChatOpen(false)} sx={{ color: '#fff', p: 0.25 }}>
                     <CloseIcon sx={{ fontSize: '1rem' }} />
@@ -4404,9 +4407,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             size="small"
             sx={{
               mt: 1.2,
-              background: isDarkMode ? 'rgba(255, 45, 85, 0.15)' : '#FFF5F5',
-              color: isDarkMode ? '#ff2d55' : '#8B0000',
-              border: isDarkMode ? '1px solid rgba(255, 45, 85, 0.3)' : '1px solid transparent',
+              background: '#FFF5F5',
+              color: '#8B0000',
+              border: '1px solid transparent',
               fontWeight: 700,
               fontSize: '0.68rem',
               letterSpacing: '0.06em',
@@ -4464,7 +4467,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     style={{
                       position: 'absolute', left: 0, width: 3, height: 20,
                       background: 'var(--active-color)',
-                      boxShadow: isDarkMode ? '0 0 8px var(--active-color)' : 'none',
+                      boxShadow: 'none',
                       borderRadius: '0 2px 2px 0',
                     }}
                   />
@@ -4509,12 +4512,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Root ──────────────────────────────────────────────────────────────────
   return (
     <Box ref={containerRef}
-      sx={{ height: '100vh', display: 'flex', overflow: 'hidden', background: isDarkMode ? '#0a0a0f' : '#F7F9FC', backgroundImage: isDarkMode ? 'radial-gradient(circle at 15% 50%, rgba(255, 45, 85, 0.12), transparent 30%), radial-gradient(circle at 85% 30%, rgba(10, 132, 255, 0.08), transparent 30%)' : 'none' }}>
+      sx={{ height: '100vh', display: 'flex', overflow: 'hidden', background: 'var(--bg-page)', backgroundImage: 'none' }}>
       <style>{`
         /* ── Scrollbars ─────────────────────────────── */
-        * { scrollbar-width: thin; scrollbar-color: ${isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'} transparent; }
+        * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
         *::-webkit-scrollbar { width: 5px; height: 5px; }
-        *::-webkit-scrollbar-thumb { background: ${isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)'}; border-radius: 3px; }
+        *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
 
         /* ── Typography: scope to MUI only, no bare span/h overrides ── */
         .MuiTypography-root { color: var(--text-primary) !important; }
@@ -4551,7 +4554,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           opacity: 0.6;
         }
         .MuiOutlinedInput-notchedOutline { border-color: var(--input-border) !important; }
-        .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: ${isDarkMode ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.45)'} !important; }
+        .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: rgba(0,0,0,0.45) !important; }
         .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--active-color) !important; border-width: 2px !important; }
         .MuiInputLabel-root { color: var(--text-secondary) !important; }
         .MuiInputLabel-root.Mui-focused { color: var(--active-color) !important; }
@@ -4566,7 +4569,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         /* ── Chips ──────────────────────────────────── */
         .MuiChip-root {
-          background-color: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'} !important;
+          background-color: rgba(0,0,0,0.06) !important;
           color: var(--text-primary) !important;
           border-color: var(--border-color) !important;
         }
@@ -4591,10 +4594,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         .MuiAlert-root { color: var(--text-primary) !important; }
 
         /* ── LinearProgress ─────────────────────────── */
-        .MuiLinearProgress-root { background-color: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'} !important; }
+        .MuiLinearProgress-root { background-color: rgba(0,0,0,0.08) !important; }
 
         /* ── Tooltip ────────────────────────────────── */
-        .MuiTooltip-tooltip { background-color: ${isDarkMode ? '#333' : '#111'} !important; }
+        .MuiTooltip-tooltip { background-color: #111 !important; }
 
         /* ── Recharts ───────────────────────────────── */
         .recharts-text tspan { fill: var(--text-secondary) !important; }
@@ -4604,7 +4607,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       
       {/* LEFT — nav (hidden on mobile, accessible via Drawer) */}
       <Box sx={{ width: isMobile ? 0 : actualLeftWidth, transition: 'width 0.2s', overflowX: 'hidden', flexShrink: 0, display: isMobile ? 'none' : 'block',
-                 bgcolor: isDarkMode ? '#111118' : '#ffffff', borderRight: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`, position: 'relative' }}>
+                 bgcolor: '#ffffff', borderRight: '1px solid rgba(0,0,0,0.08)', position: 'relative' }}>
         {sidebarContent}
       </Box>
 
@@ -4612,8 +4615,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {!isMobile && !isCollapsed && (
           <Box onMouseDown={() => setDragging('left')}
             sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
-                  bgcolor: dragging === 'left' ? (isDarkMode ? 'rgba(255, 45, 85, 0.3)' : 'rgba(139,0,0,0.2)') : 'transparent',
-                  '&:hover': { bgcolor: isDarkMode ? 'rgba(255, 45, 85, 0.2)' : 'rgba(139,0,0,0.1)' }, transition: 'background-color 0.15s' }} />
+                  bgcolor: dragging === 'left' ? 'rgba(139,0,0,0.2)' : 'transparent',
+                  '&:hover': { bgcolor: 'rgba(139,0,0,0.1)' }, transition: 'background-color 0.15s' }} />
         )}
 
       {/* Main content area */}
@@ -4623,11 +4626,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           position="sticky"
           elevation={0}
           sx={{
-            background: isDarkMode ? 'rgba(17,17,24,0.9)' : 'rgba(255,255,255,0.95)',
+            background: 'rgba(255,255,255,0.95)',
             backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
-            borderBottom: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+            borderBottom: '1px solid rgba(0,0,0,0.08)',
             zIndex: (theme) => theme.zIndex.drawer - 1,
-            color: isDarkMode ? '#ffffff' : '#111827',
+            color: '#111827',
           }}
         >
           <Toolbar sx={{ gap: 2, minHeight: '56px !important' }}>
@@ -4700,7 +4703,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               transformOrigin={{ horizontal: 'right', vertical: 'top' }}
               anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
               PaperProps={{
-                sx: { mt: 1, borderRadius: 4, minWidth: 180, background: 'var(--bg-card)', backdropFilter: 'blur(24px)', border: '1px solid var(--border-color)', boxShadow: isDarkMode ? '0 8px 32px rgba(0,0,0,0.4)' : '0 4px 6px -1px rgb(0 0 0 / 0.1)', color: 'var(--text-primary)' },
+                sx: { mt: 1, borderRadius: 4, minWidth: 180, background: 'var(--bg-card)', backdropFilter: 'blur(24px)', border: '1px solid var(--border-color)', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', color: 'var(--text-primary)' },
               }}
             >
               <MenuItem disabled sx={{ opacity: 1, pb: 0 }}>
@@ -4739,12 +4742,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {!isMobile && (
             <Box onMouseDown={() => setDragging('right')}
               sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
-                    bgcolor: dragging === 'right' ? (isDarkMode ? 'rgba(255, 45, 85, 0.3)' : 'rgba(139,0,0,0.2)') : 'transparent',
+                    bgcolor: dragging === 'right' ? 'rgba(139,0,0,0.2)' : 'transparent',
                     '&:hover': { bgcolor: 'rgba(139,0,0,0.1)' }, transition: 'background-color 0.15s' }} />
           )}
 
           {/* RIGHT */}
-          <Box sx={{ width: isMobile ? 0 : rightWidth, display: isMobile ? 'none' : 'block', flexShrink: 0, background: isDarkMode ? 'rgba(20, 20, 25, 0.65)' : 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+          <Box sx={{ width: isMobile ? 0 : rightWidth, display: isMobile ? 'none' : 'block', flexShrink: 0, background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
                      borderLeft: '1px solid var(--border-color)', overflow: 'auto', p: isMobile ? 0 : 2 }}>
             {renderUploadPanel()}
           </Box>

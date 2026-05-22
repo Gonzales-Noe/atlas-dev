@@ -66,6 +66,50 @@
   --font-mono: 'DM Mono', 'Fira Code', monospace;
 }
 
+/* ── Faculty-only (light) theme overrides ───────────────────────────────────── */
+.faculty-theme {
+  /* Background layers (light) */
+  --bg-base:       #F7F9FC;
+  --bg-surface:    #FFFFFF;
+  --bg-card:       #FFFFFF;
+  --bg-card-hover: rgba(0, 0, 0, 0.03);
+  --bg-elevated:   rgba(0, 0, 0, 0.02);
+
+  /* Borders (light) */
+  --border-color:  rgba(0, 0, 0, 0.08);
+  --border-active: rgba(139, 0, 0, 0.35);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+
+  /* Text (dark on light bg) */
+  --text-primary:   #111827;
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-tertiary:  rgba(0, 0, 0, 0.4);
+
+  /* Inputs */
+  --input-bg:       #ffffff;
+  --input-border:   rgba(0, 0, 0, 0.08);
+
+  /* Light component tokens */
+  --c-card:         #ffffff;
+  --c-panel:        #F7F9FC;
+  --c-border:       rgba(0, 0, 0, 0.09);
+  --c-border2:      rgba(0, 0, 0, 0.15);
+  --c-text:         #333333;
+  --c-muted:        #888888;
+  --c-muted2:       #666666;
+  --c-accent:       #8B0000;
+  --c-accent-br:    rgba(139,0,0,0.3);
+
+  /* Layout */
+  --sidebar-bg:     #FFFFFF;
+  --topbar-bg:      rgba(255,255,255,0.95);
+  --bg-page:        #F7F9FC;
+
+  /* Active */
+  --active-color:      #8B0000;
+  --active-color-hover:#6B0000;
+  --active-bg:         rgba(139,0,0,0.06);
+}
 /* ── Reset & Base ───────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 

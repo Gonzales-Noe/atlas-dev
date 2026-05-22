@@ -137,7 +137,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
   const sidebarW = collapsed ? 64 : 240
 
   return (
-    <div style={{
+    <div className={role === 'faculty' ? 'faculty-theme' : undefined} style={{
       display: 'flex',
       minHeight: '100vh',
       background: 'var(--bg-page)',

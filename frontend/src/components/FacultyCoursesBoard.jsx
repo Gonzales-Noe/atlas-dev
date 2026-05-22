@@ -93,8 +93,8 @@ export default function FacultyCoursesBoard() {
           display: 'flex', alignItems: 'center',
           px: { xs: 2, md: 4 }, py: 1.25,
           bgcolor: '#fff',
-          borderBottom: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+          borderBottom: '1px solid rgb(255, 255, 255)',
+          boxShadow: '0 1px 4px rgb(255, 255, 255)',
           position: 'sticky', top: 0, zIndex: 10,
         }}
       >
@@ -170,7 +170,7 @@ export default function FacultyCoursesBoard() {
             >
               <CardActionArea sx={{ height: '100%' }}>
                 <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
-                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <AddIcon sx={{ fontSize: 28, color: '#8B0000' }} />
                   </Box>
                   <Typography variant="body2" sx={{ fontWeight: 700, color: '#8B0000', mt: 0.5 }}>
@@ -191,7 +191,7 @@ export default function FacultyCoursesBoard() {
                     bgcolor: '#fff', borderRadius: 3,
                     border: '1px solid rgba(0,0,0,0.08)',
                     transition: 'transform 0.15s, box-shadow 0.15s',
-                    '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' },
+                    '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgb(0, 0, 0)' },
                   }}
                 >
                   <CardActionArea
@@ -208,7 +208,7 @@ export default function FacultyCoursesBoard() {
                       <Typography variant="body1" sx={{ fontWeight: 700, color: '#1A1A1A', lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
                         {course.course_title}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#888' }}>
+                      <Typography variant="caption" sx={{ color: '#000000' }}>
                         {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
                       </Typography>
                     </CardContent>
@@ -219,9 +219,9 @@ export default function FacultyCoursesBoard() {
 
             {courses.length === 0 && (
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
-                <SchoolIcon sx={{ fontSize: 72, color: '#ddd', mb: 2 }} />
-                <Typography variant="body1" sx={{ color: '#999' }}>No assigned courses yet.</Typography>
-                <Typography variant="body2" sx={{ color: '#bbb', mt: 0.5 }}>Click "Create new course" to add your first course.</Typography>
+                <SchoolIcon sx={{ fontSize: 72, color: '#000000', mb: 2 }} />
+                <Typography variant="body1" sx={{ color: '#000000' }}>No assigned courses yet.</Typography>
+                <Typography variant="body2" sx={{ color: '#000000', mt: 0.5 }}>Click "Create new course" to add your first course.</Typography>
               </Box>
             )}
           </Box>

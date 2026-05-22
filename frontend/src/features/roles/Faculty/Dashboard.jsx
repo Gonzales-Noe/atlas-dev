@@ -85,7 +85,7 @@ export default function FacultyDashboard() {
           <div style={{ display: 'grid', gap: 16, gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
 
             {/* Add new course card */}
-            <div
+              <div
               onClick={openDialog}
               style={{
                 background: 'transparent',
@@ -95,11 +95,11 @@ export default function FacultyDashboard() {
                 alignItems: 'center', justifyContent: 'center', gap: 10,
                 transition: 'all 250ms',
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#C0392B'; e.currentTarget.style.background = 'rgba(139,0,0,0.06)' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--active-color)'; e.currentTarget.style.background = 'var(--active-bg)' }}
               onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(192,57,43,0.3)'; e.currentTarget.style.background = 'transparent' }}
             >
               <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(139,0,0,0.12)', border: '1px solid rgba(192,57,43,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <AddIcon sx={{ fontSize: 28, color: '#C0392B' }} />
+                <AddIcon sx={{ fontSize: 28, color: 'var(--active-color)' }} />
               </div>
               <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--active-color)' }}>Create new course</span>
             </div>
@@ -133,12 +133,12 @@ export default function FacultyDashboard() {
                   <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.35, marginBottom: 14 }}>
                     {course.course_title}
                   </div>
-                  <div style={{ display: 'flex', gap: 12, borderTop: '1px solid var(--border-color)', paddingTop: 12 }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  <div style={{ display: 'flex', gap: 12, borderTop: '1px solid rgba(0,0,0,0.1)', paddingTop: 12 }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>
                       {course.syllabus_count ?? 0} syllabi
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>·</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>·</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-primary)' }}>
                       {course.assessment_count ?? 0} assessments
                     </span>
                   </div>
@@ -148,9 +148,9 @@ export default function FacultyDashboard() {
 
             {courses.length === 0 && (
               <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '5rem 2rem' }}>
-                <SchoolIcon sx={{ fontSize: 64, color: 'var(--border-color)', mb: 2 }} />
-                <div style={{ color: 'var(--text-tertiary)', fontSize: '0.95rem' }}>No courses yet.</div>
-                <div style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', marginTop: 4 }}>Click "Create new course" to get started.</div>
+                <SchoolIcon sx={{ fontSize: 64, color: 'rgba(0,0,0,0.1)', mb: 2 }} />
+                <div style={{ color: 'var(--text-primary)', fontSize: '0.95rem' }}>No courses yet.</div>
+                <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem', marginTop: 4 }}>Click "Create new course" to get started.</div>
               </div>
             )}
           </div>

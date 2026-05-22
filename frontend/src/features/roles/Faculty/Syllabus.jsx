@@ -154,7 +154,7 @@ export default function FacultySyllabus() {
             <Card sx={cardStyles}>
               <CardHeader title="Syllabus Builder" titleTypographyProps={{ fontWeight: 700 }} />
               <CardContent>
-                <Tabs value={activeSection} onChange={(event, value) => { setActiveSection(value); setAiMessage('') }} textColor="inherit" indicatorColor="secondary" variant="scrollable" scrollButtons="auto" sx={{ mb: 2, '& .MuiTabs-indicator': { backgroundColor: '#8B0000' }, '& .MuiTab-root': { color: 'var(--text-secondary)', '&.Mui-selected': { color: '#8B0000' } } }}>
+                <Tabs value={activeSection} onChange={(event, value) => { setActiveSection(value); setAiMessage('') }} textColor="inherit" indicatorColor="secondary" variant="scrollable" scrollButtons="auto" sx={{ mb: 2, '& .MuiTabs-indicator': { backgroundColor: 'var(--active-color)' }, '& .MuiTab-root': { color: 'var(--text-secondary)', '&.Mui-selected': { color: 'var(--active-color)' } } }}>
                   {sectionSteps.map((step, index) => (
                     <Tab key={step.label} label={step.label} />
                   ))}
@@ -171,17 +171,17 @@ export default function FacultySyllabus() {
                   size="small"
                 />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mt: 3 }}>
-                  <Button variant="contained" disabled={!actionEnabled} onClick={handleAiAssist} sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, textTransform: 'none', py: 1.5, fontWeight: 700, borderRadius: 2 }}>
+                  <Button variant="contained" disabled={!actionEnabled} onClick={handleAiAssist} sx={{ background: 'var(--active-color)', '&:hover': { background: 'var(--active-color-hover)' }, textTransform: 'none', py: 1.5, fontWeight: 700, borderRadius: 2 }}>
                     AI Assist Draft
                   </Button>
-                  <Button variant="outlined" disabled={!actionEnabled} onClick={handleSectionSave} sx={{ borderColor: '#8B0000', color: '#8B0000', textTransform: 'none', py: 1.5, borderRadius: 2, '&:hover': { background: 'rgba(139, 0, 0, 0.08)' } }}>
+                  <Button variant="outlined" disabled={!actionEnabled} onClick={handleSectionSave} sx={{ borderColor: 'var(--active-color)', color: 'var(--active-color)', textTransform: 'none', py: 1.5, borderRadius: 2, '&:hover': { background: 'var(--active-bg)' } }}>
                     Save Section
                   </Button>
-                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'var(--bg-header)' } }}>
+                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'var(--bg-card-hover)' } }}>
                     Mark Syllabus Complete
                   </Button>
                 </Stack>
-                {aiMessage && <Typography sx={{ mt: 2, color: '#34C759', fontWeight: 600 }}>{aiMessage}</Typography>}
+                {aiMessage && <Typography sx={{ mt: 2, color: 'var(--green)', fontWeight: 600 }}>{aiMessage}</Typography>}
               </CardContent>
             </Card>
           </Grid>
@@ -194,10 +194,10 @@ export default function FacultySyllabus() {
                   <Typography color="text.secondary" sx={{ mb: 3 }}>
                     Upload a completed syllabus file to import your course structure quickly.
                   </Typography>
-                  <Button variant="contained" startIcon={<CloudUploadIcon />} disabled={!actionEnabled} onClick={handleUpload} sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: 2, textTransform: 'none', py: 1.5, px: 3, fontWeight: 700 }}>
+                  <Button variant="contained" startIcon={<CloudUploadIcon />} disabled={!actionEnabled} onClick={handleUpload} sx={{ background: 'var(--active-color)', '&:hover': { background: 'var(--active-color-hover)' }, borderRadius: 2, textTransform: 'none', py: 1.5, px: 3, fontWeight: 700 }}>
                     Upload File
                   </Button>
-                  {uploadMessage && <Typography sx={{ mt: 2, color: '#34C759', fontWeight: 600 }}>{uploadMessage}</Typography>}
+                  {uploadMessage && <Typography sx={{ mt: 2, color: 'var(--green)', fontWeight: 600 }}>{uploadMessage}</Typography>}
                 </CardContent>
               </Card>
 
@@ -209,7 +209,7 @@ export default function FacultySyllabus() {
                   </Typography>
                   <Stack spacing={2}>
                     <TextField value={iloPrompt} onChange={(e) => setIloPrompt(e.target.value)} multiline rows={6} placeholder="Enter ILOs, course outcomes, and desired topics..." fullWidth size="small" />
-                    <Button variant="contained" startIcon={<AutoAwesomeIcon />} disabled={!actionEnabled} onClick={handleGenerate} sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
+                    <Button variant="contained" startIcon={<AutoAwesomeIcon />} disabled={!actionEnabled} onClick={handleGenerate} sx={{ background: 'var(--active-color)', '&:hover': { background: 'var(--active-color-hover)' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                       Generate Syllabus
                     </Button>
                   </Stack>
@@ -219,7 +219,7 @@ export default function FacultySyllabus() {
           </Grid>
         </Grid>
 
-        <Divider sx={{ my: 4, borderColor: 'var(--border-color)' }} />
+        <Divider sx={{ my: 4, borderColor: 'rgb(255, 255, 255)' }} />
 
         <Card sx={{ ...cardStyles, mb: 3 }}>
           <CardHeader title="Review Your Draft" titleTypographyProps={{ fontWeight: 700 }} />
@@ -236,7 +236,7 @@ export default function FacultySyllabus() {
               variant="contained"
               disabled={!actionEnabled}
               onClick={handleDownloadSyllabus}
-              sx={{ mt: 2, background: 'var(--input-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', '&:hover': { background: 'var(--bg-header)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
+              sx={{ mt: 2, background: 'var(--bg-card)', border: '1px solid rgba(0,0,0,0.1)', color: 'var(--text-primary)', '&:hover': { background: 'var(--bg-card-hover)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
             >
               Download Syllabus
             </Button>
@@ -244,7 +244,7 @@ export default function FacultySyllabus() {
         </Card>
 
         <Card sx={{ ...cardStyles, background: 'var(--active-bg)', border: '1px solid var(--active-color)' }}>
-          <CardHeader title="Syllabus Requirements" titleTypographyProps={{ fontWeight: 700, color: '#8B0000' }} />
+          <CardHeader title="Syllabus Requirements" titleTypographyProps={{ fontWeight: 700, color: 'var(--active-color)' }} />
           <CardContent>
             <Typography color="text.secondary" sx={{ mb: 1 }}>
               Your syllabus should include:

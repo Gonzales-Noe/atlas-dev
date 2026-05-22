@@ -212,7 +212,14 @@ export default function AccountManagement() {
                     const statusColor = getStatusColor(account.status)
                     const planColor = getPlanColor(account.subscriptionPlan)
                     return (
-                      <TableRow key={account.id} sx={{ '&:hover': { background: '#FAFAFA' } }}>
+                      <TableRow
+                        key={account.id}
+                        hover
+                        sx={{
+                          transition: 'background-color 150ms ease',
+                          '&:hover': { background: 'rgba(255,255,255,0.08)' },
+                        }}
+                      >
                         <TableCell sx={{ fontWeight: 600, color: '#1A1A1A' }}>{account.institution}</TableCell>
                         <TableCell sx={{ color: '#666' }}>{account.admin}<br/><span style={{fontSize: '0.75rem', color: '#999'}}>{account.email}</span></TableCell>
                         <TableCell sx={{ textAlign: 'center' }}><Chip label={account.status.toUpperCase()} size="small" sx={{ background: statusColor.bg, color: statusColor.color, fontWeight: 700, fontSize: '0.7rem' }} /></TableCell>

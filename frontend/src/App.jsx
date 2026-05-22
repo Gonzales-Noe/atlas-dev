@@ -12,7 +12,7 @@ import SuperAdminAuditLogs from './features/Superadmin/AuditLogs.jsx'
 import SuperAdminSystemManagement from './features/Superadmin/SystemManagement.jsx'
 import SuperAdminAccountManagement from './features/Superadmin/AccountManagement.jsx'
 import FacultyDashboardPage from './pages/dashboards/facultyDashboard.jsx'
-import FacultyWorkspacePage from './features/roles/Faculty/FacultyWorkspacePage.jsx'
+import FacultyWorkspacePage from './components/FacultyWorkspacePage.jsx'
 import FacultySyllabusPage from './pages/faculty/syllabusPage.jsx'
 import FacultyModulePage from './pages/faculty/modulePage.jsx'
 import FacultyAssessmentPage from './pages/faculty/assessmentPage.jsx'
@@ -22,7 +22,6 @@ import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
 import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
 import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
-// 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
 
 export const ThemeContext = createContext()
@@ -41,7 +40,7 @@ function GlobalStyles({ mode }) {
         --text-tertiary:      ${isDarkMode ? 'rgba(255,255,255,0.4)' : '#6B7280'};
         --active-color:       ${isDarkMode ? '#ff2d55' : '#8B0000'};
         --active-color-hover: ${isDarkMode ? '#d01e40' : '#6B0000'};
-        --active-bg:          ${isDarkMode ? 'rgba(255,45,85,0.15)' : '#FFF5F5'};
+        --active-bg:          ${isDarkMode ? 'rgba(255,45,85,0.15)' : '#272525'};
         --input-border:       ${isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.23)'};
         --input-bg:           ${isDarkMode ? 'rgba(255,255,255,0.04)' : '#ffffff'};
         --sidebar-bg:         ${isDarkMode ? '#111118' : '#ffffff'};
@@ -50,6 +49,34 @@ function GlobalStyles({ mode }) {
       body {
         background-color: var(--bg-page);
         color: var(--text-primary);
+      }
+    `}</style>
+  );
+}
+
+function FacultyGlobalStyles() {
+  return (
+    <style>{`
+      :root {
+        --bg-base:           #F7F9FC;
+        --bg-surface:        #ffffff;
+        --border-color:      rgba(0, 0, 0, 0.08);
+        --border-active:     rgba(139, 0, 0, 0.35);
+        --border-subtle:     rgba(0, 0, 0, 0.04);
+        --bg-card:           #ffffff;
+        --bg-card-hover:     rgba(0, 0, 0, 0.03);
+        --bg-elevated:       rgba(0, 0, 0, 0.02);
+        --bg-header:         #ffffff;
+        --text-primary:      #111827;
+        --text-secondary:    #4B5563;
+        --text-tertiary:     #6B7280;
+        --active-color:      #8B0000;
+        --active-color-hover:#6B0000;
+        --active-bg:         #FFF5F5;
+        --input-border:      rgba(0, 0, 0, 0.12);
+        --input-bg:          #ffffff;
+        --sidebar-bg:        #ffffff;
+        --topbar-bg:         rgba(255,255,255,0.92);
       }
     `}</style>
   );
@@ -80,7 +107,8 @@ function ThemeWrapper({ children, globalColorMode }) {
     <ThemeContext.Provider value={effectiveColorMode}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <GlobalStyles mode={effectiveMode} />
+        {!isFaculty && <GlobalStyles mode={effectiveMode} />}
+        {isFaculty && <FacultyGlobalStyles />}
         {children}
       </ThemeProvider>
     </ThemeContext.Provider>

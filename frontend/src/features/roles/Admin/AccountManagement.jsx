@@ -147,7 +147,16 @@ export default function AdminAccountManagement() {
             </TableHead>
             <TableBody>
               {filtered.map(fac => (
-                <TableRow key={fac.id} sx={{ '&:last-child td': { borderBottom: 'none !important' }, cursor: 'pointer' }}>
+                <TableRow
+                  key={fac.id}
+                  hover
+                  sx={{
+                    '&:last-child td': { borderBottom: 'none !important' },
+                    cursor: 'pointer',
+                    transition: 'background-color 150ms ease',
+                    '&:hover': { background: 'var(--active-bg)' },
+                  }}
+                >
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
