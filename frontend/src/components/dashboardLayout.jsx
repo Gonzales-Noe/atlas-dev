@@ -10,6 +10,19 @@ import { toInitials }  from '../utils'
 import { ThemeContext } from '../App'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
+import Dialog from '@mui/material/Dialog'
+import DialogTitle from '@mui/material/DialogTitle'
+import DialogContent from '@mui/material/DialogContent'
+import DialogActions from '@mui/material/DialogActions'
+import Button from '@mui/material/Button'
+import TextField from '@mui/material/TextField'
+import Switch from '@mui/material/Switch'
+import FormControlLabel from '@mui/material/FormControlLabel'
+import Stack from '@mui/material/Stack'
+import Divider from '@mui/material/Divider'
+import Snackbar from '@mui/material/Snackbar'
+import Typography from '@mui/material/Typography'
+import Box from '@mui/material/Box'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
@@ -113,8 +126,14 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [profileOpen, setProfileOpen] = useState(false)
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const { mode, toggleColorMode } = useContext(ThemeContext)
+
+  const [profileForm, setProfileForm] = useState({ name: '', department: '' })
+  const [prefsForm, setPrefsForm] = useState({ email: true, push: true, digest: false })
+  const [saveStatus, setSaveStatus] = useState('')
 
   const meta = ROLE_META[role] || ROLE_META.faculty
 
@@ -129,12 +148,51 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
     return () => window.removeEventListener('resize', check)
   }, [])
 
+  // Effect to populate profile form when dialog opens
+  useEffect(() => {
+    if (profileOpen) {
+      setProfileForm({
+        name: user?.name || '',
+        department: user?.department || 'College of Informatics', // Placeholder
+      })
+    }
+  }, [profileOpen, user])
+
+  function handleProfileFormChange(e) {
+    setProfileForm(p => ({ ...p, [e.target.name]: e.target.value }))
+  }
+
+  function handlePrefsFormChange(e) {
+    setPrefsForm(p => ({ ...p, [e.target.name]: e.target.checked }))
+  }
+
+  function handleSaveProfile() {
+    // In a real app, this would make an API call to update the user profile.
+    // For this demo, we'll just show a success message.
+    setProfileOpen(false)
+    setSaveStatus('Profile updated successfully!')
+  }
+
+  function handleSavePreferences() {
+    // This would also make an API call in a real application.
+    setPreferencesOpen(false)
+    setSaveStatus('Preferences saved successfully!')
+  }
+
   function handleLogout() {
     logout()
     navigate('/')
   }
 
   const sidebarW = collapsed ? 64 : 240
+
+  const inputSx = {
+    '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
+    '& .MuiInputLabel-root': { fontSize: '0.875rem', color: 'var(--text-secondary)' },
+    '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--border-color)' },
+    '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--active-color)' },
+    input: { color: 'var(--text-primary)' },
+  }
 
   return (
     <div className={role === 'faculty' ? 'faculty-theme' : undefined} style={{
@@ -339,11 +397,12 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
               zIndex: 10,
             }}>
               {[
-                { label: 'Profile Settings', icon: '👤' },
-                { label: 'Preferences', icon: '⚙️' },
-              ].map(({ label, icon }) => (
+                { label: 'Profile Settings', icon: '👤', action: () => { setProfileOpen(true); setUserMenuOpen(false); } },
+                { label: 'Preferences', icon: '⚙️', action: () => { setPreferencesOpen(true); setUserMenuOpen(false); } },
+              ].map(({ label, icon, action }) => (
                 <button
                   key={label}
+                  onClick={action}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                     background: 'none', border: 'none', cursor: 'pointer',
@@ -467,6 +526,76 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           {children}
         </div>
       </main>
+
+      <Snackbar
+        open={Boolean(saveStatus)}
+        autoHideDuration={3000}
+        onClose={() => setSaveStatus('')}
+        message={saveStatus} />
+
+      {/* ── PROFILE SETTINGS DIALOG ── */}
+      <Dialog open={profileOpen} onClose={() => setProfileOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card)', backgroundImage: 'none' } }}>
+        <DialogTitle sx={{ color: 'var(--text-primary)', fontWeight: 700 }}>Profile Settings</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={3}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: '50%',
+                background: 'linear-gradient(135deg, #8B0000, #C0392B)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.5rem', fontWeight: 800, color: '#fff',
+              }}>
+                {toInitials(user?.name || user?.email || 'U')}
+              </div>
+              <Button variant="outlined" size="small" sx={{ textTransform: 'none', color: 'var(--text-primary)', borderColor: 'var(--border-color)', '&:hover': { borderColor: 'var(--active-color)', color: 'var(--active-color)', background: 'var(--active-bg)' } }}>
+                Change Avatar
+              </Button>
+            </Box>
+            <TextField name="name" label="Full Name" value={profileForm.name} onChange={handleProfileFormChange} fullWidth size="small" sx={inputSx} />
+            <TextField label="Email Address" defaultValue={user?.email || ''} fullWidth size="small" disabled sx={{ ...inputSx, opacity: 0.7 }} />
+            <TextField label="Role" defaultValue={meta.label || ''} fullWidth size="small" disabled sx={{ ...inputSx, opacity: 0.7 }} />
+            <TextField name="department" label="Department / Institution" value={profileForm.department} onChange={handleProfileFormChange} placeholder="e.g. College of Informatics" fullWidth size="small" sx={inputSx} />
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 1, borderColor: 'var(--border-color)' }}>
+          <Button onClick={() => setProfileOpen(false)} sx={{ color: 'var(--text-secondary)', textTransform: 'none' }}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveProfile} sx={{ bgcolor: 'var(--active-color)', textTransform: 'none', '&:hover': { bgcolor: 'var(--active-color-hover)' } }}>Save Changes</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── PREFERENCES DIALOG ── */}
+      <Dialog open={preferencesOpen} onClose={() => setPreferencesOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card)', backgroundImage: 'none' } }}>
+        <DialogTitle sx={{ color: 'var(--text-primary)', fontWeight: 700 }}>Preferences</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 3 }}>
+          <Stack spacing={3}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ color: 'var(--text-primary)', mb: 1, fontWeight: 700 }}>Appearance</Typography>
+              <FormControlLabel
+                control={<Switch checked={mode === 'dark'} onChange={toggleColorMode} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--active-color)' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--active-color)' } }} />}
+                label={<Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Dark Mode</Typography>}
+              />
+              <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
+                Toggle between light and dark theme globally. (Faculty dashboards use a customized light theme by default).
+              </Typography>
+            </Box>
+            <Divider sx={{ borderColor: 'var(--border-color)' }} />
+            <Box>
+              <Typography variant="subtitle2" sx={{ color: 'var(--text-primary)', mb: 1, fontWeight: 700 }}>Notifications</Typography>
+              <Stack spacing={1}>
+                <FormControlLabel control={<Switch name="email" checked={prefsForm.email} onChange={handlePrefsFormChange} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--active-color)' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--active-color)' } }} />} label={<Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Email Notifications</Typography>} />
+                <FormControlLabel control={<Switch name="push" checked={prefsForm.push} onChange={handlePrefsFormChange} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--active-color)' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--active-color)' } }} />} label={<Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Push Notifications</Typography>} />
+                <FormControlLabel control={<Switch name="digest" checked={prefsForm.digest} onChange={handlePrefsFormChange} sx={{ '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--active-color)' }, '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: 'var(--active-color)' } }} />} label={<Typography sx={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Weekly Digest</Typography>} />
+              </Stack>
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 2.5, pt: 1 }}>
+          <Button onClick={() => setPreferencesOpen(false)} sx={{ color: 'var(--text-secondary)', textTransform: 'none' }}>Close</Button>
+          <Button variant="contained" onClick={handleSavePreferences} sx={{ bgcolor: 'var(--active-color)', textTransform: 'none', '&:hover': { bgcolor: 'var(--active-color-hover)' } }}>Save Preferences</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   )
 }

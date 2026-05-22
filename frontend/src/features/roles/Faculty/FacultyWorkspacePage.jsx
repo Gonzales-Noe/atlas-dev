@@ -56,9 +56,9 @@ import atlasLogo from '../../../assets/atlas-logo.png'
 import AutoAlert from '../../../components/AutoAlert'
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const MAROON = 'var(--active-color)'
-const MAROON_LIGHT = 'var(--active-bg)'
-const BG = 'var(--bg-page)'
+const MAROON = '#8B0000'
+const MAROON_LIGHT = '#FFF5F5'
+const BG = '#F7F9FC'
 
 const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
@@ -111,11 +111,11 @@ const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '
 const SCHEDULE_WEEKS = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
 
 const TABLE_TH = {
-  padding: '8px 12px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)',
-  backgroundColor: 'var(--bg-card-hover)', color: MAROON, fontWeight: 800, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap', backdropFilter: 'blur(10px)',
+  padding: '8px 12px', borderBottom: '1px solid rgba(0,0,0,0.08)', borderRight: '1px solid rgba(0,0,0,0.08)',
+  backgroundColor: 'rgba(0,0,0,0.03)', color: MAROON, fontWeight: 800, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap', backdropFilter: 'blur(10px)',
 }
 const TABLE_TD = {
-  padding: '4px 6px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', verticalAlign: 'top', color: 'var(--text-primary)', background: 'var(--bg-card)',
+  padding: '4px 6px', borderBottom: '1px solid rgba(0,0,0,0.08)', borderRight: '1px solid rgba(0,0,0,0.08)', verticalAlign: 'top', color: '#333', background: '#ffffff',
 }
 
 const EMPTY_SYLLABUS = {
@@ -165,8 +165,8 @@ const EMPTY_SYLLABUS = {
 function SectionCard({ title, children, action }) {
   return (
       <Paper elevation={0}
-      sx={{ border: '1px solid var(--border-color)', borderRadius: 4, mb: 2, overflow: 'hidden', background: 'var(--bg-card)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(139,0,0,0.04), inset 0 0 0 1px var(--border-color)', color: 'var(--text-primary)' }}>
-      <Box sx={{ px: 2.5, py: 1.5, background: 'linear-gradient(90deg, var(--bg-card), var(--bg-card-hover))', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center' }}>
+      sx={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 4, mb: 2, overflow: 'hidden', background: '#ffffff', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(139,0,0,0.04), inset 0 0 0 1px rgba(0,0,0,0.08)', color: '#333' }}>
+      <Box sx={{ px: 2.5, py: 1.5, background: 'linear-gradient(90deg, #ffffff, rgba(0,0,0,0.03))', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
           sx={{ fontWeight: 800, color: MAROON, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
           {title}
@@ -188,16 +188,16 @@ function LField({ label, ...props }) {
           backdropFilter: 'blur(12px)',
           color: '#333',
           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-          '& fieldset': { borderColor: 'var(--border-color)', borderWidth: '1px' },
-          '&:hover fieldset': { borderColor: 'var(--border-active)' },
+          '& fieldset': { borderColor: 'rgba(0,0,0,0.08)', borderWidth: '1px' },
+          '&:hover fieldset': { borderColor: 'rgba(139, 0, 0, 0.35)' },
           '&.Mui-focused fieldset': { borderColor: MAROON, borderWidth: '2px', boxShadow: '0 0 16px rgba(139,0,0,0.15)' },
           '&.Mui-focused': { background: 'rgba(255,255,255,0.9)' },
         },
-        '& .MuiInputLabel-root': { color: 'var(--border-active)' },
+        '& .MuiInputLabel-root': { color: 'rgba(139, 0, 0, 0.35)' },
         '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
         ...props.sx,
       }}
-      SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: 'var(--bg-card)', backdropFilter: 'blur(24px)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', borderRadius: 3, boxShadow: '0 8px 32px rgba(139,0,0,0.1)' } } }, ...props.SelectProps }}
+      SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: '#ffffff', backdropFilter: 'blur(24px)', color: '#333', border: '1px solid rgba(0,0,0,0.08)', borderRadius: 3, boxShadow: '0 8px 32px rgba(139,0,0,0.1)' } } }, ...props.SelectProps }}
     />
   )
 }
@@ -207,7 +207,7 @@ function GenButton({ children, ...props }) {
     <Button variant="contained" fullWidth {...props}
       sx={{ 
         bgcolor: MAROON, 
-        '&:hover': { bgcolor: 'var(--active-color-hover)', boxShadow: '0 6px 20px rgba(139,0,0,0.3)', transform: 'translateY(-1px)' }, 
+        '&:hover': { bgcolor: '#6B0000', boxShadow: '0 6px 20px rgba(139,0,0,0.3)', transform: 'translateY(-1px)' }, 
         textTransform: 'none', 
         fontWeight: 700, 
         borderRadius: 2.5, 
@@ -263,7 +263,7 @@ function inlineInput(value, onChange, minWidth = 80, onFocus) {
           color: '#333',
           transition: 'all 0.2s',
           '& fieldset': { borderColor: 'transparent' },
-          '&:hover fieldset': { borderColor: 'var(--border-active)' },
+          '&:hover fieldset': { borderColor: 'rgba(139, 0, 0, 0.35)' },
           '&.Mui-focused fieldset': { borderColor: MAROON, boxShadow: '0 0 12px rgba(139,0,0,0.15)' },
           '&.Mui-focused': { background: 'rgba(255,255,255,0.9)' },
         },
@@ -1681,7 +1681,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{
               position: 'sticky', bottom: showAiFooter ? 76 : 16,
               background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
-              border: '1px solid rgba(255, 255, 255, 0.8)',
+              border: '1px solid rgba(0, 0, 0, 0.08)',
               boxShadow: '0 12px 40px rgba(139, 0, 0, 0.12)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
@@ -1729,8 +1729,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             }}>
               <AutoAwesomeIcon sx={{ color: 'var(--active-color)', fontSize: '1.1rem', flexShrink: 0 }} />
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block', lineHeight: 1, mb: 0.15 }}>AI Assist</Typography>
-                <Typography variant="caption" sx={{ color: 'var(--text-primary)', fontWeight: 700, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                <Typography variant="caption" sx={{ color: '#666', display: 'block', lineHeight: 1, mb: 0.15 }}>AI Assist</Typography>
+                <Typography variant="caption" sx={{ color: '#333', fontWeight: 700, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                   {aiField.label}
                 </Typography>
               </Box>
@@ -1746,13 +1746,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   minWidth: 110, flexShrink: 0,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.12)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(0,0,0,0.18)' },
-                  '& .MuiSvgIcon-root': { color: 'var(--text-secondary)' },
+                  '& .MuiSvgIcon-root': { color: '#666' },
                   '& .MuiSelect-select': { py: 0.5 },
                 }}
                 MenuProps={{ PaperProps: { sx: { bgcolor: '#fff', color: '#111' } } }}
               >
                 {AI_PROVIDERS.map(p => (
-                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: 'var(--bg-card-hover)' } }}>
+                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: 'rgba(0,0,0,0.03)' } }}>
                     {cap(p)}
                   </MenuItem>
                 ))}
@@ -1763,7 +1763,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   variant="outlined"
                   disabled={aiGenerating}
                   onClick={() => handleAiGenerate('continue')}
-                  sx={{ textTransform: 'none', color: 'var(--text-primary)', borderColor: 'var(--border-color)', borderRadius: 2, fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: 'var(--active-color)', bgcolor: 'var(--bg-card-hover)' } }}
+                  sx={{ textTransform: 'none', color: '#333', borderColor: 'rgba(0,0,0,0.08)', borderRadius: 2, fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: MAROON, bgcolor: 'rgba(0,0,0,0.03)' } }}
                 >
                   Continue
                 </Button>

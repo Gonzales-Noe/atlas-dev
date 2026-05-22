@@ -167,11 +167,11 @@ function getBloomVerbsForYear(yearLevel) {
 }
 
 const TABLE_TH = {
-  padding: '6px 10px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)',
-  backgroundColor: 'var(--bg-header)', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap', color: 'var(--text-primary)',
+  padding: '6px 10px', borderBottom: '1px solid rgba(0,0,0,0.08)', borderRight: '1px solid rgba(0,0,0,0.08)',
+  backgroundColor: '#F3F4F6', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap', color: '#333333',
 }
 const TABLE_TD = {
-  padding: '3px 5px', borderBottom: '1px solid var(--border-color)', borderRight: '1px solid var(--border-color)', verticalAlign: 'top', color: 'var(--text-primary)',
+  padding: '3px 5px', borderBottom: '1px solid rgba(0,0,0,0.08)', borderRight: '1px solid rgba(0,0,0,0.08)', verticalAlign: 'top', color: '#333333',
 }
 
 // ── TOS keyword-alignment helpers (ported from PEA pipeline mapping.js) ───────
@@ -276,10 +276,10 @@ function PanelRightIcon(props) {
 function SectionCard({ title, children, action }) {
   return (
     <Paper elevation={0}
-      sx={{ border: '1px solid var(--border-color)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
-      <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'var(--bg-header)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center' }}>
+      sx={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
+      <Box sx={{ px: 2.5, py: 1.25, bgcolor: '#F3F4F6', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
-          sx={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+          sx={{ fontWeight: 700, color: '#333333', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
           {title}
         </Typography>
         {action}
@@ -294,10 +294,10 @@ function LField({ label, ...props }) {
     <TextField size="small" fullWidth label={label} {...props}
       sx={{
         '& .MuiOutlinedInput-root': {
-          '&:hover fieldset': { borderColor: 'var(--active-color)' },
-          '&.Mui-focused fieldset': { borderColor: 'var(--active-color)' },
+          '&:hover fieldset': { borderColor: '#8B0000' },
+          '&.Mui-focused fieldset': { borderColor: '#8B0000' },
         },
-        '& .MuiInputLabel-root.Mui-focused': { color: 'var(--active-color)' },
+        '& .MuiInputLabel-root.Mui-focused': { color: '#8B0000' },
         ...props.sx,
       }}
       SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
@@ -308,7 +308,7 @@ function LField({ label, ...props }) {
 function GenButton({ children, ...props }) {
   return (
     <Button variant="contained" fullWidth {...props}
-      sx={{ bgcolor: 'var(--active-color)', '&:hover': { bgcolor: 'var(--active-color-hover)' }, color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
+      sx={{ bgcolor: '#8B0000', '&:hover': { bgcolor: '#6B0000' }, color: '#fff', textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
       {children}
     </Button>
   )
@@ -317,7 +317,7 @@ function GenButton({ children, ...props }) {
 function AddRowBtn({ onClick, label }) {
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
-      sx={{ textTransform: 'none', color: 'var(--active-color)', fontSize: '0.75rem', py: 0, minWidth: 0 }}>
+      sx={{ textTransform: 'none', color: '#8B0000', fontSize: '0.75rem', py: 0, minWidth: 0 }}>
       {label}
     </Button>
   )
@@ -328,7 +328,7 @@ function RemoveBtn({ onClick, disabled }) {
     <Tooltip title="Remove">
       <span>
         <IconButton size="small" onClick={onClick} disabled={disabled}
-          sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--active-color)' }, '&.Mui-disabled': { opacity: 0.3 } }}>
+          sx={{ color: '#666666', '&:hover': { color: '#8B0000' }, '&.Mui-disabled': { opacity: 0.3 } }}>
           <DeleteIcon sx={{ fontSize: '1rem' }} />
         </IconButton>
       </span>
@@ -352,8 +352,8 @@ function inlineInput(value, onChange, minWidth = 80, onFocus) {
         minWidth,
         '& .MuiOutlinedInput-root': {
           fontSize: '0.8rem',
-          '&:hover fieldset': { borderColor: 'var(--active-color)' },
-          '&.Mui-focused fieldset': { borderColor: 'var(--active-color)' },
+          '&:hover fieldset': { borderColor: '#8B0000' },
+          '&.Mui-focused fieldset': { borderColor: '#8B0000' },
         },
       }}
       inputProps={{ style: { padding: '5px 8px' } }}
@@ -4395,7 +4395,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
                 {user?.name || 'User'}
               </Typography>
-              <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+              <Typography variant="caption" sx={{ color: '#666666', fontSize: '0.72rem' }}>
                 {user?.email}
               </Typography>
             </div>
@@ -4419,7 +4419,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )}
       </div>
 
-      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'var(--border-color)' }} />
+      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'rgba(0,0,0,0.08)' }} />
 
       {/* Nav items */}
       <List sx={{ flex: 1, px: 1, py: 1, overflowX: 'hidden' }}>
@@ -4435,11 +4435,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   py: 1,
                   px: isCollapsed ? 0 : 2,
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  background:    isActive ? 'var(--active-bg)' : 'transparent',
-                  color:         isActive ? 'var(--active-color)' : 'var(--text-secondary)',
+                  background:    isActive ? '#FFF5F5' : 'transparent',
+                  color:         isActive ? '#8B0000' : '#666666',
                   '&:hover': {
-                    background: 'var(--active-bg)',
-                    color: 'var(--active-color)',
+                    background: '#FFF5F5',
+                    color: '#8B0000',
                   },
                 }}
               >
@@ -4448,7 +4448,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     minWidth: isCollapsed ? 0 : 36,
                     mr: isCollapsed ? 0 : 1,
                     justifyContent: 'center',
-                    color: isActive ? 'var(--active-color)' : 'inherit',
+                    color: isActive ? '#8B0000' : 'inherit',
                   }}
                 >
                   <Icon fontSize="small" />
@@ -4466,7 +4466,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <div
                     style={{
                       position: 'absolute', left: 0, width: 3, height: 20,
-                      background: 'var(--active-color)',
+                      background: '#8B0000',
                       boxShadow: 'none',
                       borderRadius: '0 2px 2px 0',
                     }}
@@ -4480,7 +4480,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       </List>
 
       {/* Bottom: Settings, Help, Back to dashboard */}
-      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'var(--border-color)' }} />
+      <Divider sx={{ mx: isCollapsed ? 1 : 2, borderColor: 'rgba(0,0,0,0.08)' }} />
       <List sx={{ px: 1, py: 1 }}>
         {[
           { label: 'Settings', icon: <SettingsIcon fontSize="small" />, action: () => {} },
@@ -4493,8 +4493,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 onClick={item.action}
                 sx={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  borderRadius: 2, py: 1, px: isCollapsed ? 0 : 2, color: 'var(--text-secondary)',
-                  '&:hover': { background: 'var(--active-bg)', color: 'var(--active-color)' },
+                  borderRadius: 2, py: 1, px: isCollapsed ? 0 : 2, color: '#666666',
+                  '&:hover': { background: '#FFF5F5', color: '#8B0000' },
                 }}
               >
                 <ListItemIcon sx={{ minWidth: isCollapsed ? 0 : 36, mr: isCollapsed ? 0 : 1, justifyContent: 'center', color: 'inherit' }}>
@@ -4512,7 +4512,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Root ──────────────────────────────────────────────────────────────────
   return (
     <Box ref={containerRef}
-      sx={{ height: '100vh', display: 'flex', overflow: 'hidden', background: 'var(--bg-page)', backgroundImage: 'none' }}>
+      sx={{ height: '100vh', display: 'flex', overflow: 'hidden', background: '#F7F9FC', backgroundImage: 'none' }}>
       <style>{`
         /* ── Scrollbars ─────────────────────────────── */
         * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.15) transparent; }
@@ -4520,89 +4520,89 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         *::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 3px; }
 
         /* ── Typography: scope to MUI only, no bare span/h overrides ── */
-        .MuiTypography-root { color: var(--text-primary) !important; }
+        .MuiTypography-root { color: #333333 !important; }
         .MuiTypography-colorTextSecondary,
-        .MuiTypography-root[class*="Secondary"] { color: var(--text-secondary) !important; }
+        .MuiTypography-root[class*="Secondary"] { color: #666666 !important; }
 
         /* ── Paper & Card ───────────────────────────── */
         .MuiPaper-root {
-          background-color: var(--bg-card) !important;
-          color: var(--text-primary) !important;
-          border-color: var(--border-color) !important;
+          background-color: #ffffff !important;
+          color: #333333 !important;
+          border-color: rgba(0,0,0,0.08) !important;
         }
 
         /* ── Table ──────────────────────────────────── */
         .MuiTableCell-root {
-          border-color: var(--border-color) !important;
-          color: var(--text-primary) !important;
+          border-color: rgba(0,0,0,0.08) !important;
+          color: #333333 !important;
         }
-        .MuiTableCell-head { background-color: var(--bg-header) !important; }
-        .MuiDivider-root { border-color: var(--border-color) !important; }
+        .MuiTableCell-head { background-color: #F3F4F6 !important; }
+        .MuiDivider-root { border-color: rgba(0,0,0,0.08) !important; }
 
         /* native table */
-        table { color: var(--text-primary); }
-        table th { background-color: var(--bg-header) !important; color: var(--text-primary) !important; border-color: var(--border-color) !important; }
-        table td { border-color: var(--border-color) !important; color: var(--text-primary) !important; }
-        table input { color: var(--text-primary) !important; background: transparent !important; }
+        table { color: #333333; }
+        table th { background-color: #F3F4F6 !important; color: #333333 !important; border-color: rgba(0,0,0,0.08) !important; }
+        table td { border-color: rgba(0,0,0,0.08) !important; color: #333333 !important; }
+        table input { color: #333333 !important; background: transparent !important; }
 
         /* ── Form inputs ────────────────────────────── */
-        .MuiOutlinedInput-root { background-color: var(--input-bg) !important; }
-        .MuiInputBase-root { color: var(--text-primary) !important; }
+        .MuiOutlinedInput-root { background-color: #ffffff !important; }
+        .MuiInputBase-root { color: #333333 !important; }
         .MuiInputBase-root.Mui-disabled {
-          color: var(--text-secondary) !important;
-          -webkit-text-fill-color: var(--text-secondary) !important;
+          color: #666666 !important;
+          -webkit-text-fill-color: #666666 !important;
           opacity: 0.6;
         }
-        .MuiOutlinedInput-notchedOutline { border-color: var(--input-border) !important; }
+        .MuiOutlinedInput-notchedOutline { border-color: rgba(0,0,0,0.23) !important; }
         .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline { border-color: rgba(0,0,0,0.45) !important; }
-        .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: var(--active-color) !important; border-width: 2px !important; }
-        .MuiInputLabel-root { color: var(--text-secondary) !important; }
-        .MuiInputLabel-root.Mui-focused { color: var(--active-color) !important; }
-        .MuiInputBase-input::placeholder { color: var(--text-secondary) !important; opacity: 0.6 !important; }
-        .MuiSelect-icon { color: var(--text-secondary) !important; }
+        .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline { border-color: #8B0000 !important; border-width: 2px !important; }
+        .MuiInputLabel-root { color: #666666 !important; }
+        .MuiInputLabel-root.Mui-focused { color: #8B0000 !important; }
+        .MuiInputBase-input::placeholder { color: #999999 !important; opacity: 0.6 !important; }
+        .MuiSelect-icon { color: #666666 !important; }
 
         /* ── Select dropdown menu ───────────────────── */
-        .MuiMenu-paper { background-color: var(--bg-card) !important; border: 1px solid var(--border-color) !important; }
-        .MuiMenuItem-root { color: var(--text-primary) !important; }
-        .MuiMenuItem-root:hover { background-color: var(--active-bg) !important; color: var(--active-color) !important; }
-        .MuiMenuItem-root.Mui-selected { background-color: var(--active-bg) !important; color: var(--active-color) !important; }
+        .MuiMenu-paper { background-color: #ffffff !important; border: 1px solid rgba(0,0,0,0.08) !important; }
+        .MuiMenuItem-root { color: #333333 !important; }
+        .MuiMenuItem-root:hover { background-color: #FFF5F5 !important; color: #8B0000 !important; }
+        .MuiMenuItem-root.Mui-selected { background-color: #FFF5F5 !important; color: #8B0000 !important; }
 
         /* ── Chips ──────────────────────────────────── */
         .MuiChip-root {
           background-color: rgba(0,0,0,0.06) !important;
-          color: var(--text-primary) !important;
-          border-color: var(--border-color) !important;
+          color: #333333 !important;
+          border-color: rgba(0,0,0,0.08) !important;
         }
 
         /* ── List / nav items ───────────────────────── */
         .MuiListItemText-primary { color: inherit !important; }
-        .MuiListItemText-secondary { color: var(--text-secondary) !important; }
-        .MuiListItemButton-root { color: var(--text-secondary) !important; }
+        .MuiListItemText-secondary { color: #666666 !important; }
+        .MuiListItemButton-root { color: #666666 !important; }
 
         /* ── AppBar ─────────────────────────────────── */
-        .MuiAppBar-root { background-color: var(--topbar-bg) !important; }
+        .MuiAppBar-root { background-color: rgba(255,255,255,0.95) !important; }
 
         /* ── Drawer paper ───────────────────────────── */
-        .MuiDrawer-paper { background-color: var(--sidebar-bg) !important; }
+        .MuiDrawer-paper { background-color: #ffffff !important; }
 
         /* ── Tabs ───────────────────────────────────── */
-        .MuiTab-root { color: var(--text-secondary) !important; }
-        .MuiTab-root.Mui-selected { color: var(--active-color) !important; }
-        .MuiTabs-indicator { background-color: var(--active-color) !important; }
+        .MuiTab-root { color: #666666 !important; }
+        .MuiTab-root.Mui-selected { color: #8B0000 !important; }
+        .MuiTabs-indicator { background-color: #8B0000 !important; }
 
         /* ── Alert ──────────────────────────────────── */
-        .MuiAlert-root { color: var(--text-primary) !important; }
+        .MuiAlert-root { color: #333333 !important; }
 
         /* ── LinearProgress ─────────────────────────── */
         .MuiLinearProgress-root { background-color: rgba(0,0,0,0.08) !important; }
 
         /* ── Tooltip ────────────────────────────────── */
-        .MuiTooltip-tooltip { background-color: #111 !important; }
+        .MuiTooltip-tooltip { background-color: #333333 !important; }
 
         /* ── Recharts ───────────────────────────────── */
-        .recharts-text tspan { fill: var(--text-secondary) !important; }
+        .recharts-text tspan { fill: #666666 !important; }
         .recharts-cartesian-grid-horizontal line,
-        .recharts-cartesian-grid-vertical line { stroke: var(--border-color) !important; }
+        .recharts-cartesian-grid-vertical line { stroke: rgba(0,0,0,0.08) !important; }
       `}</style>
       
       {/* LEFT — nav (hidden on mobile, accessible via Drawer) */}
