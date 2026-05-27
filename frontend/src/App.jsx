@@ -57,8 +57,7 @@ function GlobalStyles({ mode }) {
 
 function ThemeWrapper({ children, globalColorMode }) {
   const location = useLocation()
-  const isFaculty = location.pathname.includes('/faculty')
-  const effectiveMode = isFaculty ? 'light' : globalColorMode.mode
+  const effectiveMode = globalColorMode.mode
 
   const effectiveColorMode = useMemo(() => ({
     ...globalColorMode,

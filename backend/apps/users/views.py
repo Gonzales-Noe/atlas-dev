@@ -59,6 +59,19 @@ class MeView(APIView):
     def get(self, request):
         return Response(UserProfileSerializer(request.user).data)
 
+    def patch(self, request):
+        user = request.user
+        data = request.data
+        
+        if 'name' in data:
+            user.full_name = data['name']
+            
+        if 'department' in data and hasattr(user, 'department'):
+            user.department = data['department']
+            
+        user.save()
+        return Response(UserProfileSerializer(user).data)
+
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
