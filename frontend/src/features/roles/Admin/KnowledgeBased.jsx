@@ -1,11 +1,14 @@
 // src/features/Admin/KnowledgeBase.jsx
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Divider, Stack,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+import CloseIcon from '@mui/icons-material/Close'
 import AdminLayout from './AdminLayout'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
@@ -39,6 +42,20 @@ const inputSx = {
   '& .MuiSelect-select': { color: 'var(--text-primary)' }
 }
 
+// Map file extensions to categories
+function guessCategoryFromFile(filename) {
+  const ext = filename.split('.').pop().toLowerCase()
+  if (['pdf', 'doc', 'docx'].includes(ext)) return 'Files'
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'Analytics'
+  return 'Files'
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function AdminKnowledgeBase() {
   const [articles, setArticles]       = useState(mockArticles)
   const [searchTerm, setSearchTerm]   = useState('')
@@ -46,7 +63,10 @@ export default function AdminKnowledgeBase() {
   const [createOpen, setCreateOpen]   = useState(false)
   const [viewOpen, setViewOpen]       = useState(false)
   const [selected, setSelected]       = useState(null)
-  const [newArticle, setNewArticle]   = useState({ title: '', category: 'Syllabus', content: '' })
+  const [newArticle, setNewArticle]   = useState({ title: '', category: 'Syllabus', content: '', discipline: '', program: '' })
+  const [uploadedFile, setUploadedFile] = useState(null)
+  const [dragOver, setDragOver]       = useState(false)
+  const fileInputRef = useRef(null)
 
   const filtered = articles.filter(a => {
     const q = searchTerm.toLowerCase()
@@ -55,12 +75,52 @@ export default function AdminKnowledgeBase() {
     return matchSearch && matchCat
   })
 
+  function handleFileSelect(file) {
+    if (!file) return
+    setUploadedFile(file)
+    // Auto-fill title from filename if empty
+    if (!newArticle.title.trim()) {
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
+      setNewArticle(prev => ({
+        ...prev,
+        title: nameWithoutExt,
+        category: guessCategoryFromFile(file.name),
+      }))
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragOver(false)
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleFileSelect(file)
+  }
+
   function handleCreate() {
-    if (!newArticle.title.trim()) return
-    const created = { id: articles.length + 1, ...newArticle, author: 'Admin Smoke', views: 0, updated: new Date().toISOString().split('T')[0], pinned: false }
+    if (!newArticle.title.trim() && !uploadedFile) return
+    const title = newArticle.title.trim() || uploadedFile?.name.replace(/\.[^/.]+$/, '') || 'Untitled'
+    const created = {
+      id: articles.length + 1,
+      ...newArticle,
+      title,
+      author: 'Admin Smoke',
+      views: 0,
+      updated: new Date().toISOString().split('T')[0],
+      pinned: false,
+      // Store file reference for real upload in production
+      fileName: uploadedFile?.name,
+    }
     setArticles(a => [created, ...a])
     setCreateOpen(false)
-    setNewArticle({ title: '', category: 'Syllabus', content: '' })
+    setNewArticle({ title: '', category: 'Syllabus', content: '', discipline: '', program: '' })
+    setUploadedFile(null)
+  }
+
+  function handleModalClose() {
+    setCreateOpen(false)
+    setNewArticle({ title: '', category: 'Syllabus', content: '', discipline: '', program: '' })
+    setUploadedFile(null)
+    setDragOver(false)
   }
 
   return (
@@ -160,12 +220,90 @@ export default function AdminKnowledgeBase() {
         </DialogActions>
       </Dialog>
 
-      {/* Create dialog */}
-      <Dialog open={createOpen} onClose={() => setCreateOpen(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>New Knowledge Base Article</DialogTitle>
+      {/* Create / Upload dialog */}
+      <Dialog open={createOpen} onClose={handleModalClose} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Upload Knowledge Base Document</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+
+            {/* ── File upload zone ── */}
+            <div>
+              <p style={{ margin: '0 0 8px', fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.05em' }}>
+                ATTACH FILE
+              </p>
+
+              {/* Hidden native file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.txt,.md"
+                style={{ display: 'none' }}
+                onChange={e => handleFileSelect(e.target.files?.[0])}
+              />
+
+              {uploadedFile ? (
+                /* File preview pill */
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'rgba(56,189,248,0.08)',
+                  border: '1px solid rgba(56,189,248,0.3)',
+                  borderRadius: 10, padding: '10px 14px',
+                }}>
+                  <InsertDriveFileIcon sx={{ color: '#38BDF8', fontSize: 20, flexShrink: 0 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '0.83rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {uploadedFile.name}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                      {formatFileSize(uploadedFile.size)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setUploadedFile(null); if (fileInputRef.current) fileInputRef.current.value = '' }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', padding: 2, borderRadius: 4, transition: 'color 150ms' }}
+                    title="Remove file"
+                  >
+                    <CloseIcon sx={{ fontSize: 16 }} />
+                  </button>
+                </div>
+              ) : (
+                /* Drag-and-drop zone */
+                <div
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? 'rgba(56,189,248,0.6)' : 'rgba(255,255,255,0.12)'}`,
+                    borderRadius: 12,
+                    padding: '22px 16px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    background: dragOver ? 'rgba(56,189,248,0.06)' : 'rgba(255,255,255,0.02)',
+                    transition: 'all 200ms',
+                  }}
+                >
+                  <UploadFileIcon sx={{ fontSize: 32, color: dragOver ? '#38BDF8' : 'rgba(255,255,255,0.25)' }} />
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: '0.84rem', fontWeight: 600, color: dragOver ? '#38BDF8' : 'var(--text-secondary)' }}>
+                      Drop a file here or <span style={{ color: '#38BDF8', textDecoration: 'underline' }}>browse</span>
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 3 }}>
+                      PDF, Word, Excel, PowerPoint, CSV, TXT · Max 50 MB
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Divider sx={{ borderColor: 'var(--border-color)' }}>
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', padding: '0 8px' }}>OR FILL IN MANUALLY</span>
+            </Divider>
+
             <TextField label="Discipline" value={newArticle.discipline} onChange={e => setNewArticle({ ...newArticle, discipline: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Program" value={newArticle.program} onChange={e => setNewArticle({ ...newArticle, program: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Document Title" value={newArticle.title} onChange={e => setNewArticle({ ...newArticle, title: e.target.value })} fullWidth size="small" sx={inputSx} />
@@ -173,13 +311,15 @@ export default function AdminKnowledgeBase() {
               SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}>
               {CATEGORIES.filter(c => c !== 'All').map(c => <option key={c} value={c}>{c}</option>)}
             </TextField>
-            <TextField label="Content" value={newArticle.content} onChange={e => setNewArticle({ ...newArticle, content: e.target.value })}
-              multiline rows={6} fullWidth size="small" placeholder="Write your article content here…" sx={inputSx} />
+            <TextField label="Content / Description" value={newArticle.content} onChange={e => setNewArticle({ ...newArticle, content: e.target.value })}
+              multiline rows={4} fullWidth size="small" placeholder="Write a short description or article content…" sx={inputSx} />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
-          <OutlineBtn onClick={() => setCreateOpen(false)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleCreate}>Publish Document</PrimaryBtn>
+          <OutlineBtn onClick={handleModalClose}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={handleCreate} disabled={!newArticle.title.trim() && !uploadedFile}>
+            Publish Document
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
     </AdminLayout>
