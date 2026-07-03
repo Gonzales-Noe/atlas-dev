@@ -2747,10 +2747,10 @@ Previous invalid response:
     )
 
 
-@api_view(["GET"])
+@api_view(["GET", "DELETE"])
 @permission_classes([IsAuthenticated])
 def get_assessment_detail(request, assessment_id):
-    """Return one assessment grouped by sections with Bloom/item metadata."""
+    """Return one assessment grouped by sections with Bloom/item metadata, or delete it."""
     if not _is_faculty_user(request):
         return _faculty_only_response()
 
@@ -2766,7 +2766,16 @@ def get_assessment_detail(request, assessment_id):
     if error_response:
         return error_response
 
-    return Response({'success': True, 'assessment': _assessment_detail_payload(assessment)})
+    if request.method == "GET":
+        return Response({'success': True, 'assessment': _assessment_detail_payload(assessment)})
+
+    # DELETE: remove assessment and related items.
+    assessment_id_str = str(assessment.assessment_id)
+    assessment.delete()
+    return Response(
+        {'success': True, 'detail': 'Assessment deleted successfully.', 'assessment_id': assessment_id_str},
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["PATCH"])
