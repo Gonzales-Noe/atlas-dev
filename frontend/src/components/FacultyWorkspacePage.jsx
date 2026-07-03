@@ -722,11 +722,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     source_exam_code: '',
     source_exam_label: '',
     item_by_item: true,
+    item_batch_count: 5,
     target_item_number: 1,
     related_item_number: '',
     relation_instruction: '',
     overwrite_item: true,
   })
+  const [assessmentBatchProgress, setAssessmentBatchProgress] = useState(null)
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)
@@ -763,6 +765,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [renameValue, setRenameValue]       = useState('')
   const [deletingDocId, setDeletingDocId]   = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [deletingAssessmentId, setDeletingAssessmentId] = useState(null)
+  const [confirmDeleteAssessmentId, setConfirmDeleteAssessmentId] = useState(null)
 
   // ── Module creation flow state ───────────────────────────────────────────
   const [moduleCreating, setModuleCreating]         = useState(false)
@@ -1082,6 +1086,28 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       docsApi.execute()
     } catch (err) { console.error('[handleDeleteDoc] error:', err?.response?.status, err?.response?.data, err); setUploadError(extractApiError(err)) }
     finally { setDeletingDocId(null) }
+  }
+
+  async function handleDeleteAssessment(assessmentId) {
+    if (!assessmentId) return
+    setDeletingAssessmentId(assessmentId)
+    try {
+      await api.delete(`/curriculum/assessment/${assessmentId}/`)
+      if (selectedAssessment?.assessment_id === assessmentId) {
+        setSelectedAssessment(null)
+        setAssessmentDetail(null)
+        setAssessmentSessionId(null)
+        setAssessmentToolsTab('builder')
+        setEditingItemId(null)
+        setEditingItemDraft(null)
+      }
+      workspaceApi.execute()
+    } catch (err) {
+      console.error('[handleDeleteAssessment] error:', err?.response?.status, err?.response?.data, err)
+      setActionError(extractApiError(err) || 'Failed to delete assessment.')
+    } finally {
+      setDeletingAssessmentId(null)
+    }
   }
 
   async function handleRenameDoc(recordsId, newName) {
@@ -1741,66 +1767,104 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return
     }
 
-    const targetItemNumber = Number(assessmentParams.target_item_number || 0)
-    if (!Number.isFinite(targetItemNumber) || targetItemNumber < 1) {
+    const startItemNumber = Number(assessmentParams.target_item_number || 0)
+    if (!Number.isFinite(startItemNumber) || startItemNumber < 1) {
       setActionError('Target item number must be at least 1.')
       return
     }
-    if (blueprint.totalItems > 0 && targetItemNumber > blueprint.totalItems) {
+    if (blueprint.totalItems > 0 && startItemNumber > blueprint.totalItems) {
       setActionError(`Target item number must be between 1 and ${blueprint.totalItems}.`)
       return
     }
 
     const relatedItemNumber = Number(assessmentParams.related_item_number || 0)
-    if (relatedItemNumber && relatedItemNumber === targetItemNumber) {
+    if (relatedItemNumber && relatedItemNumber === startItemNumber) {
       setActionError('Related item number cannot be the same as target item number.')
       return
     }
 
+    const requestedBatchCount = Number(assessmentParams.item_batch_count || 1)
+    const safeBatchCount = Math.max(1, Number.isFinite(requestedBatchCount) ? requestedBatchCount : 1)
+
     setActionError('')
     setActionLoading(true)
+    setAssessmentBatchProgress({ generated: 0, requested: safeBatchCount })
 
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
       const facultyTopics = parseFacultyTopics(assessmentParams.faculty_topics)
-      const { data } = await api.post('/curriculum/generate-assessment/', {
-        course_id: course.course_id,
-        assessment_type: blueprint.assessmentType,
-        provider: assessmentParams.provider,
-        extra_instructions: assessmentParams.extra_instructions,
-        selected_doc_ids: selectedIds,
-        source_exam_code: blueprint.examCode,
-        source_exam_label: blueprint.assessmentName,
-        faculty_topics: facultyTopics,
-        assessment_id: assessmentSessionId || undefined,
-        item_by_item: true,
-        target_item_number: targetItemNumber,
-        related_item_number: relatedItemNumber || undefined,
-        relation_instruction: assessmentParams.relation_instruction,
-        overwrite_item: Boolean(assessmentParams.overwrite_item),
-      })
 
-      if (data?.success) {
-        const newAssessmentId = data?.assessment?.assessment_id || assessmentSessionId
-        if (newAssessmentId) setAssessmentSessionId(newAssessmentId)
-        if (Number.isFinite(Number(data?.next_item_number)) && Number(data.next_item_number) > 0) {
-          const nextNum = Number(data.next_item_number)
-          setAssessmentParams(p => ({
-            ...p,
-            target_item_number: nextNum,
-            related_item_number: (Number(p.related_item_number || 0) >= nextNum) ? '' : p.related_item_number,
-          }))
+      let generatedSoFar = 0
+      let nextTargetNumber = startItemNumber
+      let latestAssessmentId = assessmentSessionId || null
+      let latestAssessmentSummary = null
+      let stopLoop = false
+
+      while (!stopLoop && generatedSoFar < safeBatchCount) {
+        const { data } = await api.post('/curriculum/generate-assessment/', {
+          course_id: course.course_id,
+          assessment_type: blueprint.assessmentType,
+          provider: assessmentParams.provider,
+          extra_instructions: assessmentParams.extra_instructions,
+          selected_doc_ids: selectedIds,
+          source_exam_code: blueprint.examCode,
+          source_exam_label: blueprint.assessmentName,
+          faculty_topics: facultyTopics,
+          assessment_id: latestAssessmentId || undefined,
+          item_by_item: true,
+          item_batch_count: 1,
+          target_item_number: nextTargetNumber,
+          related_item_number: relatedItemNumber || undefined,
+          relation_instruction: assessmentParams.relation_instruction,
+          overwrite_item: Boolean(assessmentParams.overwrite_item),
+        })
+
+        if (!data?.success) {
+          throw new Error(data?.detail || 'Generation failed during batch loop.')
         }
-        setAssessmentCreating(false)
-        workspaceApi.execute()
-        if (data?.assessment?.assessment_id) {
-          await handleOpenAssessment(data.assessment)
+
+        latestAssessmentSummary = data?.assessment || latestAssessmentSummary
+        latestAssessmentId = data?.assessment?.assessment_id || latestAssessmentId
+
+        const newlyGeneratedCount = Number(
+          data?.generated_count || (Array.isArray(data?.generated_items) ? data.generated_items.length : 1)
+        )
+        generatedSoFar += Math.max(1, newlyGeneratedCount)
+        if (generatedSoFar > safeBatchCount) generatedSoFar = safeBatchCount
+
+        setAssessmentBatchProgress({ generated: generatedSoFar, requested: safeBatchCount })
+
+        const nextNum = Number(data?.next_item_number || 0)
+        const completed = Boolean(data?.completed)
+
+        if (Number.isFinite(nextNum) && nextNum > 0) {
+          nextTargetNumber = nextNum
+        }
+
+        if (completed || !(Number.isFinite(nextNum) && nextNum > 0)) {
+          stopLoop = true
         }
       }
+
+      if (latestAssessmentId) setAssessmentSessionId(latestAssessmentId)
+
+      setAssessmentParams(p => ({
+        ...p,
+        target_item_number: nextTargetNumber,
+        related_item_number: (Number(p.related_item_number || 0) >= nextTargetNumber) ? '' : p.related_item_number,
+      }))
+
+      setAssessmentCreating(false)
+      workspaceApi.execute()
+      if (latestAssessmentSummary?.assessment_id) {
+        await handleOpenAssessment(latestAssessmentSummary)
+      }
     } catch (err) {
-      setActionError(extractApiError(err))
+      setActionError(extractApiError(err) || err?.message || 'Assessment generation failed.')
+      setAssessmentBatchProgress(null)
     } finally {
       setActionLoading(false)
+      setTimeout(() => setAssessmentBatchProgress(null), 1200)
     }
   }
 
@@ -1815,6 +1879,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setAssessmentToolsTab('builder')
         setEditingItemId(null)
         setEditingItemDraft(null)
+      }
+    } catch (err) {
+      setActionError(extractApiError(err))
+    }
+  }
+
+  async function handleDeleteAssessment(assessmentId) {
+    setActionError('')
+    try {
+      const { data } = await api.delete(`/curriculum/assessment/${assessmentId}/`)
+      if (data?.success) {
+        if (selectedAssessment?.assessment_id === assessmentId) {
+          setSelectedAssessment(null)
+          setAssessmentDetail(null)
+          setAssessmentSessionId(null)
+          setAssessmentToolsTab('builder')
+          setEditingItemId(null)
+          setEditingItemDraft(null)
+        }
+        workspaceApi.execute()
       }
     } catch (err) {
       setActionError(extractApiError(err))
@@ -1993,11 +2077,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   function renderAssessmentToolsPanel() {
     const blueprint = getAssessmentBlueprint()
-    const totalTarget = Number(assessmentDetail?.target_total_items || blueprint.totalItems || assessmentDetail?.total_items || 0)
+    const explicitTarget = Number(assessmentDetail?.target_total_items || 0)
+    const inferredTarget = blueprint.totalItems > 0 ? blueprint.totalItems : null
+    const targetTotal = explicitTarget > 0 ? explicitTarget : inferredTarget
     const currentCount = Number(assessmentDetail?.total_items || 0)
-    const remainingCount = Math.max(0, totalTarget - currentCount)
+    const remainingCount = targetTotal !== null ? Math.max(0, targetTotal - currentCount) : null
+    const canAddItems = targetTotal === null || currentCount < targetTotal
     const targetItemValue = Number(assessmentParams.target_item_number || currentCount + 1 || 1)
     const relatedOptions = Array.from({ length: Math.max(0, targetItemValue - 1) }, (_, idx) => String(idx + 1))
+    const maxTargetValue = targetTotal || undefined
 
     if (!selectedAssessment || !assessmentDetail) {
       return renderUploadPanel()
@@ -2023,10 +2111,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Progress
               </Typography>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: MAROON, lineHeight: 1.25 }}>
-                {currentCount}/{totalTarget || currentCount || 0}
+                {currentCount}/{targetTotal !== null ? targetTotal : '—'}
               </Typography>
               <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.25, fontSize: '0.68rem' }}>
-                {remainingCount} item{remainingCount === 1 ? '' : 's'} left
+                {targetTotal !== null ? `${remainingCount} item${remainingCount === 1 ? '' : 's'} left` : 'Add items until completed'}
               </Typography>
             </Box>
 
@@ -2072,10 +2160,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
               <LField
                 type="number"
-                label="Target Item Number"
+                label="Items to Generate"
+                value={assessmentParams.item_batch_count}
+                onChange={e => setAssessmentParams(p => ({ ...p, item_batch_count: e.target.value }))}
+                inputProps={{ min: 1 }}
+              />
+              <LField
+                type="number"
+                label="Starting Item Number"
                 value={assessmentParams.target_item_number}
                 onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
-                inputProps={{ min: 1, max: totalTarget || undefined }}
+                inputProps={{ min: 1, max: maxTargetValue }}
               />
               <LField
                 select
@@ -2128,11 +2223,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
             </LField>
 
+            {assessmentBatchProgress && (
+              <Box sx={{ p: 1, border: '1px solid rgba(139,0,0,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
+                <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
+                  {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. Still generating...
+                </Typography>
+              </Box>
+            )}
+
             <GenButton
               onClick={handleGenerateAssessment}
-              disabled={actionLoading || remainingCount <= 0}
+              disabled={actionLoading || !canAddItems}
             >
-              {actionLoading ? 'Generating…' : remainingCount > 0 ? 'Generate Item' : 'Assessment Complete'}
+              {actionLoading ? 'Generating Items…' : canAddItems ? 'Generate Items' : 'Assessment Complete'}
             </GenButton>
           </Stack>
         )}
@@ -2144,7 +2247,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Manual Item Entry
               </Typography>
               <Typography variant="subtitle2" sx={{ fontWeight: 800, color: MAROON, lineHeight: 1.25 }}>
-                {currentCount}/{totalTarget || currentCount || 0}
+                {currentCount}/{targetTotal || currentCount || 0}
               </Typography>
             </Box>
 
@@ -2153,7 +2256,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               label="Target Item Number"
               value={assessmentParams.target_item_number}
               onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
-              inputProps={{ min: 1, max: totalTarget || undefined }}
+              inputProps={{ min: 1, max: maxTargetValue }}
             />
 
             <LField
@@ -2220,8 +2323,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               onChange={e => setManualAssessmentItem(p => ({ ...p, answer_key: e.target.value }))}
             />
 
-            <GenButton onClick={handleAddManualAssessmentItem} disabled={actionLoading || remainingCount <= 0}>
-              {actionLoading ? 'Saving…' : remainingCount > 0 ? 'Add Manual Item' : 'Assessment Complete'}
+            <GenButton onClick={handleAddManualAssessmentItem} disabled={actionLoading || !canAddItems}>
+              {actionLoading ? 'Saving…' : canAddItems ? 'Add Manual Item' : 'Assessment Complete'}
             </GenButton>
           </Stack>
         )}
@@ -4186,37 +4289,46 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   {assessmentDetail.title || 'Assessment'}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
-                <Chip
-                  size="small"
-                  label={`${assessmentDetail.total_items || 0}/${assessmentDetail.target_total_items || assessmentDetail.total_items || 0}`}
-                  sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
-                />
-                <Chip
-                  size="small"
-                  label={`${Math.max(0, (assessmentDetail.target_total_items || assessmentDetail.total_items || 0) - (assessmentDetail.total_items || 0))} left`}
-                  sx={{ bgcolor: '#f3f5f8', color: '#555', fontWeight: 600, height: 22, fontSize: '0.68rem' }}
-                />
-                <Button
-                  size="small"
-                  startIcon={<AddIcon sx={{ fontSize: '0.8rem !important' }} />}
-                  onClick={() => setAssessmentToolsTab('builder')}
-                  disabled={(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) <= (assessmentDetail.total_items || 0)}
-                  sx={{
-                    borderColor: MAROON,
-                    color: MAROON,
-                    borderRadius: 1.5,
-                    textTransform: 'none',
-                    fontSize: '0.75rem',
-                    px: 1.2,
-                    py: 0.35,
-                    borderWidth: '1px',
-                    borderStyle: 'solid',
-                    '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
-                  }}>
-                  {(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) > (assessmentDetail.total_items || 0) ? 'Add Item' : 'Complete'}
-                </Button>
-              </Box>
+              {(() => {
+                const currentTotal = Number(assessmentDetail.total_items || 0)
+                const explicitTarget = Number(assessmentDetail.target_total_items || 0)
+                const totalTarget = explicitTarget > 0 ? explicitTarget : null
+                const remaining = totalTarget !== null ? Math.max(0, totalTarget - currentTotal) : null
+                const canAdd = totalTarget === null || currentTotal < totalTarget
+                return (
+                  <>
+                    <Chip
+                      size="small"
+                      label={`${currentTotal}/${totalTarget !== null ? totalTarget : '—'}`}
+                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={totalTarget !== null ? `${remaining} left` : 'No target set'}
+                      sx={{ bgcolor: '#f3f5f8', color: '#555', fontWeight: 600, height: 22, fontSize: '0.68rem' }}
+                    />
+                    <Button
+                      size="small"
+                      startIcon={<AddIcon sx={{ fontSize: '0.8rem !important' }} />}
+                      onClick={() => setAssessmentToolsTab('builder')}
+                      disabled={!canAdd}
+                      sx={{
+                        borderColor: MAROON,
+                        color: MAROON,
+                        borderRadius: 1.5,
+                        textTransform: 'none',
+                        fontSize: '0.75rem',
+                        px: 1.2,
+                        py: 0.35,
+                        borderWidth: '1px',
+                        borderStyle: 'solid',
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      }}>
+                      {(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) > (assessmentDetail.total_items || 0) ? 'Add Item' : 'Complete'}
+                    </Button>
+                  </>
+                )
+              })()}
               <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
                 disabled={assessmentExporting}
                 onClick={handleExportAssessmentDocx}
@@ -4468,7 +4580,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {assessments.map(a => (
                   <Box
                     key={a.assessment_id}
-                    onClick={() => handleOpenAssessment(a)}
                     sx={{
                       display: 'flex',
                       gap: 1,
@@ -4481,10 +4592,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       cursor: 'pointer',
                       '&:hover': { borderColor: MAROON + '55', bgcolor: MAROON_LIGHT },
                     }}>
-                    <Chip label={a.assessment_type} size="small"
-                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
-                    <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500 }}>{a.title}</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => handleOpenAssessment(a)}>
+                      <Chip label={a.assessment_type} size="small"
+                        sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
+                      <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500, ml: 1 }}>{a.title}</Typography>
+                    </Box>
                     <Chip label={a.status} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
+                    <IconButton
+                      size="small"
+                      onClick={e => {
+                        e.stopPropagation()
+                        setConfirmDeleteAssessmentId(a.assessment_id)
+                      }}
+                      sx={{ color: '#b71c1c' }}
+                    >
+                      <DeleteIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
                   </Box>
                 ))}
               </Stack>
@@ -4767,6 +4890,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               onClick={() => { const id = confirmDeleteId; setConfirmDeleteId(null); handleDeleteDoc(id) }}
               sx={{ bgcolor: '#c62828', '&:hover': { bgcolor: '#b71c1c' }, textTransform: 'none', fontWeight: 600 }}>
               Delete
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        <Dialog open={Boolean(confirmDeleteAssessmentId)} onClose={() => setConfirmDeleteAssessmentId(null)} maxWidth="xs" fullWidth>
+          <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Assessment?</DialogTitle>
+          <DialogContent>
+            <DialogContentText sx={{ fontSize: '0.85rem' }}>
+              This will permanently remove the selected assessment and its generated items.
+              You cannot undo this action.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+            <Button size="small" onClick={() => setConfirmDeleteAssessmentId(null)}
+              sx={{ textTransform: 'none', color: '#666' }}>Cancel</Button>
+            <Button size="small" variant="contained"
+              disabled={Boolean(deletingAssessmentId)}
+              onClick={() => { const id = confirmDeleteAssessmentId; setConfirmDeleteAssessmentId(null); handleDeleteAssessment(id) }}
+              sx={{ bgcolor: '#c62828', '&:hover': { bgcolor: '#b71c1c' }, textTransform: 'none', fontWeight: 600 }}>
+              {deletingAssessmentId ? 'Deleting…' : 'Delete'}
             </Button>
           </DialogActions>
         </Dialog>
