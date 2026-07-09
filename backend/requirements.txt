@@ -37,7 +37,7 @@ google-auth==2.35.0
 google-auth-httplib2==0.2.0
 
 # ── Database ────────────────────────────────────────────────
-psycopg2-binary==2.9.10          # PostgreSQL adapter
+psycopg2-binary>=2.9.9          # PostgreSQL adapter
 pgvector==0.3.2                 # pgvector Python client
 
 # ── Bubble Sheet Generation & Scanning ─────────────────────
