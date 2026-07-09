@@ -131,6 +131,7 @@ html, body, #root {
   font-weight: 600 !important;
   font-size: 0.68rem !important;
   letter-spacing: 0.04em !important;
+}
 /* Subtle scrollbars globally */
 *::-webkit-scrollbar { width: 4px; height: 4px; }
 *::-webkit-scrollbar-track { background: transparent; }

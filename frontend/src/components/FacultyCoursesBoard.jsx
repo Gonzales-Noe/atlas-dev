@@ -1,4 +1,4 @@
-﻿﻿﻿﻿// src/components/FacultyCoursesBoard.jsx
+﻿﻿// src/components/FacultyCoursesBoard.jsx
 // Course landing page — light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
