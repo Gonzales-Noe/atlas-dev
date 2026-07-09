@@ -2,10 +2,9 @@
 // 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#8B0000).
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
-import { useEffect, useMemo, useRef, useState } from 'react'
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import AutoAlert from './AutoAlert'
 import Avatar from '@mui/material/Avatar'
@@ -70,7 +69,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { toInitials, extractApiError } from '../utils'
-import AtlasLogo from './AtlasLogo'
+import atlasLogo from '../assets/atlas-logo.png';
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
@@ -81,7 +80,7 @@ const WORKSPACE_TABS = [
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
   { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
-  { key: 'analytics',  label: 'Analytics',   Icon: BarChartIcon },
+  // { key: 'analytics',  label: 'Analytics',   Icon: BarChartIcon },
 ]
 
 const SYLLABUS_SECTIONS = [
@@ -3787,7 +3786,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       >
         {!isCollapsed && (
           <div style={{ overflow: 'hidden', display: 'flex' }}>
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', objectPosition: 'left' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
           </div>
         )}
         <IconButton onClick={() => setIsCollapsed(!isCollapsed)} size="small" sx={{ color: 'var(--text-primary)' }}>
@@ -3852,7 +3851,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <LogoutIcon fontSize="small" sx={{ mr: 1, color: MAROON }} /> Sign Out
           </MenuItem>
         </Menu>
-      </Box>
+      </div>
 
       {/* Mobile nav Drawer */}
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
@@ -3963,7 +3962,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   bgcolor: dragging === 'left' ? MAROON + '44' : 'transparent',
                   '&:hover': { bgcolor: 'rgba(139,0,0,0.14)' }, transition: 'background-color 0.15s' }} />
         )}
-
+      </Box>
       {/* Main content area */}
       <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {/* Top bar */}
@@ -3977,8 +3976,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             zIndex: (theme) => theme.zIndex.drawer - 1,
             color: '#111827',
           }}
-        >
-          <Toolbar sx={{ gap: 2, minHeight: '56px !important' }}>
+        ></AppBar>
+          <Toolbar sx={{ gap: 2, minHeight: '56px !important' }}></Toolbar>
             {isMobile && (
               <IconButton
                 edge="start"
@@ -4053,6 +4052,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         PaperProps={{ sx: { width: 300, bgcolor: 'var(--bg-card)' } }}>
         <Box sx={{ p: 2 }}>{renderUploadPanel()}</Box>
       </Drawer>
-    </Box>
+  </div>
   )
 }
