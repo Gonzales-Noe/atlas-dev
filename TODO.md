@@ -1,5 +1,3 @@
-- [ ] Inspect reference structure from `frontend/src/features/roles/Faculty/FacultyWorkspacePage.jsx`
-- [ ] Fix malformed JSX nesting in `frontend/src/components/FacultyWorkspacePage.jsx` around AppBar/Toolbar and three-panel layout
-- [ ] Remove duplicated mobile Drawer blocks at the end of `frontend/src/components/FacultyWorkspacePage.jsx`
-- [ ] Run frontend syntax/lint check to verify errors are resolved
-- [ ] Update TODO.md with completed steps
+- [x] Create `frontend/src/components/AtlasLogo.jsx` component for missing import
+- [x] Verify component exports default and uses `/ATLAS-Logo.svg`
+- [ ] Run frontend build check to confirm import resolution
