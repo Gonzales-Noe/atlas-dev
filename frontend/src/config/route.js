@@ -18,13 +18,13 @@ export const ROUTES = {
     MODULE:      '/faculty/module',
     ASSESSMENT:  '/faculty/assessment',
     GRADING:     '/faculty/grading',
+    ANALYTICS:   '/faculty/analytics',
   },
 
   // Admin (Tenant Admin — per HEI)
   ADMIN: {
     DASHBOARD:          '/admin/dashboard',
     ACCOUNT_MANAGEMENT: '/admin/account-management',
-    GLOBAL_KNOWLEDGE:   '/admin/global-knowledge',
     AUDIT_LOGS:         '/admin/audit-logs',
   },
 
