@@ -3,15 +3,20 @@
 
 import { useNavigate } from 'react-router-dom'
 import { useAuth }     from '../store/authStore'
-import { ROUTES }      from '../config/routes'
-import { getDashboardRoute } from '../utils'
+import { ROUTES }      from '../config/route'
+
+const ROLE_DASHBOARD_MAP = {
+  faculty:    ROUTES.FACULTY.DASHBOARD,
+  admin:      ROUTES.ADMIN.DASHBOARD,
+  superadmin: ROUTES.SUPERADMIN.DASHBOARD,
+}
 
 export default function useRoleRedirect() {
   const navigate    = useNavigate()
   const { user }    = useAuth()
 
   function redirectToDashboard(role) {
-    const target = getDashboardRoute(role) || ROUTES.SIGN_IN
+    const target = ROLE_DASHBOARD_MAP[role] || ROUTES.SIGN_IN
     navigate(target, { replace: true })
   }
 
