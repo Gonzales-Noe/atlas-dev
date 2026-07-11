@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-PROVIDER_CHOICES = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
+PROVIDER_CHOICES = ["ollama", "gemini", "gpt", "groq", "anthropic", "openrouter"]
 
 ASSESSMENT_TYPE_CHOICES = [
     "quiz",
