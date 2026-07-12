@@ -49,6 +49,7 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../../../hooks/useApi'
+import useAtlasLightTheme from '../../../hooks/useAtlasLightTheme'
 import api from '../../../config/api'
 import { useAuth } from '../../../store/authStore'
 import { toInitials, extractApiError } from '../../../utils'
@@ -312,6 +313,7 @@ function getSectionStatus(data, sectionKey) {
 
 // ── Main component ────────────────────────────────────────────────────────
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
+  useAtlasLightTheme()
   const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [anchorEl, setAnchorEl] = useState(null)
@@ -368,6 +370,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
+  const [parsingSections, setParsingSections]         = useState({})
 
   function setSyl(field, value) {
     setIsDirty(true)
@@ -595,21 +598,96 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const file = e.target.files?.[0]
     if (!file) return
     setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
+    setParsingSections({})
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
     try {
       // Do NOT set Content-Type manually — let the browser set it with the correct boundary
-      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
+      const { data } = await api.post('/curriculum/segment-syllabus-upload/', formData, {
         headers: { 'Content-Type': undefined },
         timeout: 120000,
       })
-      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
-        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
-        setIsDirty(true)
+      if (data.success && data.segments) {
         setSyllabusUploadSuccess(true)
+        
+        const sectionKeys = [
+          'header',
+          'direction',
+          'specs',
+          'overview',
+          'strategies',
+          'outcomes',
+          'references',
+          'policies',
+          'tla_activities',
+          'schedules'
+        ]
+
+        const promptToUiTabs = {
+          header: ['basic'],
+          direction: ['basic'],
+          specs: ['basic'],
+          overview: ['details'],
+          strategies: ['iloat'],
+          outcomes: ['iloat', 'iloatmatrix', 'tos'],
+          references: ['fwmap'],
+          policies: ['grading', 'policies'],
+          tla_activities: ['schedule'],
+          schedules: ['schedule', 'ilofwmatrix']
+        }
+
+        // Initialize UI tabs status to parsing
+        const initialParsing = {}
+        Object.values(promptToUiTabs).flat().forEach(tabKey => {
+          initialParsing[tabKey] = true
+        })
+        setParsingSections(initialParsing)
+
+        // Parse section-by-section sequentially
+        for (const key of sectionKeys) {
+          const segmentText = data.segments[key]
+          if (!segmentText || !segmentText.trim()) {
+            const tabs = promptToUiTabs[key] || []
+            setParsingSections(prev => {
+              const next = { ...prev }
+              tabs.forEach(t => {
+                next[t] = false
+              })
+              return next
+            })
+            continue
+          }
+
+          try {
+            const res = await api.post('/curriculum/parse-syllabus-segment/', {
+              course_id: courseId,
+              section_key: key,
+              segment_text: segmentText
+            })
+
+            if (res.data.success && res.data.parsed_data) {
+              setSyllabusData(prev => normalizeSyllabusData({
+                ...prev,
+                ...res.data.parsed_data
+              }))
+              setIsDirty(true)
+            }
+          } catch (err) {
+            console.error(`Error parsing section ${key}:`, err)
+          } finally {
+            const tabs = promptToUiTabs[key] || []
+            setParsingSections(prev => {
+              const next = { ...prev }
+              tabs.forEach(t => {
+                next[t] = false
+              })
+              return next
+            })
+          }
+        }
       } else {
-        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
+        setSyllabusUploadError('Syllabus was uploaded but text could not be segmented. Try a different file.')
       }
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
@@ -1663,7 +1741,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         fontSize: '0.75rem', fontWeight: 800,
                         boxShadow: (isCompleted || isActive) ? '0 0 10px rgba(139, 0, 0, 0.3)' : 'none'
                       }}>
-                        {isCompleted ? '✓' : (index + 1)}
+                        {parsingSections?.[section.key] ? (
+                          <CircularProgress size={12} sx={{ color: (isCompleted || isActive) ? '#fff' : MAROON }} />
+                        ) : isCompleted ? (
+                          '✓'
+                        ) : (
+                          index + 1
+                        )}
                       </Box>
                       <Typography variant="caption" sx={{ fontWeight: isActive ? 800 : 600, color: textColor, fontSize: '0.8rem' }}>
                         {section.label}
@@ -2163,13 +2247,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   return (
     <Box ref={containerRef}
       sx={{ height: '100vh', background: '#F9F5F5', backgroundImage: 'radial-gradient(circle at 10% 20%, rgba(139, 0, 0, 0.05) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(139, 0, 0, 0.08) 0%, transparent 40%), radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.8) 0%, transparent 100%)', display: 'flex', overflow: 'hidden' }}>
-
-      <style>{`
-        .MuiTypography-root { color: #111 !important; }
-        .MuiTypography-colorTextSecondary { color: rgba(0,0,0,0.6) !important; }
-        .MuiChip-root { background: rgba(0,0,0,0.06) !important; color: #111 !important; border: 1px solid rgba(0,0,0,0.1) !important; }
-        .MuiInputBase-root { color: #111 !important; }
-      `}</style>
 
       {/* LEFT — nav (hidden on mobile, accessible via Drawer) */}
       <Box sx={{ width: isMobile ? 0 : actualLeftWidth, transition: 'width 0.2s', overflowX: 'hidden', flexShrink: 0, display: isMobile ? 'none' : 'block',

@@ -868,3 +868,216 @@ OUTPUT — Return the assessment using exactly this structure:
         )
 
         return system, user
+
+    @staticmethod
+    def build_syllabus_segment_prompt(extracted_text: str) -> tuple:
+        """
+        Build a prompt to segment raw syllabus text into 10 raw section blocks.
+        """
+        system = (
+            "You are an expert document pre-processor. Your task is to analyze the provided university "
+            "syllabus text and partition it into 10 distinct sections based on headers, content, and context. "
+            "Do NOT summarize, modify, or parse the text into structured JSON fields. Simply copy the "
+            "exact, relevant raw lines of text belonging to each section. "
+            "Return ONLY a valid JSON object mapping the 10 keys to their corresponding raw text segments. "
+            "Do not include markdown fences, comments, or extra text."
+        )
+
+        schema = (
+            "{\n"
+            '  "header": "Raw text block containing Header & Institutional Info (university name, college, program, document title)",\n'
+            '  "direction": "Raw text block containing University vision and mission statements",\n'
+            '  "specs": "Raw text block containing Course Specifications (course title, code, category, prerequisites, semester/year, credit hours, instructor name, contact, education, CMO reference, preparation details, period of study)",\n'
+            '  "overview": "Raw text block containing Course Overview (course description, course rationale, lecture/lab/total hours, technology integration)",\n'
+            '  "strategies": "Raw text block containing Assessment & Strategies (assessment criteria, teaching, learning and assessment strategies (TLAs))",\n'
+            '  "outcomes": "Raw text block containing Expected Outcomes (ILOs, Bloom levels/verbs, assessment tasks/weight/subs, Table of Specifications (TOS))",\n'
+            '  "references": "Raw text block containing References & Frameworks (references list, IGAs, Student Outcomes (SOs), CDIO skills, SDG skills)",\n'
+            '  "policies": "Raw text block containing Course Policies (grading rows/scale, passing grade, class policies, other policies)",\n'
+            '  "tla_activities": "Raw text block containing TLA Activities (the weekly timetable/topics/outcomes/ILO-SO mapping table)",\n'
+            '  "schedules": "Raw text block containing Schedules & Mappings (assessment schedule grid, ILO-SO/CPA/IGA/CDIO/SDG mappings)"\n'
+            "}"
+        )
+
+        user = (
+            "Segment the following syllabus text into the 10 categories. "
+            "If a category/section is not found in the text, map it to an empty string. "
+            "Do not parse or alter any sentences or tables, just copy the raw text segments exactly as is.\n\n"
+            f"SYLLABUS TEXT:\n{extracted_text}\n\n"
+            f"Return a valid JSON object matching this schema:\n{schema}"
+        )
+
+        return system, user
+
+    @staticmethod
+    def build_syllabus_section_prompt(
+        section_key: str,
+        segment_text: str,
+        course_name: str,
+        course_code: str,
+    ) -> tuple:
+        """
+        Build a prompt to parse a single raw segment into its corresponding section JSON schema.
+        """
+        system = (
+            f"You are an expert parser specializing in BatStateU Course Information Syllabus (CIS) documents. "
+            f"Your task is to parse the raw text segment for the '{section_key}' section into the exact JSON schema requested. "
+            f"Extract the complete and exact text from the segment — do not summarize or omit. "
+            f"Return ONLY a valid JSON object. No markdown fences, no comments, no extra text."
+        )
+
+        schemas = {
+            "header": (
+                "{\n"
+                '  "university_name": "full university name (e.g. Republic of the Philippines, Batangas State University)",\n'
+                '  "college": "college / department name (e.g. College of Informatics and Computing Sciences)",\n'
+                '  "program": "campus or branch name (e.g. Lipa Campus or Lipa City)",\n'
+                '  "document_title": "physical address of the campus if found, or empty string",\n'
+                '  "institution_contact": "contact details (email/phone) of the department / institution"\n'
+                "}"
+            ),
+            "direction": (
+                "{\n"
+                '  "vision": "full vision statement text",\n'
+                '  "mission": "full mission statement text"\n'
+                "}"
+            ),
+            "specs": (
+                "{\n"
+                '  "course_title": "full course title",\n'
+                '  "course_code": "e.g. COSC 101",\n'
+                '  "course_category": "e.g. Major, Core, GE",\n'
+                '  "prerequisites": "prerequisite courses or None",\n'
+                '  "year_level": "e.g. 1st Year, 2nd Year, etc. or empty string",\n'
+                '  "semester_year": "e.g. 1st Semester AY 2024-2025",\n'
+                '  "credit_hours": "e.g. 3",\n'
+                '  "instructor_name": "instructor full name",\n'
+                '  "employee_id": "instructor employee ID or empty string",\n'
+                '  "instructor_email": "instructor email or empty string",\n'
+                '  "contact_info": "email / phone / room",\n'
+                '  "education": "instructor educational background",\n'
+                '  "institution_contact": "institutional contact details or empty string",\n'
+                '  "reference_cmo": "CMO number if present",\n'
+                '  "date_prepared": "date prepared string",\n'
+                '  "revision_no": "revision number",\n'
+                '  "revision_date": "revision date string",\n'
+                '  "period_of_study": "period of study string"\n'
+                "}"
+            ),
+            "overview": (
+                "{\n"
+                '  "description": "full course description paragraph(s)",\n'
+                '  "rationale": "standalone rationale paragraph explaining WHY this course exists in the program",\n'
+                '  "lecture_hours": "number of lecture hours per week",\n'
+                '  "lab_hours": "number of lab/laboratory hours per week",\n'
+                '  "total_hours": "total contact hours or empty string",\n'
+                '  "technology_integration": "technology integration description or empty string"\n'
+                "}"
+            ),
+            "strategies": (
+                "{\n"
+                '  "assessment_criteria": "full criteria for assessment text",\n'
+                '  "tlas": "full teaching, learning, and assessment strategies description"\n'
+                "}"
+            ),
+            "outcomes": (
+                "{\n"
+                '  "ilos": ["ILO 1 text", "ILO 2 text", "..."],\n'
+                '  "ilo_bloom": [{"level": "Apply", "verb": "implement"}],\n'
+                '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "category": "Summative", "weight": "60", "ilo_values": ["ME", "", ""], "subs": [], "c": "ME", "p": "", "a": ""}],\n'
+                '  "ats": [\n'
+                '    {\n'
+                '      "code": "C1",\n'
+                '      "label": "Assessment Component Label (e.g. Major Examinations, Class Participation)",\n'
+                '      "weight": 60,\n'
+                '      "subs": [\n'
+                '        {\n'
+                '          "code": "T1",\n'
+                '          "label": "Assessment Task Label (e.g. Midterm Examination)",\n'
+                '          "weight": 30,\n'
+                '          "ilos": ["ILO1"],\n'
+                '          "scores": {"ILO1": 30},\n'
+                '          "iloTotals": {"ILO1": 30}\n'
+                '        }\n'
+                '      ]\n'
+                '    }\n'
+                '  ],\n'
+                '  "tos": [{"topic": "Module 1: Introduction", "total_points": "20", "bloom_dist": {"remember": "20", "understand": "30", "apply": "30", "analyze": "20", "evaluate": "0", "create": "0"}}]\n'
+                "}"
+            ),
+            "references": (
+                "{\n"
+                '  "references": ["full citation string 1", "full citation string 2"],\n'
+                '  "igas": [{"code": "IGA1", "title": "attribute title", "description": "full description"}],\n'
+                '  "student_outcomes": [{"code": "SO1", "title": "outcome title", "description": "full description"}],\n'
+                '  "cdio_skills": [{"code": "CDIO1", "title": "skill title", "description": "full description"}],\n'
+                '  "sdg_skills": [{"code": "SDG1", "title": "skill title", "description": "full description"}]\n'
+                "}"
+            ),
+            "policies": (
+                "{\n"
+                '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
+                '  "passing_grade": 75,\n'
+                '  "use_plus_minus": false,\n'
+                '  "remedial_enabled": true,\n'
+                '  "round_grades": false,\n'
+                '  "policies": [{"title": "Class Policies", "content": "full policy text"}],\n'
+                '  "other_policies": "any additional course policies or requirements"\n'
+                "}"
+            ),
+            "tla_activities": (
+                "{\n"
+                '  "tla_chapters": [{"chapter": "1", "topics": "Topic / Reading List text", "weeks": "2-3", "outcomes": "outcome text", "ilo": "1, 2", "ilo_refs": [1, 2], "so": "1, 2", "delivery": "Lecture, Hands-on Laboratory"}]\n'
+                "}"
+            ),
+            "schedules": (
+                "{\n"
+                '  "schedule_methods": [{"name": "Major Examinations", "values": ["", "", "60", "", "", "", "60", "", "", "", "", "", "", "", "80", ""]}],\n'
+                '  "so_headers": ["2", "3", "5"],\n'
+                '  "so_cpa_rows": [{"so_vals": ["ME, LA", "", ""], "c": "ME", "p": "ME, LA", "a": ""}],\n'
+                '  "iga_headers": ["3", "6"],\n'
+                '  "iga_rows": [{"vals": ["ME, LA, FP", ""]}],\n'
+                '  "cdio_headers": ["3", "4"],\n'
+                '  "sdg_headers": ["2", "5"],\n'
+                '  "cdio_sdg_rows": [{"cdio_vals": ["", "ME, LA, FP"], "sdg_vals": ["ME, LA, FP", ""]}]\n'
+                "}"
+            ),
+        }
+
+        section_instructions = {
+            "header": (
+                "CRITICAL MAPPING INSTRUCTIONS FOR HEADER:\n"
+                "- Extract the full university name (e.g. Batangas State University) into 'university_name'.\n"
+                "- Extract the college or department name (e.g. College of Informatics and Computing Sciences) into 'college'.\n"
+                "- Extract the campus or branch name (e.g. Lipa Campus) into 'program'. This maps directly to the UI's Campus/Branch field.\n"
+                "- Extract the physical address of the institution into 'document_title'. This maps directly to the UI's Address field.\n"
+                "- Extract institutional or department contact info (phone/email) into 'institution_contact'."
+            ),
+            "outcomes": (
+                "CRITICAL MAPPING INSTRUCTIONS FOR OUTCOMES:\n"
+                "- For 'ilos', extract each course learning outcome as a list of strings.\n"
+                "- For 'ilo_bloom', construct a parallel array mapping each ILO to its Bloom's Level and Verb.\n"
+                "- For 'assessment_tasks', extract summative, project, and formative tasks.\n"
+                "- For 'ats' (Assessment Components), extract all component categories (e.g., Major Examinations, Class Participation) "
+                "with their overall weights (integer percentages), and for each component, list its sub-tasks in 'subs' with their "
+                "individual weights, mapped ILOs (e.g., ['ILO1']), scores, and iloTotals."
+            )
+        }
+
+        section_schema = schemas.get(section_key, "{}")
+        instruction_text = section_instructions.get(section_key, "")
+
+        if instruction_text:
+            user = (
+                f"Parse this '{section_key}' raw syllabus text segment for the course: {course_name} ({course_code or 'N/A'}).\n\n"
+                f"{instruction_text}\n\n"
+                f"RAW TEXT SEGMENT:\n{segment_text}\n\n"
+                f"Return a valid JSON object matching this schema exactly:\n{section_schema}"
+            )
+        else:
+            user = (
+                f"Parse this '{section_key}' raw syllabus text segment for the course: {course_name} ({course_code or 'N/A'}).\n\n"
+                f"RAW TEXT SEGMENT:\n{segment_text}\n\n"
+                f"Return a valid JSON object matching this schema exactly:\n{section_schema}"
+            )
+
+        return system, user

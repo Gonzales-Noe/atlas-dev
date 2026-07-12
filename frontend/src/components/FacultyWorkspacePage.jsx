@@ -54,6 +54,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import EditIcon from '@mui/icons-material/Edit'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
+import useAtlasLightTheme from '../hooks/useAtlasLightTheme'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { toInitials, extractApiError } from '../utils'
@@ -281,12 +282,17 @@ function SectionCard({ title, children, action }) {
 function LField({ label, ...props }) {
   return (
     <TextField size="small" fullWidth label={label} {...props}
+      InputLabelProps={{
+        ...props.InputLabelProps,
+        sx: { whiteSpace: 'normal', lineHeight: 1.25, ...(props.InputLabelProps?.sx || {}) },
+      }}
       sx={{
         '& .MuiOutlinedInput-root': {
           '&:hover fieldset': { borderColor: MAROON },
           '&.Mui-focused fieldset': { borderColor: MAROON },
         },
         '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
+        '& .MuiSelect-select': { whiteSpace: 'normal', wordBreak: 'break-word' },
         ...props.sx,
       }}
       SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
@@ -677,6 +683,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
 
 // ── Main component ────────────────────────────────────────────────────────
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
+  useAtlasLightTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuth()
@@ -690,7 +697,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusSub, setSyllabusSub] = useState('overview')
 
   const [leftWidth, setLeftWidth]   = useState(200)
-  const [rightWidth, setRightWidth] = useState(320)
+  const [rightWidth, setRightWidth] = useState(380)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [dragging, setDragging]     = useState(null)
@@ -795,6 +802,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [assessmentDetail, setAssessmentDetail] = useState(null)
   const [assessmentExporting, setAssessmentExporting] = useState(false)
+  const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingItemDraft, setEditingItemDraft] = useState(null)
   const [itemSaving, setItemSaving] = useState(false)
@@ -825,6 +833,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
+  const [parsingSections, setParsingSections]         = useState({})
   const [activeFwKey, setActiveFwKey] = useState('SO')
 
   // ── Syllabus export & template state (session-based, no DB save) ────────
@@ -1159,21 +1168,96 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const file = e.target.files?.[0]
     if (!file) return
     setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
+    setParsingSections({})
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
     try {
       // Do NOT set Content-Type manually — let the browser set it with the correct boundary
-      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
+      const { data } = await api.post('/curriculum/segment-syllabus-upload/', formData, {
         headers: { 'Content-Type': undefined },
         timeout: 120000,
       })
-      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
-        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
-        setIsDirty(true)
+      if (data.success && data.segments) {
         setSyllabusUploadSuccess(true)
+        
+        const sectionKeys = [
+          'header',
+          'direction',
+          'specs',
+          'overview',
+          'strategies',
+          'outcomes',
+          'references',
+          'policies',
+          'tla_activities',
+          'schedules'
+        ]
+
+        const promptToUiTabs = {
+          header: ['basic'],
+          direction: ['basic'],
+          specs: ['basic'],
+          overview: ['details'],
+          strategies: ['iloat'],
+          outcomes: ['iloat', 'iloatmatrix', 'tos'],
+          references: ['fwmap'],
+          policies: ['grading', 'policies'],
+          tla_activities: ['schedule'],
+          schedules: ['schedule', 'ilofwmatrix']
+        }
+
+        // Initialize UI tabs status to parsing
+        const initialParsing = {}
+        Object.values(promptToUiTabs).flat().forEach(tabKey => {
+          initialParsing[tabKey] = true
+        })
+        setParsingSections(initialParsing)
+
+        // Parse section-by-section sequentially
+        for (const key of sectionKeys) {
+          const segmentText = data.segments[key]
+          if (!segmentText || !segmentText.trim()) {
+            const tabs = promptToUiTabs[key] || []
+            setParsingSections(prev => {
+              const next = { ...prev }
+              tabs.forEach(t => {
+                next[t] = false
+              })
+              return next
+            })
+            continue
+          }
+
+          try {
+            const res = await api.post('/curriculum/parse-syllabus-segment/', {
+              course_id: courseId,
+              section_key: key,
+              segment_text: segmentText
+            })
+
+            if (res.data.success && res.data.parsed_data) {
+              setSyllabusData(prev => normalizeSyllabusData({
+                ...prev,
+                ...res.data.parsed_data
+              }))
+              setIsDirty(true)
+            }
+          } catch (err) {
+            console.error(`Error parsing section ${key}:`, err)
+          } finally {
+            const tabs = promptToUiTabs[key] || []
+            setParsingSections(prev => {
+              const next = { ...prev }
+              tabs.forEach(t => {
+                next[t] = false
+              })
+              return next
+            })
+          }
+        }
       } else {
-        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
+        setSyllabusUploadError('Syllabus was uploaded but text could not be segmented. Try a different file.')
       }
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
@@ -1758,6 +1842,62 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  function getSectionTosBloomDistribution(sectionTitle) {
+    const blueprint = getAssessmentBlueprint()
+    const majorExams = getMajorTosExams()
+    const selectedExam = majorExams.find(exam =>
+      (exam.examCode && exam.examCode === blueprint.examCode)
+      || (exam.examLabel && exam.examLabel === blueprint.assessmentName)
+    ) || majorExams[0]
+    if (!selectedExam) return {}
+
+    const normalizedSection = String(sectionTitle || '').trim().toLowerCase()
+    const row = (selectedExam.topics || []).find(topic => {
+      const topicName = String(topic?.topic || topic?.label || '').trim().toLowerCase()
+      return topicName === normalizedSection
+    })
+    if (!row) return {}
+
+    const bloomKeys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    const distribution = {}
+    for (const key of bloomKeys) {
+      const count = Number(row?.bloom_items?.[key] || 0)
+      if (count > 0) {
+        distribution[key.charAt(0).toUpperCase() + key.slice(1)] = count
+      }
+    }
+    return distribution
+  }
+
+  function getTosBloomLevels() {
+    const blueprint = getAssessmentBlueprint()
+    const majorExams = getMajorTosExams()
+    const selectedExam = majorExams.find(exam =>
+      (exam.examCode && exam.examCode === blueprint.examCode)
+      || (exam.examLabel && exam.examLabel === blueprint.assessmentName)
+    ) || majorExams[0]
+    if (!selectedExam) return ['Remember']
+
+    const levels = new Set()
+    const bloomKeys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    for (const topic of selectedExam.topics || []) {
+      for (const key of bloomKeys) {
+        if (Number(topic?.bloom_items?.[key] || 0) > 0) {
+          levels.add(key.charAt(0).toUpperCase() + key.slice(1))
+        }
+      }
+    }
+    return levels.size > 0 ? Array.from(levels) : ['Remember']
+  }
+
+  function getSelectedExamDisplayName() {
+    if (assessmentDetail?.title) return assessmentDetail.title
+    const blueprint = getAssessmentBlueprint()
+    const total = assessmentDetail?.target_total_items || blueprint.totalItems
+    const base = blueprint.assessmentName || 'Major Examination'
+    return total ? `${base} (${total} items)` : base
+  }
+
   async function handleGenerateAssessment() {
     if (!course) return
 
@@ -1879,6 +2019,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setAssessmentToolsTab('builder')
         setEditingItemId(null)
         setEditingItemDraft(null)
+        const blueprint = getAssessmentBlueprint()
+        if (blueprint.examCode || blueprint.assessmentName) {
+          setAssessmentParams(p => ({
+            ...p,
+            source_exam_code: blueprint.examCode || p.source_exam_code,
+            source_exam_label: blueprint.assessmentName || p.source_exam_label,
+          }))
+        }
       }
     } catch (err) {
       setActionError(extractApiError(err))
@@ -1906,13 +2054,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function handleStartItemEdit(item) {
-    const existingChoices = Array.isArray(item.choices) ? item.choices : []
-    const normalizedChoices = existingChoices.length >= 4 ? existingChoices : [...existingChoices, ...Array(4 - existingChoices.length).fill('')]
+    const existingChoices = Array.isArray(item.choices) ? item.choices.slice(0, 4) : []
+    const normalizedChoices = [...existingChoices, ...Array(Math.max(0, 4 - existingChoices.length)).fill('')]
     setEditingItemId(item.item_id)
     setEditingItemDraft({
       question_text: item.question_text || '',
       choices: normalizedChoices,
-      correct_answer: (item.correct_answer || '').toUpperCase(),
+      correct_answer: (item.correct_answer || '').toUpperCase().replace(/[^A-D]/g, ''),
       answer_key: item.answer_key || '',
     })
   }
@@ -1939,9 +2087,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       : []
 
     const rawAnswer = String(editingItemDraft.correct_answer || '').trim().toUpperCase()
-    const normalizedAnswer = rawAnswer ? (rawAnswer.match(/[A-E]/)?.[0] || '') : ''
+    const normalizedAnswer = rawAnswer ? (rawAnswer.match(/[A-D]/)?.[0] || '') : ''
     if (rawAnswer && !normalizedAnswer) {
-      setActionError('Correct answer must be one of A, B, C, D, or E.')
+      setActionError('Correct answer must be one of A, B, C, or D.')
+      return
+    }
+    if (cleanedChoices.filter(Boolean).length !== 4) {
+      setActionError('Provide exactly 4 choices (A-D).')
       return
     }
 
@@ -2006,9 +2158,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     const choices = (manualAssessmentItem.choices || []).map(choice => String(choice || '').trim())
-    const hasAtLeastTwoChoices = choices.filter(Boolean).length >= 2
-    if (!hasAtLeastTwoChoices) {
-      setActionError('Provide at least two choices for the manual item.')
+    if (choices.filter(Boolean).length !== 4) {
+      setActionError('Provide exactly 4 choices (A-D) for the manual item.')
       return
     }
 
@@ -2118,74 +2269,45 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Typography>
             </Box>
 
+            <Box sx={{ p: 1.1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+              <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.68rem', mb: 0.35 }}>
+                Major Examination
+              </Typography>
+              <Typography variant="body2" sx={{ fontWeight: 700, color: '#222', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                {getSelectedExamDisplayName()}
+              </Typography>
+            </Box>
+
+            <LField
+              type="number"
+              label="Items to Generate"
+              value={assessmentParams.item_batch_count}
+              onChange={e => setAssessmentParams(p => ({ ...p, item_batch_count: e.target.value }))}
+              inputProps={{ min: 1 }}
+            />
+            <LField
+              type="number"
+              label="Starting Item Number"
+              value={assessmentParams.target_item_number}
+              onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
+              inputProps={{ min: 1, max: maxTargetValue }}
+            />
             <LField
               select
-              label="Major Examination"
-              value={assessmentParams.source_exam_code || assessmentParams.source_exam_label || blueprint.examCode || blueprint.assessmentName || ''}
-              onChange={e => {
-                const selected = getMajorTosExams().find(exam => (exam.examCode || exam.examLabel) === e.target.value)
-                setAssessmentParams(p => ({
-                  ...p,
-                  source_exam_code: selected?.examCode || '',
-                  source_exam_label: selected?.examLabel || '',
-                }))
+              label="Related to Item (optional)"
+              value={assessmentParams.related_item_number}
+              onChange={e => setAssessmentParams(p => ({ ...p, related_item_number: e.target.value }))}
+              SelectProps={{
+                renderValue: selected => (selected ? `Item ${selected}` : 'None'),
               }}
             >
-              {getMajorTosExams().length === 0 ? (
-                <MenuItem value="" disabled>
-                  No major examinations found in TOS
-                </MenuItem>
-              ) : getMajorTosExams().map(exam => (
-                <MenuItem key={`${exam.examCode || exam.examLabel}`} value={exam.examCode || exam.examLabel}>
-                  {exam.examLabel} ({exam.totalItems || 0} items)
+              <MenuItem value="">None</MenuItem>
+              {relatedOptions.map(n => (
+                <MenuItem key={`right-related-${n}`} value={String(n)}>
+                  Item {n}
                 </MenuItem>
               ))}
             </LField>
-
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1 }}>
-              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Target Item</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{targetItemValue}</Typography>
-              </Box>
-              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Current</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{currentCount}</Typography>
-              </Box>
-              <Box sx={{ p: 1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.25, bgcolor: '#fff' }}>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.66rem' }}>Remaining</Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222' }}>{remainingCount}</Typography>
-              </Box>
-            </Box>
-
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-              <LField
-                type="number"
-                label="Items to Generate"
-                value={assessmentParams.item_batch_count}
-                onChange={e => setAssessmentParams(p => ({ ...p, item_batch_count: e.target.value }))}
-                inputProps={{ min: 1 }}
-              />
-              <LField
-                type="number"
-                label="Starting Item Number"
-                value={assessmentParams.target_item_number}
-                onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
-                inputProps={{ min: 1, max: maxTargetValue }}
-              />
-              <LField
-                select
-                label="Related to Item (optional)"
-                value={assessmentParams.related_item_number}
-                onChange={e => setAssessmentParams(p => ({ ...p, related_item_number: e.target.value }))}
-              >
-                <MenuItem value="">None</MenuItem>
-                {relatedOptions.map(n => (
-                  <MenuItem key={`right-related-${n}`} value={String(n)}>
-                    Item {n}
-                  </MenuItem>
-                ))}
-              </LField>
-            </Stack>
 
             <LField
               label="Relation Instruction"
@@ -2287,7 +2409,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <MenuItem value="B">B</MenuItem>
                 <MenuItem value="C">C</MenuItem>
                 <MenuItem value="D">D</MenuItem>
-                <MenuItem value="E">E</MenuItem>
               </LField>
               <LField
                 type="number"
@@ -2304,7 +2425,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 value={manualAssessmentItem.bloom_level}
                 onChange={e => setManualAssessmentItem(p => ({ ...p, bloom_level: e.target.value }))}
               >
-                {['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create'].map(level => (
+                {getTosBloomLevels().map(level => (
                   <MenuItem key={level} value={level}>{level}</MenuItem>
                 ))}
               </LField>
@@ -2334,7 +2455,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     )
   }
 
-  async function handleExportAssessmentDocx() {
+  async function handleExportAssessmentDocx({ includeChoices = true, includeAnswerKey = false } = {}) {
     if (!assessmentDetail) {
       setActionError('Open an assessment first before exporting.')
       return
@@ -2349,6 +2470,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         formData.append('assessment_id', assessmentDetail.assessment_id)
       }
       formData.append('assessment_data', JSON.stringify(assessmentDetail))
+      formData.append('include_choices', includeChoices ? 'true' : 'false')
+      formData.append('include_answer_key', includeAnswerKey ? 'true' : 'false')
 
       const response = await api.post('/curriculum/export-assessment-docx/', formData, {
         headers: { 'Content-Type': undefined },
@@ -3693,7 +3816,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   '& .MuiTabs-scrollButtons': { color: MAROON },
                 }}
               >
-                {SYLLABUS_SECTIONS.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
+                {SYLLABUS_SECTIONS.map(s => {
+                  const isParsing = parsingSections?.[s.key]
+                  return (
+                    <Tab
+                      key={s.key}
+                      value={s.key}
+                      label={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                          <span>{s.label}</span>
+                          {isParsing && <CircularProgress size={10} sx={{ color: MAROON }} />}
+                        </Box>
+                      }
+                    />
+                  )
+                })}
               </Tabs>
             </Box>
             {renderSyllabusSection()}
@@ -4294,7 +4431,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 const explicitTarget = Number(assessmentDetail.target_total_items || 0)
                 const totalTarget = explicitTarget > 0 ? explicitTarget : null
                 const remaining = totalTarget !== null ? Math.max(0, totalTarget - currentTotal) : null
-                const canAdd = totalTarget === null || currentTotal < totalTarget
                 return (
                   <>
                     <Chip
@@ -4307,31 +4443,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       label={totalTarget !== null ? `${remaining} left` : 'No target set'}
                       sx={{ bgcolor: '#f3f5f8', color: '#555', fontWeight: 600, height: 22, fontSize: '0.68rem' }}
                     />
-                    <Button
-                      size="small"
-                      startIcon={<AddIcon sx={{ fontSize: '0.8rem !important' }} />}
-                      onClick={() => setAssessmentToolsTab('builder')}
-                      disabled={!canAdd}
-                      sx={{
-                        borderColor: MAROON,
-                        color: MAROON,
-                        borderRadius: 1.5,
-                        textTransform: 'none',
-                        fontSize: '0.75rem',
-                        px: 1.2,
-                        py: 0.35,
-                        borderWidth: '1px',
-                        borderStyle: 'solid',
-                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
-                      }}>
-                      {(assessmentDetail.target_total_items || assessmentDetail.total_items || 0) > (assessmentDetail.total_items || 0) ? 'Add Item' : 'Complete'}
-                    </Button>
                   </>
                 )
               })()}
               <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
+                endIcon={<ExpandMoreIcon sx={{ fontSize: '0.85rem !important' }} />}
                 disabled={assessmentExporting}
-                onClick={handleExportAssessmentDocx}
+                onClick={(e) => setExportMenuAnchor(e.currentTarget)}
                 sx={{
                   borderColor: MAROON,
                   color: MAROON,
@@ -4346,6 +4464,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 }}>
                 {assessmentExporting ? 'Exporting…' : 'Export DOCX'}
               </Button>
+              <Menu
+                anchorEl={exportMenuAnchor}
+                open={Boolean(exportMenuAnchor)}
+                onClose={() => setExportMenuAnchor(null)}
+              >
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null)
+                  handleExportAssessmentDocx({ includeChoices: true, includeAnswerKey: false })
+                }}>
+                  Questions + Choices (Exam)
+                </MenuItem>
+                <MenuItem onClick={() => {
+                  setExportMenuAnchor(null)
+                  handleExportAssessmentDocx({ includeChoices: true, includeAnswerKey: true })
+                }}>
+                  Questions + Choices + Answer Key
+                </MenuItem>
+              </Menu>
             </Box>
 
             {(assessmentDetail.sections || []).length === 0 ? (
@@ -4362,7 +4498,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     title={`${section.section_title} (${section.allocated_items || (section.items || []).length} items)`}
                   >
                     <Box sx={{ mb: 1.25, display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                      {Object.entries(section.bloom_distribution || {}).map(([level, count]) => (
+                      {Object.entries(getSectionTosBloomDistribution(section.section_title)).map(([level, count]) => (
                         <Chip
                           key={`${section.section_title}-${level}`}
                           size="small"
@@ -4434,9 +4570,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                     Grounded on module: {item.matched_module_title}{item.matched_module_week ? ` (Week ${item.matched_module_week})` : ''}
                                   </Typography>
                                 )}
-                                {(item.choices || []).length > 0 && (
+                                {(item.choices || []).slice(0, 4).length > 0 && (
                                   <Stack spacing={0.35} sx={{ mt: 0.9 }}>
-                                    {(item.choices || []).map((choice, choiceIndex) => (
+                                    {(item.choices || []).slice(0, 4).map((choice, choiceIndex) => (
                                       <Typography
                                         key={`${item.item_id || item.item_number}-choice-${choiceIndex}`}
                                         variant="body2"
@@ -4473,7 +4609,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   onChange={e => setEditingItemDraft(prev => ({ ...prev, question_text: e.target.value }))}
                                 />
                                 <Stack spacing={0.55}>
-                                  {(draft?.choices || []).map((choice, choiceIndex) => (
+                                  {(draft?.choices || []).slice(0, 4).map((choice, choiceIndex) => (
                                     <TextField
                                       key={`${item.item_id || item.item_number}-choice-edit-${choiceIndex}`}
                                       size="small"
@@ -4501,7 +4637,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                     <MenuItem value="B">B</MenuItem>
                                     <MenuItem value="C">C</MenuItem>
                                     <MenuItem value="D">D</MenuItem>
-                                    <MenuItem value="E">E</MenuItem>
                                   </TextField>
                                   <TextField
                                     size="small"
@@ -4635,31 +4770,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
           <SectionCard title="Assessment Builder">
             <Stack spacing={1.75}>
-              <LField
-                select
-                label="Major Examination (from TOS)"
-                value={assessmentParams.source_exam_code || assessmentParams.source_exam_label || blueprint.examCode || blueprint.assessmentName || ''}
-                onChange={e => {
-                  const selected = majorExams.find(exam => (exam.examCode || exam.examLabel) === e.target.value)
-                  setAssessmentParams(p => ({
-                    ...p,
-                    source_exam_code: selected?.examCode || '',
-                    source_exam_label: selected?.examLabel || '',
-                  }))
-                }}
-              >
-                {majorExams.length === 0 ? (
-                  <MenuItem value="" disabled>
-                    No major examinations found in TOS
-                  </MenuItem>
-                ) : (
-                  majorExams.map(exam => (
-                    <MenuItem key={`${exam.examCode || exam.examLabel}`} value={exam.examCode || exam.examLabel}>
-                      {exam.examLabel} ({exam.totalItems || 0} items)
-                    </MenuItem>
-                  ))
-                )}
-              </LField>
+              <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.35 }}>
+                  Major Examination (from TOS)
+                </Typography>
+                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                  {blueprint.assessmentName}{blueprint.totalItems ? ` (${blueprint.totalItems} items)` : ''}
+                </Typography>
+              </Box>
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.25 }}>
                 {[
                   { label: 'Assessment Name', value: blueprint.assessmentName },

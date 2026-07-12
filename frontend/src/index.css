@@ -330,3 +330,137 @@ p {
 .status-dot.warning { background: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
 .status-dot.error   { background: var(--red-status); box-shadow: 0 0 6px var(--red-status); }
 .status-dot.muted   { background: rgba(255,255,255,0.25); }
+
+/* ── Light theme (faculty dashboard & workspace) ────────── */
+body.atlas-light {
+  --bg-base:       #F7F9FC;
+  --bg-surface:    #ffffff;
+  --bg-card:       #ffffff;
+  --bg-card-hover: #f0f2f5;
+  --bg-elevated:   #ffffff;
+  --border-color:  rgba(0, 0, 0, 0.08);
+  --border-active: rgba(139, 0, 0, 0.55);
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --text-primary:  #1A1A1A;
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-tertiary: rgba(0, 0, 0, 0.4);
+  --text-h:        #1A1A1A;
+  --shadow-card:   0 1px 4px rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+
+body.atlas-light #root {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+.atlas-light .MuiCard-root {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  border-radius: 12px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+  color: var(--text-primary) !important;
+}
+
+.atlas-light .MuiPaper-root {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: var(--text-primary) !important;
+}
+
+.atlas-light .MuiCardHeader-title,
+.atlas-light .MuiCardContent-root,
+.atlas-light .MuiDialogTitle-root,
+.atlas-light .MuiDialogContentText-root,
+.atlas-light .MuiFormLabel-root,
+.atlas-light .MuiInputLabel-root,
+.atlas-light .MuiSelect-select,
+.atlas-light .MuiInputBase-input,
+.atlas-light .MuiFormControlLabel-label,
+.atlas-light .MuiListItemText-primary,
+.atlas-light .MuiTableCell-root,
+.atlas-light .MuiMenuItem-root {
+  color: var(--text-primary) !important;
+}
+
+.atlas-light .MuiCardHeader-subheader,
+.atlas-light .MuiTypography-colorTextSecondary,
+.atlas-light .MuiListItemText-secondary,
+.atlas-light .MuiFormHelperText-root,
+.atlas-light .MuiTablePagination-root,
+.atlas-light .MuiTablePagination-selectLabel,
+.atlas-light .MuiTablePagination-displayedRows {
+  color: var(--text-secondary) !important;
+}
+
+.atlas-light .MuiTypography-root {
+  color: var(--text-primary) !important;
+}
+
+.atlas-light .MuiTypography-colorTextSecondary {
+  color: var(--text-secondary) !important;
+}
+
+.atlas-light .MuiOutlinedInput-root {
+  background: #fff !important;
+  color: var(--text-primary) !important;
+}
+.atlas-light .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+.atlas-light .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(0, 0, 0, 0.3) !important;
+}
+.atlas-light .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(139, 0, 0, 0.55) !important;
+}
+.atlas-light .MuiInputBase-input::placeholder { color: var(--text-tertiary) !important; }
+
+.atlas-light .MuiDialog-paper {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: var(--text-primary) !important;
+  backdrop-filter: none !important;
+}
+
+.atlas-light .MuiMenu-paper {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  color: var(--text-primary) !important;
+}
+.atlas-light .MuiMenuItem-root:hover { background: rgba(0, 0, 0, 0.04) !important; }
+
+.atlas-light .MuiTableHead-root .MuiTableRow-root { background: rgba(0, 0, 0, 0.03) !important; }
+.atlas-light .MuiTableRow-root:hover .MuiTableCell-root { background: rgba(0, 0, 0, 0.02) !important; }
+.atlas-light .MuiTablePagination-select { color: var(--text-primary) !important; }
+
+.atlas-light .MuiDivider-root { border-color: rgba(0, 0, 0, 0.08) !important; }
+.atlas-light .MuiIconButton-root { color: rgba(0, 0, 0, 0.54) !important; }
+.atlas-light .MuiTabs-root .MuiTab-root { color: var(--text-secondary) !important; }
+.atlas-light .MuiTabs-root .MuiTab-root.Mui-selected { color: #8B0000 !important; }
+
+.atlas-light .MuiDrawer-paper {
+  background: #fff !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+}
+
+.atlas-light .MuiAppBar-root {
+  background: rgba(255, 255, 255, 0.92) !important;
+  color: var(--text-primary) !important;
+}
+
+.atlas-light .MuiButton-contained,
+.atlas-light .MuiButton-containedPrimary,
+.atlas-light .MuiButton-containedSecondary {
+  color: #fff !important;
+}
+
+.atlas-light h1,
+.atlas-light h2,
+.atlas-light p {
+  color: var(--text-primary);
+}

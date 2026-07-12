@@ -1031,12 +1031,15 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
     for idx, section in enumerate(sections):
         allocated = max(0, section_alloc[idx])
         blooms = section['bloom_counts']
-        bloom_alloc = _largest_remainder_allocation(
-            allocated,
-            [blooms.get(k, 0) for k in bloom_order],
-        )
-        if sum(bloom_alloc) == 0 and allocated > 0:
-            bloom_alloc = _largest_remainder_allocation(allocated, [1] * len(bloom_order))
+        bloom_weights = [blooms.get(k, 0) for k in bloom_order]
+        bloom_weight_total = sum(bloom_weights)
+        if bloom_weight_total > 0:
+            bloom_alloc = _largest_remainder_allocation(allocated, bloom_weights)
+        elif allocated > 0:
+            bloom_alloc = [0] * len(bloom_order)
+            bloom_alloc[0] = allocated
+        else:
+            bloom_alloc = [0] * len(bloom_order)
 
         items = []
         for bloom_key, count in zip(bloom_order, bloom_alloc):
@@ -1070,7 +1073,9 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
                 'exam_label': section['exam_label'],
                 'allocated_items': allocated,
                 'bloom_distribution': {
-                    bloom_order[i].title(): bloom_alloc[i] for i in range(len(bloom_order))
+                    bloom_order[i].title(): bloom_alloc[i]
+                    for i in range(len(bloom_order))
+                    if bloom_alloc[i] > 0
                 },
                 'items': items,
             }
@@ -1293,7 +1298,7 @@ def _manual_item_payloads(manual_items, topic_rows, existing_counts, default_ite
 def _normalize_choices(choices):
     if isinstance(choices, dict):
         raw_choices = []
-        for letter in ['A', 'B', 'C', 'D', 'E']:
+        for letter in ['A', 'B', 'C', 'D']:
             if letter in choices:
                 raw_choices.append(choices.get(letter))
     elif isinstance(choices, str):
@@ -1302,16 +1307,16 @@ def _normalize_choices(choices):
         raw_choices = choices if isinstance(choices, list) else []
 
     normalized = []
-    for idx, choice in enumerate(raw_choices[:5]):
+    for idx, choice in enumerate(raw_choices[:4]):
         text = str(choice or '').strip()
         if not text:
             continue
         prefix = chr(65 + idx)
-        if re.match(r'^[A-E][\.|\)]\s+', text):
+        if re.match(r'^[A-D][\.|\)]\s+', text):
             normalized.append(text)
         else:
             normalized.append(f'{prefix}. {text}')
-    return normalized[:5]
+    return normalized[:4]
 
 
 def _is_placeholder_choice(choice_text):
@@ -1334,15 +1339,14 @@ def _generated_item_quality_errors(item_payload):
         errors.append('question_text is missing.')
 
     choices = _normalize_choices(item_payload.get('choices'))
-    if len(choices) < 4:
-        errors.append('choices must include at least 4 options.')
+    if len(choices) != 4:
+        errors.append('choices must include exactly 4 options (A-D).')
     elif any(_is_placeholder_choice(choice) for choice in choices):
         errors.append('choices contain placeholder values.')
 
     correct_answer = str(item_payload.get('correct_answer') or '').strip()[:1].upper()
-    valid_letters = 'ABCDE'[: max(1, min(5, len(choices)))]
-    if correct_answer not in valid_letters:
-        errors.append(f'correct_answer must be one of {", ".join(list(valid_letters))}.')
+    if correct_answer not in 'ABCD':
+        errors.append('correct_answer must be one of A, B, C, or D.')
 
     answer_key = str(item_payload.get('answer_key') or '').strip()
     if not answer_key:
@@ -1614,7 +1618,9 @@ def _assessment_detail_payload(assessment):
                 'section_title': section_title,
                 'exam_label': exam_label or assessment.title,
                 'allocated_items': len(items),
-                'bloom_distribution': dict(sorted(bloom_counts.items())),
+                'bloom_distribution': {
+                    level: count for level, count in sorted(bloom_counts.items()) if count > 0
+                },
                 'items': items,
             }
         )
@@ -1663,7 +1669,7 @@ def _next_missing_item_number(assessment, total_items):
     return None
 
 
-def _build_plain_assessment_docx(assessment_payload):
+def _build_plain_assessment_docx(assessment_payload, include_choices=True, include_answer_key=True):
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -1701,32 +1707,34 @@ def _build_plain_assessment_docx(assessment_payload):
 
         bloom_dist = section.get('bloom_distribution') or {}
         if bloom_dist:
-            bloom_line = ', '.join(f"{k}: {v}" for k, v in bloom_dist.items())
-            doc.add_paragraph(f"Bloom Distribution: {bloom_line}")
+            bloom_line = ', '.join(f"{k}: {v}" for k, v in bloom_dist.items() if v)
+            if bloom_line:
+                doc.add_paragraph(f"Bloom Distribution (TOS): {bloom_line}")
 
         for item in section.get('items', []):
             text = f"{item.get('item_number')}. {item.get('question_text') or ''}".strip()
             p = doc.add_paragraph(text, style='List Number')
-            for choice in (item.get('choices') or []):
-                choice_text = str(choice or '').strip()
-                if choice_text:
-                    doc.add_paragraph(choice_text, style='List Bullet 2')
+            if include_choices:
+                for choice in (item.get('choices') or [])[:4]:
+                    choice_text = str(choice or '').strip()
+                    if choice_text:
+                        doc.add_paragraph(choice_text, style='List Bullet 2')
             meta_parts = []
-            if item.get('bloom_level'):
+            if include_answer_key and item.get('bloom_level'):
                 meta_parts.append(f"Bloom: {item['bloom_level']}")
-            if item.get('bloom_verb'):
+            if include_answer_key and item.get('bloom_verb'):
                 meta_parts.append(f"Verb: {item['bloom_verb']}")
-            if item.get('ilo_refs'):
+            if include_answer_key and item.get('ilo_refs'):
                 refs = ', '.join(str(v) for v in item['ilo_refs'])
                 meta_parts.append(f"ILO: {refs}")
-            if item.get('correct_answer'):
+            if include_answer_key and item.get('correct_answer'):
                 meta_parts.append(f"Correct Answer: {item['correct_answer']}")
             if meta_parts:
                 meta = doc.add_paragraph(' | '.join(meta_parts))
                 if meta.runs:
                     meta.runs[0].italic = True
                     meta.runs[0].font.size = Pt(9)
-            if item.get('answer_key'):
+            if include_answer_key and item.get('answer_key'):
                 answer_key = doc.add_paragraph(f"Answer Key: {item['answer_key']}")
                 if answer_key.runs:
                     answer_key.runs[0].font.size = Pt(9)
@@ -2002,8 +2010,9 @@ Requirements:
 1. Return ONE JSON object only.
 2. Keep the same item_number.
 3. Include keys: item_number, item_type, section_title, exam_label, bloom_level, bloom_verb, ilo_refs, question_text, choices, correct_answer, points, answer_key.
-4. choices must have 4 or 5 options and correct_answer must be A-E.
-5. If relation context is provided, the item should be meaningfully related but not a duplicate.
+4. choices must have exactly 4 options (A, B, C, D only) and correct_answer must be A, B, C, or D.
+5. bloom_level MUST exactly match the blueprint bloom_level ({target_item_blueprint.get('bloom_level') or 'as specified'}). Do not use any other Bloom level.
+6. If relation context is provided, the item should be meaningfully related but not a duplicate.
 """
 
         llm = LLMService()
@@ -2053,7 +2062,7 @@ Requirements:
             'item_type': str(parsed_item.get('item_type') or 'Multiple Choice'),
             'section_title': target_section.get('section_title') or target_item_blueprint.get('section_title'),
             'exam_label': str(parsed_item.get('exam_label') or target_item_blueprint.get('exam_label') or source['assessment_name']),
-            'bloom_level': str(parsed_item.get('bloom_level') or target_item_blueprint.get('bloom_level') or '').strip(),
+            'bloom_level': str(target_item_blueprint.get('bloom_level') or parsed_item.get('bloom_level') or '').strip(),
             'bloom_verb': str(parsed_item.get('bloom_verb') or target_item_blueprint.get('bloom_verb') or '').strip(),
             'ilo_refs': [
                 str(v).strip()
@@ -2330,7 +2339,7 @@ SYLLABUS BLUEPRINT (must be preserved exactly in structure):
 {blueprint_json}
 
 REQUIREMENTS:
-1. ALL items must be MULTIPLE CHOICE QUESTIONS (MCQs) with 4 or 5 choices each.
+1. ALL items must be MULTIPLE CHOICE QUESTIONS (MCQs) with exactly 4 choices each (A, B, C, D only).
 2. For each item, provide:
      - The question stem in "question_text"
      - A "choices" array (e.g., ["A. ...", "B. ...", "C. ...", "D. ..."])
@@ -2426,7 +2435,7 @@ SECTION BLUEPRINT:
 Requirements:
 1. Return one JSON object with keys \"section_title\", \"exam_label\", \"allocated_items\", \"bloom_distribution\", and \"items\".
 2. Preserve the same section title and item numbers from the blueprint.
-3. Every item must be an MCQ with 4 or 5 choices.
+3. Every item must be an MCQ with exactly 4 choices (A-D).
 4. Every item must include: item_number, item_type, question_text, choices, correct_answer, bloom_level, bloom_verb, ilo_refs, points, answer_key.
 5. Write complete question stems and plausible distractors grounded in the section topic.
 6. Return ONLY valid JSON. No markdown, no prose.
@@ -2788,8 +2797,8 @@ def update_assessment_item(request, item_id):
 
     Body (all fields optional):
       question_text   str
-      choices         list[str]  (4–5 items)
-      correct_answer  str        single letter A-E
+      choices         list[str]  (exactly 4 items, A-D)
+      correct_answer  str        single letter A-D
       answer_key      str        explanation/rationale
     """
     if not _is_faculty_user(request):
@@ -2829,13 +2838,19 @@ def update_assessment_item(request, item_id):
                 {'success': False, 'detail': 'choices must be a list.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        rubric['choices'] = _normalize_choices(raw_choices)
+        normalized = _normalize_choices(raw_choices)
+        if len(normalized) != 4:
+            return Response(
+                {'success': False, 'detail': 'choices must include exactly 4 options (A-D).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        rubric['choices'] = normalized
 
     if 'correct_answer' in data:
         answer = str(data['correct_answer'] or '').strip()[:1].upper()
-        if answer and answer not in 'ABCDE':
+        if answer and answer not in 'ABCD':
             return Response(
-                {'success': False, 'detail': 'correct_answer must be A–E.'},
+                {'success': False, 'detail': 'correct_answer must be A–D.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         rubric['correct_answer'] = answer
@@ -2925,9 +2940,16 @@ def export_assessment_docx(request):
         from io import BytesIO
         from django.http import HttpResponse
 
-        doc = _build_plain_assessment_docx(payload)
+        include_choices = _to_bool(request.data.get('include_choices'), True)
+        include_answer_key = _to_bool(request.data.get('include_answer_key'), True)
+        doc = _build_plain_assessment_docx(
+            payload,
+            include_choices=include_choices,
+            include_answer_key=include_answer_key,
+        )
         safe_title = str(payload.get('title') or 'assessment').replace('/', '-').replace(' ', '_')
-        filename = f'{safe_title}_assessment.docx'
+        suffix = 'answer_key' if include_answer_key else 'exam'
+        filename = f'{safe_title}_{suffix}.docx'
 
         buffer = BytesIO()
         doc.save(buffer)
@@ -3993,6 +4015,290 @@ def parse_syllabus_upload(request):
         logger.exception("Error in parse_syllabus_upload for course %r", course_id)
         return Response(
             {"success": False, "error": str(exc)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def segment_syllabus_upload(request):
+    """
+    Upload a syllabus file, extract its text, and use LLM to segment it into 10 raw text sections.
+    Endpoint: POST /api/curriculum/segment-syllabus-upload/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Extract text
+    try:
+        extracted_text = _extract_text_from_file(file_obj, filename)
+    except Exception as exc:
+        return Response(
+            {"success": False, "error": f"Failed to extract text: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not extracted_text.strip():
+        return Response(
+            {"success": False, "error": "Could not extract any text from this file."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Segment using LLM
+    try:
+        import json
+        import re
+
+        system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_segment_prompt(
+            extracted_text=extracted_text
+        )
+
+        llm = LLMService()
+        parse_max_tokens = 8192
+        raw_response = None
+        last_exc = None
+        openrouter_payment_blocked = False
+        attempted_providers = []
+        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
+        
+        if approx_prompt_tokens > 10000:
+            provider_fallback_order = ["anthropic", "groq"]
+        else:
+            provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
+
+        for provider_choice in provider_fallback_order:
+            backend_name, _ = llm.get_provider_and_model(provider_choice)
+            if provider_choice == "groq" and approx_prompt_tokens > 10000:
+                continue
+            if openrouter_payment_blocked and backend_name == "openrouter":
+                continue
+
+            try:
+                attempted_providers.append(provider_choice)
+                raw_response = llm.generate_response(
+                    messages=[{"role": "user", "content": user_prompt}],
+                    provider_choice=provider_choice,
+                    system=system_prompt,
+                    max_tokens=parse_max_tokens,
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if backend_name == "openrouter" and status_code == 402:
+                    openrouter_payment_blocked = True
+
+        if raw_response is None:
+            return Response(
+                {"success": False, "error": f"Segmentation failed: {last_exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Extract JSON
+        raw_json = None
+        fence_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', raw_response, re.DOTALL)
+        if fence_match:
+            raw_json = fence_match.group(1)
+        else:
+            brace_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+            if brace_match:
+                raw_json = brace_match.group(0)
+
+        if not raw_json:
+            raise json.JSONDecodeError("No JSON object found in LLM response", raw_response, 0)
+
+        try:
+            segments = json.loads(raw_json)
+        except json.JSONDecodeError:
+            sanitized = re.sub(r',(\s*[}\]])', r'\1', raw_json)
+            try:
+                segments = json.loads(sanitized)
+            except json.JSONDecodeError:
+                # Fallback simple repair
+                repair_system = "You repair malformed JSON. Return ONLY valid JSON with the same keys/values. Do not add commentary or markdown fences."
+                repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
+                repaired = llm.generate_response(
+                    messages=[{"role": "user", "content": repair_prompt}],
+                    provider_choice="anthropic",
+                    system=repair_system,
+                    max_tokens=8192,
+                )
+                rep_fence = re.search(r'```(?:json)?\s*(\{.*\})\s*```', repaired, re.DOTALL)
+                if rep_fence:
+                    repaired_json = rep_fence.group(1)
+                else:
+                    rep_brace = re.search(r'\{.*\}', repaired, re.DOTALL)
+                    repaired_json = rep_brace.group(0) if rep_brace else repaired.strip()
+                segments = json.loads(repaired_json)
+
+        # Ensure all 10 keys are present in segments output
+        required_keys = ["header", "direction", "specs", "overview", "strategies", "outcomes", "references", "policies", "tla_activities", "schedules"]
+        for key in required_keys:
+            if key not in segments:
+                segments[key] = ""
+
+        return Response(
+            {"success": True, "segments": segments},
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as exc:
+        logger.exception("Error during syllabus text segmentation")
+        return Response(
+            {"success": False, "error": f"Failed to segment syllabus: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def parse_syllabus_segment(request):
+    """
+    Parse a single raw text segment for a specific syllabus section.
+    Endpoint: POST /api/curriculum/parse-syllabus-segment/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    section_key = request.data.get("section_key")
+    segment_text = request.data.get("segment_text", "")
+
+    if not course_id or not section_key:
+        return Response(
+            {"success": False, "detail": "course_id and section_key are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    if not segment_text or not segment_text.strip():
+        return Response(
+            {"success": True, "parsed_data": {}},
+            status=status.HTTP_200_OK,
+        )
+
+    try:
+        import json
+        import re
+
+        system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_section_prompt(
+            section_key=section_key,
+            segment_text=segment_text,
+            course_name=course.course_title,
+            course_code=course.course_code,
+        )
+
+        llm = LLMService()
+        parse_max_tokens = 4096
+        raw_response = None
+        last_exc = None
+        openrouter_payment_blocked = False
+        attempted_providers = []
+        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
+
+        provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
+
+        for provider_choice in provider_fallback_order:
+            backend_name, _ = llm.get_provider_and_model(provider_choice)
+            if openrouter_payment_blocked and backend_name == "openrouter":
+                continue
+
+            try:
+                attempted_providers.append(provider_choice)
+                raw_response = llm.generate_response(
+                    messages=[{"role": "user", "content": user_prompt}],
+                    provider_choice=provider_choice,
+                    system=system_prompt,
+                    max_tokens=parse_max_tokens,
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                if backend_name == "openrouter" and status_code == 402:
+                    openrouter_payment_blocked = True
+
+        if raw_response is None:
+            return Response(
+                {"success": False, "error": f"Parsing section {section_key} failed: {last_exc}"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        # Extract JSON
+        raw_json = None
+        fence_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', raw_response, re.DOTALL)
+        if fence_match:
+            raw_json = fence_match.group(1)
+        else:
+            brace_match = re.search(r'\{.*\}', raw_response, re.DOTALL)
+            if brace_match:
+                raw_json = brace_match.group(0)
+
+        if not raw_json:
+            raise json.JSONDecodeError("No JSON object found in LLM response", raw_response, 0)
+
+        try:
+            parsed_data = json.loads(raw_json)
+        except json.JSONDecodeError:
+            sanitized = re.sub(r',(\s*[}\]])', r'\1', raw_json)
+            try:
+                parsed_data = json.loads(sanitized)
+            except json.JSONDecodeError:
+                # Fallback simple repair
+                repair_system = "You repair malformed JSON. Return ONLY valid JSON. Do not add commentary or markdown fences."
+                repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
+                repaired = llm.generate_response(
+                    messages=[{"role": "user", "content": repair_prompt}],
+                    provider_choice="anthropic",
+                    system=repair_system,
+                    max_tokens=4096,
+                )
+                rep_fence = re.search(r'```(?:json)?\s*(\{.*\})\s*```', repaired, re.DOTALL)
+                if rep_fence:
+                    repaired_json = rep_fence.group(1)
+                else:
+                    rep_brace = re.search(r'\{.*\}', repaired, re.DOTALL)
+                    repaired_json = rep_brace.group(0) if rep_brace else repaired.strip()
+                parsed_data = json.loads(repaired_json)
+
+        return Response(
+            {"success": True, "parsed_data": parsed_data},
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as exc:
+        logger.exception("Error during syllabus section parsing: %s", section_key)
+        return Response(
+            {"success": False, "error": f"Failed to parse section {section_key}: {exc}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
