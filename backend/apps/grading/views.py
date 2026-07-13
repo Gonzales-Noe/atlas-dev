@@ -578,6 +578,7 @@ def _bs_template_payload(t: BubbleSheetTemplate) -> dict:
         "essay_lines": t.essay_lines,
         "has_answer_key": bool(t.answer_key),
         "passing_score": t.passing_score,
+        "layout_metadata": t.layout_metadata or {},
         "created_by": str(t.created_by_id) if t.created_by_id else None,
         "created_at": t.created_at,
         "updated_at": t.updated_at,
@@ -669,6 +670,7 @@ def bubble_sheet_templates(request):
         has_essay=d["has_essay"],
         essay_lines=d["essay_lines"],
         passing_score=d.get("passing_score"),
+        layout_metadata=d.get("layout_metadata") or {},
         created_by=faculty,
     )
     return Response({"success": True, "template": _bs_template_payload(template)}, status=status.HTTP_201_CREATED)

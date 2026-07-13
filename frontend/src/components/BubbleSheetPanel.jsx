@@ -19,7 +19,6 @@ import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import InputAdornment from '@mui/material/InputAdornment'
 import LinearProgress from '@mui/material/LinearProgress'
-import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -32,6 +31,8 @@ import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
+import Select from '@mui/material/Select'
+import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -84,7 +85,7 @@ function LF({ label, ...props }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function BubbleSheetPanel({ courseId, assessments = [] }) {
+export default function BubbleSheetPanel({ courseId, assessments = [], actionSheetMode, onActionSheetChange, onModifyTemplate }) {
   const [tab, setTab] = useState(0)
 
   // shared across sub-panels
@@ -135,6 +136,9 @@ export default function BubbleSheetPanel({ courseId, assessments = [] }) {
           templates={templates}
           loading={templatesLoading}
           onRefresh={loadTemplates}
+          actionSheetMode={actionSheetMode}
+          onActionSheetChange={onActionSheetChange}
+          onModifyTemplate={onModifyTemplate}
         />
       )}
       {tab === 1 && (
@@ -157,7 +161,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [] }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplatesTab({ courseId, assessments, templates, loading, onRefresh }) {
+function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
   const [creating, setCreating]   = useState(false)
   const [keyDialog, setKeyDialog] = useState(null) // template obj
 
@@ -190,6 +194,9 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh }) 
                     template={t}
                     onRefresh={onRefresh}
                     onSetKey={() => setKeyDialog(t)}
+                    actionSheetMode={actionSheetMode}
+                    onActionSheetChange={onActionSheetChange}
+                    onModifyTemplate={onModifyTemplate}
                   />
                 ))}
               </Stack>
@@ -217,7 +224,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh }) 
   )
 }
 
-function TemplateRow({ template: t, onRefresh, onSetKey }) {
+function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange }) {
   const [pdfLoading,     setPdfLoading]     = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewUrl,     setPreviewUrl]     = useState(null)
@@ -305,19 +312,33 @@ function TemplateRow({ template: t, onRefresh, onSetKey }) {
           <Tooltip title="Set Answer Key">
             <IconButton size="small" onClick={onSetKey}><KeyIcon sx={{ fontSize: 16 }} /></IconButton>
           </Tooltip>
-          <Tooltip title="Preview PDF">
-            <span>
-              <IconButton size="small" onClick={handlePreview} disabled={previewLoading || pdfLoading}>
-                {previewLoading ? <CircularProgress size={14} /> : <VisibilityIcon sx={{ fontSize: 16 }} />}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Download PDF">
-            <span>
-              <IconButton size="small" onClick={handleGeneratePdf} disabled={pdfLoading || previewLoading}>
-                {pdfLoading ? <CircularProgress size={14} /> : <DownloadIcon sx={{ fontSize: 16 }} />}
-              </IconButton>
-            </span>
+          <Tooltip title="Answer Sheet Actions">
+            <Select
+              labelId="action-sheet-select"
+              id="action-sheet-select"
+              value={actionSheetMode}
+              onChange={(e) => {
+                const mode = e.target.value
+                onActionSheetChange(mode)
+                if (mode === 'view') handlePreview()
+                if (mode === 'modify' && onModifyTemplate) onModifyTemplate(t)
+              }}
+              disabled={previewLoading || pdfLoading}
+              sx={{
+                minWidth: 80,
+                '& .MuiOutlinedInput-root': {
+                  '&:hover fieldset': { borderColor: MAROON },
+                  '&.Mui-focused fieldset': { borderColor: MAROON },
+                },
+                '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
+              }}
+              SelectProps={{
+                MenuProps: { PaperProps: { elevation: 2 } },
+              }}
+            >
+              <MenuItem value="view">View</MenuItem>
+              <MenuItem value="modify">Modify</MenuItem>
+            </Select>
           </Tooltip>
           <Tooltip title="Generate Student QR">
             <IconButton size="small" onClick={() => setQrOpen(true)}><QrCodeIcon sx={{ fontSize: 16 }} /></IconButton>
@@ -399,12 +420,35 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
     assessment_id: '',
     total_items: 30,
     num_choices: 4,
+    num_id_columns: 8,
     has_essay: false,
     essay_lines: 10,
     parts: [{ label: 'Part I', start_item: 1, end_item: 30 }],
   })
   const [saving,  setSaving]  = useState(false)
   const [errors,  setErrors]  = useState({})
+  const [fetchingItems, setFetchingItems] = useState(false)
+  const [selectedAssessmentId, setSelectedAssessmentId] = useState('')
+
+  // Auto-populate total_items from target_total_items when assessment changes
+  async function handleAssessmentChange(assessmentId) {
+    setField('assessment_id', assessmentId)
+    setSelectedAssessmentId(assessmentId)
+    if (!assessmentId) return
+    setFetchingItems(true)
+    try {
+      const r = await api.get(`/curriculum/assessment/${assessmentId}/`)
+      const target = r?.data?.assessment?.target_total_items
+      if (target != null) {
+        const n = Number(target)
+        setField('total_items', n)
+        // Also auto-adjust parts to cover all items
+        setForm(p => ({ ...p, total_items: n, parts: [{ label: 'Part I', start_item: 1, end_item: n }] }))
+        return
+      }
+    } catch { /* ignore — user can still type manually */ }
+    finally { setFetchingItems(false) }
+  }
 
   function setField(key, val) {
     setForm(p => ({ ...p, [key]: val }))
@@ -447,6 +491,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
         })),
         has_essay: form.has_essay,
         essay_lines: Number(form.essay_lines),
+        layout_metadata: { num_id_columns: Number(form.num_id_columns) },
       })
       onCreated()
     } catch (e) {
@@ -469,7 +514,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
             error={!!errors.name} helperText={errors.name} />
 
           <LF select label="Linked assessment (optional)" value={form.assessment_id}
-            onChange={e => setField('assessment_id', e.target.value)}>
+            onChange={e => handleAssessmentChange(e.target.value)}>
             <MenuItem value="">— None —</MenuItem>
             {assessments.map(a => (
               <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
@@ -479,6 +524,8 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
           <Stack direction="row" spacing={1.5}>
             <LF label="Total items" type="number" value={form.total_items}
               onChange={e => setField('total_items', e.target.value)}
+              disabled={!!selectedAssessmentId}
+              helperText={selectedAssessmentId ? 'Auto-populated from assessment TOS' : ''}
               inputProps={{ min: 1, max: 300 }} error={!!errors.total_items} />
             <LF select label="Choices per item" value={form.num_choices}
               onChange={e => setField('num_choices', Number(e.target.value))}>
@@ -521,6 +568,12 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
               ))}
             </Stack>
           </Box>
+
+          {/* Student ID Columns */}
+          <LF label="Student ID Columns" type="number" value={form.num_id_columns}
+            onChange={e => setField('num_id_columns', Number(e.target.value))}
+            inputProps={{ min: 4, max: 15 }}
+            helperText="Number of digit columns for the Student ID shading matrix (4–15)" />
 
           {/* Essay */}
           <Stack direction="row" spacing={1.5} alignItems="center">
