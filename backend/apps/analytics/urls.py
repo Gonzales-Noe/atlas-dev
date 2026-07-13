@@ -9,4 +9,5 @@ urlpatterns = [
     path('ingest-apikey/', views.ingest_google_sheets_api_key, name='ingest_google_sheets_api_key'),
     # Prescriptive recommendations
     path('prescriptive-recommendations/', views.prescriptive_recommendations, name='prescriptive_recommendations'),
+    path('bloom-item-analysis/', views.bloom_item_analysis, name='bloom_item_analysis'),
 ]
