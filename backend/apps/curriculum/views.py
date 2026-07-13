@@ -1033,8 +1033,14 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
         blooms = section['bloom_counts']
         bloom_weights = [blooms.get(k, 0) for k in bloom_order]
         bloom_weight_total = sum(bloom_weights)
-        if bloom_weight_total > 0:
-            bloom_alloc = _largest_remainder_allocation(allocated, bloom_weights)
+        # Only include Bloom levels that have non-zero item counts in the TOS
+        nonzero_bloom_indices = [i for i, w in enumerate(bloom_weights) if w > 0]
+        if bloom_weight_total > 0 and nonzero_bloom_indices:
+            nonzero_weights = [bloom_weights[i] for i in nonzero_bloom_indices]
+            nonzero_alloc = _largest_remainder_allocation(allocated, nonzero_weights)
+            bloom_alloc = [0] * len(bloom_order)
+            for ni, nw in zip(nonzero_bloom_indices, nonzero_alloc):
+                bloom_alloc[ni] = nw
         elif allocated > 0:
             bloom_alloc = [0] * len(bloom_order)
             bloom_alloc[0] = allocated
@@ -1599,34 +1605,6 @@ def _assessment_detail_payload(assessment):
 
     raw_items.sort(key=lambda x: (x['item_number'] if x['item_number'] > 0 else 10**9, x['question_text']))
 
-    grouped = defaultdict(list)
-    for item in raw_items:
-        grouped[item['section_title']].append(item)
-
-    sections = []
-    for section_title, items in grouped.items():
-        bloom_counts = defaultdict(int)
-        exam_label = ''
-        for item in items:
-            level = str(item.get('bloom_level') or '').strip()
-            if level:
-                bloom_counts[level] += 1
-            if not exam_label and item.get('exam_label'):
-                exam_label = item['exam_label']
-        sections.append(
-            {
-                'section_title': section_title,
-                'exam_label': exam_label or assessment.title,
-                'allocated_items': len(items),
-                'bloom_distribution': {
-                    level: count for level, count in sorted(bloom_counts.items()) if count > 0
-                },
-                'items': items,
-            }
-        )
-
-    sections.sort(key=lambda s: s['section_title'].lower())
-
     return {
         'assessment_id': str(assessment.assessment_id),
         'title': assessment.title,
@@ -1634,9 +1612,9 @@ def _assessment_detail_payload(assessment):
         'term': assessment.term,
         'status': assessment.status,
         'generated_at': assessment.generated_at,
-        'sections': sections,
-        'total_items': sum(len(s['items']) for s in sections),
-        'target_total_items': max(target_totals) if target_totals else sum(len(s['items']) for s in sections),
+        'items': raw_items,
+        'total_items': len(raw_items),
+        'target_total_items': max(target_totals) if target_totals else len(raw_items),
     }
 
 

@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/analytics/', include('apps.analytics.urls')),
     path('api/integrations/', include('apps.integrations.urls')),
     path('api/grading/omr/', include('apps.grading.urls')),
+    path('api/grading/', include('apps.grading.urls_grading')),
 ]
 
 if settings.DEBUG:

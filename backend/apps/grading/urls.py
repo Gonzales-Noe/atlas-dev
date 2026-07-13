@@ -34,6 +34,7 @@ urlpatterns = [
     ),
 
     # ── Bubble Sheet (self-contained generation + scanning) ───────────────────
+    path("student-scores/", views.student_scores, name="student_scores"),
     path("bubble/templates/", views.bubble_sheet_templates, name="bubble_sheet_templates"),
     path(
         "bubble/templates/<uuid:template_id>/",

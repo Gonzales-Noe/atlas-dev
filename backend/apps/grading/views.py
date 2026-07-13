@@ -615,6 +615,99 @@ def _save_bubble_image(file_obj, template_id: str) -> str:
     return str(relative).replace("\\", "/")
 
 
+# ── Student Scores ────────────────────────────────────────────────────────────
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def student_scores(request):
+    """
+    GET /api/grading/student-scores/?course_id=<uuid>&assessment_id=<uuid>
+    Returns a list of students with their scores for a given assessment.
+    Merges data from AssessmentScoreResult and BubbleSheetScan.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    faculty = _get_faculty_profile(request)
+    if not faculty:
+        return Response(
+            {"success": False, "detail": "No faculty profile linked."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    course_id = request.query_params.get("course_id", "").strip()
+    assessment_id = request.query_params.get("assessment_id", "").strip()
+
+    if not course_id or not assessment_id:
+        return Response(
+            {"success": False, "detail": "course_id and assessment_id are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not _faculty_can_access_course(faculty, course_id):
+        return Response(
+            {"success": False, "detail": "Access denied."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        assessment = Assessment.objects.get(assessment_id=assessment_id, course_id=course_id)
+    except Assessment.DoesNotExist:
+        return Response(
+            {"success": False, "detail": "Assessment not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    rows: list[dict] = []
+
+    # 1. AssessmentScoreResult rows
+    from apps.integrations.models import AssessmentScoreResult
+    score_results = AssessmentScoreResult.objects.filter(
+        assessment_id=assessment_id
+    ).order_by("student_identifier")
+    for r in score_results:
+        rows.append({
+            "student_id": r.student_identifier,
+            "score": float(r.score) if r.score else 0,
+            "max_score": None,
+            "percent": None,
+            "source": "grade_sheet",
+            "flagged": False,
+        })
+
+    # 2. BubbleSheetScan rows (via BubbleSheetTemplate linked to this assessment)
+    templates = BubbleSheetTemplate.objects.filter(assessment_id=assessment_id)
+    for tpl in templates:
+        scans = BubbleSheetScan.objects.filter(template=tpl).order_by("student_identifier")
+        for s in scans:
+            # Avoid dupes if same student exists in both
+            exists = any(r["student_id"] == s.student_identifier for r in rows)
+            if not exists:
+                rows.append({
+                    "student_id": s.student_identifier,
+                    "score": float(s.score_raw) if s.score_raw else 0,
+                    "max_score": float(s.max_score) if s.max_score else None,
+                    "percent": float(s.score_percent) if s.score_percent else None,
+                    "source": "bubble_sheet",
+                    "flagged": s.is_flagged,
+                })
+
+    rows.sort(key=lambda r: r["student_id"])
+
+    return Response(
+        {
+            "success": True,
+            "course_id": course_id,
+            "assessment_id": assessment_id,
+            "assessment_title": assessment.title,
+            "total_students": len(rows),
+            "students": rows,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
 # ── Bubble Sheet Template CRUD ────────────────────────────────────────────────
 
 @api_view(["GET", "POST"])
