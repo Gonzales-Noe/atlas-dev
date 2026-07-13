@@ -37,11 +37,14 @@ import AssignmentIcon from '@mui/icons-material/Assignment'
 import SvgIcon from '@mui/material/SvgIcon'
 import DeleteIcon from '@mui/icons-material/Delete'
 import GradeIcon from '@mui/icons-material/Grade'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import LogoutIcon from '@mui/icons-material/Logout'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import MenuIcon from '@mui/icons-material/Menu'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import DownloadIcon from '@mui/icons-material/Download'
+import VisibilityIcon from '@mui/icons-material/Visibility'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
@@ -803,6 +806,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [assessmentDetail, setAssessmentDetail] = useState(null)
   const [assessmentExporting, setAssessmentExporting] = useState(false)
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
+  const [copiedAssessmentId, setCopiedAssessmentId] = useState('')
+  const [answerSheetDialogOpen, setAnswerSheetDialogOpen] = useState(false)
+  const [actionSheetMode, setActionSheetMode] = useState('view')
+  const [bubbleSheetMenuAnchor, setBubbleSheetMenuAnchor] = useState(null)
+  const [bubbleSheetPreviewOpen, setBubbleSheetPreviewOpen] = useState(false)
+  const [bubbleSheetPreviewUrl, setBubbleSheetPreviewUrl] = useState('')
+  const [bubbleSheetPreviewTitle, setBubbleSheetPreviewTitle] = useState('')
+  const [bubbleSheetPreviewLoading, setBubbleSheetPreviewLoading] = useState(false)
+  const [answerSheetLoading, setAnswerSheetLoading] = useState(false)
+  const [answerSheetSaving, setAnswerSheetSaving] = useState(false)
+  const [answerSheetTemplate, setAnswerSheetTemplate] = useState(null)
+  const [answerSheetForm, setAnswerSheetForm] = useState({
+    name: '',
+    num_choices: 4,
+    num_id_columns: 8,
+    has_essay: false,
+    essay_lines: 10,
+  })
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingItemDraft, setEditingItemDraft] = useState(null)
   const [itemSaving, setItemSaving] = useState(false)
@@ -833,7 +854,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
-  const [parsingSections, setParsingSections]         = useState({})
   const [activeFwKey, setActiveFwKey] = useState('SO')
 
   // ── Syllabus export & template state (session-based, no DB save) ────────
@@ -1168,96 +1188,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const file = e.target.files?.[0]
     if (!file) return
     setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
-    setParsingSections({})
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
     try {
       // Do NOT set Content-Type manually — let the browser set it with the correct boundary
-      const { data } = await api.post('/curriculum/segment-syllabus-upload/', formData, {
+      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
         headers: { 'Content-Type': undefined },
         timeout: 120000,
       })
-      if (data.success && data.segments) {
+      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
+        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
+        setIsDirty(true)
         setSyllabusUploadSuccess(true)
-        
-        const sectionKeys = [
-          'header',
-          'direction',
-          'specs',
-          'overview',
-          'strategies',
-          'outcomes',
-          'references',
-          'policies',
-          'tla_activities',
-          'schedules'
-        ]
-
-        const promptToUiTabs = {
-          header: ['basic'],
-          direction: ['basic'],
-          specs: ['basic'],
-          overview: ['details'],
-          strategies: ['iloat'],
-          outcomes: ['iloat', 'iloatmatrix', 'tos'],
-          references: ['fwmap'],
-          policies: ['grading', 'policies'],
-          tla_activities: ['schedule'],
-          schedules: ['schedule', 'ilofwmatrix']
-        }
-
-        // Initialize UI tabs status to parsing
-        const initialParsing = {}
-        Object.values(promptToUiTabs).flat().forEach(tabKey => {
-          initialParsing[tabKey] = true
-        })
-        setParsingSections(initialParsing)
-
-        // Parse section-by-section sequentially
-        for (const key of sectionKeys) {
-          const segmentText = data.segments[key]
-          if (!segmentText || !segmentText.trim()) {
-            const tabs = promptToUiTabs[key] || []
-            setParsingSections(prev => {
-              const next = { ...prev }
-              tabs.forEach(t => {
-                next[t] = false
-              })
-              return next
-            })
-            continue
-          }
-
-          try {
-            const res = await api.post('/curriculum/parse-syllabus-segment/', {
-              course_id: courseId,
-              section_key: key,
-              segment_text: segmentText
-            })
-
-            if (res.data.success && res.data.parsed_data) {
-              setSyllabusData(prev => normalizeSyllabusData({
-                ...prev,
-                ...res.data.parsed_data
-              }))
-              setIsDirty(true)
-            }
-          } catch (err) {
-            console.error(`Error parsing section ${key}:`, err)
-          } finally {
-            const tabs = promptToUiTabs[key] || []
-            setParsingSections(prev => {
-              const next = { ...prev }
-              tabs.forEach(t => {
-                next[t] = false
-              })
-              return next
-            })
-          }
-        }
       } else {
-        setSyllabusUploadError('Syllabus was uploaded but text could not be segmented. Try a different file.')
+        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
       }
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
@@ -1828,7 +1773,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const selectedExam = selectedByCode || selectedByLabel || majorExams[0] || null
 
     const assessmentName = selectedExam?.examLabel || 'Major Examination'
-    const assessmentType = assessmentName.toLowerCase()
+    const assessmentType = 'Major Examination'
     const totalItems = Number(selectedExam?.totalItems || 0)
 
     return {
@@ -1839,6 +1784,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       examCode: selectedExam?.examCode || '',
       sourceTaskLabel: selectedExam?.examLabel || '',
       sourceMode: selectedExam ? 'TOS Major Examination' : 'No Major TOS Exam Found',
+      selectedExam: selectedExam || null,
     }
   }
 
@@ -1888,6 +1834,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
     }
     return levels.size > 0 ? Array.from(levels) : ['Remember']
+  }
+
+  function formatAssessmentId(id) {
+    const raw = String(id || '').trim()
+    if (!raw) return ''
+    if (raw.length <= 10) return raw
+    return `${raw.slice(0, 6)}...${raw.slice(-4)}`
+  }
+
+  async function copyAssessmentId(id) {
+    const raw = String(id || '').trim()
+    if (!raw) return
+    try {
+      await navigator.clipboard.writeText(raw)
+      setCopiedAssessmentId(raw)
+      setTimeout(() => setCopiedAssessmentId(prev => (prev === raw ? '' : prev)), 1500)
+    } catch {
+      // no-op
+    }
   }
 
   function getSelectedExamDisplayName() {
@@ -1943,7 +1908,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       while (!stopLoop && generatedSoFar < safeBatchCount) {
         const { data } = await api.post('/curriculum/generate-assessment/', {
           course_id: course.course_id,
-          assessment_type: blueprint.assessmentType,
+          assessment_type: 'Major Examination',
           provider: assessmentParams.provider,
           extra_instructions: assessmentParams.extra_instructions,
           selected_doc_ids: selectedIds,
@@ -2019,6 +1984,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setAssessmentToolsTab('builder')
         setEditingItemId(null)
         setEditingItemDraft(null)
+        // Fetch linked bubble sheet template if one exists
+        try {
+          const tr = await api.get(`/grading/omr/bubble/templates/?course_id=${courseId}`)
+          const templates = tr?.data?.templates || []
+          const linked = templates.find(t => t.assessment_id === data.assessment.assessment_id) || null
+          setAnswerSheetTemplate(linked)
+          if (linked) {
+            setAnswerSheetForm({
+              name: linked.name || data.assessment.title || 'Answer Sheet',
+              num_choices: Number(linked.num_choices || 4),
+              num_id_columns: Number(linked.layout_metadata?.num_id_columns || 8),
+              has_essay: Boolean(linked.has_essay),
+              essay_lines: Number(linked.essay_lines || 10),
+            })
+          }
+        } catch { /* ignore — template fetch is non-critical */ }
         const blueprint = getAssessmentBlueprint()
         if (blueprint.examCode || blueprint.assessmentName) {
           setAssessmentParams(p => ({
@@ -2045,6 +2026,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           setAssessmentToolsTab('builder')
           setEditingItemId(null)
           setEditingItemDraft(null)
+          setAnswerSheetTemplate(null)
         }
         workspaceApi.execute()
       }
@@ -2170,7 +2152,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const relatedItemNumber = Number(assessmentParams.related_item_number || 0)
       const payload = {
         course_id: course.course_id,
-        assessment_type: getAssessmentBlueprint().assessmentType,
+        assessment_type: 'Major Examination',
         provider: assessmentParams.provider,
         extra_instructions: assessmentParams.extra_instructions,
         selected_doc_ids: selectedDocIds.size > 0 ? [...selectedDocIds] : [],
@@ -2510,6 +2492,107 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setActionError(message)
     } finally {
       setAssessmentExporting(false)
+    }
+  }
+
+  async function handleViewBubbleSheet() {
+    setActionSheetMode('view')
+    setBubbleSheetPreviewLoading(true)
+    setActionError('')
+    try {
+      if (!answerSheetTemplate?.template_id) {
+        setActionError('No answer sheet template exists yet. Create one first.')
+        return
+      }
+      const pdfR = await api.post(
+        `/grading/omr/bubble/templates/${answerSheetTemplate.template_id}/generate-pdf/`,
+        {},
+        { responseType: 'blob' }
+      )
+      setBubbleSheetPreviewUrl(URL.createObjectURL(pdfR.data))
+      setBubbleSheetPreviewTitle(answerSheetTemplate.name)
+      setBubbleSheetPreviewOpen(true)
+    } catch (err) {
+      setActionError(extractApiError(err) || 'Failed to load bubble sheet preview.')
+    } finally {
+      setBubbleSheetPreviewLoading(false)
+    }
+  }
+
+  async function handleOpenAnswerSheetDialog() {
+    if (!courseId || !assessmentDetail?.assessment_id) return
+    setActionSheetMode('modify')
+    setAnswerSheetDialogOpen(true)
+    setAnswerSheetLoading(true)
+    setActionError('')
+    try {
+      const r = await api.get(`/grading/omr/bubble/templates/?course_id=${courseId}`)
+      const templates = r?.data?.templates || []
+      const linked = templates.find(t => t.assessment_id === assessmentDetail.assessment_id) || null
+      setAnswerSheetTemplate(linked)
+      setAnswerSheetForm({
+        name: linked?.name || `${assessmentDetail.title || 'Assessment'} Answer Sheet`,
+        num_choices: Number(linked?.num_choices || 4),
+        num_id_columns: Number(linked?.layout_metadata?.num_id_columns || 8),
+        has_essay: Boolean(linked?.has_essay),
+        essay_lines: Number(linked?.essay_lines || 10),
+      })
+    } catch (err) {
+      setActionError(extractApiError(err) || 'Failed to load answer sheet template.')
+    } finally {
+      setAnswerSheetLoading(false)
+    }
+  }
+
+  function handleModifyBubbleSheet(template) {
+    setActionSheetMode('modify')
+    setAnswerSheetTemplate(template)
+    setAnswerSheetForm({
+      name: template?.name || 'Answer Sheet',
+      num_choices: Number(template?.num_choices || 4),
+      num_id_columns: Number(template?.layout_metadata?.num_id_columns || 8),
+      has_essay: Boolean(template?.has_essay),
+      essay_lines: Number(template?.essay_lines || 10),
+    })
+    setAnswerSheetDialogOpen(true)
+  }
+
+  async function handleSaveAnswerSheet() {
+    if (!courseId || !assessmentDetail?.assessment_id) return
+    setAnswerSheetSaving(true)
+    setActionError('')
+    try {
+      const payload = {
+        name: answerSheetForm.name,
+        total_items: Number(assessmentDetail.target_total_items || 0),
+        num_choices: Number(answerSheetForm.num_choices),
+        has_essay: Boolean(answerSheetForm.has_essay),
+        essay_lines: Number(answerSheetForm.essay_lines),
+        layout_metadata: {
+          num_id_columns: Number(answerSheetForm.num_id_columns),
+        },
+      }
+      if (answerSheetTemplate?.template_id) {
+        // Update existing template
+        const r = await api.patch(
+          `/grading/omr/bubble/templates/${answerSheetTemplate.template_id}/`,
+          payload
+        )
+        setAnswerSheetTemplate(r?.data?.template || null)
+      } else {
+        // Create new template
+        const r = await api.post('/grading/omr/bubble/templates/', {
+          ...payload,
+          course_id: courseId,
+          assessment_id: assessmentDetail.assessment_id,
+        })
+        setAnswerSheetTemplate(r?.data?.template || null)
+      }
+      setAnswerSheetDialogOpen(false)
+    } catch (err) {
+      setActionError(extractApiError(err) || 'Failed to save answer sheet.')
+    } finally {
+      setAnswerSheetSaving(false)
     }
   }
 
@@ -3816,21 +3899,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   '& .MuiTabs-scrollButtons': { color: MAROON },
                 }}
               >
-                {SYLLABUS_SECTIONS.map(s => {
-                  const isParsing = parsingSections?.[s.key]
-                  return (
-                    <Tab
-                      key={s.key}
-                      value={s.key}
-                      label={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                          <span>{s.label}</span>
-                          {isParsing && <CircularProgress size={10} sx={{ color: MAROON }} />}
-                        </Box>
-                      }
-                    />
-                  )
-                })}
+                {SYLLABUS_SECTIONS.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
               </Tabs>
             </Box>
             {renderSyllabusSection()}
@@ -4413,18 +4482,35 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     setAssessmentToolsTab('builder')
                     setEditingItemId(null)
                     setEditingItemDraft(null)
+                    setAnswerSheetTemplate(null)
                   }}
                   sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
                   <ArrowBackIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
               <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
-                  {assessmentDetail.assessment_type || 'assessment'} · {assessmentDetail.total_items || 0} items
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.9rem', textTransform: 'uppercase' }}>
+                  {String(assessmentDetail.title || 'Assessment').toUpperCase()}
                 </Typography>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.9rem' }}>
-                  {assessmentDetail.title || 'Assessment'}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6 }}>
+                  <Typography variant="caption" sx={{ color: '#777', fontWeight: 700 }}>
+                    Assessment ID
+                  </Typography>
+                  <Chip
+                    size="small"
+                    label={formatAssessmentId(assessmentDetail.assessment_id)}
+                    sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }}
+                  />
+                  <Tooltip title={copiedAssessmentId === String(assessmentDetail.assessment_id || '') ? 'Copied!' : 'Copy full UUID'}>
+                    <IconButton
+                      size="small"
+                      onClick={() => copyAssessmentId(assessmentDetail.assessment_id)}
+                      sx={{ color: MAROON, p: 0.4 }}
+                    >
+                      <ContentCopyIcon sx={{ fontSize: '0.9rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               </Box>
               {(() => {
                 const currentTotal = Number(assessmentDetail.total_items || 0)
@@ -4446,6 +4532,40 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </>
                 )
               })()}
+              <Button
+                size="small"
+                startIcon={<PictureAsPdfIcon sx={{ fontSize: '0.85rem !important' }} />}
+                endIcon={<ExpandMoreIcon sx={{ fontSize: '0.85rem !important' }} />}
+                disabled={answerSheetLoading || bubbleSheetPreviewLoading}
+                onClick={(e) => setBubbleSheetMenuAnchor(e.currentTarget)}
+                sx={{
+                  borderColor: MAROON,
+                  color: MAROON,
+                  borderRadius: 1.5,
+                  textTransform: 'none',
+                  fontSize: '0.78rem',
+                  px: 1.25,
+                  py: 0.4,
+                  borderWidth: '1px',
+                  borderStyle: 'solid',
+                  '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                }}
+              >
+                Bubble Sheet
+              </Button>
+              <Menu
+                anchorEl={bubbleSheetMenuAnchor}
+                open={Boolean(bubbleSheetMenuAnchor)}
+                onClose={() => setBubbleSheetMenuAnchor(null)}
+              >
+                <MenuItem onClick={() => { setBubbleSheetMenuAnchor(null); handleViewBubbleSheet() }}>
+                  View PDF
+                </MenuItem>
+                <MenuItem onClick={() => { setBubbleSheetMenuAnchor(null); handleOpenAnswerSheetDialog() }}>
+                  {answerSheetTemplate ? 'Modify' : 'Create'}
+                </MenuItem>
+              </Menu>
+
               <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
                 endIcon={<ExpandMoreIcon sx={{ fontSize: '0.85rem !important' }} />}
                 disabled={assessmentExporting}
@@ -4728,9 +4848,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       '&:hover': { borderColor: MAROON + '55', bgcolor: MAROON_LIGHT },
                     }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => handleOpenAssessment(a)}>
-                      <Chip label={a.assessment_type} size="small"
-                        sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500, ml: 1 }}>{a.title}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
+                        <Typography variant="caption" sx={{ color: '#777', fontWeight: 700 }}>
+                          Assessment ID
+                        </Typography>
+                        <Chip
+                          label={formatAssessmentId(a.assessment_id)}
+                          size="small"
+                          sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }}
+                        />
+                        <Tooltip title={copiedAssessmentId === String(a.assessment_id || '') ? 'Copied!' : 'Copy full UUID'}>
+                          <IconButton
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              copyAssessmentId(a.assessment_id)
+                            }}
+                            sx={{ color: MAROON, p: 0.4 }}
+                          >
+                            <ContentCopyIcon sx={{ fontSize: '0.85rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                      <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500, ml: 1, textTransform: 'uppercase' }}>{a.title}</Typography>
                     </Box>
                     <Chip label={a.status} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
                     <IconButton
@@ -4770,37 +4910,103 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
           <SectionCard title="Assessment Builder">
             <Stack spacing={1.75}>
-              <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.35 }}>
-                  Major Examination (from TOS)
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 700, color: '#222', lineHeight: 1.35, wordBreak: 'break-word', whiteSpace: 'normal' }}>
-                  {blueprint.assessmentName}{blueprint.totalItems ? ` (${blueprint.totalItems} items)` : ''}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.25 }}>
-                {[
-                  { label: 'Assessment Name', value: blueprint.assessmentName },
-                  { label: 'Assessment Type', value: blueprint.assessmentType },
-                  { label: 'Number of Items', value: blueprint.totalItems },
-                ].map(card => (
-                  <Box key={card.label} sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
-                    <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem' }}>{card.label}</Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#222', mt: 0.25 }}>{card.value || 'Auto'}</Typography>
-                  </Box>
-                ))}
-              </Box>
-              <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.5 }}>
-                  Assessment Source
-                </Typography>
-                <Typography variant="body2" sx={{ fontWeight: 600, color: '#222' }}>
-                  {blueprint.sourceMode} {blueprint.examCode ? `· ${blueprint.examCode}` : ''} {blueprint.sourceTaskLabel ? `· ${blueprint.sourceTaskLabel}` : ''}
-                </Typography>
-                <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.5 }}>
-                  Topics are taken from the selected TOS exam. If no TOS topics are available, faculty topic input below is used.
-                </Typography>
-              </Box>
+              {(() => {
+                const majorExams = getMajorTosExams()
+                const nameOptions = majorExams.map(exam => exam.examLabel).filter(Boolean)
+                const selectedExam = majorExams.find(exam =>
+                  (exam.examCode && exam.examCode === assessmentParams.source_exam_code)
+                  || (exam.examLabel && exam.examLabel === assessmentParams.source_exam_label)
+                ) || majorExams[0] || null
+
+                const assessmentName = selectedExam?.examLabel || blueprint.assessmentName || ''
+                const numberOfItems = selectedExam?.totalItems ?? blueprint.totalItems ?? 0
+                const selectedTopics = (selectedExam?.topics || [])
+                  .map(t => String(t?.topic || '').trim())
+                  .filter(Boolean)
+
+                const weeklyTopics = (syllabusData?.tla_chapters || [])
+                  .map(ch => String(ch?.topics || '').trim().toLowerCase())
+                  .filter(Boolean)
+
+                const linkedTopics = selectedTopics.filter(topic => weeklyTopics.includes(topic.toLowerCase()))
+                const sourceText = linkedTopics.length
+                  ? `TOS Topics linked to weekly modules: ${linkedTopics.join(', ')}`
+                  : (selectedTopics.length
+                    ? `TOS Topics: ${selectedTopics.join(', ')}`
+                    : 'TOS topics are not available for the selected exam.')
+
+                const displayedAssessmentId = assessmentDetail?.assessment_id || assessmentSessionId || 'Not yet created'
+
+                return (
+                  <>
+                    <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+                      <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.35 }}>
+                        Assessment ID
+                      </Typography>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: '#222' }}>
+                        {displayedAssessmentId}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.25 }}>
+                      <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+                        <LField
+                          select
+                          label="Assessment Name"
+                          value={assessmentName}
+                          onChange={e => {
+                            const selectedValue = e.target.value
+                            const match = majorExams.find(exam => exam.examLabel === selectedValue)
+                            setAssessmentParams(p => ({
+                              ...p,
+                              source_exam_label: selectedValue,
+                              source_exam_code: match?.examCode || '',
+                              target_total_items: match?.totalItems || 0,
+                              assessment_type: 'Major Examination',
+                              target_item_number: 1,
+                              related_item_number: '',
+                            }))
+                          }}
+                        >
+                          {nameOptions.map(name => (
+                            <MenuItem key={name} value={name}>{name}</MenuItem>
+                          ))}
+                        </LField>
+                      </Box>
+
+                      <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+                        <LField
+                          label="Assessment Type"
+                          value="Major Examination"
+                          inputProps={{ readOnly: true }}
+                        />
+                      </Box>
+
+                      <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: BG }}>
+                        <LField
+                          type="number"
+                          label="Number of Items"
+                          value={numberOfItems}
+                          inputProps={{ readOnly: true, min: 1 }}
+                        />
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
+                      <LField
+                        label="Assessment Source"
+                        value={sourceText}
+                        multiline
+                        minRows={2}
+                        inputProps={{ readOnly: true }}
+                      />
+                      <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.5 }}>
+                        Topics are taken from the selected TOS exam.
+                      </Typography>
+                    </Box>
+                  </>
+                )
+              })()}
               <Box sx={{ p: 1.25, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
                 <Typography variant="caption" sx={{ color: '#777', display: 'block', fontSize: '0.7rem', mb: 0.5 }}>
                   Generation Mode
@@ -4814,7 +5020,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     label="Target Item Number"
                     value={assessmentParams.target_item_number}
                     onChange={e => setAssessmentParams(p => ({ ...p, target_item_number: e.target.value }))}
-                    inputProps={{ min: 1, max: blueprint.totalItems || undefined }}
+                    inputProps={{ min: 1, max: (Number(assessmentParams.target_total_items || 0) || Number(blueprint.totalItems || 0) || undefined) }}
                   />
                   <LField
                     select
@@ -4886,7 +5092,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       return (
-        <BubbleSheetPanel courseId={courseId} assessments={workspaceApi.data?.assessments || []} />
+        <BubbleSheetPanel 
+          courseId={courseId} 
+          assessments={workspaceApi.data?.assessments || []}
+          actionSheetMode={actionSheetMode}
+          onActionSheetChange={setActionSheetMode}
+          onModifyTemplate={handleModifyBubbleSheet}
+        />
       )
     }
 
@@ -5321,7 +5533,134 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           </Box>
         )}
-      </Box>
+      <Dialog open={answerSheetDialogOpen} onClose={() => setAnswerSheetDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Answer Sheet Configuration</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            <TextField
+              size="small"
+              label="Template name"
+              value={answerSheetForm.name}
+              onChange={e => setAnswerSheetForm(p => ({ ...p, name: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Total items (from assessment)"
+              value={Number(assessmentDetail?.target_total_items || 0)}
+              disabled
+              fullWidth
+            />
+            <Stack direction="row" spacing={1.25}>
+              <TextField
+                size="small"
+                select
+                fullWidth
+                label="Choices per item"
+                value={answerSheetForm.num_choices}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, num_choices: Number(e.target.value) }))}
+              >
+                {[2, 3, 4, 5].map(n => (
+                  <MenuItem key={n} value={n}>{n}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                size="small"
+                type="number"
+                fullWidth
+                label="Student ID Columns"
+                value={answerSheetForm.num_id_columns}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, num_id_columns: Number(e.target.value) }))}
+                inputProps={{ min: 4, max: 15 }}
+                helperText="Allowed range: 4 to 15"
+              />
+            </Stack>
+            <TextField
+              size="small"
+              select
+              fullWidth
+              label="Essay section"
+              value={answerSheetForm.has_essay ? '1' : '0'}
+              onChange={e => setAnswerSheetForm(p => ({ ...p, has_essay: e.target.value === '1' }))}
+            >
+              <MenuItem value="0">No essay section</MenuItem>
+              <MenuItem value="1">Include essay section</MenuItem>
+            </TextField>
+            {answerSheetForm.has_essay && (
+              <TextField
+                size="small"
+                type="number"
+                fullWidth
+                label="Essay lines"
+                value={answerSheetForm.essay_lines}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, essay_lines: Number(e.target.value) }))}
+                inputProps={{ min: 2, max: 50 }}
+              />
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAnswerSheetDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveAnswerSheet}
+            disabled={answerSheetSaving}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none' }}
+          >
+            {answerSheetSaving ? 'Saving…' : 'Save Answer Sheet'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Bubble Sheet PDF Preview ── */}
+      <Dialog open={bubbleSheetPreviewOpen} onClose={() => {
+        if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
+        setBubbleSheetPreviewOpen(false)
+      }} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+          {bubbleSheetPreviewTitle}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden' }}>
+          <object
+            data={bubbleSheetPreviewUrl}
+            type="application/pdf"
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          >
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '0.85rem', color: '#666', mb: 1.5 }}>
+                Your browser cannot display the PDF inline.
+              </Typography>
+              <Button variant="outlined" startIcon={<DownloadIcon />}
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = bubbleSheetPreviewUrl
+                  link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
+                  link.click()
+                }}
+                sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
+                Download PDF instead
+              </Button>
+            </Box>
+          </object>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button onClick={() => {
+            if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
+            setBubbleSheetPreviewOpen(false)
+          }} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
+          <Button variant="contained" startIcon={<DownloadIcon />}
+            onClick={() => {
+              const link = document.createElement('a')
+              link.href = bubbleSheetPreviewUrl
+              link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
+              link.click()
+            }}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+            Download PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
-  )
-}
+  </Box>
+)}

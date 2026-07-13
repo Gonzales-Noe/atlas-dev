@@ -95,6 +95,7 @@ class BubbleSheetTemplateCreateSerializer(serializers.Serializer):
     passing_score = serializers.DecimalField(
         required=False, max_digits=7, decimal_places=2, allow_null=True
     )
+    layout_metadata = serializers.DictField(required=False, default=dict)
 
     def validate(self, data):
         parts = data.get("parts", [])
@@ -124,6 +125,7 @@ class BubbleSheetTemplateUpdateSerializer(serializers.Serializer):
     )
     has_essay = serializers.BooleanField(required=False)
     essay_lines = serializers.IntegerField(required=False, min_value=0, max_value=50)
+    layout_metadata = serializers.DictField(required=False)
 
 
 class BubbleAnswerKeySerializer(serializers.Serializer):
