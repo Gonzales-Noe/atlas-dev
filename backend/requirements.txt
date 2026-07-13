@@ -4,6 +4,7 @@
 Django==5.1
 djangorestframework==3.15
 gunicorn==22.0.0
+daphne==4.2.2
 
 # ── Authentication ──────────────────────────────────────────
 djangorestframework-simplejwt==5.3.1
@@ -16,6 +17,7 @@ django-redis==5.4.0             # Django Redis cache backend
 # ── LLM & AI ────────────────────────────────────────────────
 anthropic==0.30.0               # Anthropic Claude SDK
 openai>=1.0.0                   # OpenAI SDK (OpenAI/OpenRouter compatible)
+requests>=2.31.0                # HTTP client for Ollama/OpenRouter API calls
 groq>=0.9.0                     # Groq Python SDK
 # ── Document Processing ────────────────────────────────────
 python-docx==0.8.11             # DOCX file parsing
@@ -25,7 +27,7 @@ PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)
 
 # ── Text Processing & Embeddings ───────────────────────────
-tiktoken==0.12.0                # Token counting for LLM
+tiktoken>=0.8.0                # Token counting for LLM
 sentence-transformers>=2.2.0    # BGE embedding & reranker models
 langchain-text-splitters>=0.2.0 # Semantic-aware recursive chunking
 langchain-experimental>=0.0.60  # SemanticChunker for topic-boundary splitting
@@ -36,7 +38,7 @@ google-auth==2.35.0
 google-auth-httplib2==0.2.0
 
 # ── Database ────────────────────────────────────────────────
-psycopg2-binary==2.9.12         # PostgreSQL adapter
+psycopg2-binary>=2.9.9          # PostgreSQL adapter
 pgvector==0.3.2                 # pgvector Python client
 
 # ── Bubble Sheet Generation & Scanning ─────────────────────
@@ -48,6 +50,6 @@ numpy>=1.26.0                   # Numerical ops for image processing
 # ── Utilities ───────────────────────────────────────────────
 python-decouple==3.8            # .env variable loading
 python-dotenv>=1.0.0            # .env loading for manage.py
-Pillow==10.4.0                  # image handling
+Pillow>=10.4.0                  # image handling
 whitenoise==6.7.0               # static file serving
 django-cors-headers==4.4.0      # CORS headers for frontend

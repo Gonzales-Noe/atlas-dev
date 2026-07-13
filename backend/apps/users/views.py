@@ -59,6 +59,19 @@ class MeView(APIView):
     def get(self, request):
         return Response(UserProfileSerializer(request.user).data)
 
+    def patch(self, request):
+        user = request.user
+        data = request.data
+        
+        if 'name' in data:
+            user.full_name = data['name']
+            
+        if 'department' in data and hasattr(user, 'department'):
+            user.department = data['department']
+            
+        user.save()
+        return Response(UserProfileSerializer(user).data)
+
 
 class RegisterView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -68,6 +81,39 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         profile = serializer.save()
+
+        # Try to send the email, but don't crash the database if it fails!
+        try:
+            send_mail(
+                subject=f'New ATLAS Registration: {profile.institution.name}',
+                message=(
+                    f'A new institution has requested an account and is awaiting verification.\n\n'
+                    f'Institution: {profile.institution.name}\n'
+                    f'Registered Email: {profile.email}\n'
+                    f'Role: {profile.role}\n\n'
+                    f'Please review this account in the admin panel.'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=['atlasdegdev@gmail.com'],
+                fail_silently=False,
+                html_message=(
+                    f'<h3>New Institution Registration</h3>'
+                    f'<p>A new institution has requested an account and is awaiting verification.</p>'
+                    f'<ul>'
+                    f'<li><strong>Institution:</strong> {profile.institution.name}</li>'
+                    f'<li><strong>Registered Email:</strong> {profile.email}</li>'
+                    f'<li><strong>Role:</strong> {profile.role}</li>'
+                    f'</ul>'
+                    f'<p>Please review and verify this account in the admin panel.</p>'
+                )
+            )
+        except Exception as e:
+            # This prints the EXACT reason Google is blocking the email to your terminal
+            print("\n" + "="*50)
+            print("🚨 EMAIL SENDING FAILED!")
+            print(f"Error details: {str(e)}")
+            print("="*50 + "\n")
+
         return Response(
             {
                 'detail': 'Registration received.',
@@ -98,6 +144,10 @@ class PasswordResetRequestView(APIView):
                 from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[email],
                 fail_silently=False,
+                html_message=(
+                    f'<p>Your ATLAS password reset code is: <strong style="font-size: 1.5em; color: #8B0000;">{otp}</strong></p>'
+                    f'<p>This code expires in 10 minutes.</p>'
+                )
             )
         else:
             otp = None
@@ -259,6 +309,53 @@ class AccountManagementView(APIView):
         if role not in {'admin', 'superadmin'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         return Response([UserAccountSerializer(user).data for user in queryset])
+
+    # 🚨 ADD THIS NEW POST METHOD SO ADMINS CAN CREATE FACULTY
+    def post(self, request):
+        role = normalize_role(request.user.role)
+        if role != 'admin':
+            return Response({'detail': 'Only institution admins can add faculty.'}, status=status.HTTP_403_FORBIDDEN)
+
+        email = request.data.get('email')
+        if not email:
+            return Response({'detail': 'Email is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = email.strip().lower()
+
+        # Ensure we don't create duplicate accounts
+        if UserProfile.objects.filter(email__iexact=email).exists():
+            return Response({'detail': 'An account with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Generate a secure random password using Python's built-in secrets module!
+        temp_password = secrets.token_urlsafe(10)
+
+        user = UserProfile.objects.create(
+            institution=request.user.institution,
+            email=email,
+            password_hash=make_password(temp_password),
+            role=UserRole.FACULTY,
+            is_active=True,  # Faculty created by admins are active by default
+        )
+
+        # Send an invite email to the new faculty member
+        try:
+            send_mail(
+                subject=f'You have been invited to ATLAS by {request.user.institution.name}',
+                message=(
+                    f'Hello!\n\n'
+                    f'An account has been created for you on the ATLAS Platform.\n\n'
+                    f'Your login email is: {email}\n'
+                    f'Your temporary password is: {temp_password}\n\n'
+                    f'Please log in and change your password immediately.'
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+                fail_silently=True,
+            )
+        except Exception as e:
+            print(f"Failed to send faculty invite email: {e}")
+
+        return Response(UserAccountSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
 class AccountDetailView(APIView):
