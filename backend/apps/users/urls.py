@@ -11,6 +11,8 @@ from .views import (
     PasswordResetRequestView,
     PasswordResetVerifyView,
     RegisterView,
+    GoogleAuthView,
+    DebugGoogleClientIdView,
 )
 
 urlpatterns = [
@@ -24,4 +26,6 @@ urlpatterns = [
     path('password-reset/request/', PasswordResetRequestView.as_view(), name='password_reset_request'),
     path('password-reset/verify/', PasswordResetVerifyView.as_view(), name='password_reset_verify'),
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    path('google/', GoogleAuthView.as_view(), name='auth_google'),
+    path('debug/google-client-id/', DebugGoogleClientIdView.as_view(), name='debug_google_client_id'),
 ]

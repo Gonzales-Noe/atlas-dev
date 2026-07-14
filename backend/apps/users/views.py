@@ -1,3 +1,4 @@
+import os
 import secrets
 
 from django.conf import settings
@@ -10,6 +11,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils.decorators import method_decorator
 
 from apps.integrations.models import Assessment, Course, CourseLoad, Institution, UserProfile, UserRole
 
@@ -26,6 +29,9 @@ from .serializers import (
     UserProfileTokenObtainPairSerializer,
     normalize_role,
 )
+from django.views.decorators.csrf import csrf_exempt
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 
 def _otp_cache_key(email):
@@ -367,7 +373,7 @@ class AccountDetailView(APIView):
         target = UserProfile.objects.select_related('institution').filter(user_id=user_id).first()
         if not target:
             return Response({'detail': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
-
+            was_active = bool(target.is_active)
         if role == 'admin' and target.institution_id != getattr(request.user, 'institution_id', None):
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
@@ -386,4 +392,170 @@ class AccountDetailView(APIView):
             target.email = request.data['email'].strip().lower()
 
         target.save()
+
+        # If the account was previously inactive and now active, notify user
+        if not was_active and target.is_active:
+            try:
+                send_mail(
+                    subject='Your ATLAS account has been approved',
+                    message=(
+                        f'Hello,\n\n'
+                        f'Your ATLAS account ({target.email}) has been approved by the ATLAS team.\n'
+                        f'You may now sign in and proceed to choose a plan and complete payment to finish setup.\n\n'
+                        f'If you have questions, contact support.'
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[target.email],
+                    fail_silently=True,
+                    html_message=(
+                        f'<p>Hello,</p>'
+                        f'<p>Your ATLAS account (<strong>{target.email}</strong>) has been approved by the ATLAS team.</p>'
+                        f'<p>You may now sign in and proceed to choose a plan and complete payment to finish setup.</p>'
+                    )
+                )
+            except Exception:
+                pass
         return Response(UserAccountSerializer(target).data)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class GoogleAuthView(APIView):
+    """Accepts a Google ID token (credential) from the frontend, verifies it
+    with Google's auth library, and either signs the user in or creates a
+    pending account (awaiting superadmin approval).
+
+    Expected payload: { credential: '<google id token>' }
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @csrf_exempt
+    def post(self, request):
+        token = request.data.get('credential')
+        if not token:
+            return Response({'detail': 'Missing credential.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Ensure GOOGLE_CLIENT_ID is configured in Django settings
+        google_client_id = getattr(settings, 'GOOGLE_CLIENT_ID', None)
+        if not google_client_id:
+            # Helpful debug message to surface missing config during development
+            msg = 'Server not configured for Google sign-in. GOOGLE_CLIENT_ID is empty.'
+            if settings.DEBUG:
+                print('\n' + '='*50)
+                print('🚨 GOOGLE_CLIENT_ID MISSING')
+                print('Ensure the environment variable GOOGLE_CLIENT_ID is set in your Django env.')
+                print('='*50 + '\n')
+            return Response({'detail': msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        try:
+            idinfo = google_id_token.verify_oauth2_token(token, google_requests.Request(), google_client_id)
+        except Exception as exc:
+            # Print full traceback in DEBUG to help local debugging
+            if settings.DEBUG:
+                import traceback
+                traceback.print_exc()
+                return Response({'detail': 'Invalid Google credential.', 'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            # In production, don't leak internals
+            return Response({'detail': 'Invalid Google credential.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # idinfo contains: 'sub' (user id), 'email', 'email_verified', 'name', etc.
+        email = idinfo.get('email')
+        email_verified = idinfo.get('email_verified', False)
+        full_name = idinfo.get('name') or ''
+
+        if not email or not email_verified:
+            return Response({'detail': 'Google account must have a verified email.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = UserProfile.objects.filter(email__iexact=email).select_related('institution').first()
+        created = False
+        if not profile:
+            # Create an institution record for this signup and mark account pending
+            institution, institution_created = Institution.objects.get_or_create(
+                name=f"{full_name.split(' ')[-1]}'s Organization" if full_name else email.split('@', 1)[1],
+                defaults={
+                    'plan_tier': 'free',
+                    'subscription_status': 'active',
+                    'is_active': True,
+                },
+            )
+            # If the institution was just created, make this first user the
+            # institutional admin. Otherwise default to faculty.
+            assigned_role = UserRole.ADMIN if institution_created else UserRole.FACULTY
+
+            # By default new accounts are pending approval. For local development
+            # allow an override via AUTO_APPROVE_GOOGLE to auto-activate accounts.
+            auto_approve = False
+            if settings.DEBUG and os.environ.get('AUTO_APPROVE_GOOGLE', '').lower() in {'1', 'true', 'yes'}:
+                auto_approve = True
+
+            profile = UserProfile.objects.create(
+                institution=institution,
+                email=email.lower(),
+                password_hash='',
+                role=assigned_role,
+                is_active=auto_approve,
+            )
+            created = True
+
+            # Notify ATLAS superadmin about new registration
+            try:
+                send_mail(
+                    subject=f'New ATLAS Registration (Google): {institution.name}',
+                    message=(
+                        f'A new institution has requested an account via Google and is awaiting verification.\n\n'
+                        f'Institution: {institution.name}\n'
+                        f'Registered Email: {profile.email}\n'
+                        f'Role: {profile.role}\n\n'
+                        f'Please review this account in the admin panel.'
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=['atlasdegdev@gmail.com'],
+                    fail_silently=True,
+                    html_message=(
+                        f'<h3>New Institution Registration (Google)</h3>'
+                        f'<p>A new institution has requested an account and is awaiting verification.</p>'
+                        f'<ul>'
+                        f'<li><strong>Institution:</strong> {institution.name}</li>'
+                        f'<li><strong>Registered Email:</strong> {profile.email}</li>'
+                        f'<li><strong>Role:</strong> {profile.role}</li>'
+                        f'</ul>'
+                        f'<p>Please review and verify this account in the admin panel.</p>'
+                    )
+                )
+            except Exception:
+                pass
+
+        # If account exists but is not active yet, either auto-approve in dev
+        # (if enabled) or inform the frontend that approval is required.
+        if profile and not profile.is_active:
+            if settings.DEBUG and os.environ.get('AUTO_APPROVE_GOOGLE', '').lower() in {'1', 'true', 'yes'}:
+                profile.is_active = True
+                profile.save(update_fields=['is_active'])
+            else:
+                return Response({'detail': 'Account pending approval.'}, status=status.HTTP_403_FORBIDDEN)
+
+        # Issue JWT tokens for the user using SimpleJWT
+        refresh = RefreshToken.for_user(profile)
+        refresh['role'] = normalize_role(profile.role)
+        refresh['email'] = profile.email
+        if profile.institution_id:
+            refresh['institution_id'] = str(profile.institution_id)
+
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'created': created,
+        })
+
+
+class DebugGoogleClientIdView(APIView):
+    """Development helper: return the configured GOOGLE_CLIENT_ID when DEBUG=True.
+
+    This helps verify the backend environment is reading the value correctly.
+    Do not expose this in production.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        if not settings.DEBUG:
+            return Response({'detail': 'Not available.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({'GOOGLE_CLIENT_ID': getattr(settings, 'GOOGLE_CLIENT_ID', '')})

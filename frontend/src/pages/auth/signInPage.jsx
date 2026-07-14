@@ -46,7 +46,7 @@ const NAV_LINKS = [
 export default function SignInPage({ isModal, onClose, onSwitch }) {
   const navigate                = useNavigate();
   const location                = useLocation();
-  const { login }               = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { redirectToDashboard } = useRoleRedirect();
 
   const [form, setForm]         = useState({ email: '', password: '' });
@@ -56,7 +56,9 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [mounted, setMounted]   = useState(false);
-
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const googleClientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET
   const from = location.state?.from?.pathname;
 
   useEffect(() => {
@@ -65,6 +67,75 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  async function ensureGoogleReady() {
+    if (!googleClientId) {
+      throw new Error('Google sign-in is not configured.')
+    }
+
+    function initGoogle() {
+      if (!window.google?.accounts?.id) {
+        throw new Error('Google Identity Services failed to load.')
+      }
+
+      if (!window.google.accounts.id.__atlasInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleCredentialResponse,
+        })
+        window.google.accounts.id.__atlasInitialized = true
+      }
+
+      setGoogleReady(true)
+    }
+
+    if (window.google?.accounts?.id) {
+      initGoogle()
+      return
+    }
+
+    await new Promise((resolve, reject) => {
+      const existingScript = document.getElementById('atlas-google-gsi-script')
+      if (existingScript) {
+        existingScript.addEventListener('load', () => {
+          try { initGoogle(); resolve() } catch (err) { reject(err) }
+        }, { once: true })
+        existingScript.addEventListener('error', () => reject(new Error('Google Identity Services failed to load.')), { once: true })
+        return
+      }
+
+      const script = document.createElement('script')
+      script.id = 'atlas-google-gsi-script'
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.onload = () => {
+        try { initGoogle(); resolve() } catch (err) { reject(err) }
+      }
+      script.onerror = () => reject(new Error('Google Identity Services failed to load.'))
+      document.head.appendChild(script)
+    })
+  }
+
+  // Initialize Google button on mount
+  useEffect(() => {
+    if (googleClientId) {
+      ensureGoogleReady().then(() => {
+        const container = document.getElementById('google-button-container')
+        if (container && window.google?.accounts?.id) {
+          window.google.accounts.id.renderButton(container, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            text: 'signin_with',
+            width: '100%',
+          })
+        }
+      }).catch(err => {
+        console.error('Failed to initialize Google sign-in:', err)
+      })
+    }
+  }, [])
 
   function handleChange(e) {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -86,8 +157,23 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     }
   }
 
-  async function handleGoogleLogin() {
-    setError('Google sign-in will be available soon.');
+
+  async function handleCredentialResponse(resp) {
+    const credential = resp?.credential
+    if (!credential) {
+      setError('Google sign-in cancelled or failed.')
+      return
+    }
+    setLoading(true)
+    try {
+      const user = await loginWithGoogle(credential)
+      if (from) navigate(from, { replace: true })
+      else redirectToDashboard(user.role)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -568,10 +654,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               </div>
 
               {/* Google */}
-              <button className="btn-google" onClick={handleGoogleLogin}>
-                <GoogleIcon />
-                Continue with Google
-              </button>
+              <div id="google-button-container" style={{ width: '100%' }} />
 
               {/* Sign Up */}
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>

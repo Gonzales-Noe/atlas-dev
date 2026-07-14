@@ -22,6 +22,7 @@ import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
 import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
 import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
+import BillingPage from './pages/billing/BillingPage.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
 
@@ -237,6 +238,15 @@ function App() {
           element={
             <ProtectedRoute role="admin">
               <AdminKnowledgeBase />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path={ROUTES.BILLING}
+          element={
+            <ProtectedRoute>
+              <BillingPage />
             </ProtectedRoute>
           }
         />

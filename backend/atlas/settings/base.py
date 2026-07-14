@@ -127,6 +127,9 @@ SIMPLE_JWT = {
 
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
+# Google OAuth client id for frontend Google Identity Services
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+
 # ── OMR Grading ─────────────────────────────────────────────────────────────
 # Command used to invoke OMRChecker.  Can be a string or list.
 # Examples:

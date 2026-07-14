@@ -19,6 +19,11 @@ from .models import (
     GlobalDocumentChunk,
     ParentChunk,
     UserRole,
+    Institution,
+    UserProfile,
+    AuditLog,
+    PlanTierEnum,
+    SubscriptionStatusEnum,
 )
 from .serializers import (
     AnthropicTestSerializer,
@@ -331,6 +336,90 @@ def upload_rag_document(request):
     if not _is_admin_user(request):
         return _forbidden_admin_only_response()
     return _handle_global_rag_upload(request)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_plans(request):
+    """Return available plan tiers (simulated)."""
+    plans = [
+        { 'tier': PlanTierEnum.FREE, 'name': 'Free', 'price_usd_per_month': 0, 'features': ['Basic platform access', '1 institution admin'] },
+        { 'tier': PlanTierEnum.PRO, 'name': 'Pro', 'price_usd_per_month': 99, 'features': ['Advanced analytics', 'RAG indexing', 'Priority support'] },
+        { 'tier': PlanTierEnum.ENTERPRISE, 'name': 'Enterprise', 'price_usd_per_month': 499, 'features': ['SLA', 'Dedicated onboarding', 'Custom integrations'] },
+    ]
+    return Response({'success': True, 'plans': plans}, status=status.HTTP_200_OK)
+
+
+def _user_from_dev_token(token):
+    # Support frontend dev test tokens used by the client (superadmin-test-token, faculty-test-token, admin-test-token)
+    mapping = {
+        'superadmin-test-token': ('superadmin@atlas.local', UserRole.SUPERADMIN),
+        'faculty-test-token': ('faculty@atlas.local', UserRole.FACULTY),
+        'admin-test-token': ('admin@atlas.local', UserRole.ADMIN),
+    }
+    info = mapping.get(token)
+    if not info:
+        return None
+    email, role = info
+    profile = UserProfile.objects.filter(email__iexact=email).first()
+    if profile:
+        return profile
+    # Create a lightweight test user + institution
+    institution, _ = Institution.objects.get_or_create(name='Test Institution', defaults={'plan_tier': PlanTierEnum.FREE, 'subscription_status': SubscriptionStatusEnum.ACTIVE, 'is_active': True})
+    profile = UserProfile.objects.create(institution=institution, email=email, password_hash='', role=role, is_active=True)
+    return profile
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def simulate_payment(request):
+    """Simulate a payment and update the institution's plan_tier.
+
+    Accepts: { plan_tier: 'pro'|'free'|'enterprise', card_name, card_number, expiry, cvc }
+    For development, if Authorization header contains a test token (superadmin-test-token, etc.), map to a test user.
+    """
+    user = getattr(request, 'user', None)
+    # If user is not a real authenticated user (AnonymousUser), allow dev token mapping
+    if not getattr(user, 'email', None):
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split(' ', 1)[1].strip()
+            user = _user_from_dev_token(token) or user
+
+    if not user or not getattr(user, 'email', None):
+        return Response({'success': False, 'detail': 'Authentication required.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    if not user.is_active:
+        return Response({'success': False, 'detail': 'Account not approved yet.'}, status=status.HTTP_403_FORBIDDEN)
+
+    plan_tier = request.data.get('plan_tier')
+    if plan_tier not in {PlanTierEnum.FREE, PlanTierEnum.PRO, PlanTierEnum.ENTERPRISE}:
+        return Response({'success': False, 'detail': 'Invalid plan selected.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Simulate card validation
+    card_number = request.data.get('card_number', '')
+    if plan_tier != PlanTierEnum.FREE and (not card_number or len(card_number) < 12):
+        return Response({'success': False, 'detail': 'Invalid payment details.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Update institution
+    institution = user.institution
+    if not institution:
+        institution = Institution.objects.create(name=f"{user.email.split('@',1)[0]}'s Institution", plan_tier=plan_tier, subscription_status=SubscriptionStatusEnum.ACTIVE, is_active=True)
+        user.institution = institution
+        user.save(update_fields=['institution'])
+    else:
+        institution.plan_tier = plan_tier
+        institution.subscription_status = SubscriptionStatusEnum.ACTIVE
+        institution.is_active = True
+        institution.save(update_fields=['plan_tier', 'subscription_status', 'is_active'])
+
+    # Record audit log
+    try:
+        AuditLog.objects.create(user=user, action_type='PAYMENT', resource_type='institution', resource_id=institution.institution_id, details={'plan_tier': plan_tier})
+    except Exception:
+        pass
+
+    return Response({'success': True, 'detail': 'Payment simulated and plan updated.', 'plan_tier': plan_tier}, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])

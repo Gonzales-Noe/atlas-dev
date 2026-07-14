@@ -5,6 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useAuth }      from '../../store/authStore';
+import useRoleRedirect  from '../../hooks/useRoleRedirect';
 import { ROUTES }       from '../../config/route';
 
 import atlasLogo   from '../../assets/atlas-logo.png';
@@ -55,7 +56,8 @@ const PERKS = [
 
 export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const navigate           = useNavigate();
-  const { register }       = useAuth();
+  const { register, loginWithGoogle } = useAuth();
+  const { redirectToDashboard } = useRoleRedirect();
   const [agreed, setAgreed]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [success, setSuccess]   = useState(false);
@@ -69,12 +71,83 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const [form, setForm] = useState({
     full_name: '', email: '', institution_name: '', password: '', confirm_password: ''
   });
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  async function ensureGoogleReady() {
+    if (!googleClientId) {
+      throw new Error('Google sign-up is not configured.')
+    }
+
+    function initGoogle() {
+      if (!window.google?.accounts?.id) {
+        throw new Error('Google Identity Services failed to load.')
+      }
+
+      if (!window.google.accounts.id.__atlasInitialized) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: handleCredentialResponse,
+        })
+        window.google.accounts.id.__atlasInitialized = true
+      }
+
+      setGoogleReady(true)
+    }
+
+    if (window.google?.accounts?.id) {
+      initGoogle()
+      return
+    }
+
+    await new Promise((resolve, reject) => {
+      const existingScript = document.getElementById('atlas-google-gsi-script')
+      if (existingScript) {
+        existingScript.addEventListener('load', () => {
+          try { initGoogle(); resolve() } catch (err) { reject(err) }
+        }, { once: true })
+        existingScript.addEventListener('error', () => reject(new Error('Google Identity Services failed to load.')), { once: true })
+        return
+      }
+
+      const script = document.createElement('script')
+      script.id = 'atlas-google-gsi-script'
+      script.src = 'https://accounts.google.com/gsi/client'
+      script.async = true
+      script.defer = true
+      script.onload = () => {
+        try { initGoogle(); resolve() } catch (err) { reject(err) }
+      }
+      script.onerror = () => reject(new Error('Google Identity Services failed to load.'))
+      document.head.appendChild(script)
+    })
+  }
+
+  // Initialize Google button on mount
+  useEffect(() => {
+    if (googleClientId) {
+      ensureGoogleReady().then(() => {
+        const container = document.getElementById('google-button-container')
+        if (container && window.google?.accounts?.id) {
+          window.google.accounts.id.renderButton(container, {
+            theme: 'outline',
+            size: 'large',
+            type: 'standard',
+            text: 'signup_with',
+            width: '100%',
+          })
+        }
+      }).catch(err => {
+        console.error('Failed to initialize Google sign-up:', err)
+      })
+    }
+  }, [])
 
   function handleChange(e) {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }));
@@ -101,8 +174,28 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
     }
   }
 
-  function handleGoogleSignUp() {
-    setError('Google sign-in will be available soon. Please use email for now.');
+
+  async function handleCredentialResponse(resp) {
+    const credential = resp?.credential
+    if (!credential) {
+      setError('Google sign-up cancelled or failed.')
+      return
+    }
+    setLoading(true)
+    try {
+      // Delegate to backend; backend will create pending account if needed
+      const user = await loginWithGoogle(credential)
+      // If backend auto-approved and returned a user, redirect based on role
+      if (user && user.role) {
+        redirectToDashboard(user.role)
+        return
+      }
+      setSuccess(true)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -553,10 +646,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 {error && <div className="error-box">{error}</div>}
 
                 {/* Google */}
-                <button className="btn-secondary" onClick={handleGoogleSignUp} style={{ marginBottom: '0.85rem' }}>
-                  <GoogleIcon />
-                  Continue with Google
-                </button>
+                <div id="google-button-container" style={{ width: '100%', marginBottom: '0.85rem' }} />
 
                 <div className="divider-line">
                   <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', fontWeight: 600 }}>OR</span>

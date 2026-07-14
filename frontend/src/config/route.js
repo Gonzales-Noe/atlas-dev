@@ -9,6 +9,7 @@ export const ROUTES = {
   SIGN_IN:        '/signin',
   RESET_PASSWORD: '/reset-password',
   PRICING:        '/#pricing',
+  BILLING:        '/billing',
 
   // Faculty
   FACULTY: {
