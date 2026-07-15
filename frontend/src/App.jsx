@@ -88,7 +88,7 @@ function ThemeWrapper({ children, globalColorMode }) {
 }
 
 function App() {
-  const [mode, setMode] = useState(() => localStorage.getItem('atlas_theme_mode') || 'dark')
+  const [mode, setMode] = useState(() => localStorage.getItem('atlas_theme_mode') || 'light')
 
   const colorMode = useMemo(
     () => ({

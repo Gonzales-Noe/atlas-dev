@@ -276,7 +276,7 @@ function PanelRightIcon(props) {
 function SectionCard({ title, children, action }) {
   return (
     <Paper elevation={0}
-      sx={{ border: '1px solid var(--border-color)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
+      sx={{ bgcolor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
       <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'var(--bg-header)', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
           sx={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>

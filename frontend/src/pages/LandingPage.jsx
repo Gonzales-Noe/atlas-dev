@@ -203,8 +203,8 @@ const TESTIMONIALS = [
 
 const TEAM = [
   { name: 'Hearty Isabel Delacion', title: 'Co-Founder | CEO', image: delacion },
-  { name: 'Jasmin B. Esperida', title: 'Co-Founder | CCO', image: esperida },
-  { name: 'Noe L. Gonzales', title: 'Co-Founder | CTO', image: gonzales },
+  { name: 'Jasmin Esperida', title: 'Co-Founder | CCO', image: esperida },
+  { name: 'Noe Gonzales', title: 'Co-Founder | CTO', image: gonzales },
 ]
 
 const NAV_LINKS = [
@@ -718,7 +718,7 @@ export default function LandingPage() {
             </h1>
             <p className="hero-subtitle" style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.7, margin: '0 0 2rem', maxWidth: '100%' }}>
               The AI-powered OBE platform built for Philippine Higher Education —
-              syllabus generation, assessment building, and performance analytics in one place.
+              syllabus generation, assessment building, grading, and performance analytics in one place.
             </p>
             <div className="hero-cta-group">
               <button className="atlas-btn-primary subtle-neon-glow" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>Join ATLAS Now!</button>
