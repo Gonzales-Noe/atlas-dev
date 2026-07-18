@@ -2,7 +2,10 @@
 from .base import *
 
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*.local']
+ALLOWED_HOSTS = ['*']
+
+# Allow all origins in dev so Flutter web, Expo, etc. can reach the API
+CORS_ALLOW_ALL_ORIGINS = True
 
 # Development tools
 INSTALLED_APPS += [
