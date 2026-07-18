@@ -1130,28 +1130,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     finally { setDeletingDocId(null) }
   }
 
-  async function handleDeleteAssessment(assessmentId) {
-    if (!assessmentId) return
-    setDeletingAssessmentId(assessmentId)
-    try {
-      await api.delete(`/curriculum/assessment/${assessmentId}/`)
-      if (selectedAssessment?.assessment_id === assessmentId) {
-        setSelectedAssessment(null)
-        setAssessmentDetail(null)
-        setAssessmentSessionId(null)
-        setAssessmentToolsTab('builder')
-        setEditingItemId(null)
-        setEditingItemDraft(null)
-      }
-      workspaceApi.execute()
-    } catch (err) {
-      console.error('[handleDeleteAssessment] error:', err?.response?.status, err?.response?.data, err)
-      setActionError(extractApiError(err) || 'Failed to delete assessment.')
-    } finally {
-      setDeletingAssessmentId(null)
-    }
-  }
-
   async function handleRenameDoc(recordsId, newName) {
     try {
       await api.patch(`/integrations/course-rag-documents/${recordsId}/rename/`, { name: newName })
@@ -2046,7 +2024,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setEditingItemDraft(null)
         // Fetch linked bubble sheet template if one exists
         try {
-          const tr = await api.get(`/grading/omr/bubble/templates/?course_id=${courseId}`)
+          const tr = await api.get(`/grading/bubble/templates/?course_id=${courseId}`)
           const templates = tr?.data?.templates || []
           const linked = templates.find(t => t.assessment_id === data.assessment.assessment_id) || null
           setAnswerSheetTemplate(linked)
@@ -2075,6 +2053,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   async function handleDeleteAssessment(assessmentId) {
+    if (!assessmentId) return
+    setDeletingAssessmentId(assessmentId)
     setActionError('')
     try {
       const { data } = await api.delete(`/curriculum/assessment/${assessmentId}/`)
@@ -2092,6 +2072,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
     } catch (err) {
       setActionError(extractApiError(err))
+    } finally {
+      setDeletingAssessmentId(null)
     }
   }
 
@@ -2565,7 +2547,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         return
       }
       const pdfR = await api.post(
-        `/grading/omr/bubble/templates/${answerSheetTemplate.template_id}/generate-pdf/`,
+        `/grading/bubble/templates/${answerSheetTemplate.template_id}/generate-pdf/`,
         {},
         { responseType: 'blob' }
       )
@@ -2586,7 +2568,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAnswerSheetLoading(true)
     setActionError('')
     try {
-      const r = await api.get(`/grading/omr/bubble/templates/?course_id=${courseId}`)
+      const r = await api.get(`/grading/bubble/templates/?course_id=${courseId}`)
       const templates = r?.data?.templates || []
       const linked = templates.find(t => t.assessment_id === assessmentDetail.assessment_id) || null
       setAnswerSheetTemplate(linked)
@@ -2635,13 +2617,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (answerSheetTemplate?.template_id) {
         // Update existing template
         const r = await api.patch(
-          `/grading/omr/bubble/templates/${answerSheetTemplate.template_id}/`,
+          `/grading/bubble/templates/${answerSheetTemplate.template_id}/`,
           payload
         )
         setAnswerSheetTemplate(r?.data?.template || null)
       } else {
         // Create new template
-        const r = await api.post('/grading/omr/bubble/templates/', {
+        const r = await api.post('/grading/bubble/templates/', {
           ...payload,
           course_id: courseId,
           assessment_id: assessmentDetail.assessment_id,
@@ -5160,166 +5142,248 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       )
     }
 
-    if (activeTab === 'analytics') {
-      const blueprint = getAssessmentBlueprint()
-      return (
-        <Box sx={{ maxWidth: 900, mx: 'auto', px: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: MAROON, mb: 2 }}>
-            Analytics
+  function renderAnalyticsPanel() {
+    const storedCourses = (() => { try { return JSON.parse(localStorage.getItem('atlas_faculty_courses') || '[]') } catch { return [] } })()
+
+    return (
+      <Stack spacing={2}>
+        <Typography variant="body2" sx={{ color: '#555', fontSize: '0.78rem' }}>
+          Analytics tools for evaluating assessment performance, Bloom's taxonomy coverage, and student outcomes.
+        </Typography>
+
+        <SectionCard title="Bloom's Item Analysis">
+          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
+            Per-student Bloom-level breakdown showing correct/total per cognitive level, class averages, and aggregated weakness flags.
           </Typography>
+          <Stack spacing={1}>
+            <LField label="Course" select value={gradingCourseId} onChange={e => setGradingCourseId(e.target.value)}>
+              {storedCourses.map(c => (
+                <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_name || c.course_id}</MenuItem>
+              ))}
+            </LField>
+            <LField label="Assessment" select value={gradingAssessmentId} onChange={e => setGradingAssessmentId(e.target.value)}>
+              {gradingAssessments.map(a => (
+                <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
+              ))}
+            </LField>
+            <Button
+              fullWidth
+              disabled={!gradingCourseId || !gradingAssessmentId}
+              onClick={() => {
+                if (gradingCourseId && gradingAssessmentId) {
+                  window.open(`/faculty/analytics/bloom-item-analysis/${gradingCourseId}/${gradingAssessmentId}`, '_blank')
+                }
+              }}
+              sx={{
+                bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
+                fontSize: '0.78rem', py: 0.7, '&:hover': { bgcolor: '#6a0000' },
+                '&.Mui-disabled': { bgcolor: '#e0e0e0', color: '#999' },
+              }}>
+              Open Bloom Analysis
+            </Button>
+          </Stack>
+        </SectionCard>
 
-          <Stack spacing={1.5}>
-            <SectionCard title="Grading Scores">
-              <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
-                View student scores per assessment. Select a course and assessment to see the score breakdown.
-              </Typography>
-              <Stack spacing={1.2}>
-                <LField
-                  label="Course"
-                  select
-                  size="small"
-                  value={gradingCourseId}
-                  onChange={e => setGradingCourseId(e.target.value)}
-                >
-                  {gradingCourses.map(c => (
-                    <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_code || c.course_id}</MenuItem>
-                  ))}
-                </LField>
-                <LField
-                  label="Assessment"
-                  select
-                  size="small"
-                  value={gradingAssessmentId}
-                  onChange={e => setGradingAssessmentId(e.target.value)}
-                >
-                  {gradingAssessments.map(a => (
-                    <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
-                  ))}
-                </LField>
-              </Stack>
-              {gradingLoading && <LinearProgress sx={{ mt: 1 }} />}
-              {gradingError && <Alert severity="error" sx={{ mt: 1 }}>{gradingError}</Alert>}
-              {gradingStudents.length > 0 && (
-                <Box sx={{ mt: 1.5 }}>
-                  <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
-                    {gradingStudents.length} student(s)
-                  </Typography>
-                  <Stack spacing={0.4} sx={{ mt: 0.75, maxHeight: 240, overflow: 'auto' }}>
-                    {gradingStudents.slice(0, 30).map((s, i) => (
-                      <Box key={s.student_id || i} sx={{ display: 'flex', justifyContent: 'space-between', px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
-                        <Typography variant="caption" sx={{ color: '#555' }}>{s.name || s.student_id || `Student ${i + 1}`}</Typography>
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{s.score ?? s.total_score ?? '—'}</Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-                </Box>
-              )}
-            </SectionCard>
+        <SectionCard title="Prescriptive Recommendations">
+          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
+            ILO-mapped prescriptive recommendations based on computed grade sheet means and performance gaps.
+          </Typography>
+          <Button
+            fullWidth
+            onClick={() => window.open('/faculty/analytics/recommendations', '_blank')}
+            sx={{
+              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
+              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
+              '&:hover': { bgcolor: MAROON_LIGHT },
+            }}>
+            Open Recommendations
+          </Button>
+        </SectionCard>
 
-            <SectionCard title="Bloom Item Analysis">
-              <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
-                Per-student Bloom-level breakdown with class averages and weakness flags.
-              </Typography>
-              {gradingCourseId && gradingAssessmentId ? (
-                <GenButton
-                  onClick={async () => {
-                    setActionError('')
-                    try {
-                      const { data } = await api.get(`/analytics/bloom-item-analysis/?course_id=${gradingCourseId}&assessment_id=${gradingAssessmentId}`)
-                      if (data?.success) {
-                        setResultText(JSON.stringify(data, null, 2))
-                      } else {
-                        setActionError(data?.detail || 'Failed to load Bloom analysis.')
-                      }
-                    } catch (err) {
-                      setActionError(extractApiError(err))
-                    }
-                  }}
-                  sx={{ fontSize: '0.75rem' }}
-                >
-                  Run Bloom Analysis
-                </GenButton>
-              ) : (
-                <Typography variant="caption" sx={{ color: '#aaa' }}>
-                  Select a course and assessment above first.
+        <SectionCard title="Google Sheets Analysis">
+          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
+            Ingest grade data from Google Sheets with weighting schemas and generate per-column analysis.
+          </Typography>
+          <Button
+            fullWidth
+            onClick={() => window.open('/faculty/analytics/sheet-analysis', '_blank')}
+            sx={{
+              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
+              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
+              '&:hover': { bgcolor: MAROON_LIGHT },
+            }}>
+            Open Sheet Analysis
+          </Button>
+        </SectionCard>
+      </Stack>
+    )
+  }
+
+  function renderAnalyticsPanel() {
+    const navigate = useNavigate()
+    const blueprint = getAssessmentBlueprint()
+    const majorExams = getMajorTosExams()
+    const assessments = workspaceApi.data?.assessments || []
+
+    return (
+      <Stack spacing={2}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Analytics Views
+        </Typography>
+
+        {/* Course + Exam selector */}
+        <Stack spacing={1.5}>
+          <SectionCard title="Grading Scores">
+            <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
+              View student scores per assessment. Select a course and assessment to see the score breakdown.
+            </Typography>
+            <Stack spacing={1.2}>
+              <LField
+                label="Course"
+                select
+                size="small"
+                value={gradingCourseId}
+                onChange={e => setGradingCourseId(e.target.value)}
+              >
+                {gradingCourses.map(c => (
+                  <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_code || c.course_id}</MenuItem>
+                ))}
+              </LField>
+              <LField
+                label="Assessment"
+                select
+                size="small"
+                value={gradingAssessmentId}
+                onChange={e => setGradingAssessmentId(e.target.value)}
+              >
+                {gradingAssessments.map(a => (
+                  <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
+                ))}
+              </LField>
+            </Stack>
+            {gradingLoading && <LinearProgress sx={{ mt: 1 }} />}
+            {gradingError && <Alert severity="error" sx={{ mt: 1 }}>{gradingError}</Alert>}
+            {gradingStudents.length > 0 && (
+              <Box sx={{ mt: 1.5 }}>
+                <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
+                  {gradingStudents.length} student(s)
                 </Typography>
-              )}
-            </SectionCard>
-
-            <SectionCard title="TOS Coverage">
-              <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
-                Current assessment blueprint from your Table of Specifications.
-              </Typography>
-              {blueprint.hasMajorExam ? (
-                <Stack spacing={0.5}>
-                  <Typography variant="caption" sx={{ color: '#555' }}>
-                    Exam: <strong>{blueprint.assessmentName}</strong> ({blueprint.totalItems} items)
-                  </Typography>
-                  {blueprint.selectedExam && (blueprint.selectedExam.topics || []).map((t, idx) => (
-                    <Box key={t.id || idx} sx={{ px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
-                      <Typography variant="caption" sx={{ fontWeight: 600, color: '#444' }}>{t.topic || `Topic ${idx + 1}`}</Typography>
-                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.25 }}>
-                        {['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'].map(k => {
-                          const count = Number(t?.bloom_items?.[k] || 0)
-                          return count > 0 ? (
-                            <Chip key={k} size="small" label={`${k}: ${count}`}
-                              sx={{ bgcolor: MAROON_LIGHT, color: MAROON, height: 18, fontSize: '0.6rem' }} />
-                          ) : null
-                        })}
-                      </Box>
+                <Stack spacing={0.4} sx={{ mt: 0.75, maxHeight: 240, overflow: 'auto' }}>
+                  {gradingStudents.slice(0, 30).map((s, i) => (
+                    <Box key={s.student_id || i} sx={{ display: 'flex', justifyContent: 'space-between', px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
+                      <Typography variant="caption" sx={{ color: '#555' }}>{s.name || s.student_id || `Student ${i + 1}`}</Typography>
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{s.score ?? s.total_score ?? '—'}</Typography>
                     </Box>
                   ))}
                 </Stack>
-              ) : (
-                <Typography variant="caption" sx={{ color: '#999' }}>
-                  No major TOS exam defined. Go to the Syllabus tab → TOS section to set up your exam blueprint.
-                </Typography>
-              )}
-            </SectionCard>
-
-            <SectionCard title="Quality Metrics">
-              <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
-                Compute curriculum quality metrics from your syllabus.
-              </Typography>
-              <GenButton onClick={handleComputeMetrics} disabled={qualityLoading} sx={{ fontSize: '0.75rem' }}>
-                {qualityLoading ? 'Computing…' : 'Compute Metrics'}
-              </GenButton>
-              {qualityError && <Alert severity="error" sx={{ mt: 1 }}>{qualityError}</Alert>}
-              {qualityMetrics && qualityMetrics.success && (
-                <Stack spacing={0.6} sx={{ mt: 1.5 }}>
-                  {[
-                    { key: 'ilo_coverage', label: 'ILO Coverage' },
-                    { key: 'assessment_mapping', label: 'Assessment Mapping' },
-                    { key: 'cognitive_balance', label: 'Cognitive Balance' },
-                    { key: 'scaffolding', label: 'Scaffolding' },
-                    { key: 'formative_alignment', label: 'Formative Alignment' },
-                    { key: 'curriculum_rigor', label: 'Curriculum Rigor' },
-                  ].map(({ key, label }) => {
-                    const val = qualityMetrics[key] || qualityMetrics.metrics?.[key]
-                    const num = typeof val === 'number' ? val : parseFloat(val)
-                    return typeof num === 'number' && !isNaN(num) ? (
-                      <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography variant="caption" sx={{ color: '#555', minWidth: 130 }}>{label}</Typography>
-                        <LinearProgress variant="determinate" value={Math.round(num * 100)} sx={{ flex: 1, height: 6, borderRadius: 3 }} />
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{(num * 100).toFixed(0)}%</Typography>
-                      </Box>
-                    ) : null
-                  })}
-                </Stack>
-              )}
-            </SectionCard>
-          </Stack>
-
-          {resultText && (
-            <SectionCard title="Result">
-              <Box component="pre" sx={{ whiteSpace: 'pre-wrap', fontSize: '0.7rem', color: '#555', maxHeight: 300, overflow: 'auto', m: 0 }}>
-                {resultText}
               </Box>
-            </SectionCard>
-          )}
-        </Box>
-      )
-    }
+            )}
+          </SectionCard>
+
+          <SectionCard title="Bloom Item Analysis">
+            <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
+              Per-student Bloom-level breakdown with class averages and weakness flags.
+            </Typography>
+            {gradingCourseId && gradingAssessmentId ? (
+              <GenButton
+                onClick={async () => {
+                  setActionError('')
+                  try {
+                    const { data } = await api.get(`/analytics/bloom-item-analysis/?course_id=${gradingCourseId}&assessment_id=${gradingAssessmentId}`)
+                    if (data?.success) {
+                      setResultText(JSON.stringify(data, null, 2))
+                    } else {
+                      setActionError(data?.detail || 'Failed to load Bloom analysis.')
+                    }
+                  } catch (err) {
+                    setActionError(extractApiError(err))
+                  }
+                }}
+                sx={{ fontSize: '0.75rem' }}
+              >
+                Run Bloom Analysis
+              </GenButton>
+            ) : (
+              <Typography variant="caption" sx={{ color: '#aaa' }}>
+                Select a course and assessment above first.
+              </Typography>
+            )}
+          </SectionCard>
+
+          <SectionCard title="TOS Coverage">
+            <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
+              Current assessment blueprint from your Table of Specifications.
+            </Typography>
+            {blueprint.hasMajorExam ? (
+              <Stack spacing={0.5}>
+                <Typography variant="caption" sx={{ color: '#555' }}>
+                  Exam: <strong>{blueprint.assessmentName}</strong> ({blueprint.totalItems} items)
+                </Typography>
+                {blueprint.selectedExam && (blueprint.selectedExam.topics || []).map((t, idx) => (
+                  <Box key={t.id || idx} sx={{ px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
+                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#444' }}>{t.topic || `Topic ${idx + 1}`}</Typography>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.25 }}>
+                      {['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'].map(k => {
+                        const count = Number(t?.bloom_items?.[k] || 0)
+                        return count > 0 ? (
+                          <Chip key={k} size="small" label={`${k}: ${count}`}
+                            sx={{ bgcolor: MAROON_LIGHT, color: MAROON, height: 18, fontSize: '0.6rem' }} />
+                        ) : null
+                      })}
+                    </Box>
+                  </Box>
+                ))}
+              </Stack>
+            ) : (
+              <Typography variant="caption" sx={{ color: '#999' }}>
+                No major TOS exam defined. Go to the Syllabus tab → TOS section to set up your exam blueprint.
+              </Typography>
+            )}
+          </SectionCard>
+
+          <SectionCard title="Quality Metrics">
+            <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
+              Compute curriculum quality metrics from your syllabus.
+            </Typography>
+            <GenButton onClick={handleComputeMetrics} disabled={qualityLoading} sx={{ fontSize: '0.75rem' }}>
+              {qualityLoading ? 'Computing…' : 'Compute Metrics'}
+            </GenButton>
+            {qualityError && <Alert severity="error" sx={{ mt: 1 }}>{qualityError}</Alert>}
+            {qualityMetrics && qualityMetrics.success && (
+              <Stack spacing={0.6} sx={{ mt: 1.5 }}>
+                {[
+                  { key: 'ilo_coverage', label: 'ILO Coverage' },
+                  { key: 'assessment_mapping', label: 'Assessment Mapping' },
+                  { key: 'cognitive_balance', label: 'Cognitive Balance' },
+                  { key: 'scaffolding', label: 'Scaffolding' },
+                  { key: 'formative_alignment', label: 'Formative Alignment' },
+                  { key: 'curriculum_rigor', label: 'Curriculum Rigor' },
+                ].map(({ key, label }) => {
+                  const val = qualityMetrics[key] || qualityMetrics.metrics?.[key]
+                  const num = typeof val === 'number' ? val : parseFloat(val)
+                  return typeof num === 'number' && !isNaN(num) ? (
+                    <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="caption" sx={{ color: '#555', minWidth: 130 }}>{label}</Typography>
+                      <LinearProgress variant="determinate" value={Math.round(num * 100)} sx={{ flex: 1, height: 6, borderRadius: 3 }} />
+                      <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{(num * 100).toFixed(0)}%</Typography>
+                    </Box>
+                  ) : null
+                })}
+              </Stack>
+            )}
+          </SectionCard>
+        </Stack>
+
+        {resultText && (
+          <SectionCard title="Result">
+            <Box component="pre" sx={{ whiteSpace: 'pre-wrap', fontSize: '0.7rem', color: '#555', maxHeight: 300, overflow: 'auto', m: 0 }}>
+              {resultText}
+            </Box>
+          </SectionCard>
+        )}
+      </Stack>
+    )
+  }
 
   function renderUploadPanel() {
     const docs = docsApi.data?.documents || docsApi.data?.results || []
@@ -5607,6 +5671,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Box sx={{ p: 2 }}>
           {activeTab === 'assessment' && selectedAssessment && assessmentDetail
             ? renderAssessmentToolsPanel()
+            : activeTab === 'analytics'
+            ? renderAnalyticsPanel()
             : renderUploadPanel()}
         </Box>
       </Drawer>
@@ -5708,7 +5774,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{ width: rightWidth, flexShrink: 0, bgcolor: '#fff', borderLeft: '1px solid rgba(0,0,0,0.08)', overflow: 'auto', p: 0 }}>
             <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#1f1f1f' }}>
-                {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : 'Sources'}
+                {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : activeTab === 'analytics' ? 'Analytics' : 'Sources'}
               </Typography>
               <Tooltip title="Collapse panel">
                 <IconButton size="small" onClick={toggleRightPanel} sx={{ color: '#666' }}>
@@ -5719,6 +5785,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{ p: 2 }}>
               {activeTab === 'assessment' && selectedAssessment && assessmentDetail
                 ? renderAssessmentToolsPanel()
+                : activeTab === 'analytics'
+                ? renderAnalyticsPanel()
                 : renderUploadPanel()}
             </Box>
           </Box>
