@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.integrations.models import Assessment, Course, CourseLoad, UserProfile, UserRole
+from apps.integrations.models import Assessment, AssessmentItem, Course, CourseLoad, UserProfile, UserRole
 from apps.grading.models import (
     BubbleSheetScan,
     BubbleSheetTemplate,
@@ -565,6 +565,33 @@ def omr_job_import_summary(request, job_id):
 
 # ── Bubble Sheet helpers ──────────────────────────────────────────────────────
 
+def _extract_answer_key_from_assessment(assessment, total_items: int) -> dict:
+    """Extract correct_answer from each AssessmentItem rubric and build answer_key dict.
+
+    Returns {"1":"A","2":"C",...} for items that have a correct_answer set.
+    Items without correct_answer are omitted from the dict.
+    """
+    if not assessment:
+        return {}
+    items = AssessmentItem.objects.filter(assessment=assessment).order_by("item_id")
+    key = {}
+    for item in items:
+        rubric = item.rubric or {}
+        item_number = rubric.get("item_number")
+        if item_number is None:
+            continue
+        try:
+            idx = int(item_number)
+        except (TypeError, ValueError):
+            continue
+        if not (1 <= idx <= total_items):
+            continue
+        ans = str(rubric.get("correct_answer", "")).strip().upper()
+        if ans in "ABCDE":
+            key[str(idx)] = ans
+    return key
+
+
 def _bs_template_payload(t: BubbleSheetTemplate) -> dict:
     return {
         "template_id": str(t.template_id),
@@ -577,6 +604,7 @@ def _bs_template_payload(t: BubbleSheetTemplate) -> dict:
         "has_essay": t.has_essay,
         "essay_lines": t.essay_lines,
         "has_answer_key": bool(t.answer_key),
+        "answer_key": t.answer_key or {},
         "passing_score": t.passing_score,
         "layout_metadata": t.layout_metadata or {},
         "created_by": str(t.created_by_id) if t.created_by_id else None,
@@ -753,6 +781,9 @@ def bubble_sheet_templates(request):
     # Default single-part if none provided
     parts = d.get("parts") or [{"label": "Part I", "start_item": 1, "end_item": d["total_items"]}]
 
+    # Auto-extract answer key from linked assessment items
+    answer_key = _extract_answer_key_from_assessment(assessment, d["total_items"])
+
     template = BubbleSheetTemplate.objects.create(
         course=course,
         assessment=assessment,
@@ -764,6 +795,7 @@ def bubble_sheet_templates(request):
         essay_lines=d["essay_lines"],
         passing_score=d.get("passing_score"),
         layout_metadata=d.get("layout_metadata") or {},
+        answer_key=answer_key,
         created_by=faculty,
     )
     return Response({"success": True, "template": _bs_template_payload(template)}, status=status.HTTP_201_CREATED)
@@ -837,6 +869,39 @@ def bubble_sheet_set_answer_key(request, template_id):
     t.answer_key = answer_key
     t.save(update_fields=["answer_key", "updated_at"])
     return Response({"success": True, "detail": "Answer key saved.", "total_keyed_items": len(answer_key)})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def bubble_sheet_sync_key(request, template_id):
+    """
+    POST /api/grading/bubble/templates/<template_id>/sync-key/
+    Re-extracts answer key from the linked assessment items.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    faculty = _get_faculty_profile(request)
+    t = BubbleSheetTemplate.objects.filter(pk=template_id).first()
+    if not t:
+        return Response({"success": False, "detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    if not _faculty_can_access_course(faculty, t.course_id):
+        return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+    if not t.assessment:
+        return Response(
+            {"success": False, "detail": "Template is not linked to an assessment."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    answer_key = _extract_answer_key_from_assessment(t.assessment, t.total_items)
+    t.answer_key = answer_key
+    t.save(update_fields=["answer_key", "updated_at"])
+    return Response({
+        "success": True,
+        "detail": f"Answer key synced — {len(answer_key)} of {t.total_items} items have answers.",
+        "total_keyed_items": len(answer_key),
+        "template": _bs_template_payload(t),
+    })
 
 
 # ── PDF + QR code generation ──────────────────────────────────────────────────
