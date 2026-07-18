@@ -17,10 +17,12 @@ from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
     DashboardSummarySerializer,
+    EnrollCourseSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
     RegisterSerializer,
+    StudentDetailsUpdateSerializer,
     UserAccountSerializer,
     UserProfileSerializer,
     UserProfileTokenObtainPairSerializer,
@@ -43,6 +45,8 @@ def _to_database_role(role_value):
         return UserRole.ADMIN
     if role_value == 'faculty':
         return UserRole.FACULTY
+    if role_value == 'student':
+        return UserRole.STUDENT
     return role_value
 
 
@@ -58,6 +62,24 @@ class AuthTokenRefreshView(TokenRefreshView):
 class MeView(APIView):
     def get(self, request):
         return Response(UserProfileSerializer(request.user).data)
+
+    def patch(self, request):
+        user = request.user
+        serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        update_fields = []
+        if 'student_details' in serializer.validated_data:
+            user.student_details = serializer.validated_data['student_details']
+            update_fields.append('student_details')
+        if 'section' in serializer.validated_data:
+            user.section = serializer.validated_data['section']
+            update_fields.append('section')
+
+        if update_fields:
+            user.save(update_fields=update_fields)
+
+        return Response(UserProfileSerializer(user).data)
 
 
 class RegisterView(APIView):
@@ -78,6 +100,7 @@ class RegisterView(APIView):
 
 
 class PasswordResetRequestView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -89,16 +112,19 @@ class PasswordResetRequestView(APIView):
         if profile:
             otp = _generate_otp()
             cache.set(_otp_cache_key(email), otp, timeout=600)
-            send_mail(
-                subject='ATLAS password reset code',
-                message=(
-                    f'Your ATLAS password reset code is {otp}.\n\n'
-                    'This code expires in 10 minutes.'
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[email],
-                fail_silently=False,
-            )
+            try:
+                send_mail(
+                    subject='ATLAS password reset code',
+                    message=(
+                        f'Your ATLAS password reset code is {otp}.\n\n'
+                        'This code expires in 10 minutes.'
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[email],
+                    fail_silently=False,
+                )
+            except Exception:
+                pass
         else:
             otp = None
 
@@ -109,6 +135,7 @@ class PasswordResetRequestView(APIView):
 
 
 class PasswordResetVerifyView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -126,6 +153,7 @@ class PasswordResetVerifyView(APIView):
 
 
 class PasswordResetConfirmView(APIView):
+    authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -159,6 +187,8 @@ class DashboardSummaryView(APIView):
             return Response(self._admin_summary(request))
         if role == 'superadmin':
             return Response(self._superadmin_summary(request))
+        if role == 'student':
+            return Response(self._student_summary(request))
         return Response(self._faculty_summary(request))
 
     def _faculty_summary(self, request):
@@ -223,6 +253,39 @@ class DashboardSummaryView(APIView):
         DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
         return payload
 
+    def _student_summary(self, request):
+        student = request.user
+        student_details = student.student_details or {}
+        enrolled_courses = student_details.get('courses', [])
+        course_count = len(enrolled_courses)
+
+        recent = [
+            {
+                'course_id': c.get('course_id', ''),
+                'course_code': c.get('course_code', ''),
+                'course_title': c.get('course_title', ''),
+            }
+            for c in enrolled_courses[:10]
+        ]
+
+        payload = {
+            'role': 'student',
+            'title': 'Student Dashboard',
+            'subtitle': 'View your enrolled courses, assessments, and grades.',
+            'cards': [
+                {'label': 'Enrolled courses', 'value': course_count, 'tone': 'student'},
+            ],
+            'nav_items': [
+                {'label': 'Dashboard', 'to': '/student/dashboard'},
+                {'label': 'Courses', 'to': '/student/courses'},
+                {'label': 'Grades', 'to': '/student/grades'},
+                {'label': 'Settings', 'to': '/student/settings'},
+            ],
+            'recent': recent,
+        }
+        DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
+        return payload
+
     def _superadmin_summary(self, request):
         institution_count = Institution.objects.count()
         active_institutions = Institution.objects.filter(is_active=True).count()
@@ -276,7 +339,7 @@ class AccountDetailView(APIView):
 
         if 'role' in request.data:
             role_value = _to_database_role(request.data['role'])
-            if role_value not in {UserRole.FACULTY, UserRole.ADMIN, UserRole.SUPERADMIN}:
+            if role_value not in {UserRole.FACULTY, UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.STUDENT}:
                 return Response({'detail': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
             if role == 'admin' and role_value == UserRole.SUPERADMIN:
                 return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
@@ -290,3 +353,76 @@ class AccountDetailView(APIView):
 
         target.save()
         return Response(UserAccountSerializer(target).data)
+
+
+class EnrollCourseView(APIView):
+    """Enroll the current student in a course by course_code."""
+
+    def post(self, request):
+        if normalize_role(request.user.role) != 'student':
+            return Response({'detail': 'Only students can enroll in courses.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = EnrollCourseSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        course_code = serializer.validated_data['course_code']
+
+        course = Course.objects.filter(course_code__iexact=course_code).first()
+        if not course:
+            return Response({'detail': f'Course "{course_code}" not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        student = request.user
+        student_details = student.student_details or {}
+        courses = student_details.get('courses', [])
+
+        # Check if already enrolled
+        already = any(c.get('course_id') == str(course.course_id) for c in courses)
+        if already:
+            return Response({
+                'detail': f'Already enrolled in {course.course_code}.',
+                'student_details': student_details,
+            })
+
+        # Determine section: prefer student_details.section, fall back to user.section
+        section = student_details.get('section') or student.section or ''
+
+        courses.append({
+            'course_id': str(course.course_id),
+            'course_code': course.course_code,
+            'course_title': course.course_title,
+            'section': section,
+        })
+
+        student_details['courses'] = courses
+        student.student_details = student_details
+        student.save(update_fields=['student_details'])
+
+        return Response({
+            'detail': f'Enrolled in {course.course_code} — {course.course_title}.',
+            'student_details': student_details,
+        })
+
+
+class UnenrollCourseView(APIView):
+    """Unenroll the current student from a course."""
+
+    def delete(self, request, course_id):
+        if normalize_role(request.user.role) != 'student':
+            return Response({'detail': 'Only students can unenroll from courses.'}, status=status.HTTP_403_FORBIDDEN)
+
+        student = request.user
+        student_details = student.student_details or {}
+        courses = student_details.get('courses', [])
+
+        updated_courses = [c for c in courses if c.get('course_id') != course_id]
+
+        if len(updated_courses) == len(courses):
+            return Response({'detail': 'Not enrolled in this course.'}, status=status.HTTP_404_NOT_FOUND)
+
+        student_details['courses'] = updated_courses
+        student.student_details = student_details
+        student.save(update_fields=['student_details'])
+
+        return Response({
+            'detail': 'Unenrolled successfully.',
+            'student_details': student_details,
+        })

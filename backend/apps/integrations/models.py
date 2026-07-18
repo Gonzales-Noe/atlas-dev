@@ -22,6 +22,7 @@ class UserRole(models.TextChoices):
     SUPERADMIN = 'super_admin', 'Super Admin'
     ADMIN = 'admin', 'Admin'
     FACULTY = 'faculty', 'Faculty'
+    STUDENT = 'student', 'Student'
 
 class Institution(models.Model):
     institution_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -41,6 +42,8 @@ class UserProfile(models.Model):
     email = models.EmailField(unique=True)
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
+    section = models.CharField(max_length=50, null=True, blank=True, default=None)
+    student_details = models.JSONField(null=True, blank=True, default=None)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

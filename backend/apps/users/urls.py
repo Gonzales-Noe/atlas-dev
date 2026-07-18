@@ -6,11 +6,13 @@ from .views import (
     AccountDetailView,
     AccountManagementView,
     DashboardSummaryView,
+    EnrollCourseView,
     MeView,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PasswordResetVerifyView,
     RegisterView,
+    UnenrollCourseView,
 )
 
 urlpatterns = [
@@ -24,4 +26,6 @@ urlpatterns = [
     path('password-reset/request/', PasswordResetRequestView.as_view(), name='password_reset_request'),
     path('password-reset/verify/', PasswordResetVerifyView.as_view(), name='password_reset_verify'),
     path('password-reset/confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    path('enroll/', EnrollCourseView.as_view(), name='enroll_course'),
+    path('enroll/<uuid:course_id>/', UnenrollCourseView.as_view(), name='unenroll_course'),
 ]

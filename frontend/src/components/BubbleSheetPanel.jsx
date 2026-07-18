@@ -43,6 +43,7 @@ import FlagIcon from '@mui/icons-material/Flag'
 import KeyIcon from '@mui/icons-material/Key'
 import QrCodeIcon from '@mui/icons-material/QrCode'
 import RefreshIcon from '@mui/icons-material/Refresh'
+import SyncIcon from '@mui/icons-material/Sync'
 import api from '../config/api'
 import { extractApiError } from '../utils'
 
@@ -98,7 +99,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
     setTemplatesLoading(true)
     setError('')
     try {
-      const r = await api.get(`/grading/omr/bubble/templates/?course_id=${courseId}`)
+      const r = await api.get(`/grading/bubble/templates/?course_id=${courseId}`)
       setTemplates(r.data.templates || [])
     } catch (e) {
       setError(extractApiError(e))
@@ -224,17 +225,18 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
   )
 }
 
-function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange }) {
+function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
   const [pdfLoading,     setPdfLoading]     = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewUrl,     setPreviewUrl]     = useState(null)
   const [qrOpen,         setQrOpen]         = useState(false)
   const [deleting,       setDeleting]       = useState(false)
   const [err,            setErr]            = useState('')
+  const [syncingKey,     setSyncingKey]     = useState(false)
 
   async function fetchPdfBlob() {
     const r = await api.post(
-      `/grading/omr/bubble/templates/${t.template_id}/generate-pdf/`,
+      `/grading/bubble/templates/${t.template_id}/generate-pdf/`,
       {},
       { responseType: 'blob' }
     )
@@ -280,12 +282,28 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
     if (!window.confirm(`Delete template "${t.name}"? All scans for this template will also be deleted.`)) return
     setDeleting(true)
     try {
-      await api.delete(`/grading/omr/bubble/templates/${t.template_id}/`)
+      await api.delete(`/grading/bubble/templates/${t.template_id}/`)
       onRefresh()
     } catch (e) {
       setErr(extractApiError(e))
     } finally {
       setDeleting(false)
+    }
+  }
+
+  async function handleSyncKey() {
+    setSyncingKey(true)
+    setErr('')
+    try {
+      const r = await api.post(`/grading/bubble/templates/${t.template_id}/sync-key/`)
+      const detail = r?.data?.detail || 'Key synced.'
+      setErr(detail)
+      setTimeout(() => setErr(''), 3000)
+      onRefresh()
+    } catch (e) {
+      setErr(extractApiError(e))
+    } finally {
+      setSyncingKey(false)
     }
   }
 
@@ -305,13 +323,22 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
               sx={{ height: 18, fontSize: '0.65rem' }}
             />
           </Stack>
-          {err && <Typography sx={{ color: 'error.main', fontSize: '0.75rem', mt: 0.5 }}>{err}</Typography>}
+          {err && <Typography sx={{ color: err.startsWith('Answer key synced') ? 'success.main' : 'error.main', fontSize: '0.75rem', mt: 0.5 }}>{err}</Typography>}
         </Box>
 
         <Stack direction="row" spacing={0.5}>
           <Tooltip title="Set Answer Key">
             <IconButton size="small" onClick={onSetKey}><KeyIcon sx={{ fontSize: 16 }} /></IconButton>
           </Tooltip>
+          {t.assessment_id && (
+            <Tooltip title="Sync Key from Assessment">
+              <span>
+                <IconButton size="small" onClick={handleSyncKey} disabled={syncingKey}>
+                  <RefreshIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
           <Tooltip title="Answer Sheet Actions">
             <Select
               labelId="action-sheet-select"
@@ -429,21 +456,28 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
   const [errors,  setErrors]  = useState({})
   const [fetchingItems, setFetchingItems] = useState(false)
   const [selectedAssessmentId, setSelectedAssessmentId] = useState('')
+  const [keyCountPreview, setKeyCountPreview] = useState(null) // { count: N, total: M }
 
   // Auto-populate total_items from target_total_items when assessment changes
   async function handleAssessmentChange(assessmentId) {
     setField('assessment_id', assessmentId)
     setSelectedAssessmentId(assessmentId)
+    setKeyCountPreview(null)
     if (!assessmentId) return
     setFetchingItems(true)
     try {
       const r = await api.get(`/curriculum/assessment/${assessmentId}/`)
       const target = r?.data?.assessment?.target_total_items
+      const items = r?.data?.items || []
+      const correctCount = items.filter(it => {
+        const ca = String(it.correct_answer || '').trim().toUpperCase()
+        return ca && 'ABCDE'.includes(ca)
+      }).length
       if (target != null) {
         const n = Number(target)
         setField('total_items', n)
-        // Also auto-adjust parts to cover all items
         setForm(p => ({ ...p, total_items: n, parts: [{ label: 'Part I', start_item: 1, end_item: n }] }))
+        setKeyCountPreview({ count: correctCount, total: n })
         return
       }
     } catch { /* ignore — user can still type manually */ }
@@ -478,7 +512,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
     setSaving(true)
     setErrors({})
     try {
-      await api.post('/grading/omr/bubble/templates/', {
+      await api.post('/grading/bubble/templates/', {
         course_id: courseId,
         assessment_id: form.assessment_id || null,
         name: form.name,
@@ -520,6 +554,14 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
               <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
             ))}
           </LF>
+
+          {keyCountPreview && (
+            <Alert severity={keyCountPreview.count > 0 ? 'success' : 'info'} sx={{ fontSize: '0.8rem', py: 0.5 }}>
+              {keyCountPreview.count > 0
+                ? `${keyCountPreview.count} of ${keyCountPreview.total} items have correct answers — answer key will be auto-populated.`
+                : `No correct answers found in assessment items. Answer key must be set manually.`}
+            </Alert>
+          )}
 
           <Stack direction="row" spacing={1.5}>
             <LF label="Total items" type="number" value={form.total_items}
@@ -627,7 +669,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
     setErr('')
     try {
       await api.post(
-        `/grading/omr/bubble/templates/${template.template_id}/answer-key/`,
+        `/grading/bubble/templates/${template.template_id}/answer-key/`,
         { answer_key: key }
       )
       onSaved()
@@ -711,7 +753,7 @@ function StudentQrDialog({ template, onClose }) {
     setErr('')
     try {
       const r = await api.get(
-        `/grading/omr/bubble/templates/${template.template_id}/student-qr/?student_id=${encodeURIComponent(studentId.trim())}`,
+        `/grading/bubble/templates/${template.template_id}/student-qr/?student_id=${encodeURIComponent(studentId.trim())}`,
         { responseType: 'blob' }
       )
       const url = URL.createObjectURL(r.data)
@@ -815,7 +857,7 @@ function ScanTab({ courseId, templates, onScanned }) {
       const fd = new FormData()
       fd.append('template_id', selectedTemplate)
       fd.append('image', file)
-      const r = await api.post('/grading/omr/bubble/scans/', fd, {
+      const r = await api.post('/grading/bubble/scans/', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setResult(r.data.scan)
@@ -966,7 +1008,7 @@ function ResultsTab({ courseId, templates }) {
     setErr('')
     try {
       const params = fo ? '?flagged=1' : ''
-      const r = await api.get(`/grading/omr/bubble/templates/${tmplId}/scans/${params}`)
+      const r = await api.get(`/grading/bubble/templates/${tmplId}/scans/${params}`)
       setScans(r.data.scans || [])
     } catch (e) {
       setErr(extractApiError(e))
@@ -983,7 +1025,7 @@ function ResultsTab({ courseId, templates }) {
   async function handleDelete(scanId) {
     if (!window.confirm('Delete this scan result?')) return
     try {
-      await api.delete(`/grading/omr/bubble/scans/${scanId}/`)
+      await api.delete(`/grading/bubble/scans/${scanId}/`)
       setScans(p => p.filter(s => s.scan_id !== scanId))
     } catch (e) {
       setErr(extractApiError(e))
@@ -1118,7 +1160,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
     setSaving(true)
     setErr('')
     try {
-      await api.patch(`/grading/omr/bubble/scans/${scan.scan_id}/`, {
+      await api.patch(`/grading/bubble/scans/${scan.scan_id}/`, {
         student_identifier: studentId,
         responses,
         is_flagged: isFlagged,

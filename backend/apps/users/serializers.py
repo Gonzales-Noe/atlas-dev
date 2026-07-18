@@ -12,6 +12,7 @@ ROLE_DASHBOARD_MAP = {
     UserRole.FACULTY: '/faculty/dashboard',
     UserRole.ADMIN: '/admin/dashboard',
     UserRole.SUPERADMIN: '/superadmin/dashboard',
+    UserRole.STUDENT: '/student/dashboard',
 }
 
 PASSWORD_RESET_SALT = 'atlas.password-reset'
@@ -23,6 +24,8 @@ def normalize_role(role):
         return 'superadmin'
     if role == UserRole.ADMIN:
         return 'admin'
+    if role == UserRole.STUDENT:
+        return 'student'
     return 'faculty'
 
 
@@ -43,6 +46,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role_code',
             'institution_name',
             'dashboard_path',
+            'section',
+            'student_details',
             'is_active',
             'created_at',
         ]
@@ -98,7 +103,9 @@ class RegisterSerializer(serializers.Serializer):
             return UserRole.SUPERADMIN
         if value == 'admin':
             return UserRole.ADMIN
-        if value in {UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.FACULTY}:
+        if value == 'student':
+            return UserRole.STUDENT
+        if value in {UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.FACULTY, UserRole.STUDENT}:
             return value
         raise serializers.ValidationError('Invalid role.')
 
@@ -196,3 +203,15 @@ class DashboardSummarySerializer(serializers.Serializer):
     cards = serializers.ListField(child=serializers.DictField())
     nav_items = serializers.ListField(child=serializers.DictField())
     recent = serializers.ListField(child=serializers.DictField())
+
+
+class EnrollCourseSerializer(serializers.Serializer):
+    course_code = serializers.CharField(max_length=100)
+
+    def validate_course_code(self, value):
+        return value.strip().upper()
+
+
+class StudentDetailsUpdateSerializer(serializers.Serializer):
+    student_details = serializers.JSONField()
+    section = serializers.CharField(max_length=50, required=False, allow_blank=True)
