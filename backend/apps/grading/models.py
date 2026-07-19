@@ -226,7 +226,7 @@ class BubbleSheetScan(models.Model):
         related_name="submitted_bubble_scans",
     )
     # Value decoded from the QR code on the sheet (student ID number, no PII)
-    student_identifier = models.CharField(max_length=100, db_index=True)
+    student_identifier = models.UUIDField(db_index=True)
     # {"1": "A", "2": "C", ...}  — detected answers
     responses = models.JSONField(default=dict)
     score_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
