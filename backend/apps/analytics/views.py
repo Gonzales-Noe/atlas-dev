@@ -24,7 +24,6 @@ from .serializers import (
 )
 from .services import (
     GoogleSheetsService,
-    GradeSheetMappingService,
     PrescriptiveAnalyticsService,
 )
 from .services_api_key import GoogleSheetsAPIKeyService
@@ -42,6 +41,89 @@ def _get_sheet_data_with_available_credentials(sheet_id, range_name):
         return service_account_service.get_sheet_data(sheet_id, range_name)
 
     raise ValueError('Google Sheets API credentials are not configured.')
+
+
+def _normalize_header(value):
+    return str(value).strip().lower().replace('_', ' ')
+
+
+def _build_ilo_mapping(course_id, headers, means, weighting_schema=None):
+    ilos = list(Ilo.objects.filter(course_id=course_id).order_by('ilo_code', 'ilo_id'))
+    explicit_mapping = _build_explicit_ilo_mapping(weighting_schema, headers, ilos)
+    if explicit_mapping:
+        return explicit_mapping
+
+    if not ilos:
+        return {}
+
+    numeric_columns = [index for index in sorted(means.keys()) if means.get(index) is not None]
+    generated_mapping = {}
+    for column_index, ilo in zip(numeric_columns, ilos):
+        generated_mapping[str(column_index)] = f'{ilo.ilo_code}: {ilo.ilo_description}'
+
+    return generated_mapping
+
+
+def _build_explicit_ilo_mapping(weighting_schema, headers, ilos):
+    if not isinstance(weighting_schema, dict):
+        return {}
+
+    raw_mapping = (
+        weighting_schema.get('ilo_mapping')
+        or weighting_schema.get('column_ilo_mapping')
+        or weighting_schema.get('column_to_ilo')
+    )
+    if not isinstance(raw_mapping, dict):
+        return {}
+
+    ilo_by_id = {str(ilo.ilo_id): f'{ilo.ilo_code}: {ilo.ilo_description}' for ilo in ilos}
+    ilo_by_code = {ilo.ilo_code.lower(): f'{ilo.ilo_code}: {ilo.ilo_description}' for ilo in ilos}
+    resolved_mapping = {}
+
+    for raw_column, raw_ilo in raw_mapping.items():
+        column_index = _resolve_column_index(raw_column, headers)
+        ilo_description = _resolve_ilo_description(raw_ilo, ilo_by_id, ilo_by_code)
+        if column_index is None or not ilo_description:
+            continue
+        resolved_mapping[str(column_index)] = ilo_description
+
+    return resolved_mapping
+
+
+def _resolve_column_index(raw_column, headers):
+    if isinstance(raw_column, int):
+        return raw_column if 0 <= raw_column < len(headers) else None
+
+    column_text = str(raw_column).strip()
+    if column_text.isdigit():
+        column_index = int(column_text)
+        return column_index if 0 <= column_index < len(headers) else None
+
+    normalized_column = _normalize_header(column_text)
+    for index, header in enumerate(headers):
+        if _normalize_header(header) == normalized_column:
+            return index
+
+    return None
+
+
+def _resolve_ilo_description(raw_ilo, ilo_by_id, ilo_by_code):
+    if isinstance(raw_ilo, dict):
+        if raw_ilo.get('ilo_id'):
+            return ilo_by_id.get(str(raw_ilo['ilo_id']))
+        if raw_ilo.get('ilo_code'):
+            return ilo_by_code.get(str(raw_ilo['ilo_code']).lower())
+        if raw_ilo.get('ilo_description'):
+            return str(raw_ilo['ilo_description']).strip()
+
+    if raw_ilo is None:
+        return None
+
+    ilo_text = str(raw_ilo).strip()
+    if not ilo_text:
+        return None
+
+    return ilo_by_id.get(ilo_text) or ilo_by_code.get(ilo_text.lower()) or ilo_text
 
 
 @api_view(['POST'])
@@ -159,22 +241,21 @@ def faculty_sheet_analysis(request):
         sheet_id = serializer.validated_data['sheet_id']
         range_name = serializer.validated_data['range']
         weighting_schema = serializer.validated_data.get('weighting_schema')
-        term = serializer.validated_data.get('term', '')
 
-        mapping_service = GradeSheetMappingService()
-        faculty_profile = mapping_service.get_authenticated_profile(request.user)
+        faculty_profile = request.user
         if not faculty_profile:
             raise PermissionDenied('No faculty profile is linked to the authenticated user.')
 
-        if not mapping_service.faculty_can_access_course(faculty_profile, course_id):
-            raise PermissionDenied('You are not assigned to the requested course.')
+        if faculty_profile.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+            if not CourseLoad.objects.filter(course_id=course_id, faculty_id=faculty_profile.user_id).exists():
+                raise PermissionDenied('You are not assigned to the requested course.')
 
         raw_data = _get_sheet_data_with_available_credentials(sheet_id, range_name)
         normalized_records = normalize_grade_records(raw_data)
 
         analytics_service = PrescriptiveAnalyticsService()
         means_data = analytics_service.compute_column_means(raw_data)
-        ilo_mapping = mapping_service.build_ilo_mapping(
+        ilo_mapping = _build_ilo_mapping(
             course_id=course_id,
             headers=means_data.get('headers', []),
             means=means_data.get('means', {}),
@@ -188,13 +269,11 @@ def faculty_sheet_analysis(request):
         else:
             recommendations = 'No numeric assessment columns were found in the provided Google Sheet range.'
 
-        mapping_record = mapping_service.save_mapping(
-            course_id=course_id,
-            sheet_id=sheet_id,
-            range_name=range_name,
-            weighting_schema=weighting_schema,
-            term=term,
-        )
+        mapping_record = {
+            'course_id': str(course_id),
+            'sheet_id': sheet_id,
+            'range': range_name,
+        }
 
         return Response(
             {
