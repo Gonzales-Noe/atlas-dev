@@ -10,7 +10,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.integrations.models import Assessment, AssessmentItem, Course, CourseLoad, UserProfile, UserRole
+from apps.integrations.models import Assessment, AssessmentItem, Course, CourseLoad, StudentData, UserProfile, UserRole
 from apps.grading.models import (
     BubbleSheetScan,
     BubbleSheetTemplate,
@@ -614,10 +614,12 @@ def _bs_template_payload(t: BubbleSheetTemplate) -> dict:
 
 
 def _bs_scan_payload(s: BubbleSheetScan) -> dict:
+    student_name = _resolve_student_name(s.student_identifier)
     return {
         "scan_id": str(s.scan_id),
         "template_id": str(s.template_id),
         "student_identifier": s.student_identifier,
+        "student_name": student_name,
         "responses": s.responses,
         "score_raw": s.score_raw,
         "score_percent": s.score_percent,
@@ -627,6 +629,21 @@ def _bs_scan_payload(s: BubbleSheetScan) -> dict:
         "created_at": s.created_at,
         "updated_at": s.updated_at,
     }
+
+
+def _resolve_student_name(student_identifier: str | None) -> str | None:
+    """Look up a student's name by matching their SR Code against StudentData."""
+    if not student_identifier:
+        return None
+    student_data = (
+        StudentData.objects
+        .select_related("user")
+        .filter(sr_code=student_identifier)
+        .first()
+    )
+    if student_data and student_data.user:
+        return student_data.user.name or student_data.user.email
+    return None
 
 
 def _save_bubble_image(file_obj, template_id: str) -> str:
@@ -710,10 +727,12 @@ def student_scores(request):
         scans = BubbleSheetScan.objects.filter(template=tpl).order_by("student_identifier")
         for s in scans:
             # Avoid dupes if same student exists in both
-            exists = any(r["student_id"] == s.student_identifier for r in rows)
+            exists = any(str(r["student_id"]) == str(s.student_identifier) for r in rows)
             if not exists:
+                student_name = _resolve_student_name(s.student_identifier)
                 rows.append({
                     "student_id": s.student_identifier,
+                    "student_name": student_name,
                     "score": float(s.score_raw) if s.score_raw else 0,
                     "max_score": float(s.max_score) if s.max_score else None,
                     "percent": float(s.score_percent) if s.score_percent else None,
@@ -1021,7 +1040,6 @@ def bubble_sheet_scan(request):
         max_score=result["max_score"],
         is_flagged=result["is_flagged"],
         flag_reason=result["flag_reason"],
-        image_path=image_path_rel,
     )
     return Response(
         {"success": True, "scan": _bs_scan_payload(scan)},

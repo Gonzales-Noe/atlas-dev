@@ -226,7 +226,8 @@ class BubbleSheetScan(models.Model):
         related_name="submitted_bubble_scans",
     )
     # Value decoded from the QR code on the sheet (student ID number, no PII)
-    student_identifier = models.UUIDField(db_index=True)
+    # Student ID decoded from the ID bubble grid below the QR code (e.g. "23-35007")
+    student_identifier = models.CharField(max_length=64, db_index=True, null=True, blank=True)
     # {"1": "A", "2": "C", ...}  — detected answers
     responses = models.JSONField(default=dict)
     score_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
@@ -234,8 +235,6 @@ class BubbleSheetScan(models.Model):
     max_score = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     is_flagged = models.BooleanField(default=False)
     flag_reason = models.CharField(max_length=255, null=True, blank=True)
-    # Relative path under MEDIA_ROOT
-    image_path = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
