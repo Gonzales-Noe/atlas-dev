@@ -231,7 +231,7 @@ class BubbleSheetScannerService:
     @staticmethod
     def _flagged(reason: str) -> dict:
         return {
-            "student_identifier": "",
+            "student_identifier": None,
             "responses": {},
             "score_raw": Decimal("0"),
             "score_percent": Decimal("0"),

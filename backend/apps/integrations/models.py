@@ -42,8 +42,6 @@ class UserProfile(models.Model):
     email = models.EmailField(unique=True)
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
-    section = models.CharField(max_length=50, null=True, blank=True, default=None)
-    student_details = models.JSONField(null=True, blank=True, default=None)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -174,26 +172,26 @@ class TosWeight(models.Model):
     class Meta:
         db_table = 'tos_weights'
 
-class GradeSheetMapping(models.Model):
-    mapping_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    course = models.ForeignKey(Course, on_delete=models.CASCADE)
-    term = models.CharField(max_length=100)
-    google_sheet_url = models.URLField(max_length=2000, null=True, blank=True)
-    weighting_schema = models.JSONField(null=True, blank=True)
-
-    class Meta:
-        db_table = 'grade_sheet_mappings'
-
 class AssessmentScoreResult(models.Model):
     result_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE)
-    mapping = models.ForeignKey(GradeSheetMapping, on_delete=models.SET_NULL, null=True, blank=True)
-    student_identifier = models.CharField(max_length=255)
+    mapping_id = models.UUIDField(null=True, blank=True)
+    student_identifier = models.UUIDField()
     score = models.DecimalField(max_digits=5, decimal_places=2)
     performance = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'assessment_score_results'
+
+class StudentData(models.Model):
+    student_data_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, db_column='user_id')
+    courses_enrolled = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'student_data'
 
 class AnalyticsSnapshot(models.Model):
     snapshot_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -1,7 +1,8 @@
 """
 BubbleSheetGeneratorService
 ============================
-Exact mm-based bubble-sheet PDF generator. A4 portrait (210 x 297 mm).
+Exact mm-based bubble-sheet PDF generator. Long bond paper (8.5" x 13",
+~215.9 x 330.2 mm) with 2" header / 1" footer margins.
 Origin is ReportLab's bottom-left; _sy() converts spec top-origin to RL Y.
 """
 
@@ -11,15 +12,19 @@ from typing import Any
 
 try:
     import qrcode
-    from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas as rl_canvas
     _RL_AVAILABLE = True
 except ImportError:
     _RL_AVAILABLE = False
 
 # ── Page ──────────────────────────────────────────────────────────────────
-PAGE_W_MM = 210.0
-PAGE_H_MM = 297.0
+# Long bond paper (8.5" x 13") with 2" header, 1" footer.
+# Fiducials span 10" outer-edge-to-outer-edge.
+PAGE_W_MM = 215.9
+PAGE_H_MM = 330.2
+HEADER_MM = 50.8    # 2"
+FOOTER_MM = 25.4    # 1"
+FID_SPAN_MM = 254.0  # 10" — vertical span between top/bottom fiducial outer edges
 MM2PT = 72.0 / 25.4
 
 
@@ -32,19 +37,33 @@ def _sy(spec_y: float) -> float:
 
 
 # ── Fiducials ─────────────────────────────────────────────────────────────
+# Top fiducials at paper top + HEADER_MM (2"). Bottom fiducials at header + 10".
+# Horizontal: tight to edges with FID_INSET.
+FID_INSET = 8.0
 FID_W = 10.0
-FID_SPEC = [(10.0, 10.0), (190.0, 10.0), (10.0, 277.0), (190.0, 277.0)]
+CONTENT_TOP = HEADER_MM
+CONTENT_BOT = CONTENT_TOP + FID_SPAN_MM - FID_W  # bottom fiducial top edge
+FID_SPEC = [
+    (FID_INSET, CONTENT_TOP),
+    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_TOP),
+    (FID_INSET, CONTENT_BOT),
+    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_BOT),
+]
 
-SAFE_X0, SAFE_X1 = 20.0, 190.0
-SAFE_YT, SAFE_YB = 25.0, 272.0
+SAFE_X0, SAFE_X1 = FID_INSET + FID_W + 2.0, PAGE_W_MM - FID_INSET - FID_W - 2.0
+SAFE_YT, SAFE_YB = CONTENT_TOP + FID_W + 2.0, CONTENT_BOT - 2.0
+
+# ── Horizontal centering shift ────────────────────────────────────────────
+# Content block (left zone + right zone columns) is centred on the page.
+# Original block: 20mm .. 190mm. Page: 215.9mm. Shift = (215.9 - 170) / 2 - 20 ≈ 2.95
+X_SHIFT = 3.0
 
 # ── Left zone ─────────────────────────────────────────────────────────────
-LEFT_X0, LEFT_X1 = 20.0, 78.0
+LEFT_X0, LEFT_X1 = 20.0 + X_SHIFT, 78.0 + X_SHIFT
 LEFT_W = LEFT_X1 - LEFT_X0
 
 QR_SIZE = 52.0
 QR_X0 = LEFT_X0 + (LEFT_W - QR_SIZE) / 2
-QR_YT = 50.0  # top-alignment baseline
 
 # Comb fields
 COMB_N = 8
@@ -53,20 +72,18 @@ COMB_H = 6.5
 COMB_GAP = 1.0
 COMB_TOTAL = COMB_N * COMB_W + (COMB_N - 1) * COMB_GAP
 COMB_X0 = LEFT_X0 + (LEFT_W - COMB_TOTAL) / 2
-COMB_YT = QR_YT + QR_SIZE + 10
 
 # ID bubble grid
 ID_CENTRES = [COMB_X0 + COMB_W / 2 + i * (COMB_W + COMB_GAP) for i in range(COMB_N)]
-ID_GRID_YT = COMB_YT + COMB_H + 6
 ID_BUBBLE_R = 1.75
 ID_LABELS = [str(d) for d in range(10)] + ["-"]
 ID_ROW_PITCH = 5.0
-ID_ROWS_Y = [ID_GRID_YT + 2.5 + r * ID_ROW_PITCH for r in range(11)]
 ID_LABEL_X = COMB_X0 - 3.0
 ID_NUM_COLS = 8
 
 # ── Right zone: Answer Grid ──────────────────────────────────────────────
-RIGHT_X0, RIGHT_X1 = 80.0, 190.0
+RIGHT_X0 = 80.0 + X_SHIFT
+RIGHT_X1 = 190.0 + X_SHIFT
 RIGHT_W = RIGHT_X1 - RIGHT_X0
 
 COL_GAP = 1.5
@@ -124,7 +141,7 @@ class BubbleSheetGeneratorService:
             raise RuntimeError("reportlab and qrcode required.")
 
         buf = io.BytesIO()
-        c = rl_canvas.Canvas(buf, pagesize=A4)
+        c = rl_canvas.Canvas(buf, pagesize=(mm2pt(PAGE_W_MM), mm2pt(PAGE_H_MM)))
 
         total = template.total_items
         nchoice = template.num_choices
@@ -132,26 +149,37 @@ class BubbleSheetGeneratorService:
             (template.layout_metadata or {}).get("num_id_columns", ID_NUM_COLS),
             ID_NUM_COLS,
         )
+        ipc = (total + 1) // 2
 
         layout: dict[str, Any] = {
             "page_width_pt": round(mm2pt(PAGE_W_MM), 2),
             "page_height_pt": round(mm2pt(PAGE_H_MM), 2),
-            "page": "A4", "capacity": CAPACITY, "total_items": total,
+            "page": "Long Bond (8.5\"x13\")", "capacity": CAPACITY, "total_items": total,
             "rows_per_column": ROWS_PER_COL,
             "row_height_pt": round(mm2pt(ROW_V_PITCH), 2),
             "bubble_radius_pt": round(mm2pt(BUBBLE_R), 2),
             "dpi": 150, "items": {}, "id_columns": {},
         }
 
+        # ── Vertical centering ────────────────────────────────────────────
+        # Available inner height between fiducials
+        avl_top = CONTENT_TOP + FID_W       # = header + fiducial height
+        avl_bot = CONTENT_BOT               # = bottom fiducial top edge
+        avl_h = avl_bot - avl_top           # vertical gap between fiducial inner edges
+
+        # Answer grid height for this template
+        grid_h = HEADER_BAR_H + ipc * ROW_V_PITCH
+        # Centre the grid inside the available space
+        y0 = avl_top + (avl_h - grid_h) / 2.0
+
         self._draw_fiducials(c, layout)
-        self._draw_left_zone(c, template, nidcols, layout)
-        self._draw_answer_zone(c, template, total, nchoice, layout)
+        self._draw_left_zone(c, template, nidcols, y0, layout)
+        self._draw_answer_zone(c, template, total, nchoice, y0, layout)
 
         c.showPage()
         c.save()
         buf.seek(0)
 
-        ipc = (total + 1) // 2
         layout["parts"] = [
             {"label": "Col A", "start_item": 1, "end_item": ipc},
             {"label": "Col B", "start_item": ipc + 1, "end_item": total},
@@ -174,26 +202,32 @@ class BubbleSheetGeneratorService:
 
     # ── Left Zone ──────────────────────────────────────────────────────────
 
-    def _draw_left_zone(self, c, template, ncols, layout):
-        # "ASSESSMENT QR" label — ABOVE QR code
+    def _draw_left_zone(self, c, template, ncols, y0, layout):
+        # --- QR code at the top of grid area ---
+        qr_yt = y0
+
+        # "ASSESSMENT QR" label
         c.setFont(FONT_B, 6)
         c.setFillColorRGB(0.4, 0.4, 0.4)
         c.drawCentredString(mm2pt(QR_X0 + QR_SIZE / 2),
-                            mm2pt(_sy(QR_YT - 4)),
+                            mm2pt(_sy(qr_yt - 4)),
                             "ASSESSMENT QR")
 
         # QR code
         aid = str(template.assessment_id or template.template_id)
         qr_img = self._make_qr_pil(aid)
         if qr_img:
-            c.drawInlineImage(qr_img, mm2pt(QR_X0), mm2pt(_sy(QR_YT + QR_SIZE)),
+            c.drawInlineImage(qr_img, mm2pt(QR_X0), mm2pt(_sy(qr_yt + QR_SIZE)),
                               width=mm2pt(QR_SIZE), height=mm2pt(QR_SIZE))
 
-        # "STUDENT ID" — ABOVE comb fields
+        # Comb field Y positions (relative to QR bottom)
+        comb_yt = qr_yt + QR_SIZE + 10
+
+        # "STUDENT ID" label
         c.setFont(FONT_B, 8)
         c.setFillColorRGB(*C_MAROON)
         c.drawCentredString(mm2pt(COMB_X0 + COMB_TOTAL / 2),
-                            mm2pt(_sy(COMB_YT - 4)),
+                            mm2pt(_sy(comb_yt - 4)),
                             "STUDENT ID")
 
         # Comb fields
@@ -201,17 +235,20 @@ class BubbleSheetGeneratorService:
         c.setLineWidth(0.5)
         for i in range(COMB_N):
             bx_mm = COMB_X0 + i * (COMB_W + COMB_GAP)
-            c.rect(mm2pt(bx_mm), mm2pt(_sy(COMB_YT + COMB_H)),
+            c.rect(mm2pt(bx_mm), mm2pt(_sy(comb_yt + COMB_H)),
                    mm2pt(COMB_W), mm2pt(COMB_H), stroke=1, fill=0)
 
         # ID bubble grid
+        id_grid_yt = comb_yt + COMB_H + 6
+        id_rows_y = [id_grid_yt + 2.5 + r * ID_ROW_PITCH for r in range(11)]
+
         bxs = [mm2pt(cx) for cx in ID_CENTRES[:ncols]]
         layout["id_columns"] = {
-            "x0_mm": ID_CENTRES[0], "y_top_spec_mm": ID_GRID_YT,
+            "x0_mm": ID_CENTRES[0], "y_top_spec_mm": id_grid_yt,
             "num_cols": ncols, "bubble_r_mm": ID_BUBBLE_R,
             "col_pitch_mm": COMB_W + COMB_GAP, "row_pitch_mm": ID_ROW_PITCH,
         }
-        for ri, (label, ry) in enumerate(zip(ID_LABELS, ID_ROWS_Y)):
+        for ri, (label, ry) in enumerate(zip(ID_LABELS, id_rows_y)):
             ry_pt = mm2pt(_sy(ry))
             c.setFont(FONT_B, 6.5)
             c.setFillColorRGB(*C_BLACK)
@@ -223,10 +260,9 @@ class BubbleSheetGeneratorService:
 
     # ── Answer Zone ────────────────────────────────────────────────────────
 
-    def _draw_answer_zone(self, c, template, total, nchoice, layout):
+    def _draw_answer_zone(self, c, template, total, nchoice, y0, layout):
         labels = ["A", "B", "C", "D"][:nchoice]
         ipc = (total + 1) // 2
-        y0 = QR_YT  # top-aligned
 
         layout["answer_grid"] = {
             "y_start_spec_mm": y0, "header_h_mm": HEADER_BAR_H,

@@ -33,3 +33,9 @@ TODO.md
 backup.sql
 .blackboxcli/
 ASSESSMENT QR (3).png
+BLACKBOX.md
+full_backup.sql
+schema.sql
+supabase_schema.sql
+atlas_dev.sql
+atlas_dev_utf8.sql

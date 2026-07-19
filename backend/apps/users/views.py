@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations.models import Assessment, Course, CourseLoad, Institution, UserProfile, UserRole
+from apps.integrations.models import Assessment, Course, CourseLoad, Institution, StudentData, UserProfile, UserRole
 
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
@@ -68,16 +68,10 @@ class MeView(APIView):
         serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        update_fields = []
-        if 'student_details' in serializer.validated_data:
-            user.student_details = serializer.validated_data['student_details']
-            update_fields.append('student_details')
-        if 'section' in serializer.validated_data:
-            user.section = serializer.validated_data['section']
-            update_fields.append('section')
-
-        if update_fields:
-            user.save(update_fields=update_fields)
+        if 'courses_enrolled' in serializer.validated_data:
+            student_data, _ = StudentData.objects.get_or_create(user=user)
+            student_data.courses_enrolled = serializer.validated_data['courses_enrolled']
+            student_data.save()
 
         return Response(UserProfileSerializer(user).data)
 
@@ -255,8 +249,8 @@ class DashboardSummaryView(APIView):
 
     def _student_summary(self, request):
         student = request.user
-        student_details = student.student_details or {}
-        enrolled_courses = student_details.get('courses', [])
+        student_data = StudentData.objects.filter(user=student).first()
+        enrolled_courses = student_data.courses_enrolled if student_data else []
         course_count = len(enrolled_courses)
 
         recent = [
@@ -371,34 +365,28 @@ class EnrollCourseView(APIView):
             return Response({'detail': f'Course "{course_code}" not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         student = request.user
-        student_details = student.student_details or {}
-        courses = student_details.get('courses', [])
+        student_data, _ = StudentData.objects.get_or_create(user=student)
+        courses = student_data.courses_enrolled or []
 
-        # Check if already enrolled
         already = any(c.get('course_id') == str(course.course_id) for c in courses)
         if already:
             return Response({
                 'detail': f'Already enrolled in {course.course_code}.',
-                'student_details': student_details,
+                'courses_enrolled': courses,
             })
-
-        # Determine section: prefer student_details.section, fall back to user.section
-        section = student_details.get('section') or student.section or ''
 
         courses.append({
             'course_id': str(course.course_id),
             'course_code': course.course_code,
             'course_title': course.course_title,
-            'section': section,
         })
 
-        student_details['courses'] = courses
-        student.student_details = student_details
-        student.save(update_fields=['student_details'])
+        student_data.courses_enrolled = courses
+        student_data.save()
 
         return Response({
-            'detail': f'Enrolled in {course.course_code} — {course.course_title}.',
-            'student_details': student_details,
+            'detail': f'Enrolled in {course.course_code} \u2014 {course.course_title}.',
+            'courses_enrolled': courses,
         })
 
 
@@ -410,19 +398,18 @@ class UnenrollCourseView(APIView):
             return Response({'detail': 'Only students can unenroll from courses.'}, status=status.HTTP_403_FORBIDDEN)
 
         student = request.user
-        student_details = student.student_details or {}
-        courses = student_details.get('courses', [])
+        student_data, _ = StudentData.objects.get_or_create(user=student)
+        courses = student_data.courses_enrolled or []
 
         updated_courses = [c for c in courses if c.get('course_id') != course_id]
 
         if len(updated_courses) == len(courses):
             return Response({'detail': 'Not enrolled in this course.'}, status=status.HTTP_404_NOT_FOUND)
 
-        student_details['courses'] = updated_courses
-        student.student_details = student_details
-        student.save(update_fields=['student_details'])
+        student_data.courses_enrolled = updated_courses
+        student_data.save()
 
         return Response({
             'detail': 'Unenrolled successfully.',
-            'student_details': student_details,
+            'courses_enrolled': updated_courses,
         })
