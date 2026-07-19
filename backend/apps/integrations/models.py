@@ -187,6 +187,7 @@ class StudentData(models.Model):
     student_data_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, db_column='user_id')
     courses_enrolled = models.JSONField(default=list)
+    sr_code = models.CharField(max_length=64, unique=True, null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

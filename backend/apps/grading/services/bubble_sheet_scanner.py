@@ -90,35 +90,40 @@ class BubbleSheetScannerService:
         img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
         h_px, w_px = img_gray.shape
 
-        # ── 1. Decode QR code ────────────────────────────────────────────────
-        qr_detector = cv2.QRCodeDetector()
-        qr_data, _, _ = qr_detector.detectAndDecode(img_bgr)
-        student_id = (qr_data or "").strip()
-
-        flagged = False
-        flag_reason = None
-        if not student_id:
-            flagged = True
-            flag_reason = "QR code could not be decoded"
-
-        # ── 2. Derive dpi from page dimensions ───────────────────────────────
+        # ── 1. Derive dpi from page dimensions ───────────────────────────────
         meta = template.layout_metadata or {}
         page_w_pt = meta.get("page_width_pt", 612)
         page_h_pt = meta.get("page_height_pt", 792)
         dpi_x = w_px * 72.0 / page_w_pt
         dpi_y = h_px * 72.0 / page_h_pt
         dpi = (dpi_x + dpi_y) / 2
+        mm_to_px = dpi / 25.4
         bubble_r_pt = meta.get("bubble_radius_pt", 5.5)
-        bubble_r_px = max(3, _pts_to_px(bubble_r_pt, dpi))
+        bubble_r_px = max(3, round(bubble_r_pt * 25.4 / 72.0 * mm_to_px))
+
+        flagged = False
+        flag_reason = None
+
+        # ── 2. Decode student ID from the ID bubble grid ────────────────────
+        id_meta: dict = meta.get("id_columns", {})
+        if id_meta:
+            student_id = self._read_id_bubbles(img_gray, id_meta, mm_to_px)
+            if student_id is None:
+                flagged = True
+                flag_reason = "Student ID could not be decoded"
+        else:
+            # Fallback: try QR code (legacy templates)
+            student_id = self._decode_qr_fallback(img_bgr)
+            if not student_id:
+                flagged = True
+                flag_reason = "QR code could not be decoded (no ID grid metadata)"
+
+        # ── 3. Detect responses ──────────────────────────────────────────────
+        # Layout coordinates are mm with top origin (same as OpenCV).
 
         items_meta: dict = meta.get("items", {})
         if not items_meta:
             return self._flagged("Template has no layout metadata; regenerate the sheet first.")
-
-        # ── 3. Detect responses ──────────────────────────────────────────────
-        # ReportLab uses bottom-left origin; OpenCV uses top-left.
-        # Convert:  cv_y = page_h_px - rl_y
-        page_h_px = _pts_to_px(page_h_pt, dpi)
 
         responses: dict[str, str] = {}
         low_confidence_items: list[str] = []
@@ -130,10 +135,10 @@ class BubbleSheetScannerService:
 
             choice_fills: list[tuple[str, float]] = []
             for choice_label, coords in choices.items():
-                cx_pt = coords["cx"]
-                cy_pt = coords["cy"]
-                cx_px = _pts_to_px(cx_pt, dpi)
-                cy_px = page_h_px - _pts_to_px(cy_pt, dpi)
+                cx_mm = coords["cx_mm"]
+                cy_spec_mm = coords["cy_spec_mm"]
+                cx_px = round(cx_mm * mm_to_px)
+                cy_px = round(cy_spec_mm * mm_to_px)
                 fill = self._bubble_fill_ratio(img_gray, cx_px, cy_px, bubble_r_px)
                 choice_fills.append((choice_label, fill))
 
@@ -203,6 +208,60 @@ class BubbleSheetScannerService:
         # Threshold at 128; dark pixels (marks) are below 128
         dark_pixels = int(np.sum((roi < 128) & (mask_roi > 0)))
         return dark_pixels / total_pixels
+
+    @staticmethod
+    def _read_id_bubbles(gray_img, id_meta: dict, mm_to_px: float) -> str | None:
+        """
+        Read the student ID from the 11-row (0–9, '-') × N-col bubble grid
+        below the QR code.  Returns a string like ``"23-35007"`` or None
+        if no column could be read.
+        """
+        LABELS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"]
+        x0_mm = id_meta["x0_mm"]
+        y_top_mm = id_meta["y_top_spec_mm"]
+        ncols = id_meta["num_cols"]
+        r_mm = id_meta["bubble_r_mm"]
+        col_pitch_mm = id_meta["col_pitch_mm"]
+        row_pitch_mm = id_meta["row_pitch_mm"]
+
+        r_px = max(2, round(r_mm * mm_to_px))
+        col_step_px = round(col_pitch_mm * mm_to_px)
+        row_step_px = round(row_pitch_mm * mm_to_px)
+        # Centre of first bubble
+        cx0 = round(x0_mm * mm_to_px)
+        # Top row centre (y_top_mm is the top of the grid area; the first row
+        # centre is offset by half row_pitch from the grid top)
+        cy0 = round(y_top_mm * mm_to_px + row_step_px / 2)
+
+        chars: list[str] = []
+        for col in range(ncols):
+            cx = cx0 + col * col_step_px
+            best_label = "?"
+            best_fill = -1.0
+            for ri, label in enumerate(LABELS):
+                cy = cy0 + ri * row_step_px
+                fill = BubbleSheetScannerService._bubble_fill_ratio(
+                    gray_img, cx, cy, r_px
+                )
+                if fill > best_fill:
+                    best_fill = fill
+                    best_label = label
+
+            if best_fill < CONFIDENCE_FLOOR:
+                break  # empty column → stop
+            chars.append(best_label)
+
+        if not chars:
+            return None
+        return "".join(chars)
+
+    @staticmethod
+    def _decode_qr_fallback(img_bgr) -> str | None:
+        """Legacy fallback: decode QR code to get assessment/template ID."""
+        qr_detector = cv2.QRCodeDetector()
+        qr_data, _, _ = qr_detector.detectAndDecode(img_bgr)
+        raw = (qr_data or "").strip()
+        return raw if raw else None
 
     @staticmethod
     def _grade(

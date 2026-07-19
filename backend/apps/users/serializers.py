@@ -89,6 +89,7 @@ class RegisterSerializer(serializers.Serializer):
     institution_name = serializers.CharField(max_length=255)
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
     role = serializers.CharField(required=False, default=UserRole.FACULTY)
+    student_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
 
     def validate_email(self, value):
         normalized = value.strip().lower()
@@ -113,6 +114,7 @@ class RegisterSerializer(serializers.Serializer):
         role = validated_data.pop('role', UserRole.FACULTY)
         password = validated_data.pop('password')
         validated_data.pop('full_name', None)
+        student_id = validated_data.pop('student_id', None)
 
         institution, _ = Institution.objects.get_or_create(
             name=institution_name,
@@ -123,13 +125,23 @@ class RegisterSerializer(serializers.Serializer):
             },
         )
 
-        return UserProfile.objects.create(
+        profile = UserProfile.objects.create(
             institution=institution,
             email=validated_data['email'],
             password_hash=make_password(password),
             role=role,
             is_active=True,
         )
+
+        # When a student provides their SR Code at signup, store it
+        if student_id and student_id.strip() and (role == UserRole.STUDENT or role == 'student'):
+            from apps.integrations.models import StudentData
+            StudentData.objects.get_or_create(
+                user=profile,
+                defaults={'sr_code': student_id.strip()},
+            )
+
+        return profile
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
