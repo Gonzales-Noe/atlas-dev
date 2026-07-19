@@ -46,8 +46,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role_code',
             'institution_name',
             'dashboard_path',
-            'section',
-            'student_details',
             'is_active',
             'created_at',
         ]
@@ -213,5 +211,4 @@ class EnrollCourseSerializer(serializers.Serializer):
 
 
 class StudentDetailsUpdateSerializer(serializers.Serializer):
-    student_details = serializers.JSONField()
-    section = serializers.CharField(max_length=50, required=False, allow_blank=True)
+    courses_enrolled = serializers.JSONField(required=False)
