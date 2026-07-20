@@ -10,6 +10,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunSQL(
+            sql="ALTER TABLE bubble_sheet_scans DROP CONSTRAINT IF EXISTS bubble_sheet_scans_student_identifier_fkey;",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.AlterField(
             model_name='bubblesheetscan',
             name='student_identifier',

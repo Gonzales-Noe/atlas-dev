@@ -19,6 +19,7 @@ from apps.integrations.models import (
     CourseLoad,
     Module,
     ParentChunk,
+    StudentData,
     Syllabus,
     UserRole,
 )
@@ -163,6 +164,33 @@ def faculty_course_workspace(request, course_id):
             'modules': list(modules),
             'assessments': list(assessments),
         },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def course_students(request, course_id):
+    """Return enrolled students for a course from student_data."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    students = []
+    for sd in StudentData.objects.filter(
+        courses_enrolled__contains=[{"course_id": str(course_id)}]
+    ):
+        students.append({
+            "user_id": str(sd.user_id),
+            "sr_code": sd.sr_code or "",
+            "courses_enrolled": sd.courses_enrolled,
+        })
+
+    return Response(
+        {"success": True, "students": students},
         status=status.HTTP_200_OK,
     )
 
