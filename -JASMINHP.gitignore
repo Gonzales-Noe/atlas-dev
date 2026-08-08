@@ -1,0 +1,35 @@
+# .gitignore — ATLAS Project
+
+# Environment & Secrets
+.env
+*.env
+service-account*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Frontend
+node_modules/
+dist/
+.vite/
+
+# Docker
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.DS_Store
+
+TODO.md
+backup.sql
+.blackboxcli/
+ASSESSMENT QR (3).png
