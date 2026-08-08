@@ -2,7 +2,7 @@
 from .base import *
 
 DEBUG = False
-ALLOWED_HOSTS = ['atlas.example.com']
+ALLOWED_HOSTS = ['atlas.example.com', 'swagger-dense-barcode.ngrok-free.dev']
 
 # Security
 SECURE_SSL_REDIRECT = True
