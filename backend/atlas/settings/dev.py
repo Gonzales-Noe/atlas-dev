@@ -2,7 +2,7 @@
 from .base import *
 
 DEBUG = True
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*.local']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*.local', 'swagger-dense-barcode.ngrok-free.dev']
 
 # Development tools
 INSTALLED_APPS += [
