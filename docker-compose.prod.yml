@@ -1,19 +1,7 @@
+# Production stack — Postgres is Supabase (remote). Set DB_* in .env (no local db).
 version: '3.9'
 
 services:
-  db:
-    image: postgres:15-alpine
-    container_name: atlas_dev_prod
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - atlas-network
-    restart: always
-
   redis:
     image: redis:7-alpine
     container_name: atlas_redis_prod
@@ -33,14 +21,13 @@ services:
       - DB_NAME=${DB_NAME}
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
-      - DB_HOST=db
+      - DB_HOST=${DB_HOST}
       - DB_PORT=${DB_PORT:-5432}
       - REDIS_HOST=redis
       - REDIS_PORT=${REDIS_PORT:-6379}
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
       - SECRET_KEY=${SECRET_KEY}
     depends_on:
-      - db
       - redis
     networks:
       - atlas-network
@@ -76,7 +63,6 @@ services:
     restart: always
 
 volumes:
-  postgres_data:
   redis_data:
 
 networks:

@@ -2,7 +2,9 @@ from django.contrib.auth.hashers import check_password, make_password
 from django.core import signing
 from django.db import transaction
 from rest_framework import serializers
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.integrations.models import Institution, UserProfile, UserRole
@@ -81,6 +83,47 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
             'access': str(refresh.access_token),
             'user': UserProfileSerializer(profile).data,
         }
+
+
+class UserProfileTokenRefreshSerializer(TokenRefreshSerializer):
+    """Refresh tokens issued for UserProfile (not Django's auth.User)."""
+
+    def validate(self, attrs):
+        refresh = self.token_class(attrs['refresh'])
+
+        user_id = refresh.payload.get(api_settings.USER_ID_CLAIM, None)
+        if user_id is not None:
+            try:
+                profile = UserProfile.objects.get(user_id=user_id)
+            except UserProfile.DoesNotExist as exc:
+                raise AuthenticationFailed(
+                    self.error_messages['no_active_account'],
+                    'no_active_account',
+                ) from exc
+
+            if not profile.is_active:
+                raise AuthenticationFailed(
+                    self.error_messages['no_active_account'],
+                    'no_active_account',
+                )
+
+        data = {'access': str(refresh.access_token)}
+
+        if api_settings.ROTATE_REFRESH_TOKENS:
+            if api_settings.BLACKLIST_AFTER_ROTATION:
+                try:
+                    refresh.blacklist()
+                except AttributeError:
+                    pass
+
+            refresh.set_jti()
+            refresh.set_exp()
+            refresh.set_iat()
+            refresh.outstand()
+
+            data['refresh'] = str(refresh)
+
+        return data
 
 
 class RegisterSerializer(serializers.Serializer):

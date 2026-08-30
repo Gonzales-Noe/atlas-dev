@@ -26,6 +26,7 @@ from .serializers import (
     UserAccountSerializer,
     UserProfileSerializer,
     UserProfileTokenObtainPairSerializer,
+    UserProfileTokenRefreshSerializer,
     normalize_role,
 )
 
@@ -57,6 +58,7 @@ class AuthTokenView(TokenObtainPairView):
 
 class AuthTokenRefreshView(TokenRefreshView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = UserProfileTokenRefreshSerializer
 
 
 class MeView(APIView):
