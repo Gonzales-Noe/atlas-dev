@@ -2,6 +2,8 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-key-change-in-production')
@@ -61,13 +63,21 @@ TEMPLATES = [
 WSGI_APPLICATION = 'atlas.wsgi.application'
 ASGI_APPLICATION = 'atlas.asgi.application'
 
+# Require explicit DB_* from .env (Supabase). No localhost / atlas_dev fallbacks.
+_missing_db = [k for k in ('DB_NAME', 'DB_USER', 'DB_PASSWORD', 'DB_HOST') if not os.environ.get(k)]
+if _missing_db:
+    raise ImproperlyConfigured(
+        f"Missing required database env vars: {', '.join(_missing_db)}. "
+        "Set them in backend/.env to your Supabase Postgres connection."
+    )
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'atlas_dev'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', 'postgres'),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'),
+        'NAME': os.environ['DB_NAME'],
+        'USER': os.environ['DB_USER'],
+        'PASSWORD': os.environ['DB_PASSWORD'],
+        'HOST': os.environ['DB_HOST'],
         'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }

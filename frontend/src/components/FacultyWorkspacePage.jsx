@@ -1959,7 +1959,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           target_item_number: nextTargetNumber,
           related_item_number: relatedItemNumber || undefined,
           relation_instruction: assessmentParams.relation_instruction,
-          overwrite_item: Boolean(assessmentParams.overwrite_item),
+          overwrite_item: Boolean(assessmentParams.overwrite_item)
+            || (blueprint.totalItems > 0 && Number(assessmentDetail?.total_items || 0) >= blueprint.totalItems),
         })
 
         if (!data?.success) {
@@ -2167,6 +2168,45 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
   }
 
+  async function handleRegenerateItemChoices(itemNumber) {
+    if (!course) return
+    const assessmentId = assessmentSessionId || assessmentDetail?.assessment_id
+    if (!assessmentId) {
+      setActionError('Open or create an assessment session first.')
+      return
+    }
+
+    setActionLoading(true)
+    setActionError('')
+    try {
+      const { data } = await api.post('/curriculum/generate-assessment/', {
+        course_id: course.course_id,
+        assessment_type: 'Major Examination',
+        provider: assessmentParams.provider,
+        extra_instructions: assessmentParams.extra_instructions,
+        source_exam_code: assessmentParams.source_exam_code || getAssessmentBlueprint().examCode,
+        source_exam_label: assessmentParams.source_exam_label || getAssessmentBlueprint().assessmentName,
+        assessment_id: assessmentId,
+        item_by_item: true,
+        target_item_number: itemNumber,
+        overwrite_item: true,
+        regenerate_choices_only: true,
+      })
+      if (data?.success) {
+        workspaceApi.execute()
+        if (data?.assessment?.assessment_id) {
+          await handleOpenAssessment(data.assessment)
+        }
+      } else {
+        setActionError(data?.detail || 'Failed to regenerate choices.')
+      }
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleAddManualAssessmentItem() {
     if (!course) return
     const assessmentId = assessmentSessionId || assessmentDetail?.assessment_id
@@ -2258,6 +2298,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const currentCount = Number(assessmentDetail?.total_items || 0)
     const remainingCount = targetTotal !== null ? Math.max(0, targetTotal - currentCount) : null
     const canAddItems = targetTotal === null || currentCount < targetTotal
+    const isAtMax = targetTotal !== null && currentCount >= targetTotal
     const targetItemValue = Number(assessmentParams.target_item_number || currentCount + 1 || 1)
     const relatedOptions = Array.from({ length: Math.max(0, targetItemValue - 1) }, (_, idx) => String(idx + 1))
     const maxTargetValue = targetTotal || undefined
@@ -2291,6 +2332,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.25, fontSize: '0.68rem' }}>
                 {targetTotal !== null ? `${remainingCount} item${remainingCount === 1 ? '' : 's'} left` : 'Add items until completed'}
               </Typography>
+              {isAtMax && (
+                <Typography variant="caption" sx={{ color: MAROON, display: 'block', mt: 0.5, fontSize: '0.66rem', fontWeight: 700 }}>
+                  All items generated ({currentCount}/{targetTotal}). Use Regenerate or manually edit existing items.
+                </Typography>
+              )}
             </Box>
 
             <Box sx={{ p: 1.1, border: '1px solid rgba(0,0,0,0.08)', borderRadius: 1.5, bgcolor: '#fff' }}>
@@ -2379,9 +2425,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
             <GenButton
               onClick={handleGenerateAssessment}
-              disabled={actionLoading || !canAddItems}
+              disabled={actionLoading}
             >
-              {actionLoading ? 'Generating Items…' : canAddItems ? 'Generate Items' : 'Assessment Complete'}
+              {actionLoading
+                ? 'Generating…'
+                : !canAddItems && isAtMax
+                  ? 'Regenerate Item (Overwrite)'
+                  : !canAddItems
+                    ? 'Assessment Complete'
+                    : 'Generate Items'}
             </GenButton>
           </Stack>
         )}
@@ -2468,9 +2520,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               onChange={e => setManualAssessmentItem(p => ({ ...p, answer_key: e.target.value }))}
             />
 
-            <GenButton onClick={handleAddManualAssessmentItem} disabled={actionLoading || !canAddItems}>
-              {actionLoading ? 'Saving…' : canAddItems ? 'Add Manual Item' : 'Assessment Complete'}
-            </GenButton>
+            {isAtMax ? (
+              <Typography variant="caption" sx={{ color: '#666', fontStyle: 'italic' }}>
+                Item limit reached ({currentCount}/{targetTotal}). Edit existing items above or use Builder → Regenerate to overwrite.
+              </Typography>
+            ) : (
+              <GenButton onClick={handleAddManualAssessmentItem} disabled={actionLoading || !canAddItems}>
+                {actionLoading ? 'Saving…' : canAddItems ? 'Add Manual Item' : 'Assessment Complete'}
+              </GenButton>
+            )}
           </Stack>
         )}
 
@@ -4682,14 +4740,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         )}
                         <Box sx={{ flex: 1 }} />
                         {!isEditing ? (
-                          <Button
-                            size="small"
-                            startIcon={<EditIcon sx={{ fontSize: '0.8rem !important' }} />}
-                            onClick={() => handleStartItemEdit(item)}
-                            sx={{ textTransform: 'none', color: MAROON, fontSize: '0.72rem', px: 1, minWidth: 0 }}
-                          >
-                            Edit
-                          </Button>
+                          <Stack direction="row" spacing={0.4}>
+                            <Tooltip title="Regenerate choices only (keeps question text)">
+                              <Button
+                                size="small"
+                                startIcon={<AutoAwesomeIcon sx={{ fontSize: '0.75rem !important' }} />}
+                                onClick={() => handleRegenerateItemChoices(item.item_number)}
+                                disabled={actionLoading}
+                                sx={{ textTransform: 'none', color: '#8B4513', fontSize: '0.68rem', px: 0.8, minWidth: 0 }}
+                              >
+                                Choices
+                              </Button>
+                            </Tooltip>
+                            <Button
+                              size="small"
+                              startIcon={<EditIcon sx={{ fontSize: '0.8rem !important' }} />}
+                              onClick={() => handleStartItemEdit(item)}
+                              sx={{ textTransform: 'none', color: MAROON, fontSize: '0.72rem', px: 1, minWidth: 0 }}
+                            >
+                              Edit
+                            </Button>
+                          </Stack>
                         ) : (
                           <Stack direction="row" spacing={0.6}>
                             <Button
