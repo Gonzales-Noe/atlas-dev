@@ -1779,6 +1779,7 @@ def generate_assessment(request):
     relation_instruction = str(request.data.get('relation_instruction') or '').strip()
     overwrite_item = _to_bool(request.data.get('overwrite_item'), True)
     manual_item = request.data.get('manual_item')
+    regenerate_choices_only = _to_bool(request.data.get('regenerate_choices_only'), False)
     use_manual_input = isinstance(manual_items, list) and len(manual_items) > 0
     if isinstance(faculty_topics, str):
         faculty_topics = [line.strip() for line in faculty_topics.splitlines() if line.strip()]
@@ -1933,6 +1934,17 @@ def generate_assessment(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        if regenerate_choices_only:
+            if not existing_item:
+                return Response(
+                    {
+                        'success': False,
+                        'detail': f'Item #{target_item_number} does not exist yet. Generate the item first before regenerating choices.',
+                        'assessment_id': str(target_assessment.assessment_id),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         section_key = _normalize_topic_key(target_section.get('section_title'))
         matched_module = section_module_matches.get(section_key)
         module_excerpt = _module_prompt_excerpt(matched_module) if matched_module else ''
@@ -1990,7 +2002,45 @@ def generate_assessment(request):
                 'Generate exactly one high-quality MCQ as strict JSON. '
                 'Return JSON only with no markdown and no extra text.'
             )
-            user_prompt = f"""Generate ONE assessment item as strict JSON.
+            if regenerate_choices_only:
+                existing_rubric = existing_item.rubric if isinstance(existing_item.rubric, dict) else {}
+                existing_choices = existing_rubric.get('choices') or []
+                existing_answer = existing_rubric.get('correct_answer') or ''
+                user_prompt = f"""Regenerate ONLY the choices and correct answer for an existing MCQ item.
+
+Course: {course.course_title} ({course.course_code})
+Assessment: {source['assessment_name']}
+Target Item Number: {target_item_number}
+Section Topic: {target_section.get('section_title')}
+Bloom Level: {target_item_blueprint.get('bloom_level') or ''}
+
+EXISTING QUESTION TEXT (keep exactly as-is):
+{existing_item.question_text}
+
+CURRENT CHOICES:
+{json.dumps(existing_choices, ensure_ascii=False)}
+CURRENT CORRECT ANSWER: {existing_answer}
+
+REFERENCE MATERIAL:
+{CoTPromptBuilder._format_context(all_chunks, combined_summary)}
+
+MATCHED MODULE CONTEXT:
+{module_excerpt or 'No matched saved module for this section.'}
+
+BLUEPRINT ITEM (preserve item_number, section_title, bloom_level, bloom_verb, ilo_refs):
+{item_blueprint_json}
+
+Requirements:
+1. Return ONE JSON object only.
+2. Keep the SAME question_text (copy exactly from EXISTING QUESTION TEXT above).
+3. Generate FRESH, plausible-but-wrong distractors as choices (exactly 4 options: A, B, C, D).
+4. Set correct_answer to the letter of the correct choice (A, B, C, or D).
+5. Include a new answer_key with a brief explanation of why the correct answer is right.
+6. Include ALL other keys: item_number, item_type, section_title, exam_label, bloom_level, bloom_verb, ilo_refs, points (use blueprint values).
+7. bloom_level MUST exactly match the blueprint bloom_level ({target_item_blueprint.get('bloom_level') or 'as specified'}).
+"""
+            else:
+                user_prompt = f"""Generate ONE assessment item as strict JSON.
 
 Course: {course.course_title} ({course.course_code})
 Assessment: {source['assessment_name']}
@@ -2075,7 +2125,11 @@ Requirements:
                 for v in (parsed_item.get('ilo_refs') or target_item_blueprint.get('ilo_refs') or [])
                 if str(v).strip()
             ],
-            'question_text': str(parsed_item.get('question_text') or '').strip(),
+            'question_text': (
+                existing_item.question_text
+                if existing_item and regenerate_choices_only
+                else str(parsed_item.get('question_text') or '').strip()
+            ),
             'choices': _normalize_choices(parsed_item.get('choices')),
             'correct_answer': str(parsed_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
             'answer_key': str(parsed_item.get('answer_key') or '').strip(),
@@ -2117,6 +2171,7 @@ Requirements:
             'item_by_item_generated': True,
             'related_item_number': related_item_number or None,
             'relation_instruction': relation_instruction,
+            'regenerate_choices_only': regenerate_choices_only,
         }
 
         if existing_item:
