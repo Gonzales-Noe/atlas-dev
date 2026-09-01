@@ -56,6 +56,15 @@ def _pts_to_px(pts: float, dpi: float) -> int:
     return round(pts * dpi / 72.0)
 
 
+def _truncate_flag_reason(reason: str | None, max_len: int = 255) -> str | None:
+    if not reason:
+        return reason
+    reason = reason.strip()
+    if len(reason) <= max_len:
+        return reason
+    return reason[: max_len - 1].rstrip() + "…"
+
+
 class BubbleSheetScannerService:
     """
     Usage::
@@ -165,9 +174,16 @@ class BubbleSheetScannerService:
         if low_confidence_items:
             flagged = True
             existing_reason = flag_reason or ""
-            flag_reason = (
-                f"{existing_reason}; ".lstrip("; ")
-                + f"Low-confidence items: {', '.join(low_confidence_items)}"
+            n = len(low_confidence_items)
+            if n == 1:
+                detail = f"item {low_confidence_items[0]}"
+            elif n <= 8:
+                detail = f"items {', '.join(low_confidence_items)}"
+            else:
+                sample = ", ".join(low_confidence_items[:5])
+                detail = f"{n} items (e.g. {sample}, …)"
+            flag_reason = _truncate_flag_reason(
+                f"{existing_reason}; Low-confidence {detail}".lstrip("; ")
             )
 
         # ── 4. Grade ─────────────────────────────────────────────────────────
@@ -181,7 +197,7 @@ class BubbleSheetScannerService:
             "score_percent": score_percent,
             "max_score": max_score,
             "is_flagged": flagged,
-            "flag_reason": flag_reason,
+            "flag_reason": _truncate_flag_reason(flag_reason),
         }
 
     # ── Helpers ───────────────────────────────────────────────────────────────
@@ -296,5 +312,5 @@ class BubbleSheetScannerService:
             "score_percent": Decimal("0"),
             "max_score": Decimal("0"),
             "is_flagged": True,
-            "flag_reason": reason,
+            "flag_reason": _truncate_flag_reason(reason),
         }
