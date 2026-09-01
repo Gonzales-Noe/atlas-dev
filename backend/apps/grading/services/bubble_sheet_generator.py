@@ -248,6 +248,13 @@ class BubbleSheetGeneratorService:
             "num_cols": ncols, "bubble_r_mm": ID_BUBBLE_R,
             "col_pitch_mm": COMB_W + COMB_GAP, "row_pitch_mm": ID_ROW_PITCH,
         }
+        layout["left_zone"] = {
+            "x0_mm": LEFT_X0,
+            "x1_mm": LEFT_X1,
+            "qr_x0_mm": QR_X0,
+            "qr_size_mm": QR_SIZE,
+            "y_start_spec_mm": y0,
+        }
         for ri, (label, ry) in enumerate(zip(ID_LABELS, id_rows_y)):
             ry_pt = mm2pt(_sy(ry))
             c.setFont(FONT_B, 6.5)
@@ -267,6 +274,11 @@ class BubbleSheetGeneratorService:
         layout["answer_grid"] = {
             "y_start_spec_mm": y0, "header_h_mm": HEADER_BAR_H,
             "row_pitch_mm": ROW_V_PITCH, "bubble_r_mm": BUBBLE_R,
+            "answer_zone_x0_mm": RIGHT_X0,
+            "answer_zone_x1_mm": RIGHT_X1,
+            "col_width_mm": COL_W,
+            "col_gap_mm": COL_GAP,
+            "num_choices": nchoice,
         }
         self._col(c, total, labels, 1, COL1_X0, C1_ITEM_X, C1_BX, y0, layout, "col_a")
         self._col(c, total, labels, ipc + 1, COL2_X0, C2_ITEM_X, C2_BX, y0, layout, "col_b")
