@@ -152,7 +152,9 @@ class BubbleSheetScanSerializer(serializers.Serializer):
 
 
 class BubbleScanPatchSerializer(serializers.Serializer):
-    student_identifier = serializers.UUIDField(required=False)
+    student_identifier = serializers.CharField(
+        required=False, allow_blank=True, max_length=64
+    )
     responses = serializers.DictField(
         child=serializers.CharField(max_length=1), required=False
     )

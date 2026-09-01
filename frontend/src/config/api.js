@@ -1,12 +1,14 @@
 // src/config/api.js
 // Central Axios instance — all API calls go through here.
-// Django backend runs on localhost:8000 in development.
-// Vite proxy (vite.config.js) forwards /api/* to Django.
+// Local: Vite proxy forwards /api/* → Django (localhost:8000).
+// Render: set VITE_API_URL=https://your-backend.onrender.com/api at build time.
 
 import axios from 'axios'
 
+const API_BASE = import.meta.env.VITE_API_URL || '/api'
+
 const api = axios.create({
-  baseURL: '/api',          // proxied to http://localhost:8000/api via Vite
+  baseURL: API_BASE,
   withCredentials: true,    // send cookies (CSRF) with every request
   headers: {
     'Content-Type': 'application/json',
@@ -36,7 +38,7 @@ api.interceptors.response.use(
       originalRequest._retry = true
       try {
         const refreshToken = localStorage.getItem('atlas_refresh_token')
-        const { data } = await axios.post('/api/auth/token/refresh/', {
+        const { data } = await axios.post(`${API_BASE}/auth/token/refresh/`, {
           refresh: refreshToken,
         })
         localStorage.setItem('atlas_access_token', data.access)

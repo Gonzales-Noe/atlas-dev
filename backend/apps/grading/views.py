@@ -1025,7 +1025,10 @@ def bubble_sheet_scan(request):
     image_path_abs = Path(settings.MEDIA_ROOT) / image_path_rel
 
     try:
-        from apps.grading.services.bubble_sheet_scanner import BubbleSheetScannerService
+        from apps.grading.services.bubble_sheet_scanner import (
+            BubbleSheetScannerService,
+            _truncate_flag_reason,
+        )
         result = BubbleSheetScannerService().scan(image_path_abs, t)
     except RuntimeError as exc:
         return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -1039,7 +1042,7 @@ def bubble_sheet_scan(request):
         score_percent=result["score_percent"],
         max_score=result["max_score"],
         is_flagged=result["is_flagged"],
-        flag_reason=result["flag_reason"],
+        flag_reason=_truncate_flag_reason(result["flag_reason"]),
     )
     return Response(
         {"success": True, "scan": _bs_scan_payload(scan)},
