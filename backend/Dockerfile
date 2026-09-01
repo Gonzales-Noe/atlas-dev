@@ -25,10 +25,10 @@ RUN DJANGO_SETTINGS_MODULE=atlas.settings.prod \
     ALLOWED_HOSTS=localhost \
     python manage.py collectstatic --noinput
 
-# Render injects $PORT; default 8000 for local docker runs
-ENV PORT=8000
+ENV PORT=10000
 ENV WEB_CONCURRENCY=1
-EXPOSE 8000
 
-# One worker on free/starter RAM. Render also sets WEB_CONCURRENCY=1.
-CMD gunicorn atlas.wsgi:application --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY} --timeout 120 --graceful-timeout 120
+RUN chmod +x start.sh
+
+# Render default port is 10000; start.sh binds 0.0.0.0:$PORT
+CMD ["./start.sh"]
