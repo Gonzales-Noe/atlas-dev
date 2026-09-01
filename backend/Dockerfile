@@ -27,9 +27,8 @@ RUN DJANGO_SETTINGS_MODULE=atlas.settings.prod \
 
 # Render injects $PORT; default 8000 for local docker runs
 ENV PORT=8000
+ENV WEB_CONCURRENCY=1
 EXPOSE 8000
 
-# Shell form so $PORT expands. Keep workers low for Render starter/free RAM.
-# Set DJANGO_SETTINGS_MODULE=atlas.settings.prod on Render (do not bake it here
-# so local docker-compose can keep using atlas.settings.dev).
-CMD gunicorn atlas.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --timeout 120
+# One worker on free/starter RAM. Render also sets WEB_CONCURRENCY=1.
+CMD gunicorn atlas.wsgi:application --bind 0.0.0.0:${PORT} --workers ${WEB_CONCURRENCY} --timeout 120 --graceful-timeout 120
