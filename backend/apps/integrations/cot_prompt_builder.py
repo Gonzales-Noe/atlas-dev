@@ -446,6 +446,9 @@ OUTPUT RULES:
         """
         context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\n\nAdditional instructions: {extra_instructions}" if extra_instructions else ""
+        existing_block = (
+            f"EXISTING CONTENT TO EXPAND:\n{existing_content}" if existing_content else ""
+        )
 
         system = (
             "You are an expert instructional designer. Generate rich, detailed educational "
@@ -462,7 +465,7 @@ Course        : {course_name}
 Module Title  : {module_title}
 Subtopic Title: {subtopic_title}{extra}
 
-{"EXISTING CONTENT TO EXPAND:\\n" + existing_content if existing_content else ""}
+{existing_block}
 
 Write 3-5 well-structured paragraphs covering:
 1. Core concept definition and explanation
