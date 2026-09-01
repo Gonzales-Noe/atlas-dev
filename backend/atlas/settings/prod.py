@@ -7,15 +7,24 @@ from .base import *
 
 DEBUG = False
 
+def _normalize_host(value: str) -> str:
+    host = value.strip()
+    if host.startswith('https://'):
+        host = host[len('https://'):]
+    elif host.startswith('http://'):
+        host = host[len('http://'):]
+    return host.rstrip('/')
+
+
 ALLOWED_HOSTS = [
-    h.strip()
+    _normalize_host(h)
     for h in os.environ.get('ALLOWED_HOSTS', '').split(',')
     if h.strip()
 ]
-if not ALLOWED_HOSTS:
-    render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
-    if render_host:
-        ALLOWED_HOSTS = [render_host]
+# Always trust Render's actual public hostname (fixes wrong ALLOWED_HOSTS env)
+render_host = _normalize_host(os.environ.get('RENDER_EXTERNAL_HOSTNAME', ''))
+if render_host and render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_host)
 if not ALLOWED_HOSTS and os.environ.get('RENDER') == 'true':
     ALLOWED_HOSTS = ['.onrender.com']
 if not ALLOWED_HOSTS:
