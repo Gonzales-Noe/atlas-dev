@@ -12,9 +12,21 @@ def health_check(_request):
     return JsonResponse({'status': 'ok'})
 
 
+def home_redirect(_request):
+    if settings.DEBUG:
+        return HttpResponseRedirect('http://localhost:5173/')
+    return JsonResponse({
+        'status': 'ok',
+        'service': 'ATLAS API',
+        'health': '/health/',
+        'admin': '/admin/',
+        'api': '/api/',
+    })
+
+
 urlpatterns = [
     path('health/', health_check),
-    path('', lambda request: HttpResponseRedirect('http://localhost:5174/')),
+    path('', home_redirect),
     path('admin/', admin.site.urls),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
