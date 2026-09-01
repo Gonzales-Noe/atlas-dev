@@ -1,6 +1,8 @@
 # Production-specific settings (Render / VPS)
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *
 
 DEBUG = False
@@ -11,18 +13,24 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 if not ALLOWED_HOSTS:
-    # Render injects RENDER_EXTERNAL_HOSTNAME (e.g. atlas-rcch.onrender.com)
     render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME', '').strip()
     if render_host:
         ALLOWED_HOSTS = [render_host]
 if not ALLOWED_HOSTS and os.environ.get('RENDER') == 'true':
-    # Fallback: accept any *.onrender.com service hostname
     ALLOWED_HOSTS = ['.onrender.com']
 if not ALLOWED_HOSTS:
     raise ImproperlyConfigured(
         "ALLOWED_HOSTS must be set in production "
         "(e.g. your-service.onrender.com)."
     )
+
+# Supabase requires SSL from external hosts (Render → Supabase)
+DATABASES['default']['OPTIONS'] = {
+    'sslmode': os.environ.get('DB_SSLMODE', 'require'),
+}
+
+# Avoid DB hit on every request for anonymous/session cookie
+SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 
 # Frontend origin(s) for CSRF when browser posts cross-origin
 CSRF_TRUSTED_ORIGINS = [
