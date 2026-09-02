@@ -7,6 +7,7 @@ from .views import (
     AccountManagementView,
     DashboardSummaryView,
     EnrollCourseView,
+    GoogleLoginView,
     MeView,
     PasswordResetConfirmView,
     PasswordResetRequestView,
@@ -18,6 +19,7 @@ from .views import (
 urlpatterns = [
     path('token/', AuthTokenView.as_view(), name='auth_token'),
     path('token/refresh/', AuthTokenRefreshView.as_view(), name='auth_token_refresh'),
+    path('google/', GoogleLoginView.as_view(), name='auth_google'),
     path('me/', MeView.as_view(), name='auth_me'),
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),

@@ -18,7 +18,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Third-party apps
+    # # Third-party apps
+    # 'anymail',
     'rest_framework',
     'corsheaders',
     'channels',
@@ -100,15 +101,28 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@atlas.local')
-EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
-EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() == 'true'
-EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'false').lower() == 'true'
-EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '15'))
+# ── EMAIL CONFIGURATION (GMAIL SMTP) ──────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+# The email address you are sending FROM
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'atlasdegdev@gmail.com')
+
+# ⚠️ IMPORTANT: Replace 'your-16-digit-app-password' with the real App Password from Google!
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'gavm fkfa nrtr hmen')
+
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'ATLAS Platform <atlasdegdev@gmail.com>')
+
+# Commented out Anymail since we are bypassing SendGrid for now
+# ANYMAIL = {
+#     "SENDGRID_API_KEY": os.environ.get('SENDGRID_API_KEY', ''),
+# }
+# ──────────────────────────────────────────────────────────────────────────
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

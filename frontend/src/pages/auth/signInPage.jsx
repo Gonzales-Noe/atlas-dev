@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useAuth }      from '../../store/authStore';
 import useRoleRedirect  from '../../hooks/useRoleRedirect';
 import { ROUTES }       from '../../config/route';
@@ -44,10 +46,11 @@ const NAV_LINKS = [
 export default function SignInPage({ isModal, onClose, onSwitch }) {
   const navigate                = useNavigate();
   const location                = useLocation();
-  const { login }               = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { redirectToDashboard } = useRoleRedirect();
 
   const [form, setForm]         = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -60,7 +63,21 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     setMounted(true);
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+
+    const existing = document.querySelector('script[data-google-auth="atlas"]');
+    if (existing) return () => window.removeEventListener('scroll', onScroll);
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleAuth = 'atlas';
+    document.body.appendChild(script);
+
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
   }, []);
 
   function handleChange(e) {
@@ -84,7 +101,34 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   }
 
   async function handleGoogleLogin() {
-    setError('Google sign-in will be available soon.');
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const google = window.google;
+
+    if (!clientId || !google?.accounts?.id) {
+      setError('Google sign-in is not configured on this environment.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          try {
+            const user = await loginWithGoogle(response.credential);
+            if (from) navigate(from, { replace: true });
+            else redirectToDashboard(user.role);
+          } catch (err) {
+            setError(err.message || 'Google sign-in failed.');
+          }
+        },
+      });
+      google.accounts.id.prompt();
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -530,15 +574,28 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                       </Link>
                     )}
                   </div>
-                  <input
-                    className="dark-input"
-                    name="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={handleChange}
-                    required
-                  />
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="dark-input"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={handleChange}
+                      required
+                      style={{ paddingRight: '2.5rem' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute', right: '0.85rem', top: '50%', transform: 'translateY(-50%)',
+                        background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center'
+                      }}
+                    >
+                      {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                    </button>
+                  </div>
                 </div>
 
                 <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '0.5rem' }}>

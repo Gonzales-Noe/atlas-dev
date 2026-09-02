@@ -47,7 +47,7 @@ export default function FacultyWorkspace() {
           <Alert severity="warning">Course workspace not found.</Alert>
         ) : (
           <Box sx={{ display: 'grid', gap: 3 }}>
-            <Box sx={{ background: 'var(--bg-card)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', borderRadius: 4, border: '1px solid var(--border-color)', p: { xs: 3, md: 4 }, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <Box sx={{ background: 'var(--bg-card)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', borderRadius: 4, border: '1px solid var(--border-color)', p: { xs: 3, md: 4 }, boxShadow: '0 8px 32px rgba(0,0,0,0.08)' }}>
               <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
                 {course.course_title}
               </Typography>
@@ -69,7 +69,7 @@ export default function FacultyWorkspace() {
                 <Button
                   size="small"
                   variant="outlined"
-                  sx={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', textTransform: 'none', borderRadius: 2, '&:hover': { borderColor: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)' } }}
+                  sx={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', textTransform: 'none', borderRadius: 2, '&:hover': { borderColor: 'var(--active-color)', color: 'var(--active-color)', background: 'var(--active-bg)' } }}
                   onClick={() => navigate(ROUTES.FACULTY.MODULE)}
                 >
                   Go to module builder
@@ -78,7 +78,7 @@ export default function FacultyWorkspace() {
             </Box>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(3, minmax(0, 1fr))' }, gap: 3 }}>
-              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(139, 0, 0, 0.08)' }}>
@@ -92,7 +92,7 @@ export default function FacultyWorkspace() {
                   <Typography variant="h3" sx={{ fontWeight: 800 }}>{syllabusCount}</Typography>
                 </CardContent>
               </Card>
-              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(139, 0, 0, 0.08)' }}>
@@ -106,7 +106,7 @@ export default function FacultyWorkspace() {
                   <Typography variant="h3" sx={{ fontWeight: 800 }}>{moduleCount}</Typography>
                 </CardContent>
               </Card>
-              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+              <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.05)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
                     <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(139, 0, 0, 0.08)' }}>
@@ -122,7 +122,7 @@ export default function FacultyWorkspace() {
               </Card>
             </Box>
 
-            <Card sx={{ borderRadius: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
+            <Card sx={{ borderRadius: 4, boxShadow: '0 8px 32px rgba(0,0,0,0.05)' }}>
               <CardContent sx={{ p: 3, '&:last-child': { pb: 3 } }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
                   <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -131,7 +131,7 @@ export default function FacultyWorkspace() {
                   <Button
                     variant="contained"
                     startIcon={<BarChartIcon />}
-                    sx={{ background: 'rgba(255,255,255,0.1)', color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.2)' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
+                    sx={{ background: 'var(--input-bg)', color: 'var(--text-primary)', border: '1px solid var(--border-color)', '&:hover': { background: 'var(--bg-header)' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
                     onClick={() => navigate(ROUTES.FACULTY.ANALYTICS)}
                   >
                     Open analytics

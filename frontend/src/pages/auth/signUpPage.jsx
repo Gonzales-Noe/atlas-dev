@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 import { useAuth }      from '../../store/authStore';
 import { ROUTES }       from '../../config/route';
 
@@ -52,24 +54,40 @@ const PERKS = [
 ];
 
 export default function SignUpPage({ isModal, onClose, onSwitch }) {
-  const navigate           = useNavigate();
-  const { register }       = useAuth();
-  const [agreed, setAgreed]     = useState(false);
+  const navigate = useNavigate();
+  const { register, loginWithGoogle } = useAuth();
+  const [agreed, setAgreed] = useState(false);
   const [loading, setLoading]   = useState(false);
   const [success, setSuccess]   = useState(false);
   const [error, setError]       = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [isMenuOpen, setIsMenuOpen]       = useState(false);
   const [scrolled, setScrolled]           = useState(false);
 
   const [form, setForm] = useState({
-    full_name: '', email: '', institution_name: '', password: '',
+    full_name: '', email: '', institution_name: '', password: '', confirm_password: ''
   });
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+
+    const existing = document.querySelector('script[data-google-auth="atlas"]');
+    if (existing) return () => window.removeEventListener('scroll', onScroll);
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.dataset.googleAuth = 'atlas';
+    document.body.appendChild(script);
+
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (script.parentNode) script.parentNode.removeChild(script);
+    };
   }, []);
 
   function handleChange(e) {
@@ -80,8 +98,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   async function handleEmailSignUp(e) {
     e.preventDefault();
     if (!agreed) { setError('Please agree to the Terms and Conditions.'); return; }
-    if (!form.email || !form.password || !form.institution_name || !form.full_name) {
+    if (!form.email || !form.password || !form.confirm_password || !form.institution_name || !form.full_name) {
       setError('Please fill in all fields.'); return;
+    }
+    if (form.password !== form.confirm_password) {
+      setError('Passwords do not match.'); return;
     }
     setLoading(true);
     try {
@@ -95,7 +116,33 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   }
 
   function handleGoogleSignUp() {
-    setError('Google sign-in will be available soon. Please use email for now.');
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const google = window.google;
+
+    if (!clientId || !google?.accounts?.id) {
+      setError('Google sign-up is not configured on this environment.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          try {
+            const user = await loginWithGoogle(response.credential);
+            navigate(user.dashboard_path || '/faculty/dashboard');
+          } catch (err) {
+            setError(err.message || 'Google sign-up failed.');
+          }
+        },
+      });
+      google.accounts.id.prompt();
+    } catch (err) {
+      setError(err.message || 'Google sign-up failed.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -576,7 +623,21 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                     </div>
                     <div>
                       <span className="label-text">PASSWORD</span>
-                      <input className="dark-input" name="password" type="password" placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                      <div style={{ position: 'relative' }}>
+                        <input className="dark-input" name="password" type={showPassword ? "text" : "password"} placeholder="••••••••" value={form.password} onChange={handleChange} required style={{ paddingRight: '2.5rem' }} />
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} style={{ position: 'absolute', right: '0.85rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                          {showPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="label-text">CONFIRM PASSWORD</span>
+                      <div style={{ position: 'relative' }}>
+                        <input className="dark-input" name="confirm_password" type={showConfirmPassword ? "text" : "password"} placeholder="••••••••" value={form.confirm_password} onChange={handleChange} required style={{ paddingRight: '2.5rem' }} />
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} style={{ position: 'absolute', right: '0.85rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'rgba(255,255,255,0.45)', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                          {showConfirmPassword ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                        </button>
+                      </div>
                     </div>
                     <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '0.25rem' }}>
                       {loading ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Submit Registration'}

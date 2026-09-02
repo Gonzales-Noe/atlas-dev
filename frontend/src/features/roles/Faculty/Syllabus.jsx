@@ -177,7 +177,7 @@ export default function FacultySyllabus() {
                   <Button variant="outlined" disabled={!actionEnabled} onClick={handleSectionSave} sx={{ borderColor: '#8B0000', color: '#8B0000', textTransform: 'none', py: 1.5, borderRadius: 2, '&:hover': { background: 'rgba(139, 0, 0, 0.08)' } }}>
                     Save Section
                   </Button>
-                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'rgba(255,255,255,0.05)' } }}>
+                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'var(--bg-header)' } }}>
                     Mark Syllabus Complete
                   </Button>
                 </Stack>
@@ -236,14 +236,14 @@ export default function FacultySyllabus() {
               variant="contained"
               disabled={!actionEnabled}
               onClick={handleDownloadSyllabus}
-              sx={{ mt: 2, background: 'rgba(255,255,255,0.1)', color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.2)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
+              sx={{ mt: 2, background: 'var(--input-bg)', border: '1px solid var(--border-color)', color: 'var(--text-primary)', '&:hover': { background: 'var(--bg-header)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
             >
               Download Syllabus
             </Button>
           </CardContent>
         </Card>
 
-        <Card sx={{ ...cardStyles, background: 'rgba(139, 0, 0, 0.05)', borderColor: 'rgba(139, 0, 0, 0.2)' }}>
+        <Card sx={{ ...cardStyles, background: 'var(--active-bg)', border: '1px solid var(--active-color)' }}>
           <CardHeader title="Syllabus Requirements" titleTypographyProps={{ fontWeight: 700, color: '#8B0000' }} />
           <CardContent>
             <Typography color="text.secondary" sx={{ mb: 1 }}>

@@ -18,10 +18,32 @@ if exist .env (
     pause
 )
 
-REM Check Python
-python --version >nul 2>&1
+REM Select Python runtime
+if exist .venv\Scripts\python.exe (
+    set "PYTHON_CMD=.venv\Scripts\python.exe"
+    set "PIP_CMD=.venv\Scripts\python.exe -m pip"
+) else (
+    where py >nul 2>nul
+    if %errorlevel% neq 0 (
+        set "PYTHON_CMD=python"
+        set "PIP_CMD=pip"
+    ) else (
+        py -3.12 --version >nul 2>&1
+        if %errorlevel% neq 0 (
+            set "PYTHON_CMD=python"
+            set "PIP_CMD=pip"
+        ) else (
+            echo [INFO] Creating virtual environment with Python 3.12...
+            py -3.12 -m venv .venv
+            set "PYTHON_CMD=.venv\Scripts\python.exe"
+            set "PIP_CMD=.venv\Scripts\python.exe -m pip"
+        )
+    )
+)
+
+call %PYTHON_CMD% --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python not found. Please install Python and add it to PATH.
+    echo [ERROR] Python not found. Please install Python 3.12+ and add it to PATH.
     pause
     exit /b 1
 )
@@ -30,7 +52,7 @@ echo [OK] Python found
 REM Install requirements
 echo.
 echo [INFO] Installing Python packages...
-pip install -q -r requirements.txt
+call %PIP_CMD% install -q -r requirements.txt
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install requirements
     pause
@@ -41,7 +63,7 @@ echo [OK] Packages installed
 REM Run migrations
 echo.
 echo [INFO] Running Django migrations...
-python manage.py migrate
+call %PYTHON_CMD% manage.py migrate
 if %errorlevel% neq 0 (
     echo [ERROR] Migrations failed. Check database credentials in .env
     pause
@@ -52,7 +74,7 @@ echo [OK] Migrations completed
 REM Test database connection
 echo.
 echo [INFO] Testing database connection...
-python manage.py dbshell < nul
+call %PYTHON_CMD% manage.py dbshell < nul
 if %errorlevel% neq 0 (
     echo [WARNING] Could not verify database connection
 ) else (

@@ -6,9 +6,12 @@ from django.core import signing
 from django.core.cache import cache
 from django.db import transaction
 from django.core.mail import send_mail
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.integrations.models import Assessment, Course, CourseLoad, Institution, StudentData, UserProfile, UserRole
@@ -59,6 +62,57 @@ class AuthTokenView(TokenObtainPairView):
 class AuthTokenRefreshView(TokenRefreshView):
     permission_classes = [permissions.AllowAny]
     serializer_class = UserProfileTokenRefreshSerializer
+
+
+class GoogleLoginView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        credential = request.data.get('credential')
+        if not credential:
+            return Response({'detail': 'Google credential is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        client_id = getattr(settings, 'GOOGLE_CLIENT_ID', '') or settings.GOOGLE_CLIENT_ID
+        if not client_id:
+            return Response({'detail': 'Google sign-in is not configured on this server.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        try:
+            payload = id_token.verify_oauth2_token(credential, google_requests.Request(), client_id)
+        except ValueError:
+            return Response({'detail': 'Invalid Google credential.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        email = (payload.get('email') or '').strip().lower()
+        if not email:
+            return Response({'detail': 'Google account email is missing.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = UserProfile.objects.filter(email__iexact=email).first()
+        if not profile:
+            institution, _ = Institution.objects.get_or_create(
+                name='Google Sign-In',
+                defaults={'plan_tier': 'free', 'subscription_status': 'active', 'is_active': True},
+            )
+            profile = UserProfile.objects.create(
+                institution=institution,
+                email=email,
+                password_hash=make_password(secrets.token_urlsafe(32)),
+                role=UserRole.FACULTY,
+                is_active=True,
+            )
+
+        refresh = RefreshToken.for_user(profile)
+        refresh['role'] = normalize_role(profile.role)
+        refresh['email'] = profile.email
+        if profile.institution_id:
+            refresh['institution_id'] = str(profile.institution_id)
+
+        return Response(
+            {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+                'user': UserProfileSerializer(profile).data,
+            }
+        )
 
 
 class MeView(APIView):
