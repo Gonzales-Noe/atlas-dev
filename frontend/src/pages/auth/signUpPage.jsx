@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth }      from '../../store/authStore';
 import { ROUTES }       from '../../config/route';
+import { loadGoogleIdentityScript, requestGoogleCredential } from '../../config/googleAuth';
 
 import atlasLogo   from '../../assets/atlas-logo.png';
 import atlasMascot from '../../assets/atlas.png';
@@ -53,7 +54,7 @@ const PERKS = [
 
 export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const navigate           = useNavigate();
-  const { register }       = useAuth();
+  const { register, loginWithGoogle } = useAuth();
   const [agreed, setAgreed]     = useState(false);
   const [loading, setLoading]   = useState(false);
   const [success, setSuccess]   = useState(false);
@@ -69,6 +70,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
+    loadGoogleIdentityScript().catch(() => {});
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
@@ -94,8 +96,18 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
     }
   }
 
-  function handleGoogleSignUp() {
-    setError('Google sign-in will be available soon. Please use email for now.');
+  async function handleGoogleSignUp() {
+    setError('');
+    setLoading(true);
+    try {
+      const credential = await requestGoogleCredential();
+      const user = await loginWithGoogle(credential);
+      navigate(user.dashboard_path || '/faculty/dashboard');
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -546,7 +558,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 {error && <div className="error-box">{error}</div>}
 
                 {/* Google */}
-                <button className="btn-secondary" onClick={handleGoogleSignUp} style={{ marginBottom: '0.85rem' }}>
+                <button className="btn-secondary" type="button" onClick={handleGoogleSignUp} disabled={loading} style={{ marginBottom: '0.85rem' }}>
                   <GoogleIcon />
                   Continue with Google
                 </button>
