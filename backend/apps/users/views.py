@@ -28,6 +28,7 @@ from .serializers import (
     UserProfileTokenObtainPairSerializer,
     UserProfileTokenRefreshSerializer,
     normalize_role,
+    tokens_for_profile,
 )
 
 
@@ -51,9 +52,72 @@ def _to_database_role(role_value):
     return role_value
 
 
+def _verify_google_id_token(token):
+    from google.auth.transport import requests as google_requests
+    from google.oauth2 import id_token as google_id_token
+
+    allowed_audiences = set(settings.GOOGLE_OAUTH_CLIENT_IDS)
+    if not allowed_audiences:
+        raise ValueError('Google Sign-In is not configured on the server.')
+
+    idinfo = google_id_token.verify_oauth2_token(
+        token,
+        google_requests.Request(),
+        clock_skew_in_seconds=10,
+    )
+    issuer = idinfo.get('iss')
+    if issuer not in {'accounts.google.com', 'https://accounts.google.com'}:
+        raise ValueError('Invalid Google token issuer.')
+    if idinfo.get('aud') not in allowed_audiences:
+        raise ValueError('Invalid Google token audience.')
+    if not idinfo.get('email_verified', False):
+        raise ValueError('Google email is not verified.')
+    if not idinfo.get('email'):
+        raise ValueError('Google token did not include an email.')
+    return idinfo
+
+
 class AuthTokenView(TokenObtainPairView):
     permission_classes = [permissions.AllowAny]
     serializer_class = UserProfileTokenObtainPairSerializer
+
+
+class GoogleAuthView(APIView):
+    """Exchange a Google ID token for ATLAS JWT credentials."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        token = request.data.get('id_token') or request.data.get('credential')
+        if not token or not isinstance(token, str):
+            return Response(
+                {'detail': 'Missing Google ID token.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            idinfo = _verify_google_id_token(token.strip())
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        email = idinfo['email'].strip().lower()
+        name = (idinfo.get('name') or email.split('@', 1)[0]).strip()
+
+        profile = UserProfile.objects.select_related('institution').filter(email__iexact=email).first()
+        if profile is None:
+            return Response({
+                'user_exists': False,
+                'email': email,
+                'name': name,
+            })
+        if not profile.is_active:
+            return Response(
+                {'detail': 'Account is inactive.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return Response(tokens_for_profile(profile))
 
 
 class AuthTokenRefreshView(TokenRefreshView):
