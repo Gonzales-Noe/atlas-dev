@@ -149,6 +149,16 @@ class BubbleAnswerKeySerializer(serializers.Serializer):
 class BubbleSheetScanSerializer(serializers.Serializer):
     template_id = serializers.UUIDField(required=True)
     image = serializers.ImageField(required=True)
+    # Optional on-device graded payload — skip server OpenCV when present.
+    client_graded = serializers.BooleanField(required=False, default=False)
+    student_identifier = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=64
+    )
+    responses = serializers.JSONField(required=False)
+    is_flagged = serializers.BooleanField(required=False, default=False)
+    flag_reason = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True, max_length=255
+    )
 
 
 class BubbleScanPatchSerializer(serializers.Serializer):
