@@ -7,3 +7,5 @@ pytest-cov==5.0.0
 flake8==7.1.0
 black==24.8.0
 factory-boy==3.3.1              # test data factories
+django-debug-toolbar==5.0.1     # local request/debug profiling
+django-extensions==3.2.3        # development management commands

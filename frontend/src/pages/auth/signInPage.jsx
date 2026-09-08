@@ -1,5 +1,5 @@
 // src/pages/auth/SignInPage.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
 import Visibility from '@mui/icons-material/Visibility';
@@ -56,6 +56,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [mounted, setMounted]   = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const googleButtonRef = useRef(null);
 
   const from = location.state?.from?.pathname;
 
@@ -65,13 +67,18 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     window.addEventListener('scroll', onScroll, { passive: true });
 
     const existing = document.querySelector('script[data-google-auth="atlas"]');
-    if (existing) return () => window.removeEventListener('scroll', onScroll);
+    if (window.google?.accounts?.id) setGoogleReady(true);
+    if (existing) {
+      existing.addEventListener('load', () => setGoogleReady(true), { once: true });
+      return () => window.removeEventListener('scroll', onScroll);
+    }
 
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
     script.defer = true;
     script.dataset.googleAuth = 'atlas';
+    script.addEventListener('load', () => setGoogleReady(true), { once: true });
     document.body.appendChild(script);
 
     return () => {
@@ -100,36 +107,36 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     }
   }
 
-  async function handleGoogleLogin() {
+  useEffect(() => {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
     const google = window.google;
 
-    if (!clientId || !google?.accounts?.id) {
-      setError('Google sign-in is not configured on this environment.');
-      return;
-    }
+    if (!clientId || !googleReady || !google?.accounts?.id || !googleButtonRef.current) return;
 
-    setLoading(true);
-    try {
-      google.accounts.id.initialize({
-        client_id: clientId,
-        callback: async (response) => {
-          try {
-            const user = await loginWithGoogle(response.credential);
-            if (from) navigate(from, { replace: true });
-            else redirectToDashboard(user.role);
-          } catch (err) {
-            setError(err.message || 'Google sign-in failed.');
-          }
-        },
-      });
-      google.accounts.id.prompt();
-    } catch (err) {
-      setError(err.message || 'Google sign-in failed.');
-    } finally {
-      setLoading(false);
-    }
-  }
+    google.accounts.id.initialize({
+      client_id: clientId,
+      callback: async (response) => {
+        setLoading(true);
+        try {
+          const user = await loginWithGoogle(response.credential);
+          if (from) navigate(from, { replace: true });
+          else redirectToDashboard(user.role);
+        } catch (err) {
+          setError(err.message || 'Google sign-in failed.');
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+    googleButtonRef.current.innerHTML = '';
+    google.accounts.id.renderButton(googleButtonRef.current, {
+      type: 'standard',
+      theme: 'outline',
+      size: 'large',
+      text: 'continue_with',
+      width: 360,
+    });
+  }, [googleReady, from, loginWithGoogle, navigate, redirectToDashboard]);
 
   return (
     <div style={isModal ? {
@@ -609,10 +616,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               </div>
 
               {/* Google */}
-              <button className="btn-google" onClick={handleGoogleLogin}>
-                <GoogleIcon />
-                Continue with Google
-              </button>
+              <div ref={googleButtonRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center' }} />
 
               {/* Sign Up */}
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
