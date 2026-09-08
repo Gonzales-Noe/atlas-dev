@@ -72,17 +72,22 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not profile or not check_password(password, profile.password_hash):
             raise serializers.ValidationError({'detail': 'Invalid email or password.'})
 
-        refresh = RefreshToken.for_user(profile)
-        refresh['role'] = normalize_role(profile.role)
-        refresh['email'] = profile.email
-        if profile.institution_id:
-            refresh['institution_id'] = str(profile.institution_id)
+        return tokens_for_profile(profile)
 
-        return {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-            'user': UserProfileSerializer(profile).data,
-        }
+
+def tokens_for_profile(profile):
+    refresh = RefreshToken.for_user(profile)
+    refresh['role'] = normalize_role(profile.role)
+    refresh['email'] = profile.email
+    if profile.institution_id:
+        refresh['institution_id'] = str(profile.institution_id)
+
+    return {
+        'refresh': str(refresh),
+        'access': str(refresh.access_token),
+        'user': UserProfileSerializer(profile).data,
+        'user_exists': True,
+    }
 
 
 class UserProfileTokenRefreshSerializer(TokenRefreshSerializer):

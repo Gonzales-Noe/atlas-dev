@@ -124,6 +124,15 @@ SIMPLE_JWT = {
     'USER_ID_CLAIM': 'user_id',
 }
 
+# Google Sign-In: comma-separated OAuth client IDs allowed as ID-token audience.
+# The Web client ID must be included — Android native sign-in issues tokens with aud = serverClientId.
+_google_oauth_client_ids = os.environ.get(
+    'GOOGLE_OAUTH_CLIENT_IDS',
+    '140618226788-lt31psljafm1en4n3aajo054thn5kfin.apps.googleusercontent.com,'
+    '140618226788-r55pqlat0o2vvlsc1on3j22e668a1hpq.apps.googleusercontent.com',
+)
+GOOGLE_OAUTH_CLIENT_IDS = [cid.strip() for cid in _google_oauth_client_ids.split(',') if cid.strip()]
+
 CORS_ALLOWED_ORIGINS = os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
 # ── OMR Grading ─────────────────────────────────────────────────────────────

@@ -116,3 +116,53 @@ class FacultySheetAnalysisTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()['success'], False)
+
+
+class GoogleAuthTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.profile = UserProfile.objects.create(
+            email='faculty@g.batstate-u.edu.ph',
+            password_hash='hash',
+            role=UserRole.FACULTY,
+            is_active=True,
+        )
+
+    @patch('apps.users.views._verify_google_id_token')
+    def test_existing_user_returns_jwt(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'faculty@g.batstate-u.edu.ph',
+            'email_verified': True,
+            'name': 'Faculty User',
+        }
+        response = self.client.post(
+            '/api/auth/google/',
+            {'id_token': 'fake-google-token'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['user_exists'])
+        self.assertIn('access', response.data)
+        self.assertEqual(response.data['user']['email'], 'faculty@g.batstate-u.edu.ph')
+
+    @patch('apps.users.views._verify_google_id_token')
+    def test_unknown_user_returns_user_exists_false(self, mock_verify):
+        mock_verify.return_value = {
+            'email': 'new.student@g.batstate-u.edu.ph',
+            'email_verified': True,
+            'name': 'New Student',
+        }
+        response = self.client.post(
+            '/api/auth/google/',
+            {'credential': 'fake-google-token'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data['user_exists'])
+        self.assertEqual(response.data['email'], 'new.student@g.batstate-u.edu.ph')
+        self.assertEqual(response.data['name'], 'New Student')
+        self.assertNotIn('access', response.data)
+
+    def test_missing_token_returns_400(self):
+        response = self.client.post('/api/auth/google/', {}, format='json')
+        self.assertEqual(response.status_code, 400)
