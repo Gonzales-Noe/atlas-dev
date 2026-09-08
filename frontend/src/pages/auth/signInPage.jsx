@@ -5,6 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { useAuth }      from '../../store/authStore';
 import useRoleRedirect  from '../../hooks/useRoleRedirect';
 import { ROUTES }       from '../../config/route';
+import { loadGoogleIdentityScript, requestGoogleCredential } from '../../config/googleAuth';
 
 import atlasLogo    from '../../assets/atlas-logo.png';
 import atlasMascot  from '../../assets/atlas.png';
@@ -44,7 +45,7 @@ const NAV_LINKS = [
 export default function SignInPage({ isModal, onClose, onSwitch }) {
   const navigate                = useNavigate();
   const location                = useLocation();
-  const { login }               = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const { redirectToDashboard } = useRoleRedirect();
 
   const [form, setForm]         = useState({ email: '', password: '' });
@@ -60,6 +61,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     setMounted(true);
     const onScroll = () => setScrolled(window.scrollY > 20);
     window.addEventListener('scroll', onScroll, { passive: true });
+    loadGoogleIdentityScript().catch(() => {});
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
@@ -84,7 +86,18 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   }
 
   async function handleGoogleLogin() {
-    setError('Google sign-in will be available soon.');
+    setError('');
+    setLoading(true);
+    try {
+      const credential = await requestGoogleCredential();
+      const user = await loginWithGoogle(credential);
+      if (from) navigate(from, { replace: true });
+      else redirectToDashboard(user.role);
+    } catch (err) {
+      setError(err.message || 'Google sign-in failed.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -552,7 +565,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               </div>
 
               {/* Google */}
-              <button className="btn-google" onClick={handleGoogleLogin}>
+              <button className="btn-google" type="button" onClick={handleGoogleLogin} disabled={loading}>
                 <GoogleIcon />
                 Continue with Google
               </button>
