@@ -5,6 +5,7 @@
 *.env
 service-account*.json
 RENDER_DEPLOY.md
+RENDER_REMAINING_STEPS.md
 
 # Python
 __pycache__/
