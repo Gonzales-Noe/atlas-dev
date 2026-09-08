@@ -998,7 +998,12 @@ def bubble_sheet_scan(request):
     """
     POST /api/grading/bubble/scans/
     Multipart: template_id (UUID), image (file)
-    Runs the scanner, grades against the answer key, saves the result.
+
+    Optional client-graded fields (mobile on-device OMR):
+      client_graded=true, student_identifier, responses (JSON),
+      is_flagged, flag_reason
+    When client_graded + responses are present, skip server OpenCV and
+    persist the mobile grade so faculty web results see the row immediately.
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
@@ -1024,11 +1029,66 @@ def bubble_sheet_scan(request):
     image_path_rel = _save_bubble_image(image_file, str(t.template_id))
     image_path_abs = Path(settings.MEDIA_ROOT) / image_path_rel
 
-    try:
-        from apps.grading.services.bubble_sheet_scanner import (
-            BubbleSheetScannerService,
-            _truncate_flag_reason,
+    from apps.grading.services.bubble_sheet_scanner import (
+        BubbleSheetScannerService,
+        _truncate_flag_reason,
+    )
+
+    client_graded = bool(d.get("client_graded"))
+    raw_responses = d.get("responses")
+
+    # Normalise responses from JSON object or JSON string (multipart).
+    responses = None
+    if raw_responses is not None:
+        if isinstance(raw_responses, str):
+            import json
+            try:
+                raw_responses = json.loads(raw_responses)
+            except json.JSONDecodeError:
+                return Response(
+                    {"success": False, "detail": "responses must be valid JSON."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if isinstance(raw_responses, dict):
+            responses = {
+                str(k): str(v).upper()[:1]
+                for k, v in raw_responses.items()
+                if v is not None and str(v).strip() and str(v).strip() != "?"
+            }
+
+    if client_graded and responses is not None:
+        student_id = d.get("student_identifier") or None
+        if isinstance(student_id, str) and not student_id.strip():
+            student_id = None
+        score_raw, max_score, score_pct = BubbleSheetScannerService._grade(
+            responses, t.answer_key or {}
         )
+        is_flagged = bool(d.get("is_flagged", False))
+        flag_reason = _truncate_flag_reason(d.get("flag_reason"))
+        if not t.answer_key:
+            is_flagged = True
+            flag_reason = _truncate_flag_reason(
+                (flag_reason + "; " if flag_reason else "") + "No answer key on template"
+            )
+
+        scan = BubbleSheetScan.objects.create(
+            template=t,
+            scanned_by=faculty,
+            student_identifier=student_id,
+            responses=responses,
+            score_raw=score_raw,
+            score_percent=score_pct,
+            max_score=max_score,
+            is_flagged=is_flagged,
+            flag_reason=flag_reason,
+        )
+        return Response(
+            {"success": True, "scan": _bs_scan_payload(scan), "source": "client_graded"},
+            status=status.HTTP_201_CREATED,
+        )
+
+    # Legacy path: server-side OpenCV OMR
+    try:
         result = BubbleSheetScannerService().scan(image_path_abs, t)
     except RuntimeError as exc:
         return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -1045,7 +1105,7 @@ def bubble_sheet_scan(request):
         flag_reason=_truncate_flag_reason(result["flag_reason"]),
     )
     return Response(
-        {"success": True, "scan": _bs_scan_payload(scan)},
+        {"success": True, "scan": _bs_scan_payload(scan), "source": "server_omr"},
         status=status.HTTP_201_CREATED,
     )
 
