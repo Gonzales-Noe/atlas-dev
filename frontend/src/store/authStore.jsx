@@ -202,13 +202,18 @@ export function AuthProvider({ children }) {
     dispatch({ type: 'AUTH_LOADING' })
     try {
       const { data } = await api.post('/auth/google/', { credential })
+      if (data.user_exists === false) {
+        const msg = 'No ATLAS account exists for this Google email. Sign in with email, or ask an admin to create your account.'
+        dispatch({ type: 'AUTH_ERROR', payload: msg })
+        throw new Error(msg)
+      }
       localStorage.setItem('atlas_access_token',  data.access)
       localStorage.setItem('atlas_refresh_token', data.refresh)
       const { data: user } = await api.get('/auth/me/')
       dispatch({ type: 'AUTH_SUCCESS', payload: user })
       return user
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Google sign-in failed.'
+      const msg = err.response?.data?.detail || err.message || 'Google sign-in failed.'
       dispatch({ type: 'AUTH_ERROR', payload: msg })
       throw new Error(msg)
     }
