@@ -643,7 +643,7 @@ def bloom_item_analysis(request):
     for tpl in templates:
         scans = BubbleSheetScan.objects.filter(template=tpl)
         for s in scans:
-            sid = s.student_identifier.strip() or "unknown"
+            sid = (s.student_identifier or "").strip() or "unknown"
             student_responses.setdefault(sid, {})
             for item_no_str, ans in (s.responses or {}).items():
                 try:

@@ -116,6 +116,13 @@ class GoogleAuthView(APIView):
                 {'detail': 'Account is inactive.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
+        if profile.role == UserRole.STUDENT:
+            return Response(
+                {
+                    'detail': 'Student accounts are no longer supported. ATLAS is for faculty and administrators.',
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
         picture = idinfo.get('picture')
         if isinstance(picture, str) and picture.strip():
@@ -407,7 +414,12 @@ class AccountDetailView(APIView):
 
         if 'role' in request.data:
             role_value = _to_database_role(request.data['role'])
-            if role_value not in {UserRole.FACULTY, UserRole.ADMIN, UserRole.SUPERADMIN, UserRole.STUDENT}:
+            if role_value == UserRole.STUDENT or request.data.get('role') in {'student', UserRole.STUDENT}:
+                return Response(
+                    {'detail': 'Student accounts are not supported.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if role_value not in {UserRole.FACULTY, UserRole.ADMIN, UserRole.SUPERADMIN}:
                 return Response({'detail': 'Invalid role.'}, status=status.HTTP_400_BAD_REQUEST)
             if role == 'admin' and role_value == UserRole.SUPERADMIN:
                 return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)

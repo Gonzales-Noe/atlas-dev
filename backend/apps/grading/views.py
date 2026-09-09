@@ -1,3 +1,4 @@
+import logging
 import uuid
 from pathlib import Path
 
@@ -10,7 +11,16 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.integrations.models import Assessment, AssessmentItem, Course, CourseLoad, StudentData, UserProfile, UserRole
+from apps.integrations.models import (
+    Assessment,
+    AssessmentItem,
+    AssessmentScoreResult,
+    Course,
+    CourseLoad,
+    StudentData,
+    UserProfile,
+    UserRole,
+)
 from apps.grading.models import (
     BubbleSheetScan,
     BubbleSheetTemplate,
@@ -33,6 +43,8 @@ from .serializers import (
     OmrTemplateCreateSerializer,
     OmrTemplateUpdateSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_faculty_user(request) -> bool:
@@ -631,16 +643,45 @@ def _bs_scan_payload(s: BubbleSheetScan) -> dict:
     }
 
 
+def _as_student_id(value) -> str:
+    """Normalize mixed UUID / SR-code / None identifiers to a sortable string."""
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _to_float(value, default=None):
+    if value is None or value == "":
+        return default
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _resolve_student_name(student_identifier: str | None) -> str | None:
-    """Look up a student's name by matching their SR Code against StudentData."""
-    if not student_identifier:
+    """Look up a student's name by SR code, then by user UUID if applicable."""
+    sid = _as_student_id(student_identifier)
+    if not sid:
         return None
     student_data = (
         StudentData.objects
         .select_related("user")
-        .filter(sr_code=student_identifier)
+        .filter(sr_code=sid)
         .first()
     )
+    if student_data is None:
+        try:
+            parsed = uuid.UUID(sid)
+        except (ValueError, AttributeError, TypeError):
+            parsed = None
+        if parsed is not None:
+            student_data = (
+                StudentData.objects
+                .select_related("user")
+                .filter(user_id=parsed)
+                .first()
+            )
     if student_data and student_data.user:
         return student_data.user.name or student_data.user.email
     return None
@@ -690,6 +731,15 @@ def student_scores(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    try:
+        uuid.UUID(str(course_id))
+        uuid.UUID(str(assessment_id))
+    except (ValueError, AttributeError, TypeError):
+        return Response(
+            {"success": False, "detail": "course_id and assessment_id must be valid UUIDs."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if not _faculty_can_access_course(faculty, course_id):
         return Response(
             {"success": False, "detail": "Access denied."},
@@ -706,53 +756,56 @@ def student_scores(request):
 
     rows: list[dict] = []
 
-    # 1. AssessmentScoreResult rows
-    from apps.integrations.models import AssessmentScoreResult
-    score_results = AssessmentScoreResult.objects.filter(
-        assessment_id=assessment_id
-    ).order_by("student_identifier")
-    for r in score_results:
-        rows.append({
-            "student_id": r.student_identifier,
-            "score": float(r.score) if r.score else 0,
-            "max_score": None,
-            "percent": None,
-            "source": "grade_sheet",
-            "flagged": False,
-        })
+    # 1. AssessmentScoreResult rows (final scores, SR code)
+    try:
+        score_results = AssessmentScoreResult.objects.filter(assessment_id=assessment_id)
+        for r in score_results:
+            sid = _as_student_id(r.student_identifier)
+            rows.append({
+                "student_id": sid,
+                "student_name": _resolve_student_name(sid),
+                "score": _to_float(r.score, 0),
+                "max_score": None,
+                "percent": None,
+                "source": "grade_sheet",
+                "flagged": False,
+            })
+    except Exception:
+        logger.exception(
+            "Failed to load AssessmentScoreResult rows for assessment %s", assessment_id
+        )
 
-    # 2. BubbleSheetScan rows (via BubbleSheetTemplate linked to this assessment)
+    # 2. BubbleSheetScan rows (SR codes as varchar, nullable)
     templates = BubbleSheetTemplate.objects.filter(assessment_id=assessment_id)
     for tpl in templates:
-        scans = BubbleSheetScan.objects.filter(template=tpl).order_by("student_identifier")
+        scans = BubbleSheetScan.objects.filter(template=tpl)
         for s in scans:
-            # Avoid dupes if same student exists in both
-            exists = any(str(r["student_id"]) == str(s.student_identifier) for r in rows)
+            sid = _as_student_id(s.student_identifier)
+            # Unidentified scans (null student_id) must not collapse into one row
+            exists = bool(sid) and any(r["student_id"] == sid for r in rows)
             if not exists:
-                student_name = _resolve_student_name(s.student_identifier)
                 rows.append({
-                    "student_id": s.student_identifier,
-                    "student_name": student_name,
-                    "score": float(s.score_raw) if s.score_raw else 0,
-                    "max_score": float(s.max_score) if s.max_score else None,
-                    "percent": float(s.score_percent) if s.score_percent else None,
+                    "student_id": sid,
+                    "student_name": _resolve_student_name(sid),
+                    "score": _to_float(s.score_raw),
+                    "max_score": _to_float(s.max_score),
+                    "percent": _to_float(s.score_percent),
                     "source": "bubble_sheet",
-                    "flagged": s.is_flagged,
+                    "flagged": bool(s.is_flagged),
                 })
 
-    rows.sort(key=lambda r: r["student_id"])
+    rows.sort(key=lambda r: r.get("student_id") or "")
 
-    return Response(
-        {
-            "success": True,
-            "course_id": course_id,
-            "assessment_id": assessment_id,
-            "assessment_title": assessment.title,
-            "total_students": len(rows),
-            "students": rows,
-        },
-        status=status.HTTP_200_OK,
-    )
+    payload = {
+        "success": True,
+        "course_id": course_id,
+        "assessment_id": assessment_id,
+        "assessment_title": assessment.title,
+        "total_students": len(rows),
+        "students": rows,
+        "rows": rows,  # alias used by older mobile clients
+    }
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 # ── Bubble Sheet Template CRUD ────────────────────────────────────────────────
