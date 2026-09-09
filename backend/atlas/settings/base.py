@@ -1,5 +1,6 @@
 # Django base settings - shared configuration for all environments
 import os
+import sys
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -71,14 +72,45 @@ if _missing_db:
         "Set them in backend/.env to your Supabase Postgres connection."
     )
 
+# Schema commands need a real Postgres session (advisory locks). Transaction
+# poolers on :6543 drop those, so migrate/dbshell use DB_DIRECT_* instead.
+_mgmt_cmd = sys.argv[1] if len(sys.argv) > 1 else ''
+_SCHEMA_COMMANDS = {
+    'migrate',
+    'makemigrations',
+    'showmigrations',
+    'sqlmigrate',
+    'dbshell',
+}
+_use_direct = (
+    os.environ.get('DB_USE_DIRECT', '').lower() in {'1', 'true', 'yes'}
+    or _mgmt_cmd in _SCHEMA_COMMANDS
+)
+if _use_direct:
+    _db_host = os.environ.get('DB_DIRECT_HOST') or os.environ['DB_HOST']
+    _db_port = os.environ.get('DB_DIRECT_PORT') or '5432'
+    _db_user = os.environ.get('DB_DIRECT_USER') or os.environ['DB_USER']
+else:
+    _db_host = os.environ['DB_HOST']
+    _db_port = os.environ.get('DB_PORT', '5432')
+    _db_user = os.environ['DB_USER']
+
+_is_transaction_pooler = str(_db_port) == '6543'
+
 DATABASES = {
     'default': {
         'ENGINE': os.environ.get('DB_ENGINE', 'django.db.backends.postgresql'),
         'NAME': os.environ['DB_NAME'],
-        'USER': os.environ['DB_USER'],
+        'USER': _db_user,
         'PASSWORD': os.environ['DB_PASSWORD'],
-        'HOST': os.environ['DB_HOST'],
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'HOST': _db_host,
+        'PORT': _db_port,
+        'CONN_MAX_AGE': 0 if _is_transaction_pooler else 60,
+        'DISABLE_SERVER_SIDE_CURSORS': _is_transaction_pooler,
+        'OPTIONS': {
+            'sslmode': os.environ.get('DB_SSLMODE', 'require'),
+            'connect_timeout': 15,
+        },
     }
 }
 
