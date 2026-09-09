@@ -50,6 +50,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'dashboard_path',
             'is_active',
             'created_at',
+            'picture_url',
         ]
 
     def get_role(self, obj):

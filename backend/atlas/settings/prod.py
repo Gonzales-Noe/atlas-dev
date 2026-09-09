@@ -34,9 +34,8 @@ if not ALLOWED_HOSTS:
     )
 
 # Supabase requires SSL from external hosts (Render → Supabase)
-DATABASES['default']['OPTIONS'] = {
-    'sslmode': os.environ.get('DB_SSLMODE', 'require'),
-}
+DATABASES['default'].setdefault('OPTIONS', {})
+DATABASES['default']['OPTIONS']['sslmode'] = os.environ.get('DB_SSLMODE', 'require')
 
 # Avoid DB hit on every request for anonymous/session cookie
 SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'

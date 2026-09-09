@@ -117,6 +117,14 @@ class GoogleAuthView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+        picture = idinfo.get('picture')
+        if isinstance(picture, str) and picture.strip():
+            profile.picture_url = picture.strip()[:500]
+            try:
+                profile.save(update_fields=['picture_url'])
+            except Exception:
+                pass
+
         return Response(tokens_for_profile(profile))
 
 

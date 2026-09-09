@@ -44,6 +44,7 @@ class UserProfile(models.Model):
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    picture_url = models.URLField(max_length=500, blank=True, null=True)
 
     class Meta:
         db_table = 'users'
