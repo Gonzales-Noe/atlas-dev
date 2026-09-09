@@ -177,7 +177,8 @@ class AssessmentScoreResult(models.Model):
     result_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE)
     mapping_id = models.UUIDField(null=True, blank=True)
-    student_identifier = models.UUIDField()
+    # SR code (e.g. "23-35007"). Same identifier as bubble_sheet_scans.student_identifier.
+    student_identifier = models.CharField(max_length=64, db_index=True)
     score = models.DecimalField(max_digits=5, decimal_places=2)
     performance = models.JSONField(null=True, blank=True)
 

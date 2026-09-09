@@ -14,7 +14,6 @@ ROLE_DASHBOARD_MAP = {
     UserRole.FACULTY: '/faculty/dashboard',
     UserRole.ADMIN: '/admin/dashboard',
     UserRole.SUPERADMIN: '/superadmin/dashboard',
-    UserRole.STUDENT: '/student/dashboard',
 }
 
 PASSWORD_RESET_SALT = 'atlas.password-reset'
@@ -72,6 +71,10 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
         profile = UserProfile.objects.select_related('institution').filter(email__iexact=email, is_active=True).first()
         if not profile or not check_password(password, profile.password_hash):
             raise serializers.ValidationError({'detail': 'Invalid email or password.'})
+        if profile.role == UserRole.STUDENT:
+            raise serializers.ValidationError({
+                'detail': 'Student accounts are no longer supported. ATLAS is for faculty and administrators.',
+            })
 
         return tokens_for_profile(profile)
 
@@ -138,7 +141,6 @@ class RegisterSerializer(serializers.Serializer):
     institution_name = serializers.CharField(max_length=255)
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
     role = serializers.CharField(required=False, default=UserRole.FACULTY)
-    student_id = serializers.CharField(max_length=64, required=False, allow_blank=True)
 
     def validate_email(self, value):
         normalized = value.strip().lower()
@@ -147,23 +149,19 @@ class RegisterSerializer(serializers.Serializer):
         return normalized
 
     def validate_role(self, value):
-        if value in {'superadmin', 'super_admin'}:
-            return UserRole.SUPERADMIN
-        if value == 'admin':
-            return UserRole.ADMIN
-        if value == 'student':
-            return UserRole.STUDENT
-        if value in {UserRole.SUPERADMIN, UserRole.ADMIN, UserRole.FACULTY, UserRole.STUDENT}:
-            return value
-        raise serializers.ValidationError('Invalid role.')
+        if value in {UserRole.STUDENT, 'student'}:
+            raise serializers.ValidationError(
+                'Student accounts are not supported. Register as faculty.'
+            )
+        # Public signup is faculty-only (admins are provisioned separately).
+        return UserRole.FACULTY
 
     @transaction.atomic
     def create(self, validated_data):
         institution_name = validated_data.pop('institution_name').strip()
-        role = validated_data.pop('role', UserRole.FACULTY)
+        validated_data.pop('role', None)
         password = validated_data.pop('password')
         validated_data.pop('full_name', None)
-        student_id = validated_data.pop('student_id', None)
 
         institution, _ = Institution.objects.get_or_create(
             name=institution_name,
@@ -174,23 +172,13 @@ class RegisterSerializer(serializers.Serializer):
             },
         )
 
-        profile = UserProfile.objects.create(
+        return UserProfile.objects.create(
             institution=institution,
             email=validated_data['email'],
             password_hash=make_password(password),
-            role=role,
+            role=UserRole.FACULTY,
             is_active=True,
         )
-
-        # When a student provides their SR Code at signup, store it
-        if student_id and student_id.strip() and (role == UserRole.STUDENT or role == 'student'):
-            from apps.integrations.models import StudentData
-            StudentData.objects.get_or_create(
-                user=profile,
-                defaults={'sr_code': student_id.strip()},
-            )
-
-        return profile
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
