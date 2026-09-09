@@ -551,7 +551,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                     Get <span className="glow-text">ATLAS</span> for Your Institution
                   </h1>
                   <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>
-                    Approved institutions receive credentials within 2–3 business days.
+                    Faculty accounts only. Approved institutions receive credentials within 2–3 business days.
                   </p>
                 </div>
 

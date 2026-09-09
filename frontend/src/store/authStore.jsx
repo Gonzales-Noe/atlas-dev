@@ -223,7 +223,13 @@ export function AuthProvider({ children }) {
     // payload: { email, password, institution_name, full_name }
     dispatch({ type: 'AUTH_LOADING' })
     try {
-      await api.post('/auth/register/', payload)
+      await api.post('/auth/register/', {
+        email: payload.email,
+        password: payload.password,
+        institution_name: payload.institution_name,
+        full_name: payload.full_name,
+        role: 'faculty',
+      })
       dispatch({ type: 'AUTH_ERROR', payload: null }) // not logged in yet — pending approval
     } catch (err) {
       const msg = err.response?.data?.email?.[0]
