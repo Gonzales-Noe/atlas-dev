@@ -1,59 +1,14 @@
 """
 BubbleSheetScannerService
 ==========================
-Scans a photograph/scan of a completed bubble sheet and returns:
-  - ``student_identifier`` – value decoded from the QR code
-  - ``responses``          – dict mapping item number → detected letter
-  - ``score_raw``          – number of correct answers vs the answer key
-  - ``score_percent``      – percentage score
-  - ``is_flagged``         – True if confidence is low or QR could not be decoded
-  - ``flag_reason``        – human-readable reason when flagged
-
-Pipeline
---------
-1. Load image with OpenCV, convert to grayscale.
-2. Decode QR code using OpenCV's QRCodeDetector (no external deps).
-3. For every item in layout_metadata, sample pixel intensity at each
-   bubble centre (using the bubble radius from the metadata).
-   The darkest bubble is the selected choice.
-4. Grade against the answer key if provided.
-
-The service is intentionally self-contained and free of third-party OMR
-frameworks so the institution owns the entire pipeline.
+Thin wrapper around ``omr_core.process_sheet`` so Django uploads use the same
+ArUco → 300 DPI → inner-core → z-score pipeline as the mobile Python sidecar.
 """
 
-import logging
 from decimal import Decimal
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-try:
-    import cv2
-    import numpy as np
-
-    _CV_AVAILABLE = True
-except ImportError:
-    _CV_AVAILABLE = False
-
-
-# ── Constants ────────────────────────────────────────────────────────────────
-
-# Fraction of the bubble area that must be filled to count as "selected"
-FILL_THRESHOLD = 0.42
-
-# If the fill ratio of the top choice is below this the item is ambiguous
-CONFIDENCE_FLOOR = 0.28
-
-# Scale factor: layout_metadata stores coordinates in ReportLab pts
-# (72 pt/inch).  Scanned images are typically ~150–300 dpi.
-# We detect the actual dpi from the image dimensions compared to the
-# stored page size when the metadata provides page_width_pt.
-
-
-def _pts_to_px(pts: float, dpi: float) -> int:
-    """Convert ReportLab points to pixels at a given dpi."""
-    return round(pts * dpi / 72.0)
+from .omr_core import process_sheet
 
 
 def _truncate_flag_reason(reason: str | None, max_len: int = 255) -> str | None:
@@ -74,234 +29,22 @@ class BubbleSheetScannerService:
     """
 
     def scan(self, image_path: str | Path, template) -> dict:
-        """
-        Parameters
-        ----------
-        image_path : path to the uploaded image file
-        template   : BubbleSheetTemplate Django model instance
-
-        Returns
-        -------
-        dict with keys: student_identifier, responses, score_raw,
-                        score_percent, max_score, is_flagged, flag_reason
-        """
-        if not _CV_AVAILABLE:
-            raise RuntimeError(
-                "opencv-python-headless and numpy are required for scanning. "
-                "Run: pip install opencv-python-headless numpy"
-            )
-
-        img_path = str(image_path)
-        img_bgr = cv2.imread(img_path)
-        if img_bgr is None:
-            return self._flagged(f"Could not read image at {img_path}")
-
-        img_gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-        h_px, w_px = img_gray.shape
-
-        # ── 1. Derive dpi from page dimensions ───────────────────────────────
         meta = template.layout_metadata or {}
-        page_w_pt = meta.get("page_width_pt", 612)
-        page_h_pt = meta.get("page_height_pt", 792)
-        dpi_x = w_px * 72.0 / page_w_pt
-        dpi_y = h_px * 72.0 / page_h_pt
-        dpi = (dpi_x + dpi_y) / 2
-        mm_to_px = dpi / 25.4
-        bubble_r_pt = meta.get("bubble_radius_pt", 5.5)
-        bubble_r_px = max(3, round(bubble_r_pt * 25.4 / 72.0 * mm_to_px))
-
-        flagged = False
-        flag_reason = None
-
-        # ── 2. Decode student ID from the ID bubble grid ────────────────────
-        id_meta: dict = meta.get("id_columns", {})
-        if id_meta:
-            student_id = self._read_id_bubbles(img_gray, id_meta, mm_to_px)
-            if student_id is None:
-                flagged = True
-                flag_reason = "Student ID could not be decoded"
-        else:
-            # Fallback: try QR code (legacy templates)
-            student_id = self._decode_qr_fallback(img_bgr)
-            if not student_id:
-                flagged = True
-                flag_reason = "QR code could not be decoded (no ID grid metadata)"
-
-        # ── 3. Detect responses ──────────────────────────────────────────────
-        # Layout coordinates are mm with top origin (same as OpenCV).
-
-        items_meta: dict = meta.get("items", {})
-        if not items_meta:
-            return self._flagged("Template has no layout metadata; regenerate the sheet first.")
-
-        responses: dict[str, str] = {}
-        low_confidence_items: list[str] = []
-
-        for item_no, choices in items_meta.items():
-            best_choice: str | None = None
-            best_fill: float = -1.0
-            ambiguous = False
-
-            choice_fills: list[tuple[str, float]] = []
-            for choice_label, coords in choices.items():
-                cx_mm = coords["cx_mm"]
-                cy_spec_mm = coords["cy_spec_mm"]
-                cx_px = round(cx_mm * mm_to_px)
-                cy_px = round(cy_spec_mm * mm_to_px)
-                fill = self._bubble_fill_ratio(img_gray, cx_px, cy_px, bubble_r_px)
-                choice_fills.append((choice_label, fill))
-
-            # Sort descending by fill
-            choice_fills.sort(key=lambda x: x[1], reverse=True)
-            top_label, top_fill = choice_fills[0]
-
-            if top_fill < CONFIDENCE_FLOOR:
-                ambiguous = True
-            elif len(choice_fills) >= 2:
-                second_fill = choice_fills[1][1]
-                # If top two are within 8 % of each other → ambiguous
-                if top_fill - second_fill < 0.08:
-                    ambiguous = True
-
-            if ambiguous:
-                low_confidence_items.append(item_no)
-                best_choice = "?"
-            else:
-                best_choice = top_label if top_fill >= FILL_THRESHOLD else "?"
-
-            responses[item_no] = best_choice
-
-        if low_confidence_items:
-            flagged = True
-            existing_reason = flag_reason or ""
-            n = len(low_confidence_items)
-            if n == 1:
-                detail = f"item {low_confidence_items[0]}"
-            elif n <= 8:
-                detail = f"items {', '.join(low_confidence_items)}"
-            else:
-                sample = ", ".join(low_confidence_items[:5])
-                detail = f"{n} items (e.g. {sample}, …)"
-            flag_reason = _truncate_flag_reason(
-                f"{existing_reason}; Low-confidence {detail}".lstrip("; ")
+        if not meta.get("items"):
+            return self._flagged(
+                "Template has no layout metadata; regenerate the sheet first."
             )
 
-        # ── 4. Grade ─────────────────────────────────────────────────────────
-        answer_key: dict = template.answer_key or {}
-        score_raw, max_score, score_percent = self._grade(responses, answer_key)
-
+        core = process_sheet(str(image_path), meta, template.answer_key or {})
         return {
-            "student_identifier": student_id,
-            "responses": responses,
-            "score_raw": score_raw,
-            "score_percent": score_percent,
-            "max_score": max_score,
-            "is_flagged": flagged,
-            "flag_reason": _truncate_flag_reason(flag_reason),
+            "student_identifier": core.student_identifier,
+            "responses": core.responses,
+            "score_raw": Decimal(str(core.correct_count)),
+            "score_percent": Decimal(str(round(core.score_percent, 2))),
+            "max_score": Decimal(str(core.max_score)),
+            "is_flagged": core.is_flagged,
+            "flag_reason": _truncate_flag_reason(core.flag_reason),
         }
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _bubble_fill_ratio(gray_img, cx: int, cy: int, r: int) -> float:
-        """
-        Return the fraction of pixels inside the bubble circle that are
-        'dark' (i.e., filled in by pencil / pen).
-        """
-        mask = np.zeros_like(gray_img, dtype=np.uint8)
-        cv2.circle(mask, (cx, cy), r, 255, thickness=-1)
-        roi = gray_img[
-            max(0, cy - r): cy + r + 1,
-            max(0, cx - r): cx + r + 1,
-        ]
-        mask_roi = mask[
-            max(0, cy - r): cy + r + 1,
-            max(0, cx - r): cx + r + 1,
-        ]
-        total_pixels = int(np.sum(mask_roi > 0))
-        if total_pixels == 0:
-            return 0.0
-        # Threshold at 128; dark pixels (marks) are below 128
-        dark_pixels = int(np.sum((roi < 128) & (mask_roi > 0)))
-        return dark_pixels / total_pixels
-
-    @staticmethod
-    def _read_id_bubbles(gray_img, id_meta: dict, mm_to_px: float) -> str | None:
-        """
-        Read the student ID from the 11-row (0–9, '-') × N-col bubble grid
-        below the QR code.  Returns a string like ``"23-35007"`` or None
-        if no column could be read.
-        """
-        LABELS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "-"]
-        x0_mm = id_meta["x0_mm"]
-        y_top_mm = id_meta["y_top_spec_mm"]
-        ncols = id_meta["num_cols"]
-        r_mm = id_meta["bubble_r_mm"]
-        col_pitch_mm = id_meta["col_pitch_mm"]
-        row_pitch_mm = id_meta["row_pitch_mm"]
-
-        r_px = max(2, round(r_mm * mm_to_px))
-        col_step_px = round(col_pitch_mm * mm_to_px)
-        row_step_px = round(row_pitch_mm * mm_to_px)
-        # Centre of first bubble
-        cx0 = round(x0_mm * mm_to_px)
-        # Top row centre (y_top_mm is the top of the grid area; the first row
-        # centre is offset by half row_pitch from the grid top)
-        cy0 = round(y_top_mm * mm_to_px + row_step_px / 2)
-
-        chars: list[str] = []
-        for col in range(ncols):
-            cx = cx0 + col * col_step_px
-            best_label = "?"
-            best_fill = -1.0
-            for ri, label in enumerate(LABELS):
-                cy = cy0 + ri * row_step_px
-                fill = BubbleSheetScannerService._bubble_fill_ratio(
-                    gray_img, cx, cy, r_px
-                )
-                if fill > best_fill:
-                    best_fill = fill
-                    best_label = label
-
-            if best_fill < CONFIDENCE_FLOOR:
-                break  # empty column → stop
-            chars.append(best_label)
-
-        if not chars:
-            return None
-        return "".join(chars)
-
-    @staticmethod
-    def _decode_qr_fallback(img_bgr) -> str | None:
-        """Legacy fallback: decode QR code to get assessment/template ID."""
-        qr_detector = cv2.QRCodeDetector()
-        qr_data, _, _ = qr_detector.detectAndDecode(img_bgr)
-        raw = (qr_data or "").strip()
-        return raw if raw else None
-
-    @staticmethod
-    def _grade(
-        responses: dict, answer_key: dict
-    ) -> tuple[Decimal, Decimal, Decimal]:
-        """Return (score_raw, max_score, score_percent)."""
-        if not answer_key:
-            return Decimal("0"), Decimal("0"), Decimal("0")
-
-        correct = 0
-        total = len(answer_key)
-        for item_no, correct_ans in answer_key.items():
-            student_ans = responses.get(str(item_no), "?")
-            if student_ans.upper() == str(correct_ans).upper():
-                correct += 1
-
-        max_score = Decimal(str(total))
-        score_raw = Decimal(str(correct))
-        score_percent = (
-            (score_raw / max_score * 100).quantize(Decimal("0.01"))
-            if max_score > 0
-            else Decimal("0")
-        )
-        return score_raw, max_score, score_percent
 
     @staticmethod
     def _flagged(reason: str) -> dict:
@@ -314,3 +57,22 @@ class BubbleSheetScannerService:
             "is_flagged": True,
             "flag_reason": _truncate_flag_reason(reason),
         }
+
+    @staticmethod
+    def _grade(responses: dict, answer_key: dict) -> tuple[Decimal, Decimal, Decimal]:
+        if not answer_key:
+            return Decimal("0"), Decimal("0"), Decimal("0")
+        key = {str(k): str(v) for k, v in answer_key.items()}
+        correct = sum(
+            1
+            for k, v in key.items()
+            if str(responses.get(k, "?")).upper() == str(v).upper()
+        )
+        max_score = Decimal(str(len(key)))
+        score_raw = Decimal(str(correct))
+        score_percent = (
+            (score_raw / max_score * 100).quantize(Decimal("0.01"))
+            if max_score > 0
+            else Decimal("0")
+        )
+        return score_raw, max_score, score_percent
