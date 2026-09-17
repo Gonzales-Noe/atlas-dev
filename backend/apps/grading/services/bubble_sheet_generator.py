@@ -4,6 +4,9 @@ BubbleSheetGeneratorService
 Exact mm-based bubble-sheet PDF generator. Long bond paper (8.5" x 13",
 ~215.9 x 330.2 mm) with 2" header / 1" footer margins.
 Origin is ReportLab's bottom-left; _sy() converts spec top-origin to RL Y.
+
+Corner fiducials are OpenCV ArUco DICT_4X4_50 markers (IDs 0=TL, 1=TR, 2=BR, 3=BL)
+so the scanner can identify each corner instead of guessing generic black squares.
 """
 
 import io
@@ -36,19 +39,30 @@ def _sy(spec_y: float) -> float:
     return PAGE_H_MM - spec_y
 
 
-# ── Fiducials ─────────────────────────────────────────────────────────────
-# Top fiducials at paper top + HEADER_MM (2"). Bottom fiducials at header + 10".
-# Horizontal: tight to edges with FID_INSET.
-FID_INSET = 8.0
-FID_W = 10.0
+# ── Fiducials (ArUco DICT_4X4_50, IDs 0–3) ────────────────────────────────
+# Top markers at paper top + HEADER_MM (2"). Bottom at header + 10" (outer edges).
+# 15 mm markers + ~3 mm gap to content. Inset 5 mm so the right marker stays
+# clear of the answer grid (RIGHT_X1 = 193 mm).
+FID_INSET = 5.0
+FID_W = 15.0
+FID_QUIET_MM = 2.0
 CONTENT_TOP = HEADER_MM
 CONTENT_BOT = CONTENT_TOP + FID_SPAN_MM - FID_W  # bottom fiducial top edge
+# (x_mm, y_spec_mm, aruco_id, corner_name) — IDs 0=TL, 1=TR, 2=BR, 3=BL
 FID_SPEC = [
-    (FID_INSET, CONTENT_TOP),
-    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_TOP),
-    (FID_INSET, CONTENT_BOT),
-    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_BOT),
+    (FID_INSET, CONTENT_TOP, 0, "TL"),
+    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_TOP, 1, "TR"),
+    (PAGE_W_MM - FID_INSET - FID_W, CONTENT_BOT, 2, "BR"),
+    (FID_INSET, CONTENT_BOT, 3, "BL"),
 ]
+# Inner 4×4 bits from OpenCV DICT_4X4_50 (1 = white, 0 = black). Outer 1-module
+# border is always black. generateImageMarker(..., 6, borderBits=1).
+ARUCO_INNER_4X4 = {
+    0: ((1, 0, 1, 1), (0, 1, 0, 1), (0, 0, 1, 1), (0, 0, 1, 0)),
+    1: ((0, 0, 0, 0), (1, 1, 1, 1), (1, 0, 0, 1), (1, 0, 1, 0)),
+    2: ((0, 0, 1, 1), (0, 0, 1, 1), (0, 0, 1, 0), (1, 1, 0, 1)),
+    3: ((1, 0, 0, 1), (1, 0, 0, 1), (0, 1, 0, 0), (0, 1, 1, 0)),
+}
 
 SAFE_X0, SAFE_X1 = FID_INSET + FID_W + 2.0, PAGE_W_MM - FID_INSET - FID_W - 2.0
 SAFE_YT, SAFE_YB = CONTENT_TOP + FID_W + 2.0, CONTENT_BOT - 2.0
@@ -158,7 +172,9 @@ class BubbleSheetGeneratorService:
             "rows_per_column": ROWS_PER_COL,
             "row_height_pt": round(mm2pt(ROW_V_PITCH), 2),
             "bubble_radius_pt": round(mm2pt(BUBBLE_R), 2),
-            "dpi": 150, "items": {}, "id_columns": {},
+            "dpi": 300, "items": {}, "id_columns": {},
+            "fiducial_type": "aruco_4x4_50",
+            "aruco_dict": "DICT_4X4_50",
         }
 
         # ── Vertical centering ────────────────────────────────────────────
@@ -190,15 +206,55 @@ class BubbleSheetGeneratorService:
 
     def _draw_fiducials(self, c, layout):
         fids = []
-        for sx, sy in FID_SPEC:
-            c.setFillColorRGB(*C_BLACK)
-            c.rect(mm2pt(sx), mm2pt(_sy(sy + FID_W)),
-                   mm2pt(FID_W), mm2pt(FID_W), stroke=0, fill=1)
-            fids.append({"x_mm": sx, "y_spec_mm": sy, "w_mm": FID_W, "h_mm": FID_W})
+        for sx, sy, marker_id, corner in FID_SPEC:
+            self._draw_aruco_marker(c, sx, sy, marker_id, FID_W)
+            fids.append({
+                "x_mm": round(sx, 2),
+                "y_spec_mm": round(sy, 2),
+                "w_mm": FID_W,
+                "h_mm": FID_W,
+                "size_mm": FID_W,
+                "id": marker_id,
+                "corner": corner,
+            })
         layout["fiducials"] = fids
-        a, b = FID_SPEC[2], FID_SPEC[3]
+        bl = next(f for f in fids if f["corner"] == "BL")
+        br = next(f for f in fids if f["corner"] == "BR")
         layout["fiducial_baseline_ref"] = round(
-            math.hypot(b[0] - a[0], b[1] - a[1]), 2)
+            math.hypot(br["x_mm"] - bl["x_mm"], br["y_spec_mm"] - bl["y_spec_mm"]), 2)
+
+    def _draw_aruco_marker(self, c, x_mm, y_spec_mm, marker_id, size_mm):
+        """Draw a DICT_4X4_50 marker: 6×6 modules (4×4 data + 1-module black border)."""
+        bits = ARUCO_INNER_4X4[marker_id]
+        modules = 6
+        cell = size_mm / modules
+        overlap = 0.04
+        c.setFillColorRGB(*C_WHITE)
+        c.rect(
+            mm2pt(x_mm - FID_QUIET_MM),
+            mm2pt(_sy(y_spec_mm + size_mm + FID_QUIET_MM)),
+            mm2pt(size_mm + 2 * FID_QUIET_MM),
+            mm2pt(size_mm + 2 * FID_QUIET_MM),
+            stroke=0, fill=1,
+        )
+        c.setFillColorRGB(*C_BLACK)
+        for row in range(modules):
+            for col in range(modules):
+                if row in (0, modules - 1) or col in (0, modules - 1):
+                    black = True
+                else:
+                    black = bits[row - 1][col - 1] == 0
+                if not black:
+                    continue
+                sx = x_mm + col * cell
+                sy_top = y_spec_mm + row * cell
+                c.rect(
+                    mm2pt(sx),
+                    mm2pt(_sy(sy_top + cell + overlap)),
+                    mm2pt(cell + overlap),
+                    mm2pt(cell + overlap),
+                    stroke=0, fill=1,
+                )
 
     # ── Left Zone ──────────────────────────────────────────────────────────
 
