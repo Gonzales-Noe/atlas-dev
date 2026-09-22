@@ -464,3 +464,90 @@ body.atlas-light #root {
 .atlas-light p {
   color: var(--text-primary);
 }
+
+/* Faculty course workspace follows the shared admin dark visual system. */
+.faculty-workspace {
+  --workspace-bg: #0F0F12;
+  --workspace-panel: #16161E;
+  --workspace-card: rgba(255,255,255,0.04);
+  --workspace-border: rgba(255,255,255,0.09);
+  --workspace-text: #F0F0F2;
+  --workspace-muted: rgba(255,255,255,0.5);
+  color: var(--workspace-text);
+}
+.faculty-workspace .MuiPaper-root,
+.faculty-workspace .MuiCard-root,
+.faculty-workspace .MuiAccordion-root {
+  background: var(--workspace-card) !important;
+  border-color: var(--workspace-border) !important;
+  color: var(--workspace-text) !important;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.28) !important;
+}
+.faculty-workspace .MuiTypography-root,
+.faculty-workspace .MuiCardHeader-title,
+.faculty-workspace .MuiCardContent-root,
+.faculty-workspace .MuiFormLabel-root,
+.faculty-workspace .MuiInputLabel-root,
+.faculty-workspace .MuiInputBase-input,
+.faculty-workspace .MuiSelect-select,
+.faculty-workspace .MuiMenuItem-root,
+.faculty-workspace .MuiTableCell-root {
+  color: var(--workspace-text) !important;
+}
+.faculty-workspace .MuiTypography-colorTextSecondary,
+.faculty-workspace .MuiCardHeader-subheader,
+.faculty-workspace .MuiFormHelperText-root {
+  color: var(--workspace-muted) !important;
+}
+.faculty-workspace .MuiOutlinedInput-root,
+.faculty-workspace .MuiInputBase-root {
+  background: rgba(255,255,255,0.05) !important;
+  color: var(--workspace-text) !important;
+}
+.faculty-workspace .MuiOutlinedInput-notchedOutline {
+  border-color: var(--workspace-border) !important;
+}
+.faculty-workspace .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline,
+.faculty-workspace .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: rgba(255,107,107,0.65) !important;
+}
+.faculty-workspace .MuiTabs-root .MuiTab-root {
+  color: var(--workspace-muted) !important;
+}
+.faculty-workspace .MuiTabs-root .MuiTab-root.Mui-selected {
+  color: #FF6B6B !important;
+}
+.faculty-workspace .MuiTableCell-root {
+  border-color: var(--workspace-border) !important;
+}
+.faculty-workspace table,
+.faculty-workspace th,
+.faculty-workspace td {
+  color: var(--workspace-text) !important;
+  border-color: var(--workspace-border) !important;
+}
+.faculty-workspace th {
+  background: rgba(255,255,255,0.05) !important;
+}
+.faculty-workspace .MuiDivider-root {
+  border-color: var(--workspace-border) !important;
+}
+.faculty-workspace .MuiDrawer-paper,
+.faculty-workspace .MuiMenu-paper,
+.faculty-workspace .MuiDialog-paper {
+  background: #16161E !important;
+  color: var(--workspace-text) !important;
+  border-color: var(--workspace-border) !important;
+}
+.faculty-workspace .MuiButton-outlined {
+  border-color: rgba(255,107,107,0.6) !important;
+  color: #FF6B6B !important;
+}
+.faculty-workspace .MuiIconButton-root {
+  color: var(--workspace-muted) !important;
+}
+.faculty-workspace input,
+.faculty-workspace textarea,
+.faculty-workspace select {
+  color-scheme: dark;
+}
