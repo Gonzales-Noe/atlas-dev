@@ -2,13 +2,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
-import { useAuth }      from '../../store/authStore';
-import useRoleRedirect  from '../../hooks/useRoleRedirect';
-import { ROUTES }       from '../../config/route';
+import { useAuth } from '../../store/authStore';
+import useRoleRedirect from '../../hooks/useRoleRedirect';
+import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
 
-import atlasLogo    from '../../assets/atlas-logo.png';
-import atlasMascot  from '../../assets/atlas.png';
+import atlasLogo from '../../assets/atlas-logo.png';
+import atlasMascot from '../../assets/atlas.png';
 
 // ── Shared design primitives (mirrors landing page) ──────────────────────────
 function Orb({ style }) {
@@ -25,24 +25,24 @@ function Orb({ style }) {
 }
 
 const NAV_LINKS = [
-  { label: 'HOME',    to: '/' },
+  { label: 'HOME', to: '/' },
   { label: 'SIGN UP', to: '/signup' },
   { label: 'PRICING', to: '/pricing' },
   { label: 'CONTACT', to: '/contact' },
 ];
 
 export default function SignInPage({ isModal, onClose, onSwitch }) {
-  const navigate                = useNavigate();
-  const location                = useLocation();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { login, loginWithGoogle } = useAuth();
   const { redirectToDashboard } = useRoleRedirect();
 
-  const [form, setForm]         = useState({ email: '', password: '' });
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [mounted, setMounted]   = useState(false);
+  const [mounted, setMounted] = useState(false);
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});
 
@@ -66,7 +66,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
   useEffect(() => {
     let disposed = false;
-    let cleanup = () => {};
+    let cleanup = () => { };
 
     mountGoogleSignInButton(googleButtonRef.current, {
       context: 'signin',
@@ -408,8 +408,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
           transition: 'background 0.2s'
         }}
-        onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-        onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
+          onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
         >
           ✕
         </button>
@@ -423,49 +423,49 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           backdropFilter: scrolled ? 'blur(20px)' : 'none',
           transition: 'all 0.3s ease',
         }}>
-        <div style={{
-          maxWidth: 1200, margin: '0 auto',
-          padding: '0 2rem', height: 64,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        }}>
-          <Link to="/">
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
-          </Link>
+          <div style={{
+            maxWidth: 1200, margin: '0 auto',
+            padding: '0 2rem', height: 64,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <Link to="/">
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+            </Link>
 
-          <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
-            {NAV_LINKS.map(({ label, to }) => (
-              <Link key={label} to={to} className={`auth-nav-link ${label === 'SIGN UP' ? '' : ''}`}>{label}</Link>
-            ))}
+            <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
+              {NAV_LINKS.map(({ label, to }) => (
+                <Link key={label} to={to} className={`auth-nav-link ${label === 'SIGN UP' ? '' : ''}`}>{label}</Link>
+              ))}
+            </div>
+
+            {/* Hamburger */}
+            <button
+              className="hamburger-btn"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4 }}
+            >
+              {[0, 1, 2].map(i => (
+                <span key={i} style={{
+                  display: 'block', width: 22, height: 2,
+                  background: '#fff', borderRadius: 2,
+                  transition: 'all 0.3s ease',
+                  transform: isMenuOpen
+                    ? i === 0 ? 'rotate(45deg) translate(5px,5px)'
+                      : i === 1 ? 'scaleX(0)'
+                        : 'rotate(-45deg) translate(5px,-5px)'
+                    : 'none',
+                }} />
+              ))}
+            </button>
           </div>
 
-          {/* Hamburger */}
-          <button
-            className="hamburger-btn"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 5, padding: 4 }}
-          >
-            {[0,1,2].map(i => (
-              <span key={i} style={{
-                display: 'block', width: 22, height: 2,
-                background: '#fff', borderRadius: 2,
-                transition: 'all 0.3s ease',
-                transform: isMenuOpen
-                  ? i===0 ? 'rotate(45deg) translate(5px,5px)'
-                  : i===1 ? 'scaleX(0)'
-                  : 'rotate(-45deg) translate(5px,-5px)'
-                  : 'none',
-              }} />
+          <div className={`mobile-menu-drawer ${isMenuOpen ? 'open' : ''}`}>
+            {NAV_LINKS.map(({ label, to }) => (
+              <Link key={label} to={to} className="auth-nav-link" style={{ fontSize: '0.95rem', padding: '0.4rem 0' }} onClick={() => setIsMenuOpen(false)}>
+                {label}
+              </Link>
             ))}
-          </button>
-        </div>
-
-        <div className={`mobile-menu-drawer ${isMenuOpen ? 'open' : ''}`}>
-          {NAV_LINKS.map(({ label, to }) => (
-            <Link key={label} to={to} className="auth-nav-link" style={{ fontSize: '0.95rem', padding: '0.4rem 0' }} onClick={() => setIsMenuOpen(false)}>
-              {label}
-            </Link>
-          ))}
-        </div>
+          </div>
         </nav>
       )}
 
@@ -582,14 +582,15 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                 <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', fontWeight: 600 }}>OR</span>
               </div>
 
-              {/* Google — official GIS button (popup UX) */}
+              {/* Google — official GIS button (pill shape, full form width ≤400px) */}
               <div
                 ref={googleButtonRef}
+                className="google-signin-slot"
                 style={{
                   width: '100%',
-                  minHeight: 44,
+                  minHeight: 40,
                   display: 'flex',
-                  justifyContent: 'center',
+                  justifyContent: 'stretch',
                   opacity: loading ? 0.6 : 1,
                   pointerEvents: loading ? 'none' : 'auto',
                 }}
