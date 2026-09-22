@@ -201,6 +201,15 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
+        .google-signin-slot {
+          width: 100%;
+        }
+        .google-signin-slot > div {
+          width: 100% !important;
+          display: flex !important;
+          justify-content: stretch !important;
+        }
+
         .btn-google {
           width: 100%;
           background: rgba(255,255,255,0.05);
@@ -582,7 +591,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                 <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', fontWeight: 600 }}>OR</span>
               </div>
 
-              {/* Google — official GIS button (pill shape, full form width ≤400px) */}
+              {/* Google — rectangular GIS button, width matched to LOGIN */}
               <div
                 ref={googleButtonRef}
                 className="google-signin-slot"
