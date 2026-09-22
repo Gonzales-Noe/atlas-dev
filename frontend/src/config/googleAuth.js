@@ -5,6 +5,7 @@ export const GOOGLE_WEB_CLIENT_ID = (
 
 /** Google GIS caps standard button width at 400px. */
 const GOOGLE_BUTTON_MAX_WIDTH = 400
+const GOOGLE_BUTTON_MIN_WIDTH = 200
 
 export function loadGoogleIdentityScript() {
   if (window.google?.accounts?.id) return Promise.resolve()
@@ -30,16 +31,31 @@ export function loadGoogleIdentityScript() {
   })
 }
 
+/** Prefer the ATLAS primary CTA (LOGIN / Continue with Email) width. */
+function findSizeReference(container) {
+  const root = container.closest('.form-panel') || container.parentElement
+  return root?.querySelector('.btn-primary') || null
+}
+
+function clampGoogleWidth(px) {
+  return Math.max(
+    GOOGLE_BUTTON_MIN_WIDTH,
+    Math.min(GOOGLE_BUTTON_MAX_WIDTH, Math.floor(px || 0)),
+  )
+}
+
 function measureButtonWidth(container, preferredWidth) {
-  if (preferredWidth) {
-    return Math.max(240, Math.min(GOOGLE_BUTTON_MAX_WIDTH, Math.floor(preferredWidth)))
-  }
+  if (preferredWidth) return clampGoogleWidth(preferredWidth)
+
+  const ref = findSizeReference(container)
   const measured = Math.floor(
-    container.clientWidth
+    ref?.getBoundingClientRect?.().width
+    || ref?.offsetWidth
+    || container.clientWidth
     || container.parentElement?.clientWidth
     || 0,
   )
-  return Math.max(240, Math.min(GOOGLE_BUTTON_MAX_WIDTH, measured || 360))
+  return clampGoogleWidth(measured || 360)
 }
 
 function paintGoogleButton(container, {
@@ -67,13 +83,12 @@ function paintGoogleButton(container, {
   })
 
   container.innerHTML = ''
-  // shape: 'pill' is the only rounded option Google allows (no custom border-radius).
   google.accounts.id.renderButton(container, {
     type: 'standard',
     theme,
     size: 'large',
     text: 'continue_with',
-    shape: 'pill',
+    shape: 'rectangular',
     logo_alignment: 'left',
     width: buttonWidth,
   })
@@ -81,8 +96,8 @@ function paintGoogleButton(container, {
 
 /**
  * Mount Google's official Sign In button (popup UX).
- * Uses shape "pill" (Google's only rounded option) and matches the host width
- * up to Google's 400px max.
+ * Rectangular shape; width matches the nearby .btn-primary (LOGIN / Continue with Email)
+ * up to Google's 400px max. Height is fixed by Google's "large" size.
  * @returns {Promise<() => void>} cleanup function
  */
 export async function mountGoogleSignInButton(container, {
@@ -121,7 +136,7 @@ export async function mountGoogleSignInButton(container, {
     paintGoogleButton(container, options)
   }
 
-  // Wait a frame so the form has a real laid-out width before measuring.
+  // Wait a frame so .btn-primary has a real laid-out width before measuring.
   await new Promise((resolve) => requestAnimationFrame(() => resolve()))
   render()
 
@@ -130,6 +145,8 @@ export async function mountGoogleSignInButton(container, {
     resizeObserver = new ResizeObserver(() => render())
     resizeObserver.observe(container)
     if (container.parentElement) resizeObserver.observe(container.parentElement)
+    const ref = findSizeReference(container)
+    if (ref) resizeObserver.observe(ref)
   }
 
   return () => {
