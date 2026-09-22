@@ -35,6 +35,19 @@ class Institution(models.Model):
     class Meta:
         db_table = 'institution'
 
+class InstitutionCustomization(models.Model):
+    institution = models.OneToOneField(Institution, on_delete=models.CASCADE, related_name='customization')
+    header_image_url = models.TextField(blank=True, default='')
+    footer_image_url = models.TextField(blank=True, default='')
+    header_text = models.CharField(max_length=500, blank=True, default='')
+    footer_text = models.CharField(max_length=500, blank=True, default='')
+    syllabus_sections = models.JSONField(default=list, blank=True)
+    field_labels = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'institution_customization'
+
 class UserProfile(models.Model):
     # This maps to your 'users' table
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -79,10 +92,11 @@ class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     faculty = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    section = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         db_table = 'course_load'
-        unique_together = ('course', 'faculty')
+        unique_together = ('course', 'faculty', 'section')
 
 class Ilo(models.Model):
     ilo_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
