@@ -3,48 +3,37 @@
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardActionArea from '@mui/material/CardActionArea'
 import CardContent from '@mui/material/CardContent'
 import CircularProgress from '@mui/material/CircularProgress'
-import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
-import IconButton from '@mui/material/IconButton'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
-import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
 import AutoStoriesIcon from '@mui/icons-material/AutoStories'
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects'
 import LayersIcon from '@mui/icons-material/Layers'
-import LogoutIcon from '@mui/icons-material/Logout'
 import SchoolIcon from '@mui/icons-material/School'
 import ScienceIcon from '@mui/icons-material/Science'
 import { useNavigate } from 'react-router-dom'
 import api from '../config/api'
 import useApi from '../hooks/useApi'
-import { useAuth } from '../store/authStore'
-import { toInitials } from '../utils'
 import AutoAlert from './AutoAlert'
-import atlasLogo from '../assets/atlas-logo.png'
-import useAtlasLightTheme from '../hooks/useAtlasLightTheme'
+import FacultyLayout from '../features/roles/Faculty/FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
 const CARD_COLORS = ['#8B0000', '#A52A2A', '#B71C1C', '#C62828', '#D32F2F']
 
 export default function FacultyCoursesBoard() {
-  useAtlasLightTheme()
   const navigate = useNavigate()
-  const { user, logout } = useAuth()
-  const [anchorEl, setAnchorEl] = useState(null)
   const [errorDismissed, setErrorDismissed] = useState(false)
   const { data, loading, error, refetch } = useApi('/curriculum/faculty-courses/')
   // reset dismissed state whenever error changes
@@ -87,55 +76,8 @@ export default function FacultyCoursesBoard() {
   const courses = data?.courses || []
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#F7F9FC', display: 'flex', flexDirection: 'column' }}>
-      {/* Top bar */}
-      <Box
-        component="header"
-        sx={{
-          display: 'flex', alignItems: 'center',
-          px: { xs: 2, md: 4 }, py: 1.25,
-          bgcolor: '#fff',
-          borderBottom: '1px solid rgba(0,0,0,0.08)',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-          position: 'sticky', top: 0, zIndex: 10,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
-          <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 30, objectFit: 'contain' }} />
-        </Box>
-        <Box sx={{ flex: 1 }} />
-        <Chip
-          label="FACULTY"
-          size="small"
-          sx={{ bgcolor: '#FFF5F5', color: '#8B0000', fontWeight: 700, fontSize: '0.65rem', letterSpacing: '0.07em', mr: 1.5 }}
-        />
-        <Tooltip title={user?.email || ''}>
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} size="small">
-            <Avatar sx={{ width: 34, height: 34, bgcolor: '#8B0000', fontSize: 13, fontWeight: 700 }}>
-              {toInitials(user?.name || user?.email || 'U')}
-            </Avatar>
-          </IconButton>
-        </Tooltip>
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={() => setAnchorEl(null)}
-        >
-          <MenuItem disabled>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>{user?.name || user?.email}</Typography>
-              <Typography variant="caption" sx={{ color: '#888' }}>{user?.email}</Typography>
-            </Box>
-          </MenuItem>
-          <MenuItem onClick={() => { logout(); navigate('/signin') }}>
-            <LogoutIcon fontSize="small" sx={{ mr: 1.5, color: '#8B0000' }} />
-            Sign Out
-          </MenuItem>
-        </Menu>
-      </Box>
-
-      {/* Main */}
-      <Box sx={{ flex: 1, px: { xs: 2, md: 5 }, py: 4, maxWidth: 1400, mx: 'auto', width: '100%' }}>
+    <FacultyLayout>
+      <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto' }}>
         {error && !errorDismissed && (
           <AutoAlert message={error} onClose={() => setErrorDismissed(true)} sx={{ mb: 3 }} />
         )}
@@ -344,6 +286,6 @@ export default function FacultyCoursesBoard() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </FacultyLayout>
   )
 }
