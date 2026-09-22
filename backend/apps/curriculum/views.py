@@ -17,6 +17,7 @@ from apps.integrations.models import (
     Course,
     CourseFile,
     CourseLoad,
+    InstitutionCustomization,
     Module,
     ParentChunk,
     StudentData,
@@ -2932,7 +2933,16 @@ def update_assessment_item(request, item_id):
     item.save(update_fields=update_fields)
 
     metadata = item.rubric if isinstance(item.rubric, dict) else {}
+    customization = InstitutionCustomization.objects.filter(institution=request.user.institution).first()
     return Response({
+        'customization': {
+            'header_image_url': customization.header_image_url if customization else '',
+            'footer_image_url': customization.footer_image_url if customization else '',
+            'header_text': customization.header_text if customization else '',
+            'footer_text': customization.footer_text if customization else '',
+            'syllabus_sections': customization.syllabus_sections if customization else [],
+            'field_labels': customization.field_labels if customization else {},
+        },
         'success': True,
         'item': {
             'item_id': str(item.item_id),
