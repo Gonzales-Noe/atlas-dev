@@ -212,11 +212,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
         .google-signin-slot {
           width: 100%;
+          display: flex;
+          justify-content: center;
         }
         .google-signin-slot > div {
-          width: 100% !important;
-          display: flex !important;
-          justify-content: stretch !important;
+          margin: 0 auto;
         }
 
         .btn-secondary {
@@ -585,7 +585,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
                 {error && <div className="error-box">{error}</div>}
 
-                {/* Google — rectangular GIS button, width matched to Continue with Email */}
+                {/* Google — rectangular GIS button, centered */}
                 <div
                   ref={googleButtonRef}
                   className="google-signin-slot"
@@ -594,7 +594,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                     minHeight: 40,
                     marginBottom: '0.85rem',
                     display: 'flex',
-                    justifyContent: 'stretch',
+                    justifyContent: 'center',
                     opacity: loading ? 0.6 : 1,
                     pointerEvents: loading ? 'none' : 'auto',
                   }}
