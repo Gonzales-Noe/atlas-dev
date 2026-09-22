@@ -27,35 +27,67 @@ export function loadGoogleIdentityScript() {
   })
 }
 
-export async function requestGoogleCredential() {
+/**
+ * Mount Google's official Sign In button (popup UX).
+ * More reliable than One Tap prompt() for custom "Continue with Google" flows.
+ * @returns {Promise<() => void>} cleanup function
+ */
+export async function mountGoogleSignInButton(container, {
+  onCredential,
+  onError,
+  context = 'signin',
+  theme = 'filled_black',
+  width,
+} = {}) {
+  if (!container) return () => {}
+
   if (!GOOGLE_WEB_CLIENT_ID) {
-    throw new Error('Google sign-in is not configured on this environment.')
+    onError?.(new Error('Google sign-in is not configured on this environment.'))
+    return () => {}
   }
-  await loadGoogleIdentityScript()
+
+  try {
+    await loadGoogleIdentityScript()
+  } catch (err) {
+    onError?.(err instanceof Error ? err : new Error('Google sign-in failed to load.'))
+    return () => {}
+  }
+
   const google = window.google
   if (!google?.accounts?.id) {
-    throw new Error('Google sign-in failed to load.')
+    onError?.(new Error('Google sign-in failed to load.'))
+    return () => {}
   }
 
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const finish = (fn, value) => {
-      if (settled) return
-      settled = true
-      fn(value)
-    }
+  const buttonWidth = Math.max(
+    240,
+    Math.min(400, Math.floor(width || container.clientWidth || container.parentElement?.clientWidth || 360)),
+  )
 
-    google.accounts.id.initialize({
-      client_id: GOOGLE_WEB_CLIENT_ID,
-      callback: (response) => {
-        if (response?.credential) finish(resolve, response.credential)
-        else finish(reject, new Error('Google sign-in was cancelled.'))
-      },
-    })
-    google.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        finish(reject, new Error('Google sign-in is blocked for this site. Add this origin in Google Cloud: Authorized JavaScript origins.'))
-      }
-    })
+  google.accounts.id.initialize({
+    client_id: GOOGLE_WEB_CLIENT_ID,
+    callback: (response) => {
+      if (response?.credential) onCredential?.(response.credential)
+      else onError?.(new Error('Google sign-in was cancelled.'))
+    },
+    ux_mode: 'popup',
+    context,
+    auto_select: false,
+    cancel_on_tap_outside: true,
   })
+
+  container.innerHTML = ''
+  google.accounts.id.renderButton(container, {
+    type: 'standard',
+    theme,
+    size: 'large',
+    text: 'continue_with',
+    shape: 'rectangular',
+    logo_alignment: 'left',
+    width: buttonWidth,
+  })
+
+  return () => {
+    container.innerHTML = ''
+  }
 }
