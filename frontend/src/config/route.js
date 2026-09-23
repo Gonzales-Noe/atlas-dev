@@ -25,6 +25,7 @@ export const ROUTES = {
   ADMIN: {
     DASHBOARD:          '/admin/dashboard',
     ACCOUNT_MANAGEMENT: '/admin/account-management',
+    KNOWLEDGE_BASE:     '/admin/knowledge-base',
     AUDIT_LOGS:         '/admin/audit-logs',
   },
 
