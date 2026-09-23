@@ -1268,6 +1268,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     { immediate: Boolean(courseId), deps: [courseId] },
   )
   const course = workspaceApi.data?.course
+  const customization = workspaceApi.data?.customization || {}
+  const configuredSections = customization.syllabus_sections?.length
+    ? customization.syllabus_sections.filter(section => section.enabled !== false)
+    : SYLLABUS_SECTIONS.map(section => ({ key: section.key, label: section.label, enabled: true }))
 
   // Pre-populate syllabus form: saved JSON first, then fall back to course fields
   useEffect(() => {
@@ -3904,7 +3908,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
-          <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
+                <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
+            {customization.header_image_url ? (
+              <Box sx={{ mb: 2, textAlign: 'center' }}><Box component="img" src={customization.header_image_url} alt="University header" sx={{ maxWidth: '100%', maxHeight: 140, objectFit: 'contain' }} /></Box>
+            ) : customization.header_text && (
+              <Box sx={{ mb: 2, px: 1.5, py: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1.5 }}>
+                <Typography variant="body2" sx={{ color: '#F0F0F2', whiteSpace: 'pre-wrap' }}>{customization.header_text}</Typography>
+              </Box>
+            )}
             {course && (
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 {/* hidden file input for syllabus upload */}
@@ -3997,10 +4008,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   '& .MuiTabs-scrollButtons': { color: MAROON },
                 }}
               >
-                {SYLLABUS_SECTIONS.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
+                {configuredSections.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
               </Tabs>
             </Box>
             {renderSyllabusSection()}
+            {customization.footer_image_url ? (
+              <Box sx={{ mt: 2, textAlign: 'center' }}><Box component="img" src={customization.footer_image_url} alt="University footer" sx={{ maxWidth: '100%', maxHeight: 100, objectFit: 'contain' }} /></Box>
+            ) : customization.footer_text && (
+              <Box sx={{ mt: 2, px: 1.5, py: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1.5 }}>
+                <Typography variant="body2" sx={{ color: '#F0F0F2', whiteSpace: 'pre-wrap' }}>{customization.footer_text}</Typography>
+              </Box>
+            )}
           </Box>
 
           {/* Sticky save footer — appears when any field has been edited */}
