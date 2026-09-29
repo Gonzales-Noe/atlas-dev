@@ -34,6 +34,23 @@ export default function ProtectedRoute({ children, role }) {
     return <Navigate to={ROUTES.SIGN_IN} state={{ from: location }} replace />
   }
 
+  let locallyApproved = false
+  try {
+    locallyApproved = JSON.parse(localStorage.getItem('atlas_signup_application'))?.status === 'active'
+  } catch {
+    locallyApproved = false
+  }
+
+  if (
+    user?.role === 'admin'
+    && user?.institution_application_status
+    && user.institution_application_status !== 'active'
+    && !locallyApproved
+    && location.pathname !== ROUTES.BILLING
+  ) {
+    return <Navigate to={ROUTES.BILLING} replace />
+  }
+
   if (role && user?.role !== role) {
     // Redirect to their correct dashboard
     const dashboards = {

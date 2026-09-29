@@ -5,6 +5,8 @@ from django.contrib.auth.hashers import make_password
 from django.core import signing
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Count
+from django.utils import timezone
 from django.core.mail import send_mail
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -168,6 +170,7 @@ class RegisterView(APIView):
         return Response(
             {
                 'detail': 'Registration received.',
+                **tokens_for_profile(profile),
                 'user': UserProfileSerializer(profile).data,
             },
             status=status.HTTP_201_CREATED,
@@ -365,6 +368,17 @@ class DashboardSummaryView(APIView):
         institution_count = Institution.objects.count()
         active_institutions = Institution.objects.filter(is_active=True).count()
         user_count = UserProfile.objects.count()
+        pending_applications = Institution.objects.filter(application_status='pending_review').count()
+        unpaid_institutions = Institution.objects.filter(payment_status__in=['unpaid', 'pending']).count()
+        user_distribution = [
+            {'name': 'Admins', 'value': UserProfile.objects.filter(role=UserRole.ADMIN).count()},
+            {'name': 'Faculty', 'value': UserProfile.objects.filter(role=UserRole.FACULTY).count()},
+            {'name': 'Super Admins', 'value': UserProfile.objects.filter(role=UserRole.SUPERADMIN).count()},
+        ]
+        institution_trend = [
+            {'name': institution.created_at.strftime('%b'), 'institutions': index + 1, 'users': UserProfile.objects.filter(institution=institution).count()}
+            for index, institution in enumerate(Institution.objects.order_by('created_at')[:12])
+        ]
         payload = {
             'role': 'superadmin',
             'title': 'Super Admin Dashboard',
@@ -373,6 +387,8 @@ class DashboardSummaryView(APIView):
                 {'label': 'Institutions', 'value': institution_count, 'tone': 'superadmin'},
                 {'label': 'Active institutions', 'value': active_institutions, 'tone': 'superadmin'},
                 {'label': 'Users', 'value': user_count, 'tone': 'superadmin'},
+                {'label': 'Pending applications', 'value': pending_applications, 'tone': 'superadmin'},
+                {'label': 'Unpaid institutions', 'value': unpaid_institutions, 'tone': 'superadmin'},
             ],
             'nav_items': [
                 {'label': 'Dashboard', 'to': '/superadmin/dashboard'},
@@ -383,6 +399,8 @@ class DashboardSummaryView(APIView):
                 {'label': institution.name, 'value': institution.plan_tier, 'detail': 'Institution'}
                 for institution in Institution.objects.order_by('-created_at')[:5]
             ],
+            'user_distribution': user_distribution,
+            'institution_trend': institution_trend,
         }
         DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
         return payload
@@ -397,6 +415,73 @@ class AccountManagementView(APIView):
         if role not in {'admin', 'superadmin'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         return Response([UserAccountSerializer(user).data for user in queryset])
+
+
+class InstitutionManagementView(APIView):
+    """List and approve institution applications for the superadmin console."""
+
+    def _require_superadmin(self, request):
+        if normalize_role(request.user.role) != 'superadmin':
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        return None
+
+    def get(self, request):
+        denied = self._require_superadmin(request)
+        if denied:
+            return denied
+
+        institutions = Institution.objects.annotate(user_count=Count('userprofile')).order_by('-created_at')
+        rows = []
+        for institution in institutions:
+            admins = list(UserProfile.objects.filter(institution=institution, role=UserRole.ADMIN).order_by('created_at'))
+            rows.append({
+                'id': str(institution.institution_id),
+                'institution': institution.name,
+                'admin': ', '.join(admin.name for admin in admins) or 'Not assigned',
+                'email': ', '.join(admin.email for admin in admins),
+                'status': 'active' if institution.is_active else institution.application_status,
+                'subscription_plan': institution.selected_plan or institution.plan_tier,
+                'payment_status': institution.payment_status,
+                'users': institution.user_count,
+                'created_at': institution.created_at.isoformat(),
+            })
+        return Response(rows)
+
+    def patch(self, request, institution_id):
+        denied = self._require_superadmin(request)
+        if denied:
+            return denied
+
+        institution = Institution.objects.filter(institution_id=institution_id).first()
+        if not institution:
+            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        decision = request.data.get('decision')
+        if decision == 'approve':
+            institution.application_status = 'active'
+            institution.subscription_status = 'trialing'
+            institution.payment_status = 'unpaid'
+            institution.is_active = True
+            institution.reviewed_at = timezone.now()
+        elif decision == 'reject':
+            institution.application_status = 'rejected'
+            institution.is_active = False
+            institution.reviewed_at = timezone.now()
+        elif decision not in {None, ''}:
+            return Response({'detail': 'Decision must be approve or reject.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if 'selected_plan' in request.data:
+            institution.selected_plan = str(request.data['selected_plan']).strip()[:50]
+        if 'name' in request.data:
+            institution.name = str(request.data['name']).strip()[:255]
+        if 'payment_status' in request.data and request.data['payment_status'] in {'unpaid', 'pending', 'paid'}:
+            institution.payment_status = request.data['payment_status']
+        if 'is_active' in request.data:
+            institution.is_active = bool(request.data['is_active'])
+            institution.application_status = 'active' if institution.is_active else 'rejected'
+
+        institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name'])
+        return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
 
 class AccountDetailView(APIView):

@@ -18,6 +18,17 @@ class SubscriptionStatusEnum(models.TextChoices):
     CANCELED = 'canceled', 'Canceled'
     TRIALING = 'trialing', 'Trialing'
 
+class ApplicationStatusEnum(models.TextChoices):
+    PENDING_REVIEW = 'pending_review', 'Pending review'
+    APPROVED_PENDING_PAYMENT = 'approved_pending_payment', 'Approved - payment due'
+    ACTIVE = 'active', 'Active'
+    REJECTED = 'rejected', 'Rejected'
+
+class PaymentStatusEnum(models.TextChoices):
+    UNPAID = 'unpaid', 'Unpaid'
+    PENDING = 'pending', 'Payment pending'
+    PAID = 'paid', 'Paid'
+
 class UserRole(models.TextChoices):
     SUPERADMIN = 'super_admin', 'Super Admin'
     ADMIN = 'admin', 'Admin'
@@ -29,6 +40,12 @@ class Institution(models.Model):
     name = models.CharField(max_length=255)
     plan_tier = models.CharField(max_length=50, choices=PlanTierEnum.choices, default=PlanTierEnum.FREE)
     subscription_status = models.CharField(max_length=50, choices=SubscriptionStatusEnum.choices, default=SubscriptionStatusEnum.ACTIVE)
+    application_status = models.CharField(max_length=40, choices=ApplicationStatusEnum.choices, default=ApplicationStatusEnum.ACTIVE)
+    payment_status = models.CharField(max_length=20, choices=PaymentStatusEnum.choices, default=PaymentStatusEnum.PAID)
+    selected_plan = models.CharField(max_length=50, blank=True, default='')
+    payment_method = models.CharField(max_length=30, blank=True, default='')
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 

@@ -114,14 +114,37 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
   async function handleEmailSignUp(e) {
     e.preventDefault();
+    const fullName = form.full_name.trim();
+    const institutionName = form.institution_name.trim();
+    const email = form.email.trim();
+    const password = form.password;
+
     if (!agreed) { setError('Please agree to the Terms and Conditions.'); return; }
-    if (!form.email || !form.password || !form.institution_name || !form.full_name) {
+    if (!fullName || !institutionName || !email || !password) {
       setError('Please fill in all fields.'); return;
     }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      setError('Please enter a valid institutional email address.');
+      return;
+    }
+
+    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Password must be at least 8 characters and include both letters and numbers.');
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(form);
-      setSuccess(true);
+      const user = await register({ ...form, full_name: fullName, institution_name: institutionName, email, password });
+      localStorage.setItem('atlas_signup_application', JSON.stringify({
+        institution: institutionName,
+        email,
+        plan: localStorage.getItem('atlas_selected_plan') || '',
+        status: 'pending_review',
+      }));
+      navigate('/billing/onboarding', { state: { user } });
     } catch (err) {
       setError(err.message);
     } finally {

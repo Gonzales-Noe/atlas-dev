@@ -154,11 +154,22 @@ export function AuthProvider({ children }) {
         email === SUPERADMIN_CREDENTIALS.email &&
         password === SUPERADMIN_CREDENTIALS.password
       ) {
-        localStorage.setItem('atlas_access_token', 'superadmin-test-token')
-        localStorage.setItem('atlas_refresh_token', 'superadmin-test-token')
-        localStorage.setItem('atlas_user', JSON.stringify(SUPERADMIN_USER))
-        dispatch({ type: 'AUTH_SUCCESS', payload: SUPERADMIN_USER })
-        return SUPERADMIN_USER
+        try {
+          const { data } = await api.post('/auth/token/', { email, password })
+          localStorage.setItem('atlas_access_token', data.access)
+          localStorage.setItem('atlas_refresh_token', data.refresh)
+          const { data: user } = await api.get('/auth/me/')
+          localStorage.setItem('atlas_user', JSON.stringify(user))
+          dispatch({ type: 'AUTH_SUCCESS', payload: user })
+          return user
+        } catch {
+          // Keep the local demo account usable when the backend is offline.
+          localStorage.setItem('atlas_access_token', 'superadmin-test-token')
+          localStorage.setItem('atlas_refresh_token', 'superadmin-test-token')
+          localStorage.setItem('atlas_user', JSON.stringify(SUPERADMIN_USER))
+          dispatch({ type: 'AUTH_SUCCESS', payload: SUPERADMIN_USER })
+          return SUPERADMIN_USER
+        }
       }
 
       if (
@@ -223,14 +234,22 @@ export function AuthProvider({ children }) {
     // payload: { email, password, institution_name, full_name }
     dispatch({ type: 'AUTH_LOADING' })
     try {
-      await api.post('/auth/register/', {
+      const { data } = await api.post('/auth/register/', {
         email: payload.email,
         password: payload.password,
         institution_name: payload.institution_name,
         full_name: payload.full_name,
+        selected_plan: localStorage.getItem('atlas_selected_plan') || '',
         role: 'faculty',
       })
+      if (data.access && data.refresh) {
+        localStorage.setItem('atlas_access_token', data.access)
+        localStorage.setItem('atlas_refresh_token', data.refresh)
+        localStorage.setItem('atlas_user', JSON.stringify(data.user))
+        dispatch({ type: 'AUTH_SUCCESS', payload: data.user })
+      }
       dispatch({ type: 'AUTH_ERROR', payload: null }) // not logged in yet — pending approval
+      return data.user
     } catch (err) {
       const msg = err.response?.data?.email?.[0]
         || err.response?.data?.detail
