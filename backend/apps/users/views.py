@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -696,6 +697,34 @@ class FacultyAssignmentsView(APIView):
             'course_title': course.course_title,
             'section': assignment.section,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def delete(self, request):
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        raw_id = request.data.get('assignment_id')
+        try:
+            assignment_id = uuid.UUID(str(raw_id))
+        except (AttributeError, TypeError, ValueError):
+            return Response(
+                {'detail': 'A valid assignment_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        assignment = CourseLoad.objects.select_related('faculty').filter(
+            assignment_id=assignment_id,
+        ).first()
+        if not assignment:
+            return Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if (
+            normalize_role(request.user.role) == 'admin'
+            and assignment.faculty.institution_id != request.user.institution_id
+        ):
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+
+        assignment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InstitutionCustomizationView(APIView):
