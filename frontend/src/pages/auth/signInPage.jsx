@@ -105,10 +105,25 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.email || !form.password) { setError('Please enter your email and password.'); return; }
+    const email = form.email.trim();
+    const password = form.password.trim();
+
+    if (!email || !password) { setError('Please enter your email and password.'); return; }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      setError('Please enter a valid institutional email address.');
+      return;
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const user = await login(form.email, form.password);
+      const user = await login(email, password);
       if (from) navigate(from, { replace: true });
       else redirectToDashboard(user.role);
     } catch (err) {

@@ -2,6 +2,7 @@
 // src/features/Admin/Dashboard.jsx
 // ═══════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
@@ -41,6 +42,20 @@ export default function AdminDashboard() {
         title={`Welcome, ${user?.name || 'Admin'} 👋`}
         subtitle="Institutional overview — manage faculty, courses, and activity"
       />
+
+      <GlassCard style={{ marginBottom: 24, border: '1px solid rgba(96,170,255,0.35)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ color: '#60AAFF', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>First-time setup</div>
+            <h2 style={{ margin: '7px 0 5px', fontSize: '1.12rem' }}>Make your workspace ready for faculty</h2>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Add faculty, create your course catalog, and upload institutional knowledge.</div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <Link to="/admin/account-management" style={{ color: '#fff', background: '#8B0000', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Add faculty</Link>
+            <Link to="/admin/knowledge-base" style={{ color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Set up knowledge base</Link>
+          </div>
+        </div>
+      </GlassCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
         <StatCard title="Faculty Members"   value={stats.totalFaculty}      icon="👨‍🏫" accent="#FF6B6B" />

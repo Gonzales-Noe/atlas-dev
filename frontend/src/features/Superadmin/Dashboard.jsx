@@ -1,22 +1,9 @@
 // src/features/Superadmin/Dashboard.jsx
-import { AreaChart, Area, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { useEffect, useState } from 'react'
+import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, MetricRow } from '../../components/ui'
-
-const systemStatsData = [
-  { name: 'Jan', traffic: 4000, usage: 2400, uptime: 99.8 },
-  { name: 'Feb', traffic: 3000, usage: 1398, uptime: 99.9 },
-  { name: 'Mar', traffic: 2000, usage: 9800, uptime: 99.2 },
-  { name: 'Apr', traffic: 2780, usage: 3908, uptime: 99.7 },
-  { name: 'May', traffic: 1890, usage: 4800, uptime: 99.5 },
-  { name: 'Jun', traffic: 2390, usage: 3800, uptime: 99.9 },
-]
-
-const userTypeData = [
-  { name: 'Faculty',  value: 1250 },
-  { name: 'Students', value: 8500 },
-  { name: 'Admins',   value: 150  },
-]
+import api from '../../config/api'
 
 const COLORS = ['#C0392B', '#FF6B6B', 'rgba(255,107,107,0.35)']
 
@@ -32,7 +19,44 @@ const tooltipStyle = {
 
 const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'var(--font-sans)' }
 
+const EMPTY_SUMMARY = { cards: [], user_distribution: [], institution_trend: [] }
+const LOCAL_SUMMARY = {
+  cards: [
+    { label: 'Institutions', value: 5 },
+    { label: 'Active institutions', value: 4 },
+    { label: 'Users', value: 1295 },
+    { label: 'Pending applications', value: 0 },
+    { label: 'Unpaid institutions', value: 0 },
+  ],
+  user_distribution: [
+    { name: 'Admins', value: 5 },
+    { name: 'Faculty', value: 1280 },
+    { name: 'Other', value: 10 },
+  ],
+  institution_trend: [
+    { name: 'Jan', institutions: 2, users: 480 },
+    { name: 'Feb', institutions: 3, users: 710 },
+    { name: 'Mar', institutions: 4, users: 980 },
+    { name: 'Apr', institutions: 5, users: 1295 },
+  ],
+}
+
 export default function SuperAdminDashboard() {
+  const [summary, setSummary] = useState({ cards: [], user_distribution: [], institution_trend: [] })
+
+  useEffect(() => {
+    if (localStorage.getItem('atlas_access_token') === 'superadmin-test-token') {
+      setSummary(LOCAL_SUMMARY)
+      return
+    }
+
+    api.get('/auth/dashboard/summary/')
+      .then(({ data }) => setSummary(data))
+      .catch(() => setSummary(EMPTY_SUMMARY))
+  }, [])
+
+  const valueFor = label => summary.cards.find(card => card.label === label)?.value ?? 0
+
   return (
     <SuperAdminLayout>
       <PageHeader
@@ -42,10 +66,10 @@ export default function SuperAdminDashboard() {
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Total Institutions" value="12"   icon="🏛️" trend="+2 this month" trendUp={true}  accent="#FF6B6B" />
-        <StatCard title="Active Users"        value="10k"  icon="👥" trend="+5.2%"        trendUp={true}  accent="#60AAFF" />
-        <StatCard title="System Uptime"       value="99.7%" icon="⚡" trend="Excellent"                   accent="#5EDA7E" />
-        <StatCard title="API Traffic"         value="15.5k" icon="📡" trend="+12.5%"       trendUp={true}  accent="#FFB74D" />
+        <StatCard title="Total Institutions" value={valueFor('Institutions')} icon="🏛️" accent="#FF6B6B" />
+        <StatCard title="Active Institutions" value={valueFor('Active institutions')} icon="✅" accent="#5EDA7E" />
+        <StatCard title="Users" value={valueFor('Users')} icon="👥" accent="#60AAFF" />
+        <StatCard title="Pending Applications" value={valueFor('Pending applications')} icon="⏳" accent="#FFB74D" />
       </div>
 
       {/* Charts row */}
@@ -55,8 +79,8 @@ export default function SuperAdminDashboard() {
         <GlassCard title="User Distribution">
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
-              <Pie data={userTypeData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={3}>
-                {userTypeData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+              <Pie data={summary.user_distribution} cx="50%" cy="50%" innerRadius={55} outerRadius={90} dataKey="value" paddingAngle={3}>
+                {summary.user_distribution.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
               </Pie>
               <Tooltip contentStyle={tooltipStyle} />
               <Legend
@@ -67,9 +91,9 @@ export default function SuperAdminDashboard() {
         </GlassCard>
 
         {/* Area chart */}
-        <GlassCard title="Traffic — Last 6 Months">
+        <GlassCard title="Institution and user growth">
           <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={systemStatsData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+            <AreaChart data={summary.institution_trend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="gTraffic" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%"  stopColor="#C0392B" stopOpacity={0.5} />
@@ -80,7 +104,8 @@ export default function SuperAdminDashboard() {
               <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
               <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Area type="monotone" dataKey="traffic" stroke="#C0392B" strokeWidth={2} fill="url(#gTraffic)" dot={false} activeDot={{ r: 5, fill: '#FF6B6B' }} />
+              <Area type="monotone" dataKey="institutions" name="Institutions" stroke="#C0392B" strokeWidth={2} fill="url(#gTraffic)" dot={false} activeDot={{ r: 5, fill: '#FF6B6B' }} />
+              <Area type="monotone" dataKey="users" name="Users" stroke="#60AAFF" strokeWidth={2} fill="transparent" dot={false} activeDot={{ r: 5, fill: '#60AAFF' }} />
             </AreaChart>
           </ResponsiveContainer>
         </GlassCard>
@@ -89,26 +114,10 @@ export default function SuperAdminDashboard() {
       {/* Bottom row */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
 
-        {/* Uptime line chart */}
-        <GlassCard title="System Uptime Trend">
-          <ResponsiveContainer width="100%" height={220}>
-            <LineChart data={systemStatsData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
-              <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
-              <YAxis domain={[98, 100]} tick={axisStyle} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Line type="monotone" dataKey="uptime" stroke="#34C759" strokeWidth={2.5} dot={false} activeDot={{ r: 5, fill: '#34C759' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </GlassCard>
-
-        {/* Performance metrics */}
-        <GlassCard title="Performance Metrics">
-          <MetricRow label="API Response Time"    value="145ms"   status="Excellent" statusType="success" />
-          <MetricRow label="Database Query Time"  value="23ms"    status="Good"      statusType="success" />
-          <MetricRow label="Server CPU Usage"     value="34%"     status="Normal"    statusType="info" />
-          <MetricRow label="Memory Usage"         value="62%"     status="Acceptable" statusType="warning" />
-          <MetricRow label="Network Bandwidth"    value="2.3 Gbps" status="Good"     statusType="success" divider={false} />
+        <GlassCard title="Application status">
+          <MetricRow label="Active institutions" value={valueFor('Active institutions')} status="Active" statusType="success" />
+          <MetricRow label="Pending applications" value={valueFor('Pending applications')} status="Review" statusType="warning" />
+          <MetricRow label="Unpaid institutions" value={valueFor('Unpaid institutions')} status="Payment due" statusType="info" divider={false} />
         </GlassCard>
       </div>
     </SuperAdminLayout>

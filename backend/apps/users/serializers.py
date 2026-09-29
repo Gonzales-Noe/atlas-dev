@@ -36,6 +36,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     name = serializers.CharField(read_only=True)
     institution_name = serializers.CharField(source='institution.name', read_only=True, allow_null=True)
     dashboard_path = serializers.SerializerMethodField()
+    institution_application_status = serializers.CharField(source='institution.application_status', read_only=True, allow_null=True)
+    institution_payment_status = serializers.CharField(source='institution.payment_status', read_only=True, allow_null=True)
 
     class Meta:
         model = UserProfile
@@ -47,6 +49,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role_code',
             'institution_name',
             'dashboard_path',
+            'institution_application_status',
+            'institution_payment_status',
             'is_active',
             'created_at',
             'picture_url',
@@ -139,6 +143,7 @@ class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255, allow_blank=True, required=False)
     email = serializers.EmailField()
     institution_name = serializers.CharField(max_length=255)
+    selected_plan = serializers.CharField(max_length=50, required=False, allow_blank=True)
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
     role = serializers.CharField(required=False, default=UserRole.FACULTY)
 
@@ -153,13 +158,14 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Student accounts are not supported. Register as faculty.'
             )
-        # Public signup is faculty-only (admins are provisioned separately).
-        return UserRole.FACULTY
+        # Public signup creates the institution's first administrator.
+        return UserRole.ADMIN
 
     @transaction.atomic
     def create(self, validated_data):
         institution_name = validated_data.pop('institution_name').strip()
-        validated_data.pop('role', None)
+        selected_plan = validated_data.pop('selected_plan', '').strip()
+        role = validated_data.pop('role', UserRole.ADMIN)
         password = validated_data.pop('password')
         validated_data.pop('full_name', None)
 
@@ -167,16 +173,30 @@ class RegisterSerializer(serializers.Serializer):
             name=institution_name,
             defaults={
                 'plan_tier': 'free',
-                'subscription_status': 'active',
-                'is_active': True,
+                'subscription_status': 'trialing',
+                'application_status': 'pending_review',
+                'payment_status': 'unpaid',
+                'selected_plan': selected_plan,
+                'is_active': False,
             },
         )
+
+        if not institution.application_status == 'active':
+            if selected_plan:
+                institution.selected_plan = selected_plan
+            institution.application_status = 'pending_review'
+            institution.payment_status = 'unpaid'
+            institution.is_active = False
+            update_fields = ['application_status', 'payment_status', 'is_active']
+            if selected_plan:
+                update_fields.append('selected_plan')
+            institution.save(update_fields=update_fields)
 
         return UserProfile.objects.create(
             institution=institution,
             email=validated_data['email'],
             password_hash=make_password(password),
-            role=UserRole.FACULTY,
+            role=role,
             is_active=True,
         )
 
