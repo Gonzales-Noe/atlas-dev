@@ -20,6 +20,7 @@ from .serializers import (
     PASSWORD_RESET_SALT,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
+    FacultyCreateSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
@@ -171,6 +172,29 @@ class RegisterView(APIView):
             {
                 'detail': 'Registration received.',
                 **tokens_for_profile(profile),
+                'user': UserProfileSerializer(profile).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FacultyCreateView(APIView):
+    """Allow institution admins to create faculty users within their institution."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        role = normalize_role(request.user.role)
+        if role != 'admin':
+            return Response({'detail': 'Only institution admins can create faculty users.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = FacultyCreateSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        profile = serializer.save()
+        return Response(
+            {
+                'detail': 'Faculty account created.',
                 'user': UserProfileSerializer(profile).data,
             },
             status=status.HTTP_201_CREATED,
@@ -577,13 +601,39 @@ class FacultyAssignmentsView(APIView):
         if normalize_role(request.user.role) == 'admin' and faculty.institution_id != request.user.institution_id:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
-        course = Course.objects.filter(course_id=request.data.get('course_id')).first()
-        if not course:
-            return Response({'detail': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
-
         section = str(request.data.get('section') or '').strip()
         if not section:
             return Response({'detail': 'Handled section is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get or create course
+        course_id = request.data.get('course_id')
+        course = None
+        if course_id:
+            course = Course.objects.filter(course_id=course_id).first()
+            if not course:
+                return Response({'detail': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Create new course
+            course_code = (request.data.get('course_code') or '').strip()
+            course_title = (request.data.get('course_title') or '').strip()
+            description = (request.data.get('description') or '').strip()
+            
+            if not course_code:
+                return Response({'detail': 'Course code is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not course_title:
+                return Response({'detail': 'Course title is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if Course.objects.filter(course_code=course_code).exists():
+                return Response(
+                    {'detail': f"A course with code '{course_code}' already exists."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            
+            course = Course.objects.create(
+                course_code=course_code,
+                course_title=course_title,
+                description=description or None,
+            )
 
         assignment, created = CourseLoad.objects.update_or_create(
             course=course,
