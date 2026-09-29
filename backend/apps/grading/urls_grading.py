@@ -4,6 +4,14 @@ from . import views
 
 urlpatterns = [
     path("student-scores/", views.student_scores, name="grading_student_scores"),
+    path("sections/", views.grading_sections, name="grading_sections"),
+    path("blocks/", views.grading_blocks, name="grading_blocks"),
+    path("reports/", views.grading_reports, name="grading_reports"),
+    path(
+        "bubble/templates/<uuid:template_id>/item-analysis/",
+        views.bubble_sheet_item_analysis,
+        name="bubble_sheet_item_analysis",
+    ),
     path("bubble/templates/", views.bubble_sheet_templates, name="bubble_sheet_templates"),
     path(
         "bubble/templates/<uuid:template_id>/",

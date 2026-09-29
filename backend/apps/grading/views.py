@@ -15,8 +15,10 @@ from apps.integrations.models import (
     Assessment,
     AssessmentItem,
     AssessmentScoreResult,
+    Block,
     Course,
     CourseLoad,
+    Section,
     StudentData,
     UserProfile,
     UserRole,
@@ -29,6 +31,7 @@ from apps.grading.models import (
     OmrJobStatus,
     OmrTemplateProfile,
 )
+from apps.grading.services import analytics
 from apps.grading.services.mapper import OmrMapperService
 
 from .serializers import (
@@ -754,58 +757,476 @@ def student_scores(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    rows: list[dict] = []
+    templates = list(
+        BubbleSheetTemplate.objects
+        .filter(assessment_id=assessment_id)
+        .select_related("course", "assessment")
+    )
+    total_items = max((t.total_items for t in templates), default=0)
+    passing_percent = next(
+        (_to_float(t.passing_score) for t in templates if t.passing_score is not None),
+        analytics.DEFAULT_PASSING_PERCENT,
+    )
 
-    # 1. AssessmentScoreResult rows (final scores, SR code)
+    # Latest scan per student for this exam, joined to blocks for grade level/section.
+    records = analytics.build_records(templates)
+    scored_by_sid = {r["student_id"]: r for r in records if r["identified"]}
+
+    course_sections = list(
+        CourseLoad.objects.filter(course_id=course_id).values_list("section__section_name", flat=True)
+    )
+    roster = analytics.course_roster(course_id, extra_sections=course_sections)
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for student in roster:
+        sid = student["student_id"]
+        seen.add(sid)
+        rec = scored_by_sid.get(sid)
+        rows.append(_score_row(sid, student["grade_level"], student["section"], rec, total_items))
+
+    for rec in records:
+        if rec["student_id"] in seen:
+            continue
+        seen.add(rec["student_id"])
+        rows.append(_score_row(
+            rec["student_id"], rec["grade_level"], rec["section"], rec, total_items
+        ))
+
+    # Grade-sheet imports only fill students that have no bubble sheet score.
     try:
-        score_results = AssessmentScoreResult.objects.filter(assessment_id=assessment_id)
-        for r in score_results:
-            sid = _as_student_id(r.student_identifier)
-            rows.append({
-                "student_id": sid,
-                "student_name": _resolve_student_name(sid),
-                "score": _to_float(r.score, 0),
-                "max_score": None,
-                "percent": None,
-                "source": "grade_sheet",
-                "flagged": False,
-            })
+        by_sid = {r["student_id"]: r for r in rows if r["student_id"]}
+        results = list(AssessmentScoreResult.objects.filter(assessment_id=assessment_id))
+        extra_blocks = analytics.blocks_for(
+            _as_student_id(r.student_identifier) for r in results
+        )
+        for result in results:
+            sid = _as_student_id(result.student_identifier)
+            row = by_sid.get(sid)
+            if row is None:
+                block = extra_blocks.get(sid)
+                row = _score_row(
+                    sid,
+                    analytics.block_grade(block),
+                    analytics.block_section(block),
+                    None,
+                    total_items,
+                )
+                rows.append(row)
+                by_sid[sid] = row
+            if row["score"] is None:
+                row["score"] = _to_float(result.score, 0)
+                row["source"] = "grade_sheet"
+                if row["max_score"]:
+                    row["percent"] = round(row["score"] / row["max_score"] * 100, 2)
+                    row["passed"] = row["percent"] >= passing_percent
     except Exception:
         logger.exception(
             "Failed to load AssessmentScoreResult rows for assessment %s", assessment_id
         )
 
-    # 2. BubbleSheetScan rows (SR codes as varchar, nullable)
-    templates = BubbleSheetTemplate.objects.filter(assessment_id=assessment_id)
-    for tpl in templates:
-        scans = BubbleSheetScan.objects.filter(template=tpl)
-        for s in scans:
-            sid = _as_student_id(s.student_identifier)
-            # Unidentified scans (null student_id) must not collapse into one row
-            exists = bool(sid) and any(r["student_id"] == sid for r in rows)
-            if not exists:
-                rows.append({
-                    "student_id": sid,
-                    "student_name": _resolve_student_name(sid),
-                    "score": _to_float(s.score_raw),
-                    "max_score": _to_float(s.max_score),
-                    "percent": _to_float(s.score_percent),
-                    "source": "bubble_sheet",
-                    "flagged": bool(s.is_flagged),
-                })
+    names = {
+        sd.sr_code: (sd.user.name or sd.user.email)
+        for sd in StudentData.objects.select_related("user")
+        .filter(sr_code__in=[r["student_id"] for r in rows if r["student_id"]])
+        if sd.user
+    }
+    for r in rows:
+        r["student_name"] = names.get(r["student_id"])
 
-    rows.sort(key=lambda r: r.get("student_id") or "")
+    rows.sort(key=lambda r: (
+        r["section"] == analytics.UNASSIGNED, r["section"].lower(), r["student_id"] or "~"
+    ))
 
     payload = {
         "success": True,
         "course_id": course_id,
         "assessment_id": assessment_id,
         "assessment_title": assessment.title,
+        "total_items": total_items,
+        "passing_percent": passing_percent,
         "total_students": len(rows),
+        "scored_students": sum(1 for r in rows if r["score"] is not None),
+        "grade_levels": analytics.sorted_options(r["grade_level"] for r in rows),
+        "sections": analytics.sorted_options(r["section"] for r in rows),
         "students": rows,
         "rows": rows,  # alias used by older mobile clients
     }
     return Response(payload, status=status.HTTP_200_OK)
+
+
+def _score_row(student_id, grade_level, section, record, total_items) -> dict:
+    return {
+        "student_id": student_id,
+        "sr_code": student_id,
+        "student_name": None,
+        "grade_level": grade_level,
+        "section": section,
+        "score": record["score"] if record else None,
+        "max_score": (record["max_score"] if record else None) or (total_items or None),
+        "percent": record["percent"] if record else None,
+        "passed": record["passed"] if record else None,
+        "flagged": record["flagged"] if record else False,
+        "source": "bubble_sheet" if record else None,
+        "scanned_at": record["scanned_at"] if record else None,
+    }
+
+
+def _faculty_course_ids(faculty) -> list:
+    if faculty and faculty.role in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        return list(Course.objects.values_list("course_id", flat=True))
+    return list(
+        CourseLoad.objects.filter(faculty=faculty)
+        .values_list("course_id", flat=True)
+        .distinct()
+    )
+
+
+def _valid_uuid(value) -> bool:
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
+# ── Blocks (grade level / section roster) ─────────────────────────────────────
+
+
+def _clean_student_id(value) -> str:
+    sid = _as_student_id(value)
+    if not sid or "?" in sid or sid.lower() == "unknown" or len(sid) > 64:
+        return ""
+    return sid
+
+
+def _block_payload(b: Block) -> dict:
+    return {
+        "block_id": str(b.block_id),
+        "student_id": b.student_id,
+        "grade_level": b.grade_level,
+        "section_id": str(b.section_id) if b.section_id else None,
+        "section": b.section_name,
+    }
+
+
+def _sectioned_block(student_id) -> Block | None:
+    sid = _clean_student_id(student_id)
+    if not sid:
+        return None
+    return Block.objects.select_related("section").filter(
+        student_id=sid, section__isnull=False
+    ).first()
+
+
+def _visible_sections(faculty):
+    qs = Section.objects.prefetch_related("courses")
+    if faculty and faculty.institution_id:
+        qs = qs.filter(Q(institution_id=faculty.institution_id) | Q(institution__isnull=True))
+    return qs.order_by("section_name")
+
+
+def _not_in_section_response(student_id):
+    return Response(
+        {
+            "success": False,
+            "code": "student_not_in_section",
+            "student_id": _as_student_id(student_id) or None,
+            "detail": (
+                f"Student ID {student_id} is not yet on any section."
+                if _as_student_id(student_id)
+                else "Student ID could not be read, so it is not on any section."
+            ),
+        },
+        status=status.HTTP_409_CONFLICT,
+    )
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def grading_blocks(request):
+    """
+    GET  /api/grading/blocks/?student_id=&section_id=&course_id=
+         Students assigned to a section, plus the sections the faculty can pick
+         (`takes_course` marks sections linked to course_id via section_courses).
+    POST /api/grading/blocks/  {student_id, section_id | section, grade_level?, course_id?}
+         Add a student to a section and link that section to the course.
+         Rows seeded without a section are updated in place.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+
+    if request.method == "GET":
+        qs = (
+            Block.objects.select_related("section")
+            .filter(section__isnull=False)
+            .order_by("section__section_name", "student_id")
+        )
+        student_id = request.query_params.get("student_id", "").strip()
+        section_id = request.query_params.get("section_id", "").strip()
+        course_id = request.query_params.get("course_id", "").strip()
+        if student_id:
+            qs = qs.filter(student_id=student_id)
+        if section_id and _valid_uuid(section_id):
+            qs = qs.filter(section_id=section_id)
+        sections = []
+        for s in _visible_sections(faculty):
+            course_ids = {str(c.course_id) for c in s.courses.all()}
+            sections.append({
+                "section_id": str(s.section_id),
+                "section_name": s.section_name,
+                "course_ids": sorted(course_ids),
+                "takes_course": bool(course_id) and course_id in course_ids,
+            })
+        return Response({
+            "success": True,
+            "blocks": [_block_payload(b) for b in qs],
+            "sections": sections,
+        })
+
+    course_id = str(request.data.get("course_id") or "").strip()
+    if course_id and (not _valid_uuid(course_id) or not _faculty_can_access_course(faculty, course_id)):
+        return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    sid = _clean_student_id(request.data.get("student_id"))
+    section_id = str(request.data.get("section_id") or "").strip()
+    section_name = str(request.data.get("section") or "").strip()[:100]
+    grade_level = str(request.data.get("grade_level") or "").strip()[:100]
+    if not sid:
+        return Response(
+            {"success": False, "detail": "Enter a complete student ID (no '?' characters)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if section_id:
+        section = _visible_sections(faculty).filter(section_id=section_id).first() if _valid_uuid(section_id) else None
+        if section is None:
+            return Response({"success": False, "detail": "Section not found."}, status=status.HTTP_404_NOT_FOUND)
+    elif section_name:
+        section = _visible_sections(faculty).filter(section_name__iexact=section_name).first()
+        if section is None:
+            section = Section.objects.create(
+                institution_id=faculty.institution_id if faculty else None,
+                section_name=section_name,
+            )
+    else:
+        return Response({"success": False, "detail": "Section is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+    block = Block.objects.select_related("section").filter(student_id=sid).first()
+    if block and block.section_id and block.section_id != section.section_id:
+        return Response(
+            {
+                "success": False,
+                "code": "student_in_other_section",
+                "block": _block_payload(block),
+                "detail": f"{sid} is already in section {block.section_name}.",
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+    with transaction.atomic():
+        if block is None:
+            block = Block(student_id=sid)
+        block.section = section
+        if grade_level or not block.grade_level:
+            block.grade_level = grade_level
+        block.save()
+        if course_id:
+            section.courses.add(course_id)
+    return Response({"success": True, "block": _block_payload(block)}, status=status.HTTP_201_CREATED)
+
+
+# ── Sections / Reports / Item analysis ────────────────────────────────────────
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grading_sections(request):
+    """
+    GET /api/grading/sections/?course_id=<uuid>
+    Distinct grade levels and sections (from `blocks`) of students scanned in the
+    faculty's courses, optionally limited to one course.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+    course_ids = _faculty_course_ids(faculty)
+    course_id = request.query_params.get("course_id", "").strip()
+    if course_id:
+        if not _valid_uuid(course_id) or not _faculty_can_access_course(faculty, course_id):
+            return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+        course_ids = [course_id]
+
+    roster = []
+    for cid in course_ids:
+        sections = CourseLoad.objects.filter(course_id=cid).values_list("section__section_name", flat=True)
+        roster.extend(analytics.course_roster(cid, extra_sections=sections))
+
+    return Response({
+        "success": True,
+        "grade_levels": analytics.sorted_options(s["grade_level"] for s in roster),
+        "sections": analytics.sorted_options(s["section"] for s in roster),
+        "blocks": sorted(
+            {(s["grade_level"], s["section"]) for s in roster},
+            key=lambda gs: (gs[0].lower(), gs[1].lower()),
+        ),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def bubble_sheet_item_analysis(request, template_id):
+    """
+    GET /api/grading/bubble/templates/<template_id>/item-analysis/?grade_level=&section=
+    Automated upper/lower 27% item analysis for one exam.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+    t = (
+        BubbleSheetTemplate.objects.select_related("course", "assessment")
+        .filter(pk=template_id).first()
+    )
+    if not t:
+        return Response({"success": False, "detail": "Template not found."}, status=status.HTTP_404_NOT_FOUND)
+    if not _faculty_can_access_course(faculty, t.course_id):
+        return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    records = analytics.filter_records(
+        analytics.build_records([t]),
+        grade_level=request.query_params.get("grade_level") or None,
+        section=request.query_params.get("section") or None,
+    )
+    meta = analytics.item_metadata_by_assessment([t.assessment_id] if t.assessment_id else [])
+    result = analytics.item_analysis(records, t, meta.get(str(t.assessment_id), {}))
+    return Response({"success": True, **result})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grading_reports(request):
+    """
+    GET /api/grading/reports/?course_id=&assessment_id=&grade_level=&section=
+    Descriptive analytics: pass rates per section / subject / exam, score
+    distribution, Bloom mastery, and item analysis (when one exam is in scope).
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+    if not faculty:
+        return Response({"success": False, "detail": "No faculty profile linked."}, status=status.HTTP_403_FORBIDDEN)
+
+    course_ids = _faculty_course_ids(faculty)
+    course_id = request.query_params.get("course_id", "").strip() or None
+    assessment_id = request.query_params.get("assessment_id", "").strip() or None
+    grade_level = request.query_params.get("grade_level", "").strip() or None
+    section = request.query_params.get("section", "").strip() or None
+
+    for value in (course_id, assessment_id):
+        if value and not _valid_uuid(value):
+            return Response({"success": False, "detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
+    if course_id and not _faculty_can_access_course(faculty, course_id):
+        return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    all_templates = (
+        BubbleSheetTemplate.objects
+        .filter(course_id__in=course_ids)
+        .select_related("course", "assessment")
+    )
+    templates = all_templates
+    if course_id:
+        templates = templates.filter(course_id=course_id)
+    if assessment_id:
+        templates = templates.filter(assessment_id=assessment_id)
+    templates = list(templates)
+
+    course_rows = {}
+    for t in all_templates:
+        course_rows[str(t.course_id)] = {
+            "course_id": str(t.course_id),
+            "course_code": t.course.course_code,
+            "course_title": t.course.course_title,
+        }
+    assessment_options = []
+    seen_assessments = set()
+    for t in all_templates:
+        if course_id and str(t.course_id) != course_id:
+            continue
+        aid = str(t.assessment_id) if t.assessment_id else None
+        if not aid or aid in seen_assessments:
+            continue
+        seen_assessments.add(aid)
+        assessment_options.append({
+            "assessment_id": aid,
+            "title": t.assessment.title,
+            "course_id": str(t.course_id),
+            "course_code": t.course.course_code,
+            "template_id": str(t.template_id),
+            "total_items": t.total_items,
+            "passing_percent": _to_float(t.passing_score),
+        })
+
+    scoped = analytics.build_records(templates)
+    grade_options = analytics.sorted_options(r["grade_level"] for r in scoped)
+    section_options = analytics.sorted_options(
+        r["section"] for r in analytics.filter_records(scoped, grade_level=grade_level)
+    )
+    records = analytics.filter_records(scoped, grade_level=grade_level, section=section)
+
+    assessment_ids = {t.assessment_id for t in templates if t.assessment_id}
+    item_meta = analytics.item_metadata_by_assessment(assessment_ids)
+
+    item_block = None
+    exam_templates = {r["template"].template_id: r["template"] for r in records}
+    if assessment_id or len(exam_templates) == 1:
+        candidates = list(exam_templates.values()) or templates
+        if candidates:
+            target = max(
+                candidates,
+                key=lambda t: sum(1 for r in records if r["template"].template_id == t.template_id),
+            )
+            item_block = analytics.item_analysis(
+                records, target, item_meta.get(str(target.assessment_id), {})
+            )
+
+    passing_values = {r["passing_percent"] for r in records}
+    return Response({
+        "success": True,
+        "filters": {
+            "course_id": course_id,
+            "assessment_id": assessment_id,
+            "grade_level": grade_level,
+            "section": section,
+        },
+        "options": {
+            "courses": sorted(course_rows.values(), key=lambda c: c["course_code"]),
+            "assessments": assessment_options,
+            "grade_levels": grade_options,
+            "sections": section_options,
+        },
+        "passing_percent": passing_values.pop() if len(passing_values) == 1 else None,
+        "summary": {
+            **analytics.summarize(records),
+            "identified_students": len({r["student_id"] for r in records if r["identified"]}),
+            "unidentified_papers": sum(1 for r in records if not r["identified"]),
+            "flagged_papers": sum(1 for r in records if r["flagged"]),
+        },
+        "distribution": analytics.score_distribution(records),
+        "by_section": analytics.group_summaries(
+            records, analytics._section_key, lambda r: r["section"],
+            lambda r: {"grade_level": r["grade_level"]},
+        ),
+        "by_course": analytics.group_summaries(
+            records, analytics._course_key, analytics._course_label,
+            lambda r: {"course_title": r["template"].course.course_title},
+        ),
+        "by_assessment": analytics.group_summaries(
+            records, analytics._assessment_key, analytics._assessment_label,
+            lambda r: {"course_code": r["template"].course.course_code},
+        ),
+        "bloom": analytics.bloom_mastery(records, item_meta),
+        "item_analysis": item_block,
+    })
 
 
 # ── Bubble Sheet Template CRUD ────────────────────────────────────────────────
@@ -1113,6 +1534,10 @@ def bubble_sheet_scan(request):
         student_id = d.get("student_identifier") or None
         if isinstance(student_id, str) and not student_id.strip():
             student_id = None
+        if _sectioned_block(student_id) is None:
+            image_path_abs.unlink(missing_ok=True)
+            return _not_in_section_response(student_id)
+        student_id = _clean_student_id(student_id)
         score_raw, max_score, score_pct = BubbleSheetScannerService._grade(
             responses, t.answer_key or {}
         )
@@ -1145,6 +1570,10 @@ def bubble_sheet_scan(request):
         result = BubbleSheetScannerService().scan(image_path_abs, t)
     except RuntimeError as exc:
         return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+    if _sectioned_block(result["student_identifier"]) is None:
+        image_path_abs.unlink(missing_ok=True)
+        return _not_in_section_response(result["student_identifier"])
 
     scan = BubbleSheetScan.objects.create(
         template=t,
@@ -1212,6 +1641,9 @@ def bubble_sheet_scan_detail(request, scan_id):
         ser = BubbleScanPatchSerializer(data=request.data)
         if not ser.is_valid():
             return Response({"success": False, "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
+        new_sid = ser.validated_data.get("student_identifier")
+        if "student_identifier" in ser.validated_data and _sectioned_block(new_sid) is None:
+            return _not_in_section_response(new_sid)
         for field, val in ser.validated_data.items():
             setattr(scan, field, val)
         # Re-grade if responses changed and answer key exists
