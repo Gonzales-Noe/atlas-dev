@@ -313,6 +313,7 @@ class DashboardSummaryView(APIView):
                 {'label': 'Grading', 'to': '/faculty/grading'},
             ],
             'recent': courses,
+            'courses': list(by_course.values()),
         }
         DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
         return payload
