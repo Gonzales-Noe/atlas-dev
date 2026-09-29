@@ -1,3 +1,4 @@
+import datetime
 import logging
 import uuid
 from pathlib import Path
@@ -1229,6 +1230,85 @@ def grading_reports(request):
     })
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grading_recent_scans(request):
+    """
+    GET /api/grading/scans/recent/?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD&limit=
+    Scans on the faculty's own courses, newest first. Dates are inclusive and
+    interpreted in the server's timezone; both are optional.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+    if not faculty:
+        return Response({"success": False, "detail": "No faculty profile linked."}, status=status.HTTP_403_FORBIDDEN)
+
+    def parse_date(key):
+        raw = (request.query_params.get(key) or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.date.fromisoformat(raw)
+        except ValueError:
+            raise ValueError(key)
+
+    try:
+        date_from = parse_date("date_from")
+        date_to = parse_date("date_to")
+    except ValueError as exc:
+        return Response({"success": False, "detail": f"Invalid {exc}; use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        limit = max(1, min(int(request.query_params.get("limit") or 500), 2000))
+    except ValueError:
+        limit = 500
+
+    qs = (
+        BubbleSheetScan.objects
+        .filter(template__course_id__in=_faculty_course_ids(faculty))
+        .select_related("template", "template__course", "template__assessment")
+        .order_by("-created_at")
+    )
+    if date_from:
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        qs = qs.filter(created_at__date__lte=date_to)
+    scans = list(qs[:limit])
+
+    ids = {
+        analytics.normalize_student_id(s.student_identifier)
+        for s in scans if analytics.is_valid_student_id(s.student_identifier)
+    }
+    blocks = analytics.blocks_for(ids)
+
+    rows = []
+    for s in scans:
+        t = s.template
+        sid = analytics.normalize_student_id(s.student_identifier) if s.student_identifier else None
+        percent = _to_float(s.score_percent)
+        passing = _to_float(t.passing_score)
+        if passing is None:
+            passing = analytics.DEFAULT_PASSING_PERCENT
+        rows.append({
+            "scan_id": str(s.scan_id),
+            "student_id": sid,
+            "section": analytics.block_section(blocks.get(sid)) if sid else analytics.UNASSIGNED,
+            "template_id": str(t.template_id),
+            "template_name": t.name,
+            "assessment_title": t.assessment.title if t.assessment_id else t.name,
+            "course_id": str(t.course_id),
+            "course_code": t.course.course_code,
+            "course_title": t.course.course_title,
+            "score": _to_float(s.score_raw),
+            "max_score": _to_float(s.max_score),
+            "score_percent": percent,
+            "passed": None if percent is None else percent >= passing,
+            "is_flagged": s.is_flagged,
+            "created_at": s.created_at.isoformat(),
+        })
+    return Response({"success": True, "scans": rows, "count": len(rows)})
+
+
 # ── Bubble Sheet Template CRUD ────────────────────────────────────────────────
 
 @api_view(["GET", "POST"])
@@ -1244,13 +1324,25 @@ def bubble_sheet_templates(request):
     faculty = _get_faculty_profile(request)
 
     if request.method == "GET":
-        course_id = request.query_params.get("course_id")
-        if not course_id:
-            return Response({"success": False, "detail": "course_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        if not _faculty_can_access_course(faculty, course_id):
+        course_id = request.query_params.get("course_id") or None
+        assessment_id = request.query_params.get("assessment_id") or None
+        if not course_id and not assessment_id:
+            return Response({"success": False, "detail": "course_id or assessment_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        for value in (course_id, assessment_id):
+            if value and not _valid_uuid(value):
+                return Response({"success": False, "detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
+        if course_id and not _faculty_can_access_course(faculty, course_id):
             return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
-        qs = BubbleSheetTemplate.objects.filter(course_id=course_id).order_by("-created_at")
-        return Response({"success": True, "templates": [_bs_template_payload(t) for t in qs]})
+        qs = BubbleSheetTemplate.objects.all()
+        if course_id:
+            qs = qs.filter(course_id=course_id)
+        if assessment_id:
+            qs = qs.filter(assessment_id=assessment_id)
+        templates = [
+            t for t in qs.order_by("-created_at")
+            if course_id or _faculty_can_access_course(faculty, t.course_id)
+        ]
+        return Response({"success": True, "templates": [_bs_template_payload(t) for t in templates]})
 
     # POST — create
     ser = BubbleSheetTemplateCreateSerializer(data=request.data)
