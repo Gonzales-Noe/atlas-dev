@@ -587,5 +587,46 @@ def course_roster(course_id, extra_sections=None) -> list[dict]:
     return roster
 
 
+def scan_coverage(templates, records, rosters, grade_level=None, section=None) -> dict:
+    """
+    Roster students per exam and section still missing a scanned paper.
+    `rosters` maps course_id → course_roster(); `records` are already filtered.
+    """
+    scanned = defaultdict(set)
+    for r in records:
+        if r["identified"]:
+            scanned[r["template"].template_id].add(r["student_id"])
+
+    pending = []
+    expected_total = scanned_total = 0
+    for t in templates:
+        students = filter_records(rosters.get(t.course_id, []), grade_level, section)
+        by_section = defaultdict(list)
+        for s in students:
+            by_section[s["section"]].append(s["student_id"])
+        for sec, ids in by_section.items():
+            done = scanned[t.template_id]
+            missing = sorted(sid for sid in ids if sid not in done)
+            expected_total += len(ids)
+            scanned_total += len(ids) - len(missing)
+            if missing:
+                pending.append({
+                    "template_id": str(t.template_id),
+                    "assessment_title": t.assessment.title if t.assessment_id else t.name,
+                    "course_code": t.course.course_code,
+                    "section": sec,
+                    "total": len(ids),
+                    "scanned": len(ids) - len(missing),
+                    "missing": missing,
+                })
+    pending.sort(key=lambda p: (p["course_code"], p["assessment_title"], p["section"] == UNASSIGNED, p["section"].lower()))
+    return {
+        "complete": not pending,
+        "expected": expected_total,
+        "scanned": scanned_total,
+        "pending": pending,
+    }
+
+
 def sorted_options(values) -> list[str]:
     return sorted({v for v in values if v}, key=lambda v: (v == UNASSIGNED, v.lower()))

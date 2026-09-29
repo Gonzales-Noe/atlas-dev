@@ -1190,8 +1190,15 @@ def grading_reports(request):
                 records, target, item_meta.get(str(target.assessment_id), {})
             )
 
+    rosters = {}
+    for t in templates:
+        if t.course_id not in rosters:
+            loads = CourseLoad.objects.filter(course_id=t.course_id).values_list("section__section_name", flat=True)
+            rosters[t.course_id] = analytics.course_roster(t.course_id, extra_sections=loads)
+
     passing_values = {r["passing_percent"] for r in records}
     return Response({
+        "coverage": analytics.scan_coverage(templates, records, rosters, grade_level, section),
         "success": True,
         "filters": {
             "course_id": course_id,
