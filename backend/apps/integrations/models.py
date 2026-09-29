@@ -109,7 +109,7 @@ class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     faculty = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
-    section = models.CharField(max_length=100, blank=True, default='')
+    section = models.CharField(max_length=100, blank=True, default='', db_column='section_id')
 
     class Meta:
         db_table = 'course_load'
