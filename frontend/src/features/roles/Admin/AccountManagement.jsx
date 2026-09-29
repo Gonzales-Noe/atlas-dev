@@ -77,7 +77,7 @@ export default function AdminAccountManagement() {
   const [selectedFaculty, setSelectedFaculty] = useState(null)
   const [editForm, setEditForm] = useState({ email: '', status: 'active' })
   const [createForm, setCreateForm] = useState({ full_name: '', email: '', password: '' })
-  const [assignmentForm, setAssignmentForm] = useState({ course_id: '', section: '' })
+  const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
     footer_text: '', syllabus_sections: DEFAULT_SYLLABUS_SECTIONS,
@@ -172,7 +172,7 @@ export default function AdminAccountManagement() {
     }
   }
 
-  // ── Add faculty (POST /users/register/) ────────────────────────────────────
+  // ── Add faculty (POST /users/faculty/) ────────────────────────────────────
   function handleCreate() {
     setCreateForm({ full_name: '', email: '', password: '' })
     setCreateDialog(true)
@@ -181,19 +181,23 @@ export default function AdminAccountManagement() {
 
   async function handleSaveCreate() {
     try {
-      await api.post('/users/register/', {
+      await api.post('/users/faculty/', {
         full_name: createForm.full_name,
         email: createForm.email,
         password: createForm.password,
-        institution_name: selectedFaculty?.institution_name
-          || faculty[0]?.institution_name
-          || 'ATLAS',
       })
       setCreateDialog(false)
       setNotice('Faculty account created.')
       loadAssignments()
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to create faculty account.')
+      const detail = err.response?.data?.detail
+      const errors = err.response?.data
+      let msg = detail
+      if (errors && typeof errors === 'object' && !detail) {
+        msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+      }
+      setError(msg || 'Failed to create faculty account.')
+      console.error('Create faculty error:', err.response?.data)
     }
   }
 
@@ -213,13 +217,16 @@ export default function AdminAccountManagement() {
   function openAssignmentDialog(fac) {
     const current = assignmentsFor(fac.user_id)[0]
     setSelectedFaculty(fac)
-    setAssignmentForm({ course_id: current?.course_id || '', section: current?.section || '' })
+    setAssignmentForm({ course_id: current?.course_id || '', course_code: '', course_title: '', description: '', section: current?.section || '' })
     setAssignmentDialog(true)
     handleMenuClose()
   }
 
   async function handleAssignCourse() {
-    if (!assignmentForm.course_id) return
+    const hasCourseId = assignmentForm.course_id
+    const hasNewCourse = assignmentForm.course_code && assignmentForm.course_title
+    if (!hasCourseId && !hasNewCourse) return
+    if (!assignmentForm.section) return
     try {
       await api.post('/users/faculty-assignments/', {
         faculty_id: selectedFaculty.user_id,
@@ -229,7 +236,14 @@ export default function AdminAccountManagement() {
       setNotice('Course assigned.')
       loadAssignments()
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to assign course.')
+      const detail = err.response?.data?.detail
+      const errors = err.response?.data
+      let msg = detail
+      if (errors && typeof errors === 'object' && !detail) {
+        msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
+      }
+      setError(msg || 'Failed to assign course.')
+      console.error('Assign course error:', err.response?.data)
     }
   }
 
@@ -488,18 +502,47 @@ export default function AdminAccountManagement() {
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Assigning access for <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>
             </div>
+            
+            <div>
+              <TextField
+                select label="Select Existing Course" value={assignmentForm.course_id}
+                onChange={e => {
+                  const val = e.target.value
+                  setAssignmentForm({ ...assignmentForm, course_id: val, course_code: '', course_title: '', description: '' })
+                }}
+                SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}
+              >
+                <option value="">-- Select an existing course --</option>
+                {courses.map(course => (
+                  <option key={course.course_id} value={course.course_id}>
+                    {course.course_code} - {course.course_title}
+                  </option>
+                ))}
+              </TextField>
+            </div>
+            
+            <Divider sx={{ my: 1 }} />
+            
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', mb: 1 }}>Or create a new course</div>
             <TextField
-              select label="Course" value={assignmentForm.course_id}
-              onChange={e => setAssignmentForm({ ...assignmentForm, course_id: e.target.value })}
-              SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}
-            >
-              <option value="">Select a course</option>
-              {courses.map(course => (
-                <option key={course.course_id} value={course.course_id}>
-                  {course.course_code} - {course.course_title}
-                </option>
-              ))}
-            </TextField>
+              label="Course Code" placeholder="e.g. CS101"
+              value={assignmentForm.course_code}
+              onChange={e => setAssignmentForm({ ...assignmentForm, course_code: e.target.value, course_id: '' })}
+              fullWidth size="small" sx={inputSx}
+            />
+            <TextField
+              label="Course Title" placeholder="e.g. Introduction to Computer Science"
+              value={assignmentForm.course_title}
+              onChange={e => setAssignmentForm({ ...assignmentForm, course_title: e.target.value, course_id: '' })}
+              fullWidth size="small" sx={inputSx}
+            />
+            <TextField
+              label="Description (optional)"
+              value={assignmentForm.description}
+              onChange={e => setAssignmentForm({ ...assignmentForm, description: e.target.value, course_id: '' })}
+              fullWidth size="small" multiline minRows={2} sx={inputSx}
+            />
+            
             <TextField
               label="Handled Section" placeholder="e.g. BSIT-3A"
               value={assignmentForm.section}
@@ -510,7 +553,7 @@ export default function AdminAccountManagement() {
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setAssignmentDialog(false)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleAssignCourse} disabled={!assignmentForm.course_id || !assignmentForm.section}>Assign Course</PrimaryBtn>
+          <PrimaryBtn onClick={handleAssignCourse} disabled={(!assignmentForm.course_id && (!assignmentForm.course_code || !assignmentForm.course_title)) || !assignmentForm.section}>Assign Course</PrimaryBtn>
         </DialogActions>
       </Dialog>
 
