@@ -8,6 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert,
+  InputLabel, Select, FormControl,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -504,21 +505,25 @@ export default function AdminAccountManagement() {
             </div>
             
             <div>
-              <TextField
-                select label="Select Existing Course" value={assignmentForm.course_id}
-                onChange={e => {
-                  const val = e.target.value
-                  setAssignmentForm({ ...assignmentForm, course_id: val, course_code: '', course_title: '', description: '' })
-                }}
-                SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}
-              >
-                <option value="">-- Select an existing course --</option>
-                {courses.map(course => (
-                  <option key={course.course_id} value={course.course_id}>
-                    {course.course_code} - {course.course_title}
-                  </option>
-                ))}
-              </TextField>
+              <FormControl fullWidth size="small" sx={{ ...inputSx, minWidth: 0 }}>
+                <InputLabel id="course-select-label">Select Existing Course</InputLabel>
+                <Select
+                  labelId="course-select-label"
+                  value={assignmentForm.course_id}
+                  label="Select Existing Course"
+                  onChange={e => {
+                    const val = e.target.value
+                    setAssignmentForm({ ...assignmentForm, course_id: val, course_code: '', course_title: '', description: '' })
+                  }}
+                >
+                  <MenuItem value="">-- Select an existing course --</MenuItem>
+                  {courses.map(course => (
+                    <MenuItem key={course.course_id} value={course.course_id}>
+                      {course.course_code} - {course.course_title}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </div>
             
             <Divider sx={{ my: 1 }} />
