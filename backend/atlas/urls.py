@@ -38,6 +38,7 @@ urlpatterns = [
     path('api/integrations/', include('apps.integrations.urls')),
     path('api/grading/omr/', include('apps.grading.urls')),
     path('api/grading/', include('apps.grading.urls_grading')),
+    path('api/academics/', include('apps.academics.urls')),
 ]
 
 if settings.DEBUG:
