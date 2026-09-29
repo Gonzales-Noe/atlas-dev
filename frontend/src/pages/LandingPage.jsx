@@ -1,4 +1,4 @@
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import atlasLogo from '../assets/atlas-logo.png'
 import atlasHero from '../assets/atlas.png'
@@ -216,11 +216,14 @@ const NAV_LINKS = [
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { isAuthenticated, user } = useAuth()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
   const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
+  const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', message: '' })
+  const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
 
   useEffect(() => {
     const handleScroll = () => {
@@ -235,8 +238,24 @@ export default function LandingPage() {
       }
     }
     window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  useEffect(() => {
+    const targetId = location.hash ? location.hash.replace('#', '') : location.pathname.replace('/', '')
+    if (!targetId || !['home', 'pricing', 'contact'].includes(targetId)) return
+
+    const section = document.getElementById(targetId)
+    if (!section) return
+
+    const timer = setTimeout(() => {
+      section.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      setActiveSection(targetId)
+    }, 80)
+
+    return () => clearTimeout(timer)
+  }, [location.hash, location.pathname])
 
   function handleGetStarted() {
     if (isAuthenticated) {
@@ -252,6 +271,38 @@ export default function LandingPage() {
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: 'smooth' })
     setMobileOpen(false)
+  }
+
+  function handleContactChange(event) {
+    const { name, value } = event.target
+    setContactForm(prev => ({ ...prev, [name]: value }))
+    if (contactStatus.message) setContactStatus({ type: '', message: '' })
+  }
+
+  function handleContactSubmit(event) {
+    event.preventDefault()
+
+    const trimmedName = contactForm.name.trim()
+    const trimmedEmail = contactForm.email.trim()
+    const trimmedInstitution = contactForm.institution.trim()
+    const trimmedMessage = contactForm.message.trim()
+
+    if (!trimmedName || !trimmedEmail || !trimmedInstitution || !trimmedMessage) {
+      setContactStatus({ type: 'error', message: 'Please fill in every field before sending your message.' })
+      return
+    }
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailPattern.test(trimmedEmail)) {
+      setContactStatus({ type: 'error', message: 'Please enter a valid institutional email address.' })
+      return
+    }
+
+    setContactStatus({
+      type: 'success',
+      message: `Thanks, ${trimmedName}! Your message has been queued for the ATLAS team.`,
+    })
+    setContactForm({ name: '', email: '', institution: '', message: '' })
   }
 
   const [featRef, featInView] = useInView()
@@ -1033,7 +1084,11 @@ export default function LandingPage() {
 
                 <button
                   className={plan.popular ? 'atlas-btn-primary' : 'atlas-btn-outline'}
-                  onClick={() => plan.price === 'Custom' ? scrollTo('contact') : setAuthModal('signup')}
+                  onClick={() => {
+                    if (plan.price === 'Custom') return scrollTo('contact')
+                    localStorage.setItem('atlas_selected_plan', plan.name)
+                    setAuthModal('signup')
+                  }}
                   style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700 }}
                 >
                   {plan.cta}
@@ -1128,14 +1183,28 @@ export default function LandingPage() {
             </div>
 
             <GlassCard style={{ padding: '2.5rem' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 1.5rem', color: '#F0F0F0' }}>Send us a message</h3>
-              <input className="contact-input" placeholder="Your Name" />
-              <input className="contact-input" type="email" placeholder="Institutional Email" />
-              <input className="contact-input" placeholder="Institution Name" />
-              <textarea className="contact-input" rows={4} placeholder="How can we help?" />
-              <button className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}>
-                Send Message
-              </button>
+              <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F0F0F0' }}>Send us a message</h3>
+                <input className="contact-input" name="name" value={contactForm.name} onChange={handleContactChange} placeholder="Your Name" />
+                <input className="contact-input" name="email" type="email" value={contactForm.email} onChange={handleContactChange} placeholder="Institutional Email" />
+                <input className="contact-input" name="institution" value={contactForm.institution} onChange={handleContactChange} placeholder="Institution Name" />
+                <textarea className="contact-input" name="message" rows={4} value={contactForm.message} onChange={handleContactChange} placeholder="How can we help?" />
+                {contactStatus.message && (
+                  <div style={{
+                    padding: '0.7rem 0.9rem',
+                    borderRadius: 10,
+                    fontSize: '0.82rem',
+                    border: contactStatus.type === 'success' ? '1px solid rgba(88, 204, 135, 0.5)' : '1px solid rgba(255, 107, 107, 0.5)',
+                    background: contactStatus.type === 'success' ? 'rgba(88, 204, 135, 0.12)' : 'rgba(255, 107, 107, 0.09)',
+                    color: contactStatus.type === 'success' ? '#c9f7d6' : '#ffd1d1',
+                  }}>
+                    {contactStatus.message}
+                  </div>
+                )}
+                <button type="submit" className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}>
+                  Send Message
+                </button>
+              </form>
             </GlassCard>
           </div>
         </div>
