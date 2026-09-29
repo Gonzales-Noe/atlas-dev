@@ -279,5 +279,39 @@ class EnrollCourseSerializer(serializers.Serializer):
         return value.strip().upper()
 
 
+class FacultyCreateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255, allow_blank=True, required=False)
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        if UserProfile.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
+    @transaction.atomic
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError('Authentication required.')
+
+        admin_user = request.user
+        institution = admin_user.institution
+        if not institution:
+            raise serializers.ValidationError('Admin user has no associated institution.')
+
+        password = validated_data.pop('password')
+        validated_data.pop('full_name', None)
+
+        return UserProfile.objects.create(
+            institution=institution,
+            email=validated_data['email'],
+            password_hash=make_password(password),
+            role=UserRole.FACULTY,
+            is_active=True,
+        )
+
+
 class StudentDetailsUpdateSerializer(serializers.Serializer):
     courses_enrolled = serializers.JSONField(required=False)
