@@ -101,6 +101,11 @@ class Course(models.Model):
     course_code = models.CharField(max_length=100, unique=True)
     course_title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
+    category = models.CharField(max_length=100, default='professional')
+    created_at = models.DateTimeField(auto_now_add=True)
+    institution = models.ForeignKey('Institution', on_delete=models.SET_NULL, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
     class Meta:
         db_table = 'course'
@@ -109,7 +114,7 @@ class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     faculty = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
-    section = models.CharField(max_length=100, blank=True, default='', db_column='section_id')
+    section = models.CharField(max_length=100, blank=True, default='')
 
     class Meta:
         db_table = 'course_load'
