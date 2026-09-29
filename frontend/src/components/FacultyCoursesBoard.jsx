@@ -1,5 +1,5 @@
-﻿// src/components/FacultyCoursesBoard.jsx
-// Course landing page — light theme matching sign-in page.
+// src/components/FacultyCoursesBoard.jsx
+// Course landing page � light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
@@ -86,7 +86,7 @@ export default function FacultyCoursesBoard() {
           My Courses
         </Typography>
         <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
-          Select a course to open your workspace — syllabus, modules, assessments, grading, and knowledge uploads.
+          Select a course to open your workspace � syllabus, modules, assessments, grading, and knowledge uploads.
         </Typography>
 
         {loading && !data ? (
@@ -100,7 +100,7 @@ export default function FacultyCoursesBoard() {
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
             }}
           >
-            {/* ── Create new course card ── */}
+            {/* -- Create new course card -- */}
             <Card
               elevation={0}
               onClick={openDialog}
@@ -153,7 +153,7 @@ export default function FacultyCoursesBoard() {
                         {course.course_title}
                       </Typography>
                       <Typography variant="caption" sx={{ color: '#888' }}>
-                        {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
+                        {course.syllabus_count ?? 0} syllabi � {course.assessment_count ?? 0} assessments
                       </Typography>
                     </CardContent>
                   </CardActionArea>
@@ -172,7 +172,7 @@ export default function FacultyCoursesBoard() {
         )}
       </Box>
 
-      {/* ── Create new course dialog ── */}
+      {/* -- Create new course dialog -- */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontWeight: 800, color: '#8B0000' }}>New Course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
@@ -264,7 +264,7 @@ export default function FacultyCoursesBoard() {
             size="small"
             disabled={creating}
           >
-            <MenuItem value="">— Not specified —</MenuItem>
+            <MenuItem value="">� Not specified �</MenuItem>
             <MenuItem value="1st Year">1st Year</MenuItem>
             <MenuItem value="2nd Year">2nd Year</MenuItem>
             <MenuItem value="3rd Year">3rd Year</MenuItem>
@@ -282,7 +282,7 @@ export default function FacultyCoursesBoard() {
             startIcon={creating ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
             sx={{ bgcolor: '#8B0000', '&:hover': { bgcolor: '#6B0000' }, fontWeight: 700, borderRadius: 2 }}
           >
-            {creating ? 'Creating…' : 'Create'}
+            {creating ? 'Creating�' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>

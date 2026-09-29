@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from django.db import models
 
@@ -36,7 +37,7 @@ class OmrTemplateProfile(models.Model):
     form_code = models.CharField(max_length=50, null=True, blank=True)
     total_items = models.IntegerField(default=0)
     passing_score = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
-    confidence_threshold = models.DecimalField(max_digits=5, decimal_places=4, default=0.8500)
+    confidence_threshold = models.DecimalField(max_digits=5, decimal_places=4, default=Decimal('0.8500'))
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         UserProfile,
