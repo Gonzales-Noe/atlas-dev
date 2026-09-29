@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert,
-  InputLabel, Select, FormControl,
+  InputLabel, Select, FormControl, Typography, Tooltip, CircularProgress,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
 import SettingsIcon from '@mui/icons-material/Settings'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import { fetchAcademicStructure } from './academicApi'
@@ -77,6 +78,8 @@ export default function AdminAccountManagement() {
   const [detailDialog, setDetailDialog] = useState(false)
   const [assignmentDialog, setAssignmentDialog] = useState(false)
   const [customizationDialog, setCustomizationDialog] = useState(false)
+  const [confirmUnassign, setConfirmUnassign] = useState(null)
+  const [removingId, setRemovingId] = useState(null)
 
   const [selectedFaculty, setSelectedFaculty] = useState(null)
   const [editForm, setEditForm] = useState({ email: '', status: 'active' })
@@ -152,6 +155,8 @@ export default function AdminAccountManagement() {
   })
 
   const assignmentsFor = userId => assignments.filter(item => item.faculty_id === userId)
+  // Courses currently assigned to the faculty member open in the Edit dialog.
+  const facultyAssignments = selectedFaculty ? assignmentsFor(selectedFaculty.user_id) : []
   const activeFaculty = faculty.filter(f => f.is_active).length
   const inactiveFaculty = faculty.filter(f => !f.is_active).length
   const totalCourses = assignments.length
@@ -283,6 +288,29 @@ export default function AdminAccountManagement() {
     setSelectedFaculty(fac)
     setDetailDialog(true)
     handleMenuClose()
+  }
+
+  // ── Remove course assignment (DELETE /users/faculty-assignments/) ──────────
+  async function handleConfirmUnassign() {
+    if (!confirmUnassign) return
+    setRemovingId(confirmUnassign.assignment_id)
+    try {
+      await api.delete('/users/faculty-assignments/', {
+        data: { assignment_id: confirmUnassign.assignment_id },
+      })
+      setNotice(
+        confirmUnassign.section
+          ? `${confirmUnassign.course_code} (${confirmUnassign.section}) removed from ${selectedFaculty?.email}.`
+          : `${confirmUnassign.course_code} removed from ${selectedFaculty?.email}.`
+      )
+      setConfirmUnassign(null)
+      await loadAssignments()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to remove the course assignment.')
+      setConfirmUnassign(null)
+    } finally {
+      setRemovingId(null)
+    }
   }
 
   // ── Syllabus format (PATCH /users/institution-customization/) ──────────────
@@ -523,11 +551,100 @@ export default function AdminAccountManagement() {
                 ))}
               </TextField>
             )}
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 10 }}>
+                ASSIGNED COURSES ({facultyAssignments.length})
+              </div>
+              {facultyAssignments.length === 0 ? (
+                <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
+                  No courses assigned yet. Use “Assign Course” from the account menu to add one.
+                </div>
+              ) : (
+                <Stack spacing={1}>
+                  {facultyAssignments.map(item => (
+                    <div
+                      key={item.assignment_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 12,
+                        padding: '8px 8px 8px 12px',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: 2,
+                        background: 'var(--input-bg)',
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {item.course_code} — {item.course_title}
+                        </div>
+                        {item.section && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                            Section: {item.section}
+                          </div>
+                        )}
+                      </div>
+                      <Tooltip title="Remove course assignment">
+                        <span>
+                          <IconButton
+                            aria-label={`Remove ${item.course_code}`}
+                            size="small"
+                            disabled={removingId === item.assignment_id}
+                            onClick={() => setConfirmUnassign(item)}
+                            sx={{
+                              color: 'var(--red-bright, #E74C3C)',
+                              '&:hover': { background: 'rgba(231,76,60,0.12)' },
+                              '&.Mui-disabled': { color: 'var(--text-tertiary)' },
+                            }}
+                          >
+                            {removingId === item.assignment_id
+                              ? <CircularProgress size={16} sx={{ color: 'var(--red-bright, #E74C3C)' }} />
+                              : <DeleteOutlinedIcon fontSize="small" />}
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                    </div>
+                  ))}
+                </Stack>
+              )}
+            </div>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setEditDialog(false)}>Cancel</OutlineBtn>
           <PrimaryBtn onClick={handleSaveEdit}>Save Changes</PrimaryBtn>
+        </DialogActions>
+      </Dialog>
+
+      {/* Remove Course Assignment Confirmation */}
+      <Dialog
+        open={Boolean(confirmUnassign)}
+        onClose={() => { if (!removingId) setConfirmUnassign(null) }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}
+      >
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Remove course assignment?</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
+          <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+            This removes{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{confirmUnassign?.course_code}</strong>
+            {confirmUnassign?.section ? ` (Section: ${confirmUnassign.section})` : ''} from{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>. They will
+            immediately lose access to that course workspace, its syllabus, assessments, and grading data.
+            The course itself stays in the catalog.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={() => setConfirmUnassign(null)} disabled={Boolean(removingId)}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={handleConfirmUnassign} disabled={Boolean(removingId)}>
+            {removingId ? 'Removing…' : 'Remove Course'}
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
 
