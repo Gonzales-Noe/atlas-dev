@@ -7,6 +7,7 @@ urlpatterns = [
     path("sections/", views.grading_sections, name="grading_sections"),
     path("blocks/", views.grading_blocks, name="grading_blocks"),
     path("reports/", views.grading_reports, name="grading_reports"),
+    path("scans/recent/", views.grading_recent_scans, name="grading_recent_scans"),
     path(
         "bubble/templates/<uuid:template_id>/item-analysis/",
         views.bubble_sheet_item_analysis,
