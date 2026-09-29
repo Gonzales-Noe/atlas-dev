@@ -4,7 +4,7 @@
 // non-dismissable, so the admin has to finish the academic structure first.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, CircularProgress } from '@mui/material'
+import { Alert, Box } from '@mui/material'
 
 import { useAuth } from '../store/authStore'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
@@ -30,13 +30,11 @@ function toMessage(err, fallback) {
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()
-  const [checking, setChecking] = useState(true)
   const [needsSetup, setNeedsSetup] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
   const [error, setError] = useState('')
 
   const check = useCallback(async () => {
-    setChecking(true)
     setError('')
     try {
       const status = await fetchSetupStatus()
@@ -50,14 +48,11 @@ export default function AdminSetupGate({ children }) {
       setStatusKnown(false)
       setNeedsSetup(false)
       setError(toMessage(err, 'Could not verify setup status. Other modules stay available until this succeeds.'))
-    } finally {
-      setChecking(false)
     }
   }, [])
 
   useEffect(() => {
     if (user?.role !== 'admin') {
-      setChecking(false)
       setNeedsSetup(false)
       setStatusKnown(true)
       return
@@ -82,17 +77,14 @@ export default function AdminSetupGate({ children }) {
   }, [])
 
   if (user?.role !== 'admin') return children
-  if (checking) {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page, #0B0B0F)' }}>
-        <CircularProgress size={28} sx={{ color: '#FF9F0A' }} />
-      </Box>
-    )
-  }
 
-  if (!statusKnown && error) {
-    return (
-      <>
+  // No gate-level loader on purpose. AdminLayout is remounted by every admin
+  // page, so any loading state here flashed a full-screen backdrop on each
+  // sidebar click. The pages render straight away and show their own in-page
+  // loading state instead.
+  return (
+    <>
+      {!statusKnown && error && (
         <Alert
           severity="warning"
           action={<button onClick={check} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
@@ -100,16 +92,18 @@ export default function AdminSetupGate({ children }) {
         >
           {error}
         </Alert>
-        {children}
-      </>
-    )
-  }
+      )}
 
-  return (
-    <>
-      <Box aria-hidden={needsSetup} sx={{ pointerEvents: needsSetup ? 'none' : 'auto', userSelect: needsSetup ? 'none' : 'auto' }}>
+      <Box
+        aria-hidden={needsSetup}
+        sx={{
+          pointerEvents: needsSetup ? 'none' : 'auto',
+          userSelect: needsSetup ? 'none' : 'auto',
+        }}
+      >
         {children}
       </Box>
+
       <AdminSetupWizard open={needsSetup} onFinished={handleFinished} />
     </>
   )
