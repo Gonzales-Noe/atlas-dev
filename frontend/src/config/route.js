@@ -8,7 +8,9 @@ export const ROUTES = {
   SIGN_UP:        '/signup',
   SIGN_IN:        '/signin',
   RESET_PASSWORD: '/reset-password',
-  PRICING:        '/#pricing',
+  PRICING:        '/pricing',
+  CONTACT:        '/contact',
+  BILLING:        '/billing/onboarding',
 
   // Faculty
   FACULTY: {

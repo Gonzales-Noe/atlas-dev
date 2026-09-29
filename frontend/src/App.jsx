@@ -21,6 +21,7 @@ import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx
 import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
+import BillingOnboarding from './pages/billing/BillingOnboarding.jsx'
 
 function App() {
   return (
@@ -28,11 +29,14 @@ function App() {
       <Routes>
         {/* 2. Set the Landing Page as the root route */}
         <Route path="/" element={<LandingPage />} />
+        <Route path="/pricing" element={<LandingPage />} />
+        <Route path="/contact" element={<LandingPage />} />
         
         {/* Your existing Auth Routes */}
         <Route path={ROUTES.SIGN_IN} element={<SignInPage />} />
         <Route path={ROUTES.SIGN_UP} element={<SignUpPage />} />
         <Route path={ROUTES.RESET_PASSWORD} element={<PasswordReset />} />
+        <Route path={ROUTES.BILLING} element={<BillingOnboarding />} />
 
         {/* Super Admin Routes */}
         <Route

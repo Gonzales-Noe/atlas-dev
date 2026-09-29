@@ -144,10 +144,15 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
 
   async function handleSendOtp(e) {
     e.preventDefault()
-    if (!email) { setError('Please enter your email.'); return }
+    const normalizedEmail = email.trim();
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!normalizedEmail) { setError('Please enter your email.'); return }
+    if (!emailPattern.test(normalizedEmail)) { setError('Please enter a valid email address.'); return }
+
     setLoading(true); setError('')
     try {
-      await sendOtp(email)
+      await sendOtp(normalizedEmail)
       setStep(STEPS.OTP)
       startResendCooldown()
     } catch {
