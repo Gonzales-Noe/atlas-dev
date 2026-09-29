@@ -18,6 +18,8 @@ import AddLinkIcon from '@mui/icons-material/AddLink'
 import SettingsIcon from '@mui/icons-material/Settings'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
+import { fetchAcademicStructure } from './academicApi'
+import { ROUTES } from '../../../config/route'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
 // Sections an institution admin can require in generated syllabi.
@@ -60,6 +62,7 @@ function initials(fac) {
 export default function AdminAccountManagement() {
   const [faculty, setFaculty] = useState([])
   const [courses, setCourses] = useState([])
+  const [colleges, setColleges] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -77,8 +80,9 @@ export default function AdminAccountManagement() {
 
   const [selectedFaculty, setSelectedFaculty] = useState(null)
   const [editForm, setEditForm] = useState({ email: '', status: 'active' })
-  const [createForm, setCreateForm] = useState({ full_name: '', email: '', password: '' })
+  const [createForm, setCreateForm] = useState({ full_name: '', email: '', password: '', college_id: '' })
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
+  const [assignmentFilters, setAssignmentFilters] = useState({ college_id: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
     footer_text: '', syllabus_sections: DEFAULT_SYLLABUS_SECTIONS,
@@ -86,10 +90,14 @@ export default function AdminAccountManagement() {
 
   const [anchorEl, setAnchorEl] = useState(null)
   const [menuItem, setMenuItem] = useState(null)
+  const [sections, setSections] = useState([])
 
   useEffect(() => {
     loadAssignments()
     loadCustomization()
+    fetchAcademicStructure()
+      .then(data => setSections(data.sections || []))
+      .catch(() => setSections([]))
   }, [])
 
   async function loadAssignments() {
@@ -99,6 +107,7 @@ export default function AdminAccountManagement() {
       const { data } = await api.get('/users/faculty-assignments/')
       setFaculty(data.faculty || [])
       setCourses(data.courses || [])
+      setColleges(data.colleges || [])
       setAssignments(data.assignments || [])
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to load faculty assignments.')
@@ -154,7 +163,7 @@ export default function AdminAccountManagement() {
   // ── Edit account (PATCH /users/accounts/<user_id>/) ────────────────────────
   function handleEdit(fac) {
     setSelectedFaculty(fac)
-    setEditForm({ email: fac.email, status: fac.is_active ? 'active' : 'inactive' })
+    setEditForm({ email: fac.email, status: fac.is_active ? 'active' : 'inactive', college_id: fac.college_id || '' })
     setEditDialog(true)
     handleMenuClose()
   }
@@ -164,6 +173,7 @@ export default function AdminAccountManagement() {
       await api.patch(`/users/accounts/${selectedFaculty.user_id}/`, {
         email: editForm.email,
         is_active: editForm.status === 'active',
+        college_id: editForm.college_id || undefined,
       })
       setEditDialog(false)
       setNotice('Account updated.')
@@ -175,7 +185,7 @@ export default function AdminAccountManagement() {
 
   // ── Add faculty (POST /users/faculty/) ────────────────────────────────────
   function handleCreate() {
-    setCreateForm({ full_name: '', email: '', password: '' })
+    setCreateForm({ full_name: '', email: '', password: '', college_id: '' })
     setCreateDialog(true)
     handleMenuClose()
   }
@@ -186,6 +196,7 @@ export default function AdminAccountManagement() {
         full_name: createForm.full_name,
         email: createForm.email,
         password: createForm.password,
+        college_id: createForm.college_id || undefined,
       })
       setCreateDialog(false)
       setNotice('Faculty account created.')
@@ -218,9 +229,29 @@ export default function AdminAccountManagement() {
   function openAssignmentDialog(fac) {
     const current = assignmentsFor(fac.user_id)[0]
     setSelectedFaculty(fac)
-    setAssignmentForm({ course_id: current?.course_id || '', course_code: '', course_title: '', description: '', section: current?.section || '' })
+    setAssignmentForm({
+      course_id: current?.course_id || '',
+      course_code: '', course_title: '', description: '', section: current?.section || '',
+    })
+    // Reset college filter and pre-select faculty's college if assigned
+    setAssignmentFilters({ college_id: fac.college_id || '' })
+    // Reload courses filtered by faculty's college
+    if (fac.college_id) {
+      api.get('/users/faculty-assignments/', { params: { college_id: fac.college_id } })
+        .then(({ data }) => setCourses(data.courses || []))
+        .catch(err => console.error('Failed to load filtered courses:', err))
+    }
     setAssignmentDialog(true)
     handleMenuClose()
+  }
+
+  // Pre-fill the handled section from the course's registered section block.
+  function applyCourseSection(courseId) {
+    const course = courses.find(item => item.course_id === courseId)
+    const courseSection = course?.section
+    if (courseSection) {
+      setAssignmentForm(prev => ({ ...prev, section: courseSection }))
+    }
   }
 
   async function handleAssignCourse() {
@@ -330,7 +361,7 @@ export default function AdminAccountManagement() {
           <Table>
             <TableHead>
               <TableRow>
-                {['Name & Email', 'Role', 'Status', 'Assigned Courses / Sections', 'Actions'].map(h => (
+                {['Name & Email', 'Role', 'Status', 'College', 'Assigned Courses / Sections', 'Actions'].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--text-secondary) !important', textTransform: 'uppercase', py: 1.5, borderBottom: '1px solid var(--border-color)' }}>
                     {h}
                   </TableCell>
@@ -361,6 +392,11 @@ export default function AdminAccountManagement() {
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <StatusChip label={fac.is_active ? 'active' : 'inactive'} type={fac.is_active ? 'active' : 'inactive'} />
+                  </TableCell>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                      {fac.college_code ? `${fac.college_code} - ${fac.college_name}` : '—'}
+                    </span>
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     {assignmentsFor(fac.user_id).length === 0 ? (
@@ -436,6 +472,7 @@ export default function AdminAccountManagement() {
               </div>
               {[
                 { label: 'INSTITUTION', value: selectedFaculty.institution_name || '—' },
+                { label: 'COLLEGE', value: selectedFaculty.college_code ? `${selectedFaculty.college_code} - ${selectedFaculty.college_name}` : '—' },
                 { label: 'ROLE', value: <StatusChip label={selectedFaculty.role} type={selectedFaculty.role === 'admin' ? 'warning' : 'info'} /> },
                 { label: 'STATUS', value: <StatusChip label={selectedFaculty.is_active ? 'active' : 'inactive'} type={selectedFaculty.is_active ? 'active' : 'inactive'} /> },
                 { label: 'ASSIGNED COURSES', value: assignmentsFor(selectedFaculty.user_id).length },
@@ -469,6 +506,23 @@ export default function AdminAccountManagement() {
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
             </TextField>
+            {colleges.length > 0 && (
+              <TextField
+                select label="College (Optional)"
+                value={editForm.college_id}
+                onChange={e => setEditForm({ ...editForm, college_id: e.target.value })}
+                fullWidth size="small" sx={inputSx}
+                SelectProps={{ native: false }}
+                helperText="Reassign faculty to a different college"
+              >
+                <MenuItem value="">-- No college assigned --</MenuItem>
+                {colleges.map(college => (
+                  <MenuItem key={college.college_id} value={college.college_id}>
+                    {college.code} - {college.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
@@ -486,6 +540,23 @@ export default function AdminAccountManagement() {
             <TextField label="Full Name" value={createForm.full_name} onChange={e => setCreateForm({ ...createForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={createForm.email} onChange={e => setCreateForm({ ...createForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField label="Temporary Password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} fullWidth size="small" type="password" sx={inputSx} />
+            {colleges.length > 0 && (
+              <TextField
+                select label="College (Optional)"
+                value={createForm.college_id}
+                onChange={e => setCreateForm({ ...createForm, college_id: e.target.value })}
+                fullWidth size="small" sx={inputSx}
+                SelectProps={{ native: false }}
+                helperText="Assign faculty to a specific college within the institution"
+              >
+                <MenuItem value="">-- No college assigned --</MenuItem>
+                {colleges.map(college => (
+                  <MenuItem key={college.college_id} value={college.college_id}>
+                    {college.code} - {college.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
@@ -503,31 +574,72 @@ export default function AdminAccountManagement() {
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Assigning access for <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>
             </div>
-            
+
+            {/* College Filter for Courses */}
+            {colleges.length > 0 && (
+              <div>
+                <FormControl fullWidth size="small" sx={{ ...inputSx, minWidth: 0 }}>
+                  <InputLabel id="college-filter-label">Filter by College (Optional)</InputLabel>
+                  <Select
+                    labelId="college-filter-label"
+                    value={assignmentFilters.college_id}
+                    label="Filter by College"
+                    onChange={async e => {
+                      const collegeId = e.target.value
+                      setAssignmentFilters(prev => ({ ...prev, college_id: collegeId }))
+                      // Reload courses filtered by college
+                      try {
+                        const { data } = await api.get('/users/faculty-assignments/', { params: { college_id: collegeId || undefined } })
+                        setCourses(data.courses || [])
+                      } catch (err) {
+                        console.error('Failed to load filtered courses:', err)
+                      }
+                    }}
+                  >
+                    <MenuItem value="">-- All Colleges --</MenuItem>
+                    {colleges.map(college => (
+                      <MenuItem key={college.college_id} value={college.college_id}>
+                        {college.code} - {college.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </div>
+            )}
+
             <div>
               <FormControl fullWidth size="small" sx={{ ...inputSx, minWidth: 0 }}>
-                <InputLabel id="course-select-label">Select Existing Course</InputLabel>
+                <InputLabel id="course-select-label">Select Course</InputLabel>
                 <Select
                   labelId="course-select-label"
                   value={assignmentForm.course_id}
-                  label="Select Existing Course"
+                  label="Select Course"
                   onChange={e => {
                     const val = e.target.value
                     setAssignmentForm({ ...assignmentForm, course_id: val, course_code: '', course_title: '', description: '' })
+                    applyCourseSection(val)
                   }}
                 >
-                  <MenuItem value="">-- Select an existing course --</MenuItem>
+                  <MenuItem value="">-- Select a course --</MenuItem>
                   {courses.map(course => (
                     <MenuItem key={course.course_id} value={course.course_id}>
                       {course.course_code} - {course.course_title}
+                      {course.program_name ? ` (${course.program_name})` : ''}
+                      {course.college_name ? ` [${course.college_name}]` : ''}
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
+              {courses.length === 0 && (
+                <div style={{ fontSize: '0.76rem', color: '#FFB74D', marginTop: 6 }}>
+                  No courses in the catalog yet. Add them under{' '}
+                  <a href={ROUTES.ADMIN.ACADEMIC_STRUCTURE} style={{ color: '#60AAFF' }}>Academic Structure</a>.
+                </div>
+              )}
             </div>
-            
+
             <Divider sx={{ my: 1 }} />
-            
+
             <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)', mb: 1 }}>Or create a new course</div>
             <TextField
               label="Course Code" placeholder="e.g. CS101"
@@ -547,13 +659,25 @@ export default function AdminAccountManagement() {
               onChange={e => setAssignmentForm({ ...assignmentForm, description: e.target.value, course_id: '' })}
               fullWidth size="small" multiline minRows={2} sx={inputSx}
             />
-            
+
             <TextField
-              label="Handled Section" placeholder="e.g. BSIT-3A"
+              select label="Handled Section"
               value={assignmentForm.section}
               onChange={e => setAssignmentForm({ ...assignmentForm, section: e.target.value })}
               fullWidth size="small" sx={inputSx}
-            />
+              SelectProps={{ native: false }}
+              helperText={sections.length ? undefined : 'No sections registered yet — you can type a section code.'}
+            >
+              <MenuItem value="">-- select section --</MenuItem>
+              {sections.map(section => (
+                <MenuItem key={section.section_id} value={section.display_name || section.code}>
+                  {section.display_name || section.code}
+                </MenuItem>
+              ))}
+              {assignmentForm.section && !sections.some(s => (s.display_name || s.code) === assignmentForm.section) && (
+                <MenuItem value={assignmentForm.section}>{assignmentForm.section} (custom)</MenuItem>
+              )}
+            </TextField>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>

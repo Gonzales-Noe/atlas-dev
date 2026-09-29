@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'apps.analytics.apps.AnalyticsConfig',
     'apps.integrations.apps.IntegrationsConfig',
     'apps.grading.apps.GradingConfig',
+    'apps.academics.apps.AcademicsConfig',
 ]
 
 MIDDLEWARE = [
