@@ -18,6 +18,7 @@ import FacultyAnalytics from './features/roles/Faculty/Analytics.jsx'
 import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
 import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
+import AdminAcademicStructure from './features/roles/Admin/AcademicStructure.jsx'
 import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
@@ -152,6 +153,14 @@ function App() {
           element={
             <ProtectedRoute role="admin">
               <AdminAccountManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.ADMIN.ACADEMIC_STRUCTURE}
+          element={
+            <ProtectedRoute role="admin">
+              <AdminAcademicStructure />
             </ProtectedRoute>
           }
         />
