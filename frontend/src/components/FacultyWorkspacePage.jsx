@@ -5385,7 +5385,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <CircularProgress size={14} sx={{ color: MAROON }} />
         ) : null}
         <Box sx={{ flex: 1 }} />
-        {isMobile && activeTab !== 'analytics' && (
+        {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Tooltip title="Knowledge Base">
             <IconButton onClick={() => setMobileUploadOpen(true)} size="small" sx={{ color: MAROON, mr: 0.5 }}>
               <CloudUploadIcon fontSize="small" />
@@ -5564,7 +5564,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Box>
 
         {/* Drag — right (desktop only when expanded) */}
-        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && (
+        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box onMouseDown={() => setDragging('right')}
             sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
                   bgcolor: dragging === 'right' ? MAROON + '44' : 'transparent',
@@ -5572,7 +5572,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )}
 
         {/* RIGHT — sources panel (desktop) or compact rail when collapsed */}
-        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && (
+        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box sx={{ width: rightWidth, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.88)', borderLeft: '1px solid rgba(255,255,255,0.08)', overflow: 'auto', p: 0 }}>
             <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#F0F0F2' }}>
@@ -5592,7 +5592,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
         )}
 
-        {!isMobile && rightCollapsed && activeTab !== 'analytics' && (
+        {!isMobile && rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box sx={{ width: 68, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.88)', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'center', py: 1 }}>
             <Box sx={{ width: 44, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75, py: 1 }}>
               <Tooltip title="Expand sources">
