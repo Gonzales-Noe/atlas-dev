@@ -186,7 +186,7 @@ def course_students(request, course_id):
     if error_response:
         return error_response
 
-    sections = CourseLoad.objects.filter(course_id=course_id).values_list('section__section_name', flat=True)
+    sections = CourseLoad.objects.filter(course_id=course_id).values_list('section__code', flat=True)
     roster = course_roster(course_id, extra_sections=sections)
     accounts = {
         sd.sr_code: sd

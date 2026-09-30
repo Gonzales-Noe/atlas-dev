@@ -1,5 +1,8 @@
 import uuid
+from decimal import Decimal
+
 from django.db import models
+from django.utils import timezone
 from pgvector.django import VectorField
 
 class RagStatusEnum(models.TextChoices):
@@ -48,6 +51,8 @@ class Institution(models.Model):
     paid_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
+    setup_completed = models.BooleanField(default=False)
+    setup_completed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'institution'
@@ -69,6 +74,7 @@ class UserProfile(models.Model):
     # This maps to your 'users' table
     user_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     institution = models.ForeignKey(Institution, on_delete=models.SET_NULL, null=True, blank=True, db_column='institution_id')
+    college = models.ForeignKey('College', on_delete=models.SET_NULL, null=True, blank=True, db_column='college_id', related_name='faculty')
     email = models.EmailField(unique=True)
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
@@ -96,21 +102,148 @@ class UserProfile(models.Model):
         local_part = self.email.split('@', 1)[0]
         return local_part.replace('.', ' ').replace('_', ' ').title()
 
+class College(models.Model):
+    """A college/unit within an institution, e.g. College of Engineering."""
+    college_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='colleges')
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'college'
+        ordering = ('name',)
+        constraints = [
+            models.UniqueConstraint(fields=['institution', 'code'], name='uniq_college_code_per_institution'),
+            models.UniqueConstraint(fields=['institution', 'name'], name='uniq_college_name_per_institution'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+
+class Program(models.Model):
+    """A degree program offered by a college, e.g. BS Computer Science."""
+    program_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='programs')
+    college = models.ForeignKey(College, on_delete=models.CASCADE, related_name='programs')
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'program'
+        ordering = ('name',)
+        constraints = [
+            models.UniqueConstraint(fields=['institution', 'code'], name='uniq_program_code_per_institution'),
+            models.UniqueConstraint(fields=['college', 'name'], name='uniq_program_name_per_college'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} - {self.name}'
+
+
+class YearLevel(models.Model):
+    """A year level (1st Year, 2nd Year, …) belonging to a program."""
+    year_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='year_levels')
+    year_number = models.PositiveSmallIntegerField()
+    label = models.CharField(max_length=100, blank=True, default='')
+
+    class Meta:
+        db_table = 'year_level'
+        ordering = ('year_number',)
+        constraints = [
+            models.UniqueConstraint(fields=['program', 'year_number'], name='uniq_year_number_per_program'),
+        ]
+
+    def __str__(self):
+        return self.label or f'Year {self.year_number}'
+
+    @property
+    def display_name(self):
+        return self.label or f'Year {self.year_number}'
+
+
+class Section(models.Model):
+    """A section/block (BSCS-1A), usually under a program year level, and the courses it takes.
+
+    Sections created ad hoc by name (faculty rosters, course assignment) have no
+    program or year level; they are scoped by `institution` instead (null = shared).
+    """
+    section_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(
+        Institution, on_delete=models.CASCADE, null=True, blank=True,
+        db_column='institution_id', related_name='sections',
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
+    year_level = models.ForeignKey(YearLevel, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
+    code = models.CharField(max_length=50)
+    name = models.CharField(max_length=100, blank=True, default='')
+    taken_courses = models.ManyToManyField(
+        'Course', related_name='taking_sections', blank=True, db_table='section_courses',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'academic_section'
+        ordering = ('code',)
+        constraints = [
+            models.UniqueConstraint(fields=['year_level', 'code'], name='uniq_section_code_per_year'),
+        ]
+
+    def __str__(self):
+        return self.code
+
+    @property
+    def section_name(self) -> str:
+        return self.code
+
+
+class CourseCategory(models.TextChoices):
+    GED = 'ged', 'General Education (GE)'
+    PROFESSIONAL = 'professional', 'Professional'
+    ELECTIVE = 'elective', 'Elective'
+    LABORATORY = 'laboratory', 'Laboratory'
+    PE = 'pe', 'Physical Education'
+    OTHER = 'other', 'Other'
+
+
 class Course(models.Model):
     course_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    course_code = models.CharField(max_length=100, unique=True)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, null=True, blank=True, related_name='courses')
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True, related_name='courses')
+    year_level = models.ForeignKey(YearLevel, on_delete=models.SET_NULL, null=True, blank=True, related_name='courses')
+    section = models.ForeignKey(Section, on_delete=models.SET_NULL, null=True, blank=True, related_name='courses')
+    course_code = models.CharField(max_length=100)
     course_title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
+    category = models.CharField(max_length=20, choices=CourseCategory.choices, default=CourseCategory.PROFESSIONAL)
+    units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = 'course'
+        ordering = ('course_code',)
+        constraints = [
+            models.UniqueConstraint(fields=['institution', 'course_code'], name='uniq_course_code_per_institution'),
+        ]
+
+    def __str__(self):
+        return f'{self.course_code} - {self.course_title}'
+
 
 class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     faculty = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
     section = models.ForeignKey(
-        'Section', on_delete=models.SET_NULL, null=True, blank=True,
+        Section, on_delete=models.SET_NULL, null=True, blank=True,
         db_column='section_id', related_name='course_loads',
     )
 
@@ -233,27 +366,6 @@ class StudentData(models.Model):
 
     class Meta:
         db_table = 'student_data'
-
-class Section(models.Model):
-    """A class section (managed by the institution admin) and the courses it takes."""
-    section_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    institution = models.ForeignKey(
-        Institution, on_delete=models.CASCADE, null=True, blank=True,
-        db_column='institution_id', related_name='sections',
-    )
-    section_name = models.CharField(max_length=100)
-    courses = models.ManyToManyField(Course, related_name='sections', blank=True, db_table='section_courses')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'sections'
-        constraints = [
-            models.UniqueConstraint(fields=['institution', 'section_name'], name='uq_section_institution_name'),
-        ]
-
-    def __str__(self):
-        return self.section_name
 
 class Block(models.Model):
     """Class roster: which grade level and section each student ID belongs to."""

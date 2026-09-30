@@ -61,6 +61,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { toInitials, extractApiError } from '../utils'
+import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
@@ -5724,14 +5725,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       {/* Mobile nav Drawer */}
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
-        PaperProps={{ sx: { width: 220 } }}>
+        PaperProps={{ sx: { width: 220, display: 'flex', flexDirection: 'column' } }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
           <Typography variant="caption"
             sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
             Workspace
           </Typography>
         </Box>
-        <Stack sx={{ p: 1, gap: 0.25 }}>
+        <Stack sx={{ p: 1, gap: 0.25, flex: 1 }}>
           {WORKSPACE_TABS.map(({ key, label, Icon }) => {
             const on = activeTab === key
             return (
@@ -5751,6 +5752,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )
           })}
         </Stack>
+        <Divider sx={{ borderColor: 'rgba(0,0,0,0.06)' }} />
+        <Button onClick={() => { logout(); navigate('/signin') }} fullWidth
+          startIcon={<LogoutIcon sx={{ fontSize: '1.05rem !important' }} />}
+          sx={{
+            justifyContent: 'flex-start', px: 1.5, py: 0.9, borderRadius: 0,
+            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#C0392B',
+            '&:hover': { bgcolor: 'rgba(192,57,43,0.08)' },
+          }}>
+          Sign Out
+        </Button>
       </Drawer>
 
       {/* Mobile upload Drawer */}
@@ -5785,7 +5796,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Typography sx={{ color: '#30D158', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em' }}>FACULTY</Typography>
               </Box>
             </Box>
-            <Stack sx={{ p: 1, gap: 0.25 }}>
+            <Stack sx={{ p: 1, gap: 0.25, flex: 1, overflowY: 'auto' }}>
               {WORKSPACE_TABS.map(({ key, label, Icon }) => {
                 const on = activeTab === key
                 return (
@@ -5807,15 +5818,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 )
               })}
             </Stack>
-            <Box sx={{ mt: 'auto', borderTop: '1px solid rgba(255,255,255,0.06)', p: 1.5 }}>
-              <Button onClick={() => { logout(); navigate('/signin') }} fullWidth sx={{ justifyContent: 'flex-start', gap: 1.25, px: 1.25, py: 1, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5, textTransform: 'none', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
-                <Avatar sx={{ width: 32, height: 32, bgcolor: '#8B0000', fontSize: '0.78rem', fontWeight: 800 }}>{(user?.name || user?.email || 'U')[0].toUpperCase()}</Avatar>
-                <Box sx={{ minWidth: 0, textAlign: 'left' }}>
-                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#F0F0F2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0] || 'User'}</Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || 'Faculty'}</Typography>
-                </Box>
-              </Button>
-            </Box>
+            <SidebarUserMenu
+              user={user}
+              metaLabel="Faculty"
+              onSignOut={() => { logout(); navigate('/signin') }}
+            />
           </Box>
         )}
 
@@ -5839,6 +5846,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Tooltip>
                 )
               })}
+              <Box sx={{ mt: 'auto', width: '100%' }}>
+                <SidebarUserMenu
+                  collapsed
+                  user={user}
+                  metaLabel="Faculty"
+                  onSignOut={() => { logout(); navigate('/signin') }}
+                />
+              </Box>
             </Box>
           </Box>
         )}

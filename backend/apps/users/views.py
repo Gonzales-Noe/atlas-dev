@@ -1,4 +1,5 @@
 import secrets
+import uuid
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -7,7 +8,8 @@ from django.core.cache import cache
 from django.db import transaction
 import uuid
 
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Value
+from django.db.models.functions import Concat
 from django.utils import timezone
 from django.core.mail import send_mail
 from rest_framework import permissions, status
@@ -15,13 +17,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.models import Assessment, College, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
+    FacultyCreateSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
@@ -181,6 +184,29 @@ class RegisterView(APIView):
             {
                 'detail': 'Registration received.',
                 **tokens_for_profile(profile),
+                'user': UserProfileSerializer(profile).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class FacultyCreateView(APIView):
+    """Allow institution admins to create faculty users within their institution."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        role = normalize_role(request.user.role)
+        if role != 'admin':
+            return Response({'detail': 'Only institution admins can create faculty users.'}, status=status.HTTP_403_FORBIDDEN)
+
+        serializer = FacultyCreateSerializer(data=request.data, context={'request': request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        profile = serializer.save()
+        return Response(
+            {
+                'detail': 'Faculty account created.',
                 'user': UserProfileSerializer(profile).data,
             },
             status=status.HTTP_201_CREATED,
@@ -505,7 +531,7 @@ class AccountDetailView(APIView):
         if role not in {'admin', 'superadmin'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
-        target = UserProfile.objects.select_related('institution').filter(user_id=user_id).first()
+        target = UserProfile.objects.select_related('institution', 'college').filter(user_id=user_id).first()
         if not target:
             return Response({'detail': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -531,6 +557,16 @@ class AccountDetailView(APIView):
         if 'email' in request.data:
             target.email = request.data['email'].strip().lower()
 
+        if 'college_id' in request.data:
+            college_id = request.data['college_id']
+            if college_id:
+                college = College.objects.filter(college_id=college_id, institution=target.institution).first()
+                if not college:
+                    return Response({'detail': 'College not found in your institution.'}, status=status.HTTP_400_BAD_REQUEST)
+                target.college = college
+            else:
+                target.college = None
+
         target.save()
         return Response(UserAccountSerializer(target).data)
 
@@ -548,27 +584,64 @@ class FacultyAssignmentsView(APIView):
             return denied
 
         role = normalize_role(request.user.role)
-        faculty_queryset = UserProfile.objects.select_related('institution').filter(role=UserRole.FACULTY)
+        faculty_queryset = UserProfile.objects.select_related('institution', 'college').filter(role=UserRole.FACULTY)
         if role == 'admin':
             faculty_queryset = faculty_queryset.filter(institution=request.user.institution)
 
         assignments = CourseLoad.objects.select_related('course', 'faculty', 'section').filter(
             faculty__in=faculty_queryset,
         ).order_by('faculty__email', 'course__course_code')
-        sections = Section.objects.order_by('section_name')
+        sections = Section.objects.select_related('program').order_by('code')
         if role == 'admin':
             sections = sections.filter(
-                Q(institution=request.user.institution) | Q(institution__isnull=True)
+                Q(institution=request.user.institution)
+                | Q(program__institution=request.user.institution)
+                | Q(institution__isnull=True, program__isnull=True)
             )
+
+        # Get colleges for the institution
+        college_queryset = College.objects.none()
+        if role == 'admin' and request.user.institution_id:
+            college_queryset = College.objects.filter(institution=request.user.institution, is_active=True).order_by('name')
+        elif role == 'superadmin':
+            college_queryset = College.objects.filter(is_active=True).order_by('institution__name', 'name')
+
+        course_queryset = Course.objects.order_by('course_code')
+        if role == 'admin' and request.user.institution_id:
+            course_queryset = course_queryset.filter(institution=request.user.institution)
+
+        # Optional college filtering for courses
+        college_id = request.query_params.get('college_id')
+        if college_id:
+            course_queryset = course_queryset.filter(program__college_id=college_id)
+
+        course_queryset = course_queryset.select_related('program', 'program__college', 'section')
         return Response({
             'faculty': [UserAccountSerializer(profile).data for profile in faculty_queryset.order_by('email')],
+            'colleges': [
+                {
+                    'college_id': str(college.college_id),
+                    'code': college.code,
+                    'name': college.name,
+                    'institution_name': college.institution.name if college.institution_id else '',
+                }
+                for college in college_queryset
+            ],
             'courses': [
                 {
                     'course_id': str(course.course_id),
                     'course_code': course.course_code,
                     'course_title': course.course_title,
+                    'program_name': course.program.name if course.program_id else '',
+                    'college_name': course.program.college.name if course.program_id and course.program.college_id else '',
+                    'college_code': course.program.college.code if course.program_id and course.program.college_id else '',
+                    'section': (
+                        f'{course.program.code} {course.section.code}'
+                        if course.program_id and course.section_id else ''
+                    ),
+                    'category': course.category,
                 }
-                for course in Course.objects.order_by('course_code')
+                for course in course_queryset
             ],
             'assignments': [
                 {
@@ -583,7 +656,12 @@ class FacultyAssignmentsView(APIView):
                 for assignment in assignments
             ],
             'sections': [
-                {'section_id': str(s.section_id), 'section_name': s.section_name}
+                {
+                    'section_id': str(s.section_id),
+                    'section_name': s.section_name,
+                    'code': s.code,
+                    'display_name': f'{s.program.code} {s.code}' if s.program_id else s.code,
+                }
                 for s in sections
             ],
         })
@@ -602,27 +680,58 @@ class FacultyAssignmentsView(APIView):
         if normalize_role(request.user.role) == 'admin' and faculty.institution_id != request.user.institution_id:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
-        course = Course.objects.filter(course_id=request.data.get('course_id')).first()
-        if not course:
-            return Response({'detail': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
-
         section_id = str(request.data.get('section_id') or '').strip()
-        section_name = str(request.data.get('section') or '').strip()[:100]
+        section_name = str(request.data.get('section') or '').strip()[:50]
         if section_id:
             section = Section.objects.filter(section_id=section_id).first() if _is_uuid(section_id) else None
             if not section:
                 return Response({'detail': 'Section not found.'}, status=status.HTTP_404_NOT_FOUND)
         elif section_name:
-            section = Section.objects.filter(
-                institution_id=faculty.institution_id, section_name__iexact=section_name,
+            section = Section.objects.annotate(
+                display_label=Concat('program__code', Value(' '), 'code'),
+            ).filter(
+                Q(institution_id=faculty.institution_id) | Q(program__institution_id=faculty.institution_id),
+                Q(code__iexact=section_name) | Q(display_label__iexact=section_name),
             ).first() or Section.objects.create(
-                institution_id=faculty.institution_id, section_name=section_name,
+                institution_id=faculty.institution_id, code=section_name,
             )
         else:
             return Response({'detail': 'Handled section is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Get or create course
+        course_id = request.data.get('course_id')
+        course = None
+        if course_id:
+            course = Course.objects.filter(course_id=course_id).first()
+            if not course:
+                return Response({'detail': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            # Create new course
+            course_code = (request.data.get('course_code') or '').strip().upper()
+            course_title = (request.data.get('course_title') or '').strip()
+            description = (request.data.get('description') or '').strip()
+
+            if not course_code:
+                return Response({'detail': 'Course code is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            if not course_title:
+                return Response({'detail': 'Course title is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            institution = request.user.institution if normalize_role(request.user.role) == 'admin' else None
+            if Course.objects.filter(course_code__iexact=course_code).exists():
+                return Response(
+                    {'detail': f"A course with code '{course_code}' already exists."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            course = Course.objects.create(
+                institution=institution,
+                course_code=course_code,
+                course_title=course_title,
+                description=description or None,
+            )
+
         # A handled section takes the course.
-        section.courses.add(course)
+        section.taken_courses.add(course)
         assignment, created = CourseLoad.objects.get_or_create(
             course=course,
             faculty=faculty,
@@ -637,6 +746,34 @@ class FacultyAssignmentsView(APIView):
             'section_id': str(section.section_id),
             'section': section.section_name,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def delete(self, request):
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        raw_id = request.data.get('assignment_id')
+        try:
+            assignment_id = uuid.UUID(str(raw_id))
+        except (AttributeError, TypeError, ValueError):
+            return Response(
+                {'detail': 'A valid assignment_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        assignment = CourseLoad.objects.select_related('faculty').filter(
+            assignment_id=assignment_id,
+        ).first()
+        if not assignment:
+            return Response({'detail': 'Assignment not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if (
+            normalize_role(request.user.role) == 'admin'
+            and assignment.faculty.institution_id != request.user.institution_id
+        ):
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+
+        assignment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class InstitutionCustomizationView(APIView):

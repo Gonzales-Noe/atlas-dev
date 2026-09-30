@@ -569,7 +569,7 @@ def course_roster(course_id, extra_sections=None) -> list[dict]:
     blocks = dict(blocks_for(scanned_ids))
     section_names = {s.strip() for s in (extra_sections or []) if s and s.strip()}
     course_blocks = Block.objects.select_related("section").filter(
-        Q(section__courses=course_id) | Q(section__section_name__in=section_names)
+        Q(section__taken_courses=course_id) | Q(section__code__in=section_names)
     ).distinct()
     for b in course_blocks:
         blocks[b.student_id] = b

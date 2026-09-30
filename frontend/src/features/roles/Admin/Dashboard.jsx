@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
+import { fetchAcademicStructure, fetchSetupStatus } from './academicApi'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
@@ -24,9 +25,15 @@ const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'v
 export default function AdminDashboard() {
   const { user } = useAuth()
   const [stats, setStats] = useState({ totalFaculty: 0, totalCourses: 0, totalAssessments: 0, totalModules: 0 })
+  const [setup, setSetup] = useState(null)
 
   useEffect(() => {
-    setStats({ totalFaculty: 15, totalCourses: 8, totalAssessments: 24, totalModules: 32 })
+    fetchSetupStatus()
+      .then(setSetup)
+      .catch(() => setSetup(null))
+    fetchAcademicStructure()
+      .then(data => setStats(prev => ({ ...prev, totalCourses: (data.courses || []).length })))
+      .catch(() => {})
   }, [])
 
   const recentActivity = [
@@ -46,12 +53,23 @@ export default function AdminDashboard() {
       <GlassCard style={{ marginBottom: 24, border: '1px solid rgba(96,170,255,0.35)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ color: '#60AAFF', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>First-time setup</div>
-            <h2 style={{ margin: '7px 0 5px', fontSize: '1.12rem' }}>Make your workspace ready for faculty</h2>
-            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Add faculty, create your course catalog, and upload institutional knowledge.</div>
+            <div style={{ color: '#60AAFF', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+              {setup?.setup_completed ? 'Your academic structure' : 'First-time setup'}
+            </div>
+            <h2 style={{ margin: '7px 0 5px', fontSize: '1.12rem' }}>
+              {setup?.setup_completed
+                ? `${setup.college_count} college(s) · ${setup.program_count} program(s) · ${setup.course_count} course(s)`
+                : 'Make your workspace ready for faculty'}
+            </h2>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+              {setup?.setup_completed
+                ? 'Keep your colleges, programs, sections and courses current so faculty assignment stays accurate.'
+                : 'Add your colleges, programs, sections and courses, then upload institutional knowledge.'}
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Link to="/admin/account-management" style={{ color: '#fff', background: '#8B0000', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Add faculty</Link>
+            <Link to="/admin/academic-structure" style={{ color: '#fff', background: '#8B0000', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Academic structure</Link>
+            <Link to="/admin/account-management" style={{ color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Add faculty</Link>
             <Link to="/admin/knowledge-base" style={{ color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Set up knowledge base</Link>
           </div>
         </div>

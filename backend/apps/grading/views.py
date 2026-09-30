@@ -774,7 +774,7 @@ def student_scores(request):
     scored_by_sid = {r["student_id"]: r for r in records if r["identified"]}
 
     course_sections = list(
-        CourseLoad.objects.filter(course_id=course_id).values_list("section__section_name", flat=True)
+        CourseLoad.objects.filter(course_id=course_id).values_list("section__code", flat=True)
     )
     roster = analytics.course_roster(course_id, extra_sections=course_sections)
 
@@ -921,10 +921,14 @@ def _sectioned_block(student_id) -> Block | None:
 
 
 def _visible_sections(faculty):
-    qs = Section.objects.prefetch_related("courses")
+    qs = Section.objects.prefetch_related("taken_courses")
     if faculty and faculty.institution_id:
-        qs = qs.filter(Q(institution_id=faculty.institution_id) | Q(institution__isnull=True))
-    return qs.order_by("section_name")
+        qs = qs.filter(
+            Q(institution_id=faculty.institution_id)
+            | Q(program__institution_id=faculty.institution_id)
+            | Q(institution__isnull=True, program__isnull=True)
+        )
+    return qs.order_by("code")
 
 
 def _not_in_section_response(student_id):
@@ -962,7 +966,7 @@ def grading_blocks(request):
         qs = (
             Block.objects.select_related("section")
             .filter(section__isnull=False)
-            .order_by("section__section_name", "student_id")
+            .order_by("section__code", "student_id")
         )
         student_id = request.query_params.get("student_id", "").strip()
         section_id = request.query_params.get("section_id", "").strip()
@@ -973,7 +977,7 @@ def grading_blocks(request):
             qs = qs.filter(section_id=section_id)
         sections = []
         for s in _visible_sections(faculty):
-            course_ids = {str(c.course_id) for c in s.courses.all()}
+            course_ids = {str(c.course_id) for c in s.taken_courses.all()}
             sections.append({
                 "section_id": str(s.section_id),
                 "section_name": s.section_name,
@@ -992,7 +996,7 @@ def grading_blocks(request):
 
     sid = _clean_student_id(request.data.get("student_id"))
     section_id = str(request.data.get("section_id") or "").strip()
-    section_name = str(request.data.get("section") or "").strip()[:100]
+    section_name = str(request.data.get("section") or "").strip()[:50]
     grade_level = str(request.data.get("grade_level") or "").strip()[:100]
     if not sid:
         return Response(
@@ -1005,11 +1009,11 @@ def grading_blocks(request):
         if section is None:
             return Response({"success": False, "detail": "Section not found."}, status=status.HTTP_404_NOT_FOUND)
     elif section_name:
-        section = _visible_sections(faculty).filter(section_name__iexact=section_name).first()
+        section = _visible_sections(faculty).filter(code__iexact=section_name).first()
         if section is None:
             section = Section.objects.create(
                 institution_id=faculty.institution_id if faculty else None,
-                section_name=section_name,
+                code=section_name,
             )
     else:
         return Response({"success": False, "detail": "Section is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -1033,7 +1037,7 @@ def grading_blocks(request):
             block.grade_level = grade_level
         block.save()
         if course_id:
-            section.courses.add(course_id)
+            section.taken_courses.add(course_id)
     return Response({"success": True, "block": _block_payload(block)}, status=status.HTTP_201_CREATED)
 
 
@@ -1060,7 +1064,7 @@ def grading_sections(request):
 
     roster = []
     for cid in course_ids:
-        sections = CourseLoad.objects.filter(course_id=cid).values_list("section__section_name", flat=True)
+        sections = CourseLoad.objects.filter(course_id=cid).values_list("section__code", flat=True)
         roster.extend(analytics.course_roster(cid, extra_sections=sections))
 
     return Response({
@@ -1193,7 +1197,7 @@ def grading_reports(request):
     rosters = {}
     for t in templates:
         if t.course_id not in rosters:
-            loads = CourseLoad.objects.filter(course_id=t.course_id).values_list("section__section_name", flat=True)
+            loads = CourseLoad.objects.filter(course_id=t.course_id).values_list("section__code", flat=True)
             rosters[t.course_id] = analytics.course_roster(t.course_id, extra_sections=loads)
 
     passing_values = {r["passing_percent"] for r in records}
