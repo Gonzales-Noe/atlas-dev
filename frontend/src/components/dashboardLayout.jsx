@@ -7,6 +7,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import atlasLogo       from '../assets/atlas-logo.png'
 import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
+import SidebarUserMenu from './SidebarUserMenu'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
@@ -109,7 +110,6 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
   const { user, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   const meta = ROLE_META[role] || ROLE_META.faculty
@@ -282,95 +282,13 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         </nav>
 
         {/* User area */}
-        <div style={{
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          padding: collapsed && !isMobile ? '12px 8px' : '12px 16px',
-          flexShrink: 0,
-          position: 'relative',
-        }}>
-          <button
-            onClick={() => setUserMenuOpen(!userMenuOpen)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              width: '100%', background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
-              padding: collapsed && !isMobile ? '8px' : '8px 12px',
-              cursor: 'pointer', transition: 'all 200ms', justifyContent: collapsed && !isMobile ? 'center' : 'flex-start',
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-            onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-          >
-            {/* Avatar */}
-            <div style={{
-              width: 32, height: 32, borderRadius: '50%',
-              background: 'linear-gradient(135deg, #8B0000, #C0392B)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
-            }}>
-              {(user?.name || user?.email || 'U')[0].toUpperCase()}
-            </div>
-            {(!collapsed || isMobile) && (
-              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.name || user?.email?.split('@')[0] || 'User'}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.email || meta.label}
-                </div>
-              </div>
-            )}
-          </button>
-
-          {/* User dropdown */}
-          {userMenuOpen && (
-            <div style={{
-              position: 'absolute',
-              bottom: 'calc(100% + 8px)',
-              left: 8, right: 8,
-              background: '#16161E',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 14,
-              overflow: 'hidden',
-              boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-              zIndex: 10,
-            }}>
-              {[
-                { label: 'Profile Settings', icon: '👤' },
-                { label: 'Preferences', icon: '⚙️' },
-              ].map(({ label, icon }) => (
-                <button
-                  key={label}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    padding: '10px 14px', color: 'var(--text-primary)',
-                    fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 500,
-                    transition: 'background 150ms',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                >
-                  <span>{icon}</span> {label}
-                </button>
-              ))}
-              <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />
-              <button
-                onClick={handleLogout}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '10px 14px', color: '#FF6B6B',
-                  fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 600,
-                  transition: 'background 150ms',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,80,80,0.08)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}
-              >
-                <span>🚪</span> Sign Out
-              </button>
-            </div>
-          )}
-        </div>
+        <SidebarUserMenu
+          user={user}
+          metaLabel={meta.label}
+          collapsed={collapsed}
+          isMobile={isMobile}
+          onSignOut={handleLogout}
+        />
       </aside>
 
       {/* ── TOPBAR ───────────────────────────────────────────────────────── */}

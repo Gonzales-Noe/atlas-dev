@@ -7,7 +7,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, Toke
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.integrations.models import Institution, UserProfile, UserRole
+from apps.integrations.models import College, Institution, UserProfile, UserRole
 
 
 ROLE_DASHBOARD_MAP = {
@@ -35,9 +35,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
     role_code = serializers.CharField(source='role', read_only=True)
     name = serializers.CharField(read_only=True)
     institution_name = serializers.CharField(source='institution.name', read_only=True, allow_null=True)
+    college_id = serializers.UUIDField(source='college.college_id', read_only=True, allow_null=True)
+    college_name = serializers.CharField(source='college.name', read_only=True, allow_null=True)
+    college_code = serializers.CharField(source='college.code', read_only=True, allow_null=True)
     dashboard_path = serializers.SerializerMethodField()
     institution_application_status = serializers.CharField(source='institution.application_status', read_only=True, allow_null=True)
     institution_payment_status = serializers.CharField(source='institution.payment_status', read_only=True, allow_null=True)
+    setup_completed = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProfile
@@ -48,13 +52,20 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role',
             'role_code',
             'institution_name',
+            'college_id',
+            'college_name',
+            'college_code',
             'dashboard_path',
             'institution_application_status',
             'institution_payment_status',
+            'setup_completed',
             'is_active',
             'created_at',
             'picture_url',
         ]
+
+    def get_setup_completed(self, obj):
+        return bool(obj.institution_id and obj.institution.setup_completed)
 
     def get_role(self, obj):
         return normalize_role(obj.role)
@@ -224,6 +235,9 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 class UserAccountSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     institution_name = serializers.CharField(source='institution.name', read_only=True, allow_null=True)
+    college_id = serializers.UUIDField(source='college.college_id', read_only=True, allow_null=True)
+    college_name = serializers.CharField(source='college.name', read_only=True, allow_null=True)
+    college_code = serializers.CharField(source='college.code', read_only=True, allow_null=True)
     dashboard_path = serializers.SerializerMethodField()
 
     class Meta:
@@ -234,6 +248,9 @@ class UserAccountSerializer(serializers.ModelSerializer):
             'role',
             'role_code',
             'institution_name',
+            'college_id',
+            'college_name',
+            'college_code',
             'dashboard_path',
             'is_active',
             'created_at',
@@ -277,6 +294,57 @@ class EnrollCourseSerializer(serializers.Serializer):
 
     def validate_course_code(self, value):
         return value.strip().upper()
+
+
+class FacultyCreateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255, allow_blank=True, required=False)
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
+    college_id = serializers.UUIDField(required=False, allow_null=True)
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        if UserProfile.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
+    def validate_college_id(self, value):
+        if value:
+            request = self.context.get('request')
+            if request and hasattr(request, 'user'):
+                institution = request.user.institution
+                if institution:
+                    if not College.objects.filter(college_id=value, institution=institution).exists():
+                        raise serializers.ValidationError('College not found in your institution.')
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if not request or not hasattr(request, 'user'):
+            raise serializers.ValidationError('Authentication required.')
+
+        admin_user = request.user
+        institution = admin_user.institution
+        if not institution:
+            raise serializers.ValidationError('Admin user has no associated institution.')
+
+        password = validated_data.pop('password')
+        college_id = validated_data.pop('college_id', None)
+        validated_data.pop('full_name', None)
+
+        college = None
+        if college_id:
+            college = College.objects.filter(college_id=college_id, institution=institution).first()
+
+        return UserProfile.objects.create(
+            institution=institution,
+            college=college,
+            email=validated_data['email'],
+            password_hash=make_password(password),
+            role=UserRole.FACULTY,
+            is_active=True,
+        )
 
 
 class StudentDetailsUpdateSerializer(serializers.Serializer):
