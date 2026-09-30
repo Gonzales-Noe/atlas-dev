@@ -65,6 +65,7 @@ import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
+import FacultyAnalyticsReports from './FacultyAnalyticsReports'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -3900,6 +3901,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Paper>
       )
     }
+    if (activeTab === 'analytics') {
+      return <FacultyAnalyticsReports key={courseId} courseId={courseId} />
+    }
     if (activeTab === 'syllabus') {
       const showSaveFooter = isDirty
       const showAiFooter   = Boolean(aiField) && !AI_EXCLUDED_SECTIONS.has(syllabusSub)
@@ -5231,87 +5235,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
   function renderAnalyticsPanel() {
-    const storedCourses = (() => { try { return JSON.parse(localStorage.getItem('atlas_faculty_courses') || '[]') } catch { return [] } })()
-
-    return (
-      <Stack spacing={2}>
-        <Typography variant="body2" sx={{ color: '#555', fontSize: '0.78rem' }}>
-          Analytics tools for evaluating assessment performance, Bloom's taxonomy coverage, and student outcomes.
-        </Typography>
-
-        <SectionCard title="Bloom's Item Analysis">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            Per-student Bloom-level breakdown showing correct/total per cognitive level, class averages, and aggregated weakness flags.
-          </Typography>
-          <Stack spacing={1}>
-            <LField label="Course" select value={gradingCourseId} onChange={e => setGradingCourseId(e.target.value)}>
-              {storedCourses.map(c => (
-                <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_name || c.course_id}</MenuItem>
-              ))}
-            </LField>
-            <LField label="Assessment" select value={gradingAssessmentId} onChange={e => setGradingAssessmentId(e.target.value)}>
-              {gradingAssessments.map(a => (
-                <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
-              ))}
-            </LField>
-            <Button
-              fullWidth
-              disabled={!gradingCourseId || !gradingAssessmentId}
-              onClick={() => {
-                if (gradingCourseId && gradingAssessmentId) {
-                  window.open(`/faculty/analytics/bloom-item-analysis/${gradingCourseId}/${gradingAssessmentId}`, '_blank')
-                }
-              }}
-              sx={{
-                bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
-                fontSize: '0.78rem', py: 0.7, '&:hover': { bgcolor: '#6a0000' },
-                '&.Mui-disabled': { bgcolor: '#e0e0e0', color: '#999' },
-              }}>
-              Open Bloom Analysis
-            </Button>
-          </Stack>
-        </SectionCard>
-
-        <SectionCard title="Prescriptive Recommendations">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            ILO-mapped prescriptive recommendations based on computed grade sheet means and performance gaps.
-          </Typography>
-          <Button
-            fullWidth
-            onClick={() => window.open('/faculty/analytics/recommendations', '_blank')}
-            sx={{
-              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
-              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
-              '&:hover': { bgcolor: MAROON_LIGHT },
-            }}>
-            Open Recommendations
-          </Button>
-        </SectionCard>
-
-        <SectionCard title="Google Sheets Analysis">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            Ingest grade data from Google Sheets with weighting schemas and generate per-column analysis.
-          </Typography>
-          <Button
-            fullWidth
-            onClick={() => window.open('/faculty/analytics/sheet-analysis', '_blank')}
-            sx={{
-              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
-              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
-              '&:hover': { bgcolor: MAROON_LIGHT },
-            }}>
-            Open Sheet Analysis
-          </Button>
-        </SectionCard>
-      </Stack>
-    )
-  }
-
-  function renderAnalyticsPanel() {
-    const navigate = useNavigate()
     const blueprint = getAssessmentBlueprint()
-    const majorExams = getMajorTosExams()
-    const assessments = workspaceApi.data?.assessments || []
 
     return (
       <Stack spacing={2}>
