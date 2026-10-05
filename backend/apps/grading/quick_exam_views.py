@@ -5,7 +5,7 @@ own tables and never touch course assessments, scores or reports.
 Every row is owned by one faculty user; nobody else can read or change it.
 """
 
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Avg, Count, Max, Q
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.grading.models import QuickExam, QuickExamScan, QuickExamSubject
+from apps.integrations.models import Course
 from apps.grading.services.bubble_sheet_scanner import (
     BubbleSheetScannerService,
     _truncate_flag_reason,
@@ -84,6 +85,7 @@ def _exam_payload(e: QuickExam, full=False, stats=None) -> dict:
         "parts": e.parts or [],
         "passing_score": _num(e.passing_score),
         "has_answer_key": bool(e.answer_key),
+        "has_questions": bool(e.questions),
         "keyed_items": len(e.answer_key or {}),
         "created_at": e.created_at,
         "updated_at": e.updated_at,
@@ -92,6 +94,7 @@ def _exam_payload(e: QuickExam, full=False, stats=None) -> dict:
         data.update(stats)
     if full:
         data["answer_key"] = e.answer_key or {}
+        data["questions"] = e.questions or None
         data["layout_metadata"] = e.layout_metadata or {}
     return data
 
@@ -135,12 +138,25 @@ def _grade(scan: QuickExamScan, exam: QuickExam):
     scan.score_raw, scan.max_score, scan.score_percent = score_raw, max_score, score_pct
 
 
-def _resolve_subject(faculty, subject_id=None, subject_name=None):
-    """Existing subject by id, or get-or-create by name. Returns (subject, error)."""
+def _assigned_courses(faculty):
+    return Course.objects.filter(courseload__faculty=faculty).distinct().order_by("course_code")
+
+
+def _course_subject_name(course: Course) -> str:
+    code, title = (course.course_code or "").strip(), (course.course_title or "").strip()
+    return (f"{code} – {title}" if code and title else code or title)[:150]
+
+
+def _resolve_subject(faculty, subject_id=None, course_id=None):
+    """Existing subject by id, or the subject for one of the faculty's assigned
+    courses (created on first use). Returns (subject, error)."""
     if subject_id:
         subject = QuickExamSubject.objects.filter(pk=subject_id, faculty=faculty).first()
         return (subject, None) if subject else (None, _not_found("Subject"))
-    name = (subject_name or "").strip()
+    course = _assigned_courses(faculty).filter(pk=course_id).first() if course_id else None
+    if course is None:
+        return None, _bad("Choose one of your assigned courses.", status.HTTP_403_FORBIDDEN)
+    name = _course_subject_name(course)
     subject = QuickExamSubject.objects.filter(faculty=faculty, name__iexact=name).first()
     if subject is None:
         subject = QuickExamSubject.objects.create(faculty=faculty, name=name)
@@ -181,40 +197,55 @@ EMPTY_STATS = {
 @permission_classes([IsAuthenticated])
 def quick_subjects(request):
     """
-    GET  /api/grading/quick/subjects/
-    POST /api/grading/quick/subjects/   { "name": "..." }
+    GET  /api/grading/quick/subjects/   subjects + the faculty's assigned courses
+    POST /api/grading/quick/subjects/   { "course_id": "<uuid>" }
     """
     faculty, err = _faculty_or_error(request)
     if err:
         return err
 
     if request.method == "GET":
-        subjects = (
+        subjects = list(
             QuickExamSubject.objects.filter(faculty=faculty)
             .annotate(n=Count("exams"))
             .order_by("name")
         )
+        by_name = {s.name.lower(): s for s in subjects}
+        courses = []
+        for c in _assigned_courses(faculty):
+            name = _course_subject_name(c)
+            match = by_name.get(name.lower())
+            courses.append({
+                "course_id": str(c.course_id),
+                "course_code": c.course_code,
+                "course_title": c.course_title,
+                "name": name,
+                "subject_id": str(match.subject_id) if match else None,
+            })
         return Response({
             "success": True,
             "subjects": [_subject_payload(s, s.n) for s in subjects],
+            "courses": courses,
         })
 
     ser = QuickSubjectSerializer(data=request.data)
     if not ser.is_valid():
         return Response({"success": False, "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
-    subject, _ = _resolve_subject(faculty, subject_name=ser.validated_data["name"])
+    subject, err = _resolve_subject(faculty, course_id=ser.validated_data["course_id"])
+    if err:
+        return err
     return Response(
         {"success": True, "subject": _subject_payload(subject)},
         status=status.HTTP_201_CREATED,
     )
 
 
-@api_view(["PATCH", "DELETE"])
+@api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def quick_subject_detail(request, subject_id):
     """
-    PATCH  /api/grading/quick/subjects/<id>/   { "name": "..." }
     DELETE /api/grading/quick/subjects/<id>/   (only when it has no exams)
+    Subjects are named after assigned courses, so they are not renamed.
     """
     faculty, err = _faculty_or_error(request)
     if err:
@@ -222,17 +253,6 @@ def quick_subject_detail(request, subject_id):
     subject = QuickExamSubject.objects.filter(pk=subject_id, faculty=faculty).first()
     if not subject:
         return _not_found("Subject")
-
-    if request.method == "PATCH":
-        ser = QuickSubjectSerializer(data=request.data)
-        if not ser.is_valid():
-            return Response({"success": False, "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
-        subject.name = ser.validated_data["name"]
-        try:
-            subject.save(update_fields=["name", "updated_at"])
-        except IntegrityError:
-            return _bad("You already have a subject with that name.", status.HTTP_409_CONFLICT)
-        return Response({"success": True, "subject": _subject_payload(subject)})
 
     if subject.exams.exists():
         return _bad(
@@ -273,7 +293,7 @@ def quick_exams(request):
         return Response({"success": False, "errors": ser.errors}, status=status.HTTP_400_BAD_REQUEST)
     d = ser.validated_data
     with transaction.atomic():
-        subject, err = _resolve_subject(faculty, d.get("subject_id"), d.get("subject_name"))
+        subject, err = _resolve_subject(faculty, d.get("subject_id"), d.get("course_id"))
         if err:
             return err
         parts = d.get("parts") or [
@@ -289,6 +309,7 @@ def quick_exams(request):
             parts=parts,
             passing_score=d.get("passing_score"),
             layout_metadata=d["layout_metadata"],
+            questions=d.get("questions"),
         )
     return Response(
         {"success": True, "exam": _exam_payload(exam, full=True, stats=EMPTY_STATS)},
@@ -335,8 +356,8 @@ def quick_exam_detail(request, exam_id):
         )
 
     with transaction.atomic():
-        if d.get("subject_id") or (d.get("subject_name") or "").strip():
-            subject, err = _resolve_subject(faculty, d.get("subject_id"), d.get("subject_name"))
+        if d.get("subject_id") or d.get("course_id"):
+            subject, err = _resolve_subject(faculty, d.get("subject_id"), d.get("course_id"))
             if err:
                 return err
             exam.subject = subject
@@ -354,7 +375,9 @@ def quick_exam_detail(request, exam_id):
         except serializers.ValidationError as exc:
             transaction.set_rollback(True)
             return _bad(" ".join(str(m) for m in exc.detail))
-        # Drop keys that no longer fit the sheet.
+        # Drop keys and questions that no longer fit the sheet.
+        if exam.questions:
+            exam.questions = [q for q in exam.questions if q.get("item_number", 0) <= total] or None
         letters = "ABCD"[: exam.num_choices]
         exam.answer_key = {
             k: v for k, v in (exam.answer_key or {}).items()

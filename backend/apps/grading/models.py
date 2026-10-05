@@ -287,6 +287,8 @@ class QuickExam(models.Model):
     num_id_columns = models.IntegerField(default=8)  # 4–8
     parts = models.JSONField(default=list)
     answer_key = models.JSONField(default=dict)
+    # [{"item_number", "question_text", "choices"}] when pasted, else null.
+    questions = models.JSONField(null=True, blank=True)
     layout_metadata = models.JSONField(default=dict)
     # Percentage (0–100) needed to pass.
     passing_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
