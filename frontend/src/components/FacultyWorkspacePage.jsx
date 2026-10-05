@@ -847,6 +847,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
   const [syllabusExporting, setSyllabusExporting] = useState(false)
   const [syllabusExportError, setSyllabusExportError] = useState('')
+  const [tosExporting, setTosExporting] = useState(false)
+  const [tosExportError, setTosExportError] = useState('')
 
   function setSyl(field, value) {
     setIsDirty(true)
@@ -1231,6 +1233,60 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSyllabusExportError(message)
     } finally {
       setSyllabusExporting(false)
+    }
+  }
+
+  // ── Table of Specifications download ──────────────────────────────────────
+  // Sends the live (unsaved) syllabus so the download always matches what the
+  // faculty member is looking at, falling back to the last saved copy server-side.
+  async function handleExportTos() {
+    if (!courseId) {
+      setTosExportError('Select a course first before downloading.')
+      return
+    }
+    setTosExporting(true)
+    setTosExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+
+      const response = await api.post('/curriculum/export-tos-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const disposition = response.headers?.['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^";]+)"?/i)
+      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${baseName}_table_of_specifications.docx`
+
+      const blobUrl = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      // Error responses come back as a blob, so unwrap it before reading.
+      let message = 'Failed to download the Table of Specifications.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await blobData.text())
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setTosExportError(message)
+    } finally {
+      setTosExporting(false)
     }
   }
 
@@ -3482,10 +3538,33 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Typography>
               <Chip label={`${tosExams.length} exam${tosExams.length !== 1 ? 's' : ''}`} size="small"
                 sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(139,0,0,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
-              <Box onClick={e => e.stopPropagation()}>
+              <Box onClick={e => e.stopPropagation()} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Tooltip title="Download every examination as a landscape DOCX">
+                  <span>
+                    <Button
+                      onClick={handleExportTos}
+                      disabled={tosExporting || tosExams.length === 0}
+                      startIcon={tosExporting ? <CircularProgress size={13} sx={{ color: MAROON }} /> : <DownloadIcon fontSize="small" />}
+                      size="small"
+                      sx={{
+                        textTransform: 'none', fontSize: '0.74rem', fontWeight: 600,
+                        color: MAROON, border: `1px solid ${MAROON}`, borderRadius: 1.5,
+                        minWidth: 0, px: 1.25, py: 0.4,
+                        '&:hover': { bgcolor: MAROON_LIGHT },
+                        '&.Mui-disabled': { color: 'var(--text-tertiary)', borderColor: 'var(--border-color)' },
+                      }}>
+                      {tosExporting ? 'Preparing…' : 'Download ToS'}
+                    </Button>
+                  </span>
+                </Tooltip>
                 <AddRowBtn label="Add TOS" onClick={addTosExam} />
               </Box>
             </Box>
+            {tosExportError && (
+              <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'rgba(231,76,60,0.06)', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600 }}>{tosExportError}</Typography>
+              </Box>
+            )}
             {tosListOpen && (
               <Box sx={{ px: 2.5, py: 1.5 }}>
                 {tosExams.length === 0 ? (
