@@ -6,7 +6,7 @@ MAX_ITEMS = 100
 
 
 class QuickSubjectSerializer(serializers.Serializer):
-    name = serializers.CharField(max_length=150, trim_whitespace=True)
+    course_id = serializers.UUIDField()
 
 
 def _validate_parts(parts, total):
@@ -31,9 +31,40 @@ def _validate_layout(layout, total):
         raise serializers.ValidationError("layout_metadata.items must list every item.")
 
 
+class QuickQuestionSerializer(serializers.Serializer):
+    question_text = serializers.CharField(allow_blank=True, max_length=5000, required=False, default="")
+    choices = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, max_length=1000),
+        required=False,
+        default=list,
+        max_length=4,
+    )
+
+
+def normalize_questions(questions, total):
+    """Numbered question list, or None when nothing was actually written."""
+    if not questions:
+        return None
+    if len(questions) != total:
+        raise serializers.ValidationError(
+            f"{len(questions)} questions were sent but the exam has {total} items."
+        )
+    out = [
+        {
+            "item_number": i,
+            "question_text": (q.get("question_text") or "").strip(),
+            "choices": [c.strip() for c in q.get("choices") or []],
+        }
+        for i, q in enumerate(questions, start=1)
+    ]
+    if not any(q["question_text"] or any(q["choices"]) for q in out):
+        return None
+    return out
+
+
 class QuickExamCreateSerializer(serializers.Serializer):
     subject_id = serializers.UUIDField(required=False, allow_null=True)
-    subject_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    course_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField(max_length=150)
     total_items = serializers.IntegerField(min_value=1, max_value=MAX_ITEMS)
     num_choices = serializers.IntegerField(required=False, default=4, min_value=2, max_value=4)
@@ -43,20 +74,22 @@ class QuickExamCreateSerializer(serializers.Serializer):
         required=False, allow_null=True, max_digits=5, decimal_places=2, min_value=0, max_value=100
     )
     layout_metadata = serializers.DictField()
+    questions = QuickQuestionSerializer(many=True, required=False, allow_null=True)
 
     def validate(self, data):
-        if not data.get("subject_id") and not (data.get("subject_name") or "").strip():
-            raise serializers.ValidationError("Choose a subject or enter a new one.")
+        if not data.get("subject_id") and not data.get("course_id"):
+            raise serializers.ValidationError("Choose one of your assigned courses.")
         total = data["total_items"]
         if data.get("parts"):
             _validate_parts(data["parts"], total)
         _validate_layout(data["layout_metadata"], total)
+        data["questions"] = normalize_questions(data.get("questions"), total)
         return data
 
 
 class QuickExamUpdateSerializer(serializers.Serializer):
     subject_id = serializers.UUIDField(required=False)
-    subject_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    course_id = serializers.UUIDField(required=False)
     name = serializers.CharField(required=False, max_length=150)
     total_items = serializers.IntegerField(required=False, min_value=1, max_value=MAX_ITEMS)
     num_choices = serializers.IntegerField(required=False, min_value=2, max_value=4)
