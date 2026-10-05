@@ -21,6 +21,7 @@ urlpatterns = [
     path("segment-syllabus-upload/", views.segment_syllabus_upload, name="segment_syllabus_upload"),
     path("parse-syllabus-segment/", views.parse_syllabus_segment, name="parse_syllabus_segment"),
     path("export-syllabus-docx/", views.export_syllabus_docx, name="export_syllabus_docx"),
+path("export-tos-docx/", views.export_tos_docx, name="export_tos_docx"),
     path("export-module-docx/", views.export_module_docx, name="export_module_docx"),
     path("export-assessment-docx/", views.export_assessment_docx, name="export_assessment_docx"),
     path("quality-metrics/", views.compute_curriculum_metrics, name="compute_curriculum_metrics"),
