@@ -568,7 +568,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
               onChange={e => setField('total_items', e.target.value)}
               disabled={!!selectedAssessmentId}
               helperText={selectedAssessmentId ? 'Auto-populated from assessment TOS' : ''}
-              inputProps={{ min: 1, max: 300 }} error={!!errors.total_items} />
+              inputProps={{ min: 1, max: 100 }} error={!!errors.total_items} />
             <LF select label="Choices per item" value={form.num_choices}
               onChange={e => setField('num_choices', Number(e.target.value))}>
               {[2, 3, 4, 5].map(n => (
