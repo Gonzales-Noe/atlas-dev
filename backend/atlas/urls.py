@@ -37,6 +37,8 @@ urlpatterns = [
     path('api/analytics/', include('apps.analytics.urls')),
     path('api/integrations/', include('apps.integrations.urls')),
     path('api/grading/omr/', include('apps.grading.urls')),
+    path('api/grading/quick/', include('apps.grading.quick_exam_urls')),
+    path('api/grading/course-exams/', include('apps.grading.course_exam_urls')),
     path('api/grading/', include('apps.grading.urls_grading')),
     path('api/academics/', include('apps.academics.urls')),
 ]

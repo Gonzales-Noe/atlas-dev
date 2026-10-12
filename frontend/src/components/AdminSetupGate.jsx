@@ -3,7 +3,7 @@
 // first-time setup wizard has been completed.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, CircularProgress } from '@mui/material'
+import { Alert, Box } from '@mui/material'
 
 import { useAuth } from '../store/authStore'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
@@ -29,13 +29,11 @@ function toMessage(err, fallback) {
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()
-  const [checking, setChecking] = useState(true)
   const [needsSetup, setNeedsSetup] = useState(false)
   const [statusKnown, setStatusKnown] = useState(false)
   const [error, setError] = useState('')
 
   const check = useCallback(async () => {
-    setChecking(true)
     setError('')
     try {
       const status = await fetchSetupStatus()
@@ -54,7 +52,6 @@ export default function AdminSetupGate({ children }) {
 
   useEffect(() => {
     if (user?.role !== 'admin') {
-      setChecking(false)
       setNeedsSetup(false)
       setStatusKnown(true)
       return
@@ -79,13 +76,6 @@ export default function AdminSetupGate({ children }) {
   }, [])
 
   if (user?.role !== 'admin') return children
-  if (checking) {
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-page, #0B0B0F)' }}>
-        <CircularProgress size={28} sx={{ color: '#FF9F0A' }} />
-      </Box>
-    )
-  }
 
   if (!statusKnown && error) {
     return (
@@ -101,11 +91,12 @@ export default function AdminSetupGate({ children }) {
     )
   }
 
-  return (
-    <>
-      <Box aria-hidden={needsSetup} sx={{ pointerEvents: needsSetup ? 'none' : 'auto', userSelect: needsSetup ? 'none' : 'auto' }}>
-        {children}
-      </Box>
+      <Box
+        aria-hidden={needsSetup}
+          pointerEvents: needsSetup ? 'none' : 'auto',
+          userSelect: needsSetup ? 'none' : 'auto',
+        }}
+
       <AdminSetupWizard open={needsSetup} onFinished={handleFinished} />
     </>
   )

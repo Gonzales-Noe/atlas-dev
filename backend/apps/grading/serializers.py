@@ -87,7 +87,7 @@ class BubbleSheetTemplateCreateSerializer(serializers.Serializer):
     course_id = serializers.UUIDField(required=True)
     assessment_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField(required=True, max_length=150)
-    total_items = serializers.IntegerField(required=True, min_value=1, max_value=300)
+    total_items = serializers.IntegerField(required=True, min_value=1, max_value=100)
     num_choices = serializers.IntegerField(required=False, default=4, min_value=2, max_value=5)
     parts = BubblePartSerializer(many=True, required=False, default=list)
     has_essay = serializers.BooleanField(required=False, default=False)

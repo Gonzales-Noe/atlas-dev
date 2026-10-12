@@ -175,12 +175,23 @@ class YearLevel(models.Model):
 
 
 class Section(models.Model):
-    """A section/block (BSCS-1A) belonging to a program year level."""
+    """A section/block (BSCS-1A), usually under a program year level, and the courses it takes.
+
+    Sections created ad hoc by name (faculty rosters, course assignment) have no
+    program or year level; they are scoped by `institution` instead (null = shared).
+    """
     section_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    program = models.ForeignKey(Program, on_delete=models.CASCADE, related_name='sections')
-    year_level = models.ForeignKey(YearLevel, on_delete=models.CASCADE, related_name='sections')
+    institution = models.ForeignKey(
+        Institution, on_delete=models.CASCADE, null=True, blank=True,
+        db_column='institution_id', related_name='sections',
+    )
+    program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
+    year_level = models.ForeignKey(YearLevel, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
     code = models.CharField(max_length=50)
     name = models.CharField(max_length=100, blank=True, default='')
+    taken_courses = models.ManyToManyField(
+        'Course', related_name='taking_sections', blank=True, db_table='section_courses',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -191,6 +202,10 @@ class Section(models.Model):
         ]
 
     def __str__(self):
+        return self.code
+
+    @property
+    def section_name(self) -> str:
         return self.code
 
 
@@ -232,11 +247,18 @@ class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     faculty = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
-    section = models.CharField(max_length=100, blank=True, default='')
+    section = models.ForeignKey(
+        Section, on_delete=models.SET_NULL, null=True, blank=True,
+        db_column='section_id', related_name='course_loads',
+    )
 
     class Meta:
         db_table = 'course_load'
         unique_together = ('course', 'faculty', 'section')
+
+    @property
+    def section_name(self) -> str:
+        return self.section.section_name if self.section_id else ''
 
 class Ilo(models.Model):
     ilo_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -349,6 +371,26 @@ class StudentData(models.Model):
 
     class Meta:
         db_table = 'student_data'
+
+class Block(models.Model):
+    """Class roster: which grade level and section each student ID belongs to."""
+    block_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    grade_level = models.CharField(max_length=100, blank=True, default='')
+    section = models.ForeignKey(
+        Section, on_delete=models.SET_NULL, null=True, blank=True,
+        db_column='section_id', related_name='blocks',
+    )
+    # Same value as bubble_sheet_scans.student_identifier (e.g. "23-35007").
+    student_id = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'blocks'
+
+    @property
+    def section_name(self) -> str:
+        return self.section.section_name if self.section_id else ''
 
 class AnalyticsSnapshot(models.Model):
     snapshot_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

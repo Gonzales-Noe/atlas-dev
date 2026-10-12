@@ -247,3 +247,86 @@ class BubbleSheetScan(models.Model):
             ),
             models.Index(fields=["is_flagged"], name="idx_bss_flagged"),
         ]
+
+
+# ── Quick Exam Models (mobile-only, separate from course assessments) ─────────
+
+class QuickExamSubject(models.Model):
+    """A faculty-owned label used to group quick exams (not a Course)."""
+
+    subject_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    faculty = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="quick_exam_subjects"
+    )
+    name = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "quick_exam_subjects"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["faculty", "name"], name="uq_quick_subject_faculty_name"
+            )
+        ]
+
+
+class QuickExam(models.Model):
+    """A bubble-sheet exam created on mobile; never linked to a course assessment."""
+
+    exam_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    faculty = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="quick_exams"
+    )
+    subject = models.ForeignKey(
+        QuickExamSubject, on_delete=models.PROTECT, related_name="exams"
+    )
+    name = models.CharField(max_length=150)
+    total_items = models.IntegerField(default=30)  # 1–100
+    num_choices = models.IntegerField(default=4)  # 2–4  (A–B … A–D)
+    num_id_columns = models.IntegerField(default=8)  # 4–8
+    parts = models.JSONField(default=list)
+    answer_key = models.JSONField(default=dict)
+    # [{"item_number", "question_text", "choices"}] when pasted, else null.
+    questions = models.JSONField(null=True, blank=True)
+    layout_metadata = models.JSONField(default=dict)
+    # Percentage (0–100) needed to pass.
+    passing_score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "quick_exams"
+        indexes = [
+            models.Index(fields=["faculty", "subject"], name="idx_quick_exam_fac_subject"),
+        ]
+
+
+class QuickExamScan(models.Model):
+    """One graded answer sheet for a quick exam."""
+
+    scan_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    exam = models.ForeignKey(QuickExam, on_delete=models.CASCADE, related_name="scans")
+    scanned_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="quick_exam_scans",
+    )
+    student_identifier = models.CharField(max_length=64, null=True, blank=True, db_index=True)
+    student_name = models.CharField(max_length=150, null=True, blank=True)
+    responses = models.JSONField(default=dict)
+    score_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    score_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    max_score = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
+    is_flagged = models.BooleanField(default=False)
+    flag_reason = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "quick_exam_scans"
+        indexes = [
+            models.Index(fields=["exam", "student_identifier"], name="idx_quick_scan_exam_student"),
+        ]

@@ -146,6 +146,7 @@ class SectionSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         year_level = validated_data['year_level']
         validated_data['program'] = year_level.program
+        validated_data['institution'] = year_level.program.institution
         return super().create(validated_data)
 
 

@@ -42,3 +42,5 @@ schema.sql
 supabase_schema.sql
 atlas_dev.sql
 atlas_dev_utf8.sql
+# OMR scan uploads
+backend/media/bubble_sheets/scans/

@@ -30,6 +30,16 @@ from apps.integrations.rag_service import (
     semantic_search_with_summary,
 )
 
+from .docx_builders import (
+    add_framework_mapping,
+    add_ilo_at_matrix,
+    add_ilo_framework_matrix,
+    add_table_of_specifications,
+    apply_page_header_footer,
+    build_tos_docx,
+    has_tos,
+    make_landscape,
+)
 from .metrics import compute_metrics
 from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, GenerateSyllabusSerializer
 
@@ -91,8 +101,12 @@ def faculty_courses(request):
 
     assignments = CourseLoad.objects.select_related('course').filter(faculty=request.user)
     courses = []
+    seen_course_ids = set()
     for assignment in assignments:
         course = assignment.course
+        if course.course_id in seen_course_ids:
+            continue
+        seen_course_ids.add(course.course_id)
         # Pull title/code overrides from the latest saved syllabus_content
         latest_syllabus = (
             Syllabus.objects.filter(course=course)
@@ -172,7 +186,9 @@ def faculty_course_workspace(request, course_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def course_students(request, course_id):
-    """Return enrolled students for a course from student_data."""
+    """Return the course roster: blocks members of the course sections plus scanned students."""
+    from apps.grading.services.analytics import course_roster
+
     if not _is_faculty_user(request):
         return _faculty_only_response()
 
@@ -180,14 +196,21 @@ def course_students(request, course_id):
     if error_response:
         return error_response
 
+    sections = CourseLoad.objects.filter(course_id=course_id).values_list('section__code', flat=True)
+    roster = course_roster(course_id, extra_sections=sections)
+    accounts = {
+        sd.sr_code: sd
+        for sd in StudentData.objects.filter(sr_code__in=[s['student_id'] for s in roster])
+    }
+
     students = []
-    for sd in StudentData.objects.filter(
-        courses_enrolled__contains=[{"course_id": str(course_id)}]
-    ):
+    for s in roster:
+        sd = accounts.get(s['student_id'])
         students.append({
-            "user_id": str(sd.user_id),
-            "sr_code": sd.sr_code or "",
-            "courses_enrolled": sd.courses_enrolled,
+            **s,
+            'sr_code': s['student_id'],
+            'user_id': str(sd.user_id) if sd else None,
+            'courses_enrolled': sd.courses_enrolled if sd else [],
         })
 
     return Response(
@@ -3329,7 +3352,29 @@ def _fill_docx_template(doc, data):
             _replace_para_placeholders(para, replacements)
 
 
-def _build_plain_syllabus_docx(data):
+def _resolve_institution_branding(course):
+    """Pull header/footer branding for a course's institution.
+
+    Returns an empty dict when there is no institution or no customization, so
+    callers can always pass the result straight through to the builders.
+    """
+    institution_id = getattr(course, 'institution_id', None)
+    if not institution_id:
+        return {}
+    customization = InstitutionCustomization.objects.filter(
+        institution_id=institution_id,
+    ).first()
+    if not customization:
+        return {}
+    return {
+        'header_text': customization.header_text or '',
+        'footer_text': customization.footer_text or '',
+        'header_image': customization.header_image_url or '',
+        'footer_image': customization.footer_image_url or '',
+    }
+
+
+def _build_plain_syllabus_docx(data, branding=None):
     """Generate a basic structured DOCX from syllabus data dict."""
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches
@@ -3499,6 +3544,24 @@ def _build_plain_syllabus_docx(data):
         if g('other_policies'):
             doc.add_paragraph(g('other_policies'))
 
+    # ── ILO–Assessment Task matrix ─────────────────────────────────────────
+    # Kept in portrait: the column count tracks the number of assessment tasks,
+    # which is small in practice.
+    add_ilo_at_matrix(doc, data)
+
+    # ── Table of Specifications ────────────────────────────────────────────
+    # Rendered in its own landscape section because the grid is 18 columns wide
+    # and becomes unreadable in portrait.
+    if has_tos(data):
+        make_landscape(doc)
+        add_table_of_specifications(doc, data)
+
+    # ── Framework mapping ──────────────────────────────────────────────────
+    add_framework_mapping(doc, data)
+
+    # ── ILO–Framework matrix ───────────────────────────────────────────────
+    add_ilo_framework_matrix(doc, data)
+
     # ── References ─────────────────────────────────────────────────────────
     refs = data.get('references') or []
     valid_refs = [r for r in refs if r and str(r).strip()]
@@ -3506,6 +3569,8 @@ def _build_plain_syllabus_docx(data):
         heading('References', level=1)
         for ref in valid_refs:
             doc.add_paragraph(str(ref), style='List Bullet')
+
+    apply_page_header_footer(doc, branding)
 
     return doc
 
@@ -3616,6 +3681,7 @@ def export_syllabus_docx(request):
 
     course_id = request.data.get('course_id')
 
+    course = None
     syllabus = None
     if course_id:
         course, error_response = _get_assigned_course_or_403(request, course_id)
@@ -3657,6 +3723,8 @@ def export_syllabus_docx(request):
     template_file = request.FILES.get('template')
     template_name = (template_file.name if template_file else '').lower()
     is_xlsx_template = template_name.endswith('.xlsx')
+
+    branding = _resolve_institution_branding(course)
 
     try:
         from io import BytesIO
@@ -3715,7 +3783,7 @@ def export_syllabus_docx(request):
                 doc = Document(template_file)
                 _fill_docx_template(doc, syllabus)
             else:
-                doc = _build_plain_syllabus_docx(syllabus)
+                doc = _build_plain_syllabus_docx(syllabus, branding)
 
             buffer = BytesIO()
             doc.save(buffer)
@@ -3732,6 +3800,91 @@ def export_syllabus_docx(request):
         logger.exception('Error generating DOCX for syllabus export')
         return Response(
             {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_tos_docx(request):
+    """
+    Export the Table of Specifications as a standalone landscape DOCX.
+
+    Endpoint: POST /api/curriculum/export-tos-docx/
+
+    Body (multipart/form-data):
+        course_id     — optional UUID; when given, the latest saved
+                        syllabus_content is used and institution branding applies
+        syllabus_data — optional JSON string fallback when nothing is saved yet
+
+    Returns: DOCX file attachment
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course = None
+    syllabus = None
+
+    course_id = request.data.get('course_id')
+    if course_id:
+        course, error_response = _get_assigned_course_or_403(request, course_id)
+        if error_response:
+            return error_response
+        latest_syllabus = (
+            Syllabus.objects.filter(course=course)
+            .order_by('-generated_at', '-syllabus_id')
+            .first()
+        )
+        if latest_syllabus and isinstance(latest_syllabus.syllabus_content, dict):
+            syllabus = latest_syllabus.syllabus_content
+
+    if syllabus is None:
+        raw_data = request.data.get('syllabus_data', '{}')
+        if isinstance(raw_data, str):
+            try:
+                syllabus = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return Response(
+                    {'success': False, 'error': 'Invalid syllabus_data JSON.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            syllabus = raw_data
+
+    if not isinstance(syllabus, dict):
+        return Response(
+            {'success': False, 'error': 'syllabus_data must be a JSON object.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not has_tos(syllabus):
+        return Response(
+            {'success': False, 'error': 'No Table of Specifications found for this course yet.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        from io import BytesIO
+
+        from django.http import HttpResponse
+
+        doc = build_tos_docx(syllabus, _resolve_institution_branding(course))
+        buffer = BytesIO()
+        doc.save(buffer)
+
+        course_code = (syllabus.get('course_code') or 'syllabus').replace('/', '-').replace(' ', '_')
+        filename = f'{course_code}_table_of_specifications.docx'
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+
+    except Exception as exc:
+        logger.exception('Error generating DOCX for Table of Specifications export')
+        return Response(
+            {'success': False, 'error': f'Failed to generate Table of Specifications: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
