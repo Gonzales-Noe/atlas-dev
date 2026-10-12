@@ -7,7 +7,14 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, Toke
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.integrations.models import College, Institution, UserProfile, UserRole
+from apps.integrations.models import (
+    College,
+    Course,
+    CourseLoad,
+    Institution,
+    UserProfile,
+    UserRole,
+)
 
 
 ROLE_DASHBOARD_MAP = {
@@ -48,6 +55,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'user_id',
             'email',
+            'full_name',
             'name',
             'role',
             'role_code',
@@ -178,7 +186,7 @@ class RegisterSerializer(serializers.Serializer):
         selected_plan = validated_data.pop('selected_plan', '').strip()
         role = validated_data.pop('role', UserRole.ADMIN)
         password = validated_data.pop('password')
-        validated_data.pop('full_name', None)
+        full_name = validated_data.pop('full_name', '').strip()
 
         institution, _ = Institution.objects.get_or_create(
             name=institution_name,
@@ -206,6 +214,7 @@ class RegisterSerializer(serializers.Serializer):
         return UserProfile.objects.create(
             institution=institution,
             email=validated_data['email'],
+            full_name=full_name,
             password_hash=make_password(password),
             role=role,
             is_active=True,
@@ -245,6 +254,7 @@ class UserAccountSerializer(serializers.ModelSerializer):
         fields = [
             'user_id',
             'email',
+            'full_name',
             'role',
             'role_code',
             'institution_name',
@@ -255,7 +265,7 @@ class UserAccountSerializer(serializers.ModelSerializer):
             'is_active',
             'created_at',
         ]
-        read_only_fields = ['user_id', 'created_at']
+        read_only_fields = ['user_id', 'full_name', 'created_at']
 
     role_code = serializers.CharField(source='role', read_only=True)
 
@@ -297,10 +307,16 @@ class EnrollCourseSerializer(serializers.Serializer):
 
 
 class FacultyCreateSerializer(serializers.Serializer):
-    full_name = serializers.CharField(max_length=255, allow_blank=True, required=False)
+    full_name = serializers.CharField(max_length=255)
     email = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
     college_id = serializers.UUIDField(required=False, allow_null=True)
+    assignments = serializers.ListField(
+        child=serializers.DictField(),
+        required=True,
+        allow_empty=False,
+        write_only=True,
+    )
 
     def validate_email(self, value):
         normalized = value.strip().lower()
@@ -318,6 +334,53 @@ class FacultyCreateSerializer(serializers.Serializer):
                         raise serializers.ValidationError('College not found in your institution.')
         return value
 
+    def validate_assignments(self, assignments):
+        request = self.context.get('request')
+        institution = getattr(getattr(request, 'user', None), 'institution', None)
+        if institution is None:
+            raise serializers.ValidationError('Admin user has no associated institution.')
+
+        validated = []
+        for index, assignment in enumerate(assignments):
+            section = str(assignment.get('section') or '').strip()
+            courses = assignment.get('courses')
+            if not section:
+                raise serializers.ValidationError({index: {'section': 'Section is required.'}})
+            if not isinstance(courses, list) or not courses:
+                raise serializers.ValidationError({index: {'courses': 'Add at least one course to each section.'}})
+
+            normalized_courses = []
+            for course_index, course_data in enumerate(courses):
+                course_id = course_data.get('course_id')
+                code = str(course_data.get('course_code') or '').strip().upper()
+                title = str(course_data.get('course_title') or '').strip()
+                description = str(course_data.get('description') or '').strip()
+
+                if course_id:
+                    course = Course.objects.filter(
+                        course_id=course_id,
+                        institution=institution,
+                    ).first()
+                    if course is None:
+                        raise serializers.ValidationError({
+                            index: {'courses': {course_index: 'Course not found in your institution.'}},
+                        })
+                    normalized_courses.append({'course_id': course.course_id})
+                    continue
+
+                if not code or not title:
+                    raise serializers.ValidationError({
+                        index: {'courses': {course_index: 'Course code and title are required.'}},
+                    })
+                normalized_courses.append({
+                    'course_code': code,
+                    'course_title': title,
+                    'description': description,
+                })
+
+            validated.append({'section': section, 'courses': normalized_courses})
+        return validated
+
     @transaction.atomic
     def create(self, validated_data):
         request = self.context.get('request')
@@ -331,20 +394,51 @@ class FacultyCreateSerializer(serializers.Serializer):
 
         password = validated_data.pop('password')
         college_id = validated_data.pop('college_id', None)
-        validated_data.pop('full_name', None)
+        full_name = validated_data.pop('full_name', '').strip()
+        assignments = validated_data.pop('assignments', [])
 
         college = None
         if college_id:
             college = College.objects.filter(college_id=college_id, institution=institution).first()
 
-        return UserProfile.objects.create(
+        profile = UserProfile.objects.create(
             institution=institution,
             college=college,
             email=validated_data['email'],
+            full_name=full_name,
             password_hash=make_password(password),
             role=UserRole.FACULTY,
             is_active=True,
         )
+        for assignment in assignments:
+            for course_data in assignment['courses']:
+                if 'course_id' in course_data:
+                    course = Course.objects.get(
+                        course_id=course_data['course_id'],
+                        institution=institution,
+                    )
+                else:
+                    course = Course.objects.filter(
+                        institution=institution,
+                        course_code__iexact=course_data['course_code'],
+                    ).first()
+                    if course is None:
+                        course = Course.objects.create(
+                            institution=institution,
+                            course_code=course_data['course_code'],
+                            course_title=course_data['course_title'],
+                            description=course_data['description'] or None,
+                        )
+                    if course.course_title != course_data['course_title']:
+                        raise serializers.ValidationError(
+                            {'assignments': f"Course code {course.course_code} already exists with a different title."}
+                        )
+                CourseLoad.objects.get_or_create(
+                    course=course,
+                    faculty=profile,
+                    section=assignment['section'],
+                )
+        return profile
 
 
 class StudentDetailsUpdateSerializer(serializers.Serializer):

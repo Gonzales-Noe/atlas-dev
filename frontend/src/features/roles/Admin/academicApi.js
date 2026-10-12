@@ -11,6 +11,49 @@ export async function fetchSetupStatus() {
   return data
 }
 
+export async function fetchInstitutionCustomization() {
+  const { data } = await api.get('/users/institution-customization/')
+  return data
+}
+
+export async function fetchFacultyAssignments() {
+  const { data } = await api.get('/users/faculty-assignments/')
+  return data
+}
+
+export async function saveInstitutionCustomization(payload) {
+  const { data } = await api.patch('/users/institution-customization/', payload)
+  return data
+}
+
+export async function analyzeSyllabusTemplate(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+  return data
+}
+
+export async function createFacultyWithAssignments(payload) {
+  const { data } = await api.post('/users/faculty/', payload)
+  return data
+}
+
+export async function uploadInstitutionKnowledgeDocument(file) {
+  const extension = file.name.split('.').pop()?.toLowerCase()
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('file_type', extension)
+  formData.append('doc_type', 'Institution_Knowledge_Base')
+  const { data } = await api.post('/integrations/upload-global-rag-document/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+  return data
+}
+
 export async function fetchAcademicStructure() {
   const { data } = await api.get(`${BASE}/structure/`)
   return {
@@ -120,9 +163,7 @@ export const RECOMMENDED_GE_COURSES = [
 ]
 
 export const WIZARD_STEPS = [
-  { key: 'colleges', label: 'Colleges' },
-  { key: 'programs', label: 'Programs' },
-  { key: 'structure', label: 'Years & Sections' },
-  { key: 'courses', label: 'Courses' },
+  { key: 'template', label: 'Syllabus Template' },
+  { key: 'faculty', label: 'Faculty & Teaching Loads' },
   { key: 'knowledge', label: 'Knowledge Base' },
 ]

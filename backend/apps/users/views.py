@@ -1,4 +1,6 @@
+import re
 import secrets
+import logging
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
@@ -13,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, College, Course, CourseLoad, Institution, InstitutionCustomization, StudentData, UserProfile, UserRole
 
 from .serializers import (
@@ -33,6 +36,8 @@ from .serializers import (
     normalize_role,
     tokens_for_profile,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _otp_cache_key(email):
@@ -703,17 +708,24 @@ class InstitutionCustomizationView(APIView):
         return normalize_role(request.user.role) in {'admin', 'superadmin'}
 
     def get(self, request):
-        if not self._admin(request):
+        if not self._admin(request) and normalize_role(request.user.role) != 'faculty':
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         institution = request.user.institution
         if not institution:
-            return Response({'header_text': '', 'footer_text': '', 'syllabus_sections': [], 'field_labels': {}})
+            return Response({
+                'header_text': '',
+                'footer_text': '',
+                'syllabus_template_name': '',
+                'syllabus_sections': [],
+                'field_labels': {},
+            })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,
             'header_text': customization.header_text,
             'footer_text': customization.footer_text,
+            'syllabus_template_name': customization.syllabus_template_name,
             'syllabus_sections': customization.syllabus_sections,
             'field_labels': customization.field_labels,
         })
@@ -724,11 +736,98 @@ class InstitutionCustomizationView(APIView):
         if not request.user.institution:
             return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
-        for field in ('header_image_url', 'footer_image_url', 'header_text', 'footer_text', 'syllabus_sections', 'field_labels'):
+        for field in (
+            'header_image_url',
+            'footer_image_url',
+            'header_text',
+            'footer_text',
+            'syllabus_template_name',
+            'syllabus_sections',
+            'field_labels',
+        ):
             if field in request.data:
                 setattr(customization, field, request.data[field])
         customization.save()
         return self.get(request)
+
+
+class SyllabusTemplateAnalyzeView(APIView):
+    """Extract likely section headings from a PDF or DOCX syllabus template."""
+
+    def post(self, request):
+        if normalize_role(request.user.role) != 'admin':
+            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response({'detail': 'Choose a PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_type = uploaded_file.name.rsplit('.', 1)[-1].lower()
+        is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
+        if not is_valid:
+            return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            pages = DocumentProcessor.extract_text(uploaded_file, file_type)
+        except Exception:
+            logger.exception('Could not extract text from syllabus template %s', uploaded_file.name)
+            return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            uploaded_file.seek(0)
+            customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
+            customization.syllabus_template.save(uploaded_file.name, uploaded_file, save=False)
+            customization.syllabus_template_name = uploaded_file.name[:255]
+            customization.save(update_fields=['syllabus_template', 'syllabus_template_name', 'updated_at'])
+        except Exception:
+            logger.exception('Could not store syllabus template %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Template analysis succeeded, but the file could not be stored. Try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        sections = []
+        seen = set()
+        for page_text, _page_number in pages:
+            for line in page_text.splitlines():
+                original = line.strip()
+                match = re.match(r'^(?:(\d+(?:\.\d+)*|[IVXLC]+)[.)]?\s+|[•*\-]\s*)?(.+?)\s*$', original, re.IGNORECASE)
+                if not match:
+                    continue
+                label = match.group(2).strip().rstrip(':;.')
+                words = label.split()
+                if (
+                    not 1 <= len(words) <= 12
+                    or len(label) > 100
+                    or label.casefold() in {'syllabus', 'course syllabus', 'table of contents'}
+                    or label.casefold() in seen
+                ):
+                    continue
+                is_heading = bool(match.group(1)) or original.endswith(':') or label.isupper()
+                is_heading = is_heading or all(word[:1].isupper() for word in words if word[:1].isalpha())
+                if not is_heading:
+                    continue
+                seen.add(label.casefold())
+                key = re.sub(r'[^a-z0-9]+', '-', label.casefold()).strip('-')
+                sections.append({
+                    'key': key or f'section-{len(sections) + 1}',
+                    'label': label,
+                    'enabled': True,
+                    'is_static': False,
+                    'static_content': '',
+                })
+
+        if not sections:
+            return Response({
+                'detail': 'No section headings were detected. Add the syllabus sections manually.',
+                'sections': [],
+                'template_name': uploaded_file.name,
+            })
+
+        return Response({
+            'sections': sections,
+            'template_name': uploaded_file.name,
+        })
 
 
 class EnrollCourseView(APIView):

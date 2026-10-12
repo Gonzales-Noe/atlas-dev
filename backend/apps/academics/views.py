@@ -9,7 +9,9 @@ from rest_framework.views import APIView
 from apps.integrations.models import (
     College,
     Course,
+    CourseLoad,
     GlobalDocument,
+    InstitutionCustomization,
     Program,
     Section,
     UserRole,
@@ -311,28 +313,36 @@ class CompleteSetupView(AcademicBaseView):
         serializer.is_valid(raise_exception=True)
         skip_knowledge_base = serializer.validated_data['skip_knowledge_base']
 
-        colleges = College.objects.filter(institution=institution).count()
-        programs = Program.objects.filter(institution=institution).count()
-        years = YearLevel.objects.filter(program__institution=institution).count()
-        sections = Section.objects.filter(program__institution=institution).count()
+        customization = InstitutionCustomization.objects.filter(institution=institution).first()
+        syllabus_sections = customization.syllabus_sections if customization else []
+        enabled_sections = [
+            section for section in syllabus_sections
+            if isinstance(section, dict)
+            and section.get('enabled', True)
+            and isinstance(section.get('label'), str)
+            and section['label'].strip()
+        ] if isinstance(syllabus_sections, list) else []
+        faculty_assignments = CourseLoad.objects.filter(
+            faculty__institution=institution,
+            faculty__role=UserRole.FACULTY,
+            course__institution=institution,
+        )
         courses = Course.objects.filter(institution=institution).count()
+        assigned_faculty_count = faculty_assignments.values('faculty_id').distinct().count()
 
         missing = []
-        if colleges < 1:
-            missing.append('at least one college')
-        if programs < 1:
-            missing.append('at least one program')
-        if years < 1:
-            missing.append('at least one year level')
-        if sections < 1:
-            missing.append('at least one section')
-        if courses < 1:
-            missing.append('at least one course')
+        if not enabled_sections or any(
+            section.get('is_static') and not str(section.get('static_content') or '').strip()
+            for section in enabled_sections
+        ):
+            missing.append('at least one syllabus template section')
+        if assigned_faculty_count < 1:
+            missing.append('at least one faculty account with a course and section assignment')
 
         if missing:
             return Response(
                 {
-                    'detail': f'Complete the academic structure first: add {", ".join(missing)}.',
+                    'detail': f'Complete the required setup first: add {", ".join(missing)}.',
                     'missing': missing,
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -347,11 +357,9 @@ class CompleteSetupView(AcademicBaseView):
             'setup_completed': True,
             'skip_knowledge_base': skip_knowledge_base,
             'counts': {
-                'colleges': colleges,
-                'programs': programs,
-                'years': years,
-                'sections': sections,
                 'courses': courses,
+                'assigned_faculty': assigned_faculty_count,
+                'syllabus_sections': len(enabled_sections),
             },
         })
 
@@ -364,6 +372,11 @@ class ResetSetupView(AcademicBaseView):
         if denied:
             return denied
         institution = self.institution(request)
+        if institution.setup_completed:
+            return Response(
+                {'detail': 'First-time setup has already been completed and cannot be reopened.'},
+                status=status.HTTP_409_CONFLICT,
+            )
         institution.setup_completed = False
         institution.setup_completed_at = None
         institution.save(update_fields=['setup_completed', 'setup_completed_at'])

@@ -63,6 +63,8 @@ class InstitutionCustomization(models.Model):
     footer_image_url = models.TextField(blank=True, default='')
     header_text = models.CharField(max_length=500, blank=True, default='')
     footer_text = models.CharField(max_length=500, blank=True, default='')
+    syllabus_template_name = models.CharField(max_length=255, blank=True, default='')
+    syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -76,6 +78,7 @@ class UserProfile(models.Model):
     institution = models.ForeignKey(Institution, on_delete=models.SET_NULL, null=True, blank=True, db_column='institution_id')
     college = models.ForeignKey('College', on_delete=models.SET_NULL, null=True, blank=True, db_column='college_id', related_name='faculty')
     email = models.EmailField(unique=True)
+    full_name = models.CharField(max_length=255, blank=True, default='')
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
     is_active = models.BooleanField(default=True)
@@ -99,6 +102,8 @@ class UserProfile(models.Model):
 
     @property
     def name(self):
+        if self.full_name.strip():
+            return self.full_name.strip()
         local_part = self.email.split('@', 1)[0]
         return local_part.replace('.', ' ').replace('_', ' ').title()
 

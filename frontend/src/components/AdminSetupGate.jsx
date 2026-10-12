@@ -1,7 +1,6 @@
 // src/components/AdminSetupGate.jsx
 // Blocks an institution admin from reaching any other module until the
-// first-time setup wizard has been completed. The wizard itself is
-// non-dismissable, so the admin has to finish the academic structure first.
+// first-time setup wizard has been completed.
 
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Box, CircularProgress } from '@mui/material'
@@ -45,11 +44,9 @@ export default function AdminSetupGate({ children }) {
       setStatusKnown(true)
       flagDone(done)
     } catch (err) {
-      // Never trap the admin because the status call failed. Only block when the
-      // server has positively told us setup is incomplete.
       setStatusKnown(false)
       setNeedsSetup(false)
-      setError(toMessage(err, 'Could not verify setup status. Other modules stay available until this succeeds.'))
+      setError(toMessage(err, 'Could not verify setup status.'))
     } finally {
       setChecking(false)
     }
@@ -92,16 +89,15 @@ export default function AdminSetupGate({ children }) {
 
   if (!statusKnown && error) {
     return (
-      <>
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, background: 'var(--bg-page, #0B0B0F)' }}>
         <Alert
-          severity="warning"
-          action={<button onClick={check} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
-          sx={{ mb: 2, mx: 2 }}
+          severity="error"
+          action={<button onClick={check} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
+          sx={{ maxWidth: 560 }}
         >
-          {error}
+          {error} Admin modules remain locked until setup status can be verified.
         </Alert>
-        {children}
-      </>
+      </Box>
     )
   }
 
