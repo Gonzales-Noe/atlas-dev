@@ -132,6 +132,29 @@ C2_BX = _bx(COL2_X0)
 C1_ITEM_X = COL1_X0 + COL_ITEM_W - 1.0
 C2_ITEM_X = COL2_X0 + COL_ITEM_W - 1.0
 
+# Two columns fit 36 rows between the markers (72 items). Above that the grid
+# switches to three columns with tighter bubble spacing so 100 items fit.
+TWO_COL_MAX_ITEMS = 72
+COMPACT_ITEM_W = 7.5
+COMPACT_BUBBLE_STEP = 7.5
+
+
+def _column_layout(total: int):
+    """(column width, item-number width, items per column, [(x0, item_x, bubble_xs)])."""
+    if total <= TWO_COL_MAX_ITEMS:
+        return COL_W, COL_ITEM_W, (total + 1) // 2, [
+            (COL1_X0, C1_ITEM_X, C1_BX),
+            (COL2_X0, C2_ITEM_X, C2_BX),
+        ]
+    col_w = (RIGHT_W - 2 * COL_GAP) / 3.0
+    offset = COMPACT_ITEM_W + (col_w - COMPACT_ITEM_W - 3 * COMPACT_BUBBLE_STEP) / 2
+    cols = []
+    for i in range(3):
+        x0 = RIGHT_X0 + i * (col_w + COL_GAP)
+        bx = {lbl: x0 + offset + j * COMPACT_BUBBLE_STEP for j, lbl in enumerate("ABCD")}
+        cols.append((x0, x0 + COMPACT_ITEM_W - 1.0, bx))
+    return col_w, COMPACT_ITEM_W, math.ceil(total / 3), cols
+
 SHADE_C = (0.933, 0.933, 0.933)
 
 # ── Colours ───────────────────────────────────────────────────────────────
@@ -159,17 +182,20 @@ class BubbleSheetGeneratorService:
 
         total = template.total_items
         nchoice = template.num_choices
-        nidcols = min(
-            (template.layout_metadata or {}).get("num_id_columns", ID_NUM_COLS),
-            ID_NUM_COLS,
-        )
-        ipc = (total + 1) // 2
+        meta = template.layout_metadata or {}
+        nidcols = meta.get("num_id_columns") or (meta.get("id_columns") or {}).get("num_cols") or ID_NUM_COLS
+        nidcols = max(1, min(int(nidcols), ID_NUM_COLS))
+        columns = _column_layout(total)
+        ipc = columns[2]
+        ncols = len(columns[3])
 
         layout: dict[str, Any] = {
             "page_width_pt": round(mm2pt(PAGE_W_MM), 2),
             "page_height_pt": round(mm2pt(PAGE_H_MM), 2),
             "page": "Long Bond (8.5\"x13\")", "capacity": CAPACITY, "total_items": total,
-            "rows_per_column": ROWS_PER_COL,
+            "rows_per_column": ROWS_PER_COL if ncols == 2 else ipc,
+            "num_answer_columns": ncols,
+            "num_id_columns": nidcols,
             "row_height_pt": round(mm2pt(ROW_V_PITCH), 2),
             "bubble_radius_pt": round(mm2pt(BUBBLE_R), 2),
             "dpi": 300, "items": {}, "id_columns": {},
@@ -190,15 +216,20 @@ class BubbleSheetGeneratorService:
 
         self._draw_fiducials(c, layout)
         self._draw_left_zone(c, template, nidcols, y0, layout)
-        self._draw_answer_zone(c, template, total, nchoice, y0, layout)
+        self._draw_answer_zone(c, total, nchoice, y0, layout, columns)
 
         c.showPage()
         c.save()
         buf.seek(0)
 
         layout["parts"] = [
-            {"label": "Col A", "start_item": 1, "end_item": ipc},
-            {"label": "Col B", "start_item": ipc + 1, "end_item": total},
+            {
+                "label": f"Col {chr(65 + i)}",
+                "start_item": i * ipc + 1,
+                "end_item": min((i + 1) * ipc, total),
+            }
+            for i in range(ncols)
+            if i * ipc + 1 <= total
         ]
         return buf.read(), layout
 
@@ -282,14 +313,16 @@ class BubbleSheetGeneratorService:
         # "STUDENT ID" label
         c.setFont(FONT_B, 8)
         c.setFillColorRGB(*C_MAROON)
-        c.drawCentredString(mm2pt(COMB_X0 + COMB_TOTAL / 2),
+        ncomb = min(ncols, COMB_N)
+        comb_w = ncomb * COMB_W + (ncomb - 1) * COMB_GAP
+        c.drawCentredString(mm2pt(COMB_X0 + comb_w / 2),
                             mm2pt(_sy(comb_yt - 4)),
                             "STUDENT ID")
 
-        # Comb fields
+        # Comb fields (one per ID column, aligned with the bubble grid)
         c.setStrokeColorRGB(*C_BORDER)
         c.setLineWidth(0.5)
-        for i in range(COMB_N):
+        for i in range(ncomb):
             bx_mm = COMB_X0 + i * (COMB_W + COMB_GAP)
             c.rect(mm2pt(bx_mm), mm2pt(_sy(comb_yt + COMB_H)),
                    mm2pt(COMB_W), mm2pt(COMB_H), stroke=1, fill=0)
@@ -323,35 +356,35 @@ class BubbleSheetGeneratorService:
 
     # ── Answer Zone ────────────────────────────────────────────────────────
 
-    def _draw_answer_zone(self, c, template, total, nchoice, y0, layout):
+    def _draw_answer_zone(self, c, total, nchoice, y0, layout, columns):
         labels = ["A", "B", "C", "D"][:nchoice]
-        ipc = (total + 1) // 2
+        col_w, item_w, ipc, specs = columns
 
         layout["answer_grid"] = {
             "y_start_spec_mm": y0, "header_h_mm": HEADER_BAR_H,
             "row_pitch_mm": ROW_V_PITCH, "bubble_r_mm": BUBBLE_R,
             "answer_zone_x0_mm": RIGHT_X0,
             "answer_zone_x1_mm": RIGHT_X1,
-            "col_width_mm": COL_W,
+            "col_width_mm": col_w,
             "col_gap_mm": COL_GAP,
             "num_choices": nchoice,
+            "num_columns": len(specs),
         }
-        self._col(c, total, labels, 1, COL1_X0, C1_ITEM_X, C1_BX, y0, layout, "col_a")
-        self._col(c, total, labels, ipc + 1, COL2_X0, C2_ITEM_X, C2_BX, y0, layout, "col_b")
+        for i, (x0, ix, bx) in enumerate(specs):
+            self._col(c, total, labels, i * ipc + 1, x0, ix, bx, y0, layout,
+                      f"col_{'abc'[i]}", ipc, col_w, item_w)
 
-    def _col(self, c, total, labels, start, x0, ix, bx, y0, layout, key):
-        ipc = (total + 1) // 2
-
+    def _col(self, c, total, labels, start, x0, ix, bx, y0, layout, key, ipc, col_w, item_w):
         # Header
         hdr_b = y0 + HEADER_BAR_H
         c.setFillColorRGB(*C_DARK_HDR)
-        c.rect(mm2pt(x0), mm2pt(_sy(hdr_b)), mm2pt(COL_W), mm2pt(HEADER_BAR_H),
+        c.rect(mm2pt(x0), mm2pt(_sy(hdr_b)), mm2pt(col_w), mm2pt(HEADER_BAR_H),
                stroke=0, fill=1)
 
         c.setFont(FONT_B, 9)
         c.setFillColorRGB(*C_WHITE)
         hy = mm2pt(_sy(y0 + HEADER_BAR_H / 2))
-        c.drawCentredString(mm2pt(x0 + COL_ITEM_W / 2), hy, "#")
+        c.drawCentredString(mm2pt(x0 + item_w / 2), hy, "#")
         for lbl in labels:
             c.drawCentredString(mm2pt(bx[lbl]), hy, lbl)
 
@@ -360,7 +393,7 @@ class BubbleSheetGeneratorService:
         bot = y0 + gh
         c.setStrokeColorRGB(*C_BORDER)
         c.setLineWidth(0.5)
-        c.rect(mm2pt(x0), mm2pt(_sy(bot)), mm2pt(COL_W), mm2pt(gh),
+        c.rect(mm2pt(x0), mm2pt(_sy(bot)), mm2pt(col_w), mm2pt(gh),
                stroke=1, fill=0)
 
         layout["answer_grid"][key] = {
@@ -379,7 +412,7 @@ class BubbleSheetGeneratorService:
             if (ri // 5) % 2 == 1:
                 c.setFillColorRGB(*SHADE_C)
                 c.rect(mm2pt(x0), mm2pt(_sy(rt + ROW_V_PITCH)),
-                       mm2pt(COL_W), mm2pt(ROW_V_PITCH), stroke=0, fill=1)
+                       mm2pt(col_w), mm2pt(ROW_V_PITCH), stroke=0, fill=1)
 
             c.setFont(FONT_B if ino % 5 == 0 else FONT_N, 7)
             c.setFillColorRGB(*C_BLACK)
