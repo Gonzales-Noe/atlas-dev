@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert,
+  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
   InputLabel, Select, FormControl,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
@@ -24,17 +24,17 @@ import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } f
 
 // Sections an institution admin can require in generated syllabi.
 const DEFAULT_SYLLABUS_SECTIONS = [
-  { key: 'overview', label: 'Course Overview', enabled: true },
-  { key: 'basic', label: 'Basic Info', enabled: true },
-  { key: 'details', label: 'Course Details', enabled: true },
-  { key: 'iloat', label: 'ILOs & Assessments', enabled: true },
-  { key: 'iloatmatrix', label: 'ILO-AT Matrix', enabled: true },
-  { key: 'fwmap', label: 'Framework Mapping', enabled: true },
-  { key: 'ilofwmatrix', label: 'ILO-Framework Matrix', enabled: true },
-  { key: 'schedule', label: 'Weekly Schedule', enabled: true },
-  { key: 'tos', label: 'Table of Specifications', enabled: true },
-  { key: 'grading', label: 'Grading', enabled: true },
-  { key: 'policies', label: 'Policies', enabled: true },
+  { key: 'overview', label: 'Course Overview', enabled: true, is_static: false, static_content: '' },
+  { key: 'basic', label: 'Basic Info', enabled: true, is_static: false, static_content: '' },
+  { key: 'details', label: 'Course Details', enabled: true, is_static: false, static_content: '' },
+  { key: 'iloat', label: 'ILOs & Assessments', enabled: true, is_static: false, static_content: '' },
+  { key: 'iloatmatrix', label: 'ILO-AT Matrix', enabled: true, is_static: false, static_content: '' },
+  { key: 'fwmap', label: 'Framework Mapping', enabled: true, is_static: false, static_content: '' },
+  { key: 'ilofwmatrix', label: 'ILO-Framework Matrix', enabled: true, is_static: false, static_content: '' },
+  { key: 'schedule', label: 'Weekly Schedule', enabled: true, is_static: false, static_content: '' },
+  { key: 'tos', label: 'Table of Specifications', enabled: true, is_static: false, static_content: '' },
+  { key: 'grading', label: 'Grading', enabled: true, is_static: false, static_content: '' },
+  { key: 'policies', label: 'Policies', enabled: true, is_static: false, static_content: '' },
 ]
 
 const inputSx = {
@@ -44,9 +44,10 @@ const inputSx = {
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
 }
 
-// Derive a friendly display name from the account email (no name field on the API).
+// Fall back to the email for older accounts without a stored display name.
 function displayName(fac) {
   if (!fac) return '—'
+  if (fac.full_name?.trim()) return fac.full_name.trim()
   const local = (fac.email || '').split('@')[0]
   return local
     .split(/[._-]+/)
@@ -80,7 +81,10 @@ export default function AdminAccountManagement() {
 
   const [selectedFaculty, setSelectedFaculty] = useState(null)
   const [editForm, setEditForm] = useState({ email: '', status: 'active' })
-  const [createForm, setCreateForm] = useState({ full_name: '', email: '', password: '', college_id: '' })
+  const [createForm, setCreateForm] = useState({
+    full_name: '', email: '', password: '', college_id: '',
+    assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
+  })
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [assignmentFilters, setAssignmentFilters] = useState({ college_id: '' })
   const [customization, setCustomization] = useState({
@@ -185,7 +189,10 @@ export default function AdminAccountManagement() {
 
   // ── Add faculty (POST /users/faculty/) ────────────────────────────────────
   function handleCreate() {
-    setCreateForm({ full_name: '', email: '', password: '', college_id: '' })
+    setCreateForm({
+      full_name: '', email: '', password: '', college_id: '',
+      assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
+    })
     setCreateDialog(true)
     handleMenuClose()
   }
@@ -197,6 +204,7 @@ export default function AdminAccountManagement() {
         email: createForm.email,
         password: createForm.password,
         college_id: createForm.college_id || undefined,
+        assignments: createForm.assignments,
       })
       setCreateDialog(false)
       setNotice('Faculty account created.')
@@ -532,7 +540,7 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Create Dialog */}
-      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>Add New Faculty</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
@@ -557,11 +565,81 @@ export default function AdminAccountManagement() {
                 ))}
               </TextField>
             )}
+            <Divider sx={{ borderColor: 'var(--border-color)' }} />
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Sections and courses</div>
+            {createForm.assignments.map((group, groupIndex) => (
+              <div key={groupIndex} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 12 }}>
+                <Stack spacing={1.5}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TextField
+                      label="Section"
+                      value={group.section}
+                      onChange={event => setCreateForm(current => ({
+                        ...current,
+                        assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, section: event.target.value } : item),
+                      }))}
+                      fullWidth size="small" sx={inputSx}
+                    />
+                    <OutlineBtn
+                      small
+                      disabled={createForm.assignments.length === 1}
+                      onClick={() => setCreateForm(current => ({ ...current, assignments: current.assignments.filter((_, index) => index !== groupIndex) }))}
+                    >Remove section</OutlineBtn>
+                  </Stack>
+                  {group.courses.map((course, courseIndex) => (
+                    <div key={courseIndex} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8 }}>
+                      <TextField label="Course code" value={course.course_code}
+                        onChange={event => setCreateForm(current => ({
+                          ...current,
+                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
+                            ...item,
+                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_code: event.target.value } : entry),
+                          } : item),
+                        }))}
+                        size="small" sx={inputSx} />
+                      <TextField label="Course name" value={course.course_title}
+                        onChange={event => setCreateForm(current => ({
+                          ...current,
+                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
+                            ...item,
+                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_title: event.target.value } : entry),
+                          } : item),
+                        }))}
+                        size="small" sx={inputSx} />
+                      <OutlineBtn
+                        small
+                        disabled={group.courses.length === 1}
+                        onClick={() => setCreateForm(current => ({
+                          ...current,
+                          assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: item.courses.filter((_, courseNo) => courseNo !== courseIndex) } : item),
+                        }))}
+                      >Remove</OutlineBtn>
+                    </div>
+                  ))}
+                  <OutlineBtn small onClick={() => setCreateForm(current => ({
+                    ...current,
+                    assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item),
+                  }))}>
+                    <AddIcon fontSize="small" /> Add course to section
+                  </OutlineBtn>
+                </Stack>
+              </div>
+            ))}
+            <OutlineBtn onClick={() => setCreateForm(current => ({
+              ...current,
+              assignments: [...current.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
+            }))}>
+              <AddIcon fontSize="small" /> Add another section
+            </OutlineBtn>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setCreateDialog(false)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleSaveCreate} disabled={!createForm.email || createForm.password.length < 8}>Create Account</PrimaryBtn>
+          <PrimaryBtn
+            onClick={handleSaveCreate}
+            disabled={!createForm.full_name.trim() || !createForm.email || createForm.password.length < 8
+              || createForm.assignments.some(group => !group.section.trim() || group.courses.some(course => !course.course_code.trim() || !course.course_title.trim()))}
+          >Create Account and Assign Courses</PrimaryBtn>
         </DialogActions>
       </Dialog>
 
@@ -727,15 +805,31 @@ export default function AdminAccountManagement() {
               Add the sections your university requires. Use the key for the faculty workspace renderer.
             </div>
             {(customization.syllabus_sections || []).map((section, index) => (
-              <div key={`${section.key}-${index}`} style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>
-                <TextField size="small" label="Key" value={section.key || ''}
-                  onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, key: e.target.value } : item) })} sx={inputSx} />
-                <TextField size="small" label="Section title" value={section.label || ''}
-                  onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, label: e.target.value } : item) })} sx={inputSx} />
-                <OutlineBtn small onClick={() => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.filter((_, i) => i !== index) })}>Remove</OutlineBtn>
-              </div>
+              <Stack key={`${section.key}-${index}`} spacing={1}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>
+                  <TextField size="small" label="Key" value={section.key || ''}
+                    onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, key: e.target.value } : item) })} sx={inputSx} />
+                  <TextField size="small" label="Section title" value={section.label || ''}
+                    onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, label: e.target.value } : item) })} sx={inputSx} />
+                  <OutlineBtn small onClick={() => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.filter((_, i) => i !== index) })}>Remove</OutlineBtn>
+                </div>
+                <Stack direction="row" spacing={2}>
+                  <FormControlLabel
+                    control={<Switch checked={section.enabled !== false} onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, enabled: e.target.checked } : item) })} />}
+                    label="Show to faculty"
+                  />
+                  <FormControlLabel
+                    control={<Switch checked={Boolean(section.is_static)} onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, is_static: e.target.checked } : item) })} />}
+                    label="Fixed for all"
+                  />
+                </Stack>
+                {section.is_static && (
+                  <TextField size="small" label="Shared fixed content" value={section.static_content || ''} multiline minRows={2}
+                    onChange={e => setCustomization({ ...customization, syllabus_sections: customization.syllabus_sections.map((item, i) => i === index ? { ...item, static_content: e.target.value } : item) })} sx={inputSx} />
+                )}
+              </Stack>
             ))}
-            <OutlineBtn small onClick={() => setCustomization({ ...customization, syllabus_sections: [...(customization.syllabus_sections || []), { key: '', label: '', enabled: true }] })}>
+            <OutlineBtn small onClick={() => setCustomization({ ...customization, syllabus_sections: [...(customization.syllabus_sections || []), { key: '', label: '', enabled: true, is_static: false, static_content: '' }] })}>
               Add Section
             </OutlineBtn>
           </Stack>
