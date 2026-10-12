@@ -15,17 +15,12 @@ export default function ProtectedRoute({ children, role }) {
   const location = useLocation()
 
   if (isLoading) {
+    // Reached only on a hard page load or during sign-in, never on navigation,
+    // so nothing is mounted yet. No background paint: the page background from
+    // index.css shows through, so there is no white/black flash.
     return (
-      <Box
-        sx={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#fff',
-        }}
-      >
-        <CircularProgress sx={{ color: '#8B0000' }} />
+      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <CircularProgress size={28} sx={{ color: 'var(--red-mid, #C0392B)' }} />
       </Box>
     )
   }

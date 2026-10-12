@@ -61,9 +61,11 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { toInitials, extractApiError } from '../utils'
+import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
+import FacultyAnalyticsReports from './FacultyAnalyticsReports'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -740,17 +742,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })
   const [assessmentBatchProgress, setAssessmentBatchProgress] = useState(null)
 
-  // ── Grading state ───────────────────────────────────────────────────────
-  const [gradingCourses, setGradingCourses] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('atlas_faculty_courses') || '[]') } catch { return [] }
-  })
-  const [gradingCourseId, setGradingCourseId] = useState('')
-  const [gradingAssessments, setGradingAssessments] = useState([])
-  const [gradingAssessmentId, setGradingAssessmentId] = useState('')
-  const [gradingStudents, setGradingStudents] = useState([])
-  const [gradingLoading, setGradingLoading] = useState(false)
-  const [gradingError, setGradingError] = useState('')
-
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)
   const [uploadError, setUploadError]       = useState('')
@@ -845,21 +836,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [chatLoading, setChatLoading] = useState(false)
   const [chatField, setChatField]     = useState('')  // which section is focused
 
-  // ── Curriculum quality metrics state ────────────────────────────────────
-  const [qualityMetrics, setQualityMetrics]       = useState(null)
-  const [qualityLoading, setQualityLoading]       = useState(false)
-  const [qualityError, setQualityError]           = useState('')
-
-  async function handleComputeMetrics() {
-    setQualityLoading(true); setQualityError(''); setQualityMetrics(null)
-    try {
-      const { data } = await api.post('/curriculum/quality-metrics/', { syllabus_content: syllabusData })
-      if (data.success) setQualityMetrics(data)
-      else setQualityError(data.detail || data.error || 'Failed to compute metrics.')
-    } catch (err) { setQualityError(extractApiError(err)) }
-    finally { setQualityLoading(false) }
-  }
-
   // ── Syllabus upload (parse) state ────────────────────────────────────────
   const syllabusUploadRef                   = useRef(null)
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
@@ -871,6 +847,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
   const [syllabusExporting, setSyllabusExporting] = useState(false)
   const [syllabusExportError, setSyllabusExportError] = useState('')
+  const [tosExporting, setTosExporting] = useState(false)
+  const [tosExportError, setTosExportError] = useState('')
 
   function setSyl(field, value) {
     setIsDirty(true)
@@ -1258,6 +1236,60 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  // ── Table of Specifications download ──────────────────────────────────────
+  // Sends the live (unsaved) syllabus so the download always matches what the
+  // faculty member is looking at, falling back to the last saved copy server-side.
+  async function handleExportTos() {
+    if (!courseId) {
+      setTosExportError('Select a course first before downloading.')
+      return
+    }
+    setTosExporting(true)
+    setTosExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+
+      const response = await api.post('/curriculum/export-tos-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const disposition = response.headers?.['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^";]+)"?/i)
+      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${baseName}_table_of_specifications.docx`
+
+      const blobUrl = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      // Error responses come back as a blob, so unwrap it before reading.
+      let message = 'Failed to download the Table of Specifications.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await blobData.text())
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setTosExportError(message)
+    } finally {
+      setTosExporting(false)
+    }
+  }
+
   // ── API ─────────────────────────────────────────────────────────────────
   const workspaceApi = useApi(
     courseId ? `/curriculum/faculty-course-workspace/${courseId}/` : null,
@@ -1366,53 +1398,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   useEffect(() => { if (!actionError) return; const t = setTimeout(() => setActionError(''), 3000); return () => clearTimeout(t) }, [actionError])
   useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
   useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
-
-  // ── Grading: load courses ──────────────────────────────────────────────
-  useEffect(() => {
-    const stored = (() => { try { return JSON.parse(localStorage.getItem('atlas_faculty_courses') || '[]') } catch { return [] } })()
-    if (stored.length > 0) {
-      setGradingCourses(stored)
-      if (!gradingCourseId) setGradingCourseId(stored[0].course_id || '')
-    }
-  }, [])
-
-  // ── Grading: fetch assessments when course changes ─────────────────────
-  useEffect(() => {
-    if (!gradingCourseId) { setGradingAssessments([]); return }
-    setGradingLoading(true)
-    setGradingError('')
-    api.get(`/grading/omr/jobs/?course_id=${gradingCourseId}`)
-      .then(res => {
-        const jobs = res.data?.items || []
-        const unique = new Map()
-        jobs.forEach(j => {
-          if (j.assessment_id && !unique.has(j.assessment_id))
-            unique.set(j.assessment_id, { assessment_id: j.assessment_id, title: `Assessment (${j.assessment_id.slice(0, 8)}...)` })
-        })
-        return api.get(`/grading/bubble/templates/?course_id=${gradingCourseId}`).then(r2 => {
-          const temps = r2.data?.templates || []
-          temps.forEach(t => {
-            if (t.assessment_id && !unique.has(t.assessment_id))
-              unique.set(t.assessment_id, { assessment_id: t.assessment_id, title: t.name || `Template` })
-          })
-          const list = Array.from(unique.values())
-          setGradingAssessments(list)
-          if (list.length > 0 && !gradingAssessmentId) setGradingAssessmentId(list[0].assessment_id)
-          setGradingLoading(false)
-        })
-      })
-      .catch(err => { setGradingError('Failed to load assessments: ' + (err.response?.data?.detail || err.message)); setGradingLoading(false) })
-  }, [gradingCourseId])
-
-  // ── Grading: fetch student scores when assessment changes ──────────────
-  useEffect(() => {
-    if (!gradingCourseId || !gradingAssessmentId) { setGradingStudents([]); return }
-    setGradingLoading(true)
-    setGradingError('')
-    api.get(`/grading/student-scores/?course_id=${gradingCourseId}&assessment_id=${gradingAssessmentId}`)
-      .then(res => { setGradingStudents(res.data?.students || []); setGradingLoading(false) })
-      .catch(err => { setGradingError('Failed to load scores: ' + (err.response?.data?.detail || err.message)); setGradingLoading(false) })
-  }, [gradingCourseId, gradingAssessmentId])
 
   // Clear AI field selection when the syllabus section tab changes
   useEffect(() => { setAiField(null) }, [syllabusSub])
@@ -3553,10 +3538,33 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Typography>
               <Chip label={`${tosExams.length} exam${tosExams.length !== 1 ? 's' : ''}`} size="small"
                 sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(139,0,0,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
-              <Box onClick={e => e.stopPropagation()}>
+              <Box onClick={e => e.stopPropagation()} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Tooltip title="Download every examination as a landscape DOCX">
+                  <span>
+                    <Button
+                      onClick={handleExportTos}
+                      disabled={tosExporting || tosExams.length === 0}
+                      startIcon={tosExporting ? <CircularProgress size={13} sx={{ color: MAROON }} /> : <DownloadIcon fontSize="small" />}
+                      size="small"
+                      sx={{
+                        textTransform: 'none', fontSize: '0.74rem', fontWeight: 600,
+                        color: MAROON, border: `1px solid ${MAROON}`, borderRadius: 1.5,
+                        minWidth: 0, px: 1.25, py: 0.4,
+                        '&:hover': { bgcolor: MAROON_LIGHT },
+                        '&.Mui-disabled': { color: 'var(--text-tertiary)', borderColor: 'var(--border-color)' },
+                      }}>
+                      {tosExporting ? 'Preparing…' : 'Download ToS'}
+                    </Button>
+                  </span>
+                </Tooltip>
                 <AddRowBtn label="Add TOS" onClick={addTosExam} />
               </Box>
             </Box>
+            {tosExportError && (
+              <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'rgba(231,76,60,0.06)', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600 }}>{tosExportError}</Typography>
+              </Box>
+            )}
             {tosListOpen && (
               <Box sx={{ px: 2.5, py: 1.5 }}>
                 {tosExams.length === 0 ? (
@@ -3898,6 +3906,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Button>
         </Paper>
       )
+    }
+    if (activeTab === 'analytics') {
+      return <FacultyAnalyticsReports key={courseId} courseId={courseId} />
     }
     if (activeTab === 'syllabus') {
       const showSaveFooter = isDirty
@@ -5229,249 +5240,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       )
     }
 
-  function renderAnalyticsPanel() {
-    const storedCourses = (() => { try { return JSON.parse(localStorage.getItem('atlas_faculty_courses') || '[]') } catch { return [] } })()
-
-    return (
-      <Stack spacing={2}>
-        <Typography variant="body2" sx={{ color: '#555', fontSize: '0.78rem' }}>
-          Analytics tools for evaluating assessment performance, Bloom's taxonomy coverage, and student outcomes.
-        </Typography>
-
-        <SectionCard title="Bloom's Item Analysis">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            Per-student Bloom-level breakdown showing correct/total per cognitive level, class averages, and aggregated weakness flags.
-          </Typography>
-          <Stack spacing={1}>
-            <LField label="Course" select value={gradingCourseId} onChange={e => setGradingCourseId(e.target.value)}>
-              {storedCourses.map(c => (
-                <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_name || c.course_id}</MenuItem>
-              ))}
-            </LField>
-            <LField label="Assessment" select value={gradingAssessmentId} onChange={e => setGradingAssessmentId(e.target.value)}>
-              {gradingAssessments.map(a => (
-                <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
-              ))}
-            </LField>
-            <Button
-              fullWidth
-              disabled={!gradingCourseId || !gradingAssessmentId}
-              onClick={() => {
-                if (gradingCourseId && gradingAssessmentId) {
-                  window.open(`/faculty/analytics/bloom-item-analysis/${gradingCourseId}/${gradingAssessmentId}`, '_blank')
-                }
-              }}
-              sx={{
-                bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
-                fontSize: '0.78rem', py: 0.7, '&:hover': { bgcolor: '#6a0000' },
-                '&.Mui-disabled': { bgcolor: '#e0e0e0', color: '#999' },
-              }}>
-              Open Bloom Analysis
-            </Button>
-          </Stack>
-        </SectionCard>
-
-        <SectionCard title="Prescriptive Recommendations">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            ILO-mapped prescriptive recommendations based on computed grade sheet means and performance gaps.
-          </Typography>
-          <Button
-            fullWidth
-            onClick={() => window.open('/faculty/analytics/recommendations', '_blank')}
-            sx={{
-              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
-              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
-              '&:hover': { bgcolor: MAROON_LIGHT },
-            }}>
-            Open Recommendations
-          </Button>
-        </SectionCard>
-
-        <SectionCard title="Google Sheets Analysis">
-          <Typography variant="caption" sx={{ color: '#777', lineHeight: 1.6, display: 'block', mb: 1.5 }}>
-            Ingest grade data from Google Sheets with weighting schemas and generate per-column analysis.
-          </Typography>
-          <Button
-            fullWidth
-            onClick={() => window.open('/faculty/analytics/sheet-analysis', '_blank')}
-            sx={{
-              borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
-              fontSize: '0.78rem', py: 0.7, borderWidth: '1px', borderStyle: 'solid',
-              '&:hover': { bgcolor: MAROON_LIGHT },
-            }}>
-            Open Sheet Analysis
-          </Button>
-        </SectionCard>
-      </Stack>
-    )
-  }
-
-  function renderAnalyticsPanel() {
-    const navigate = useNavigate()
-    const blueprint = getAssessmentBlueprint()
-    const majorExams = getMajorTosExams()
-    const assessments = workspaceApi.data?.assessments || []
-
-    return (
-      <Stack spacing={2}>
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: MAROON, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Analytics Views
-        </Typography>
-
-        {/* Course + Exam selector */}
-        <Stack spacing={1.5}>
-          <SectionCard title="Grading Scores">
-            <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
-              View student scores per assessment. Select a course and assessment to see the score breakdown.
-            </Typography>
-            <Stack spacing={1.2}>
-              <LField
-                label="Course"
-                select
-                size="small"
-                value={gradingCourseId}
-                onChange={e => setGradingCourseId(e.target.value)}
-              >
-                {gradingCourses.map(c => (
-                  <MenuItem key={c.course_id} value={c.course_id}>{c.course_title || c.course_code || c.course_id}</MenuItem>
-                ))}
-              </LField>
-              <LField
-                label="Assessment"
-                select
-                size="small"
-                value={gradingAssessmentId}
-                onChange={e => setGradingAssessmentId(e.target.value)}
-              >
-                {gradingAssessments.map(a => (
-                  <MenuItem key={a.assessment_id} value={a.assessment_id}>{a.title}</MenuItem>
-                ))}
-              </LField>
-            </Stack>
-            {gradingLoading && <LinearProgress sx={{ mt: 1 }} />}
-            {gradingError && <Alert severity="error" sx={{ mt: 1 }}>{gradingError}</Alert>}
-            {gradingStudents.length > 0 && (
-              <Box sx={{ mt: 1.5 }}>
-                <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
-                  {gradingStudents.length} student(s)
-                </Typography>
-                <Stack spacing={0.4} sx={{ mt: 0.75, maxHeight: 240, overflow: 'auto' }}>
-                  {gradingStudents.slice(0, 30).map((s, i) => (
-                    <Box key={s.student_id || i} sx={{ display: 'flex', justifyContent: 'space-between', px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
-                      <Typography variant="caption" sx={{ color: '#555' }}>{s.name || s.student_id || `Student ${i + 1}`}</Typography>
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{s.score ?? s.total_score ?? '—'}</Typography>
-                    </Box>
-                  ))}
-                </Stack>
-              </Box>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Bloom Item Analysis">
-            <Typography variant="body2" sx={{ color: '#666', mb: 1.5 }}>
-              Per-student Bloom-level breakdown with class averages and weakness flags.
-            </Typography>
-            {gradingCourseId && gradingAssessmentId ? (
-              <GenButton
-                onClick={async () => {
-                  setActionError('')
-                  try {
-                    const { data } = await api.get(`/analytics/bloom-item-analysis/?course_id=${gradingCourseId}&assessment_id=${gradingAssessmentId}`)
-                    if (data?.success) {
-                      setResultText(JSON.stringify(data, null, 2))
-                    } else {
-                      setActionError(data?.detail || 'Failed to load Bloom analysis.')
-                    }
-                  } catch (err) {
-                    setActionError(extractApiError(err))
-                  }
-                }}
-                sx={{ fontSize: '0.75rem' }}
-              >
-                Run Bloom Analysis
-              </GenButton>
-            ) : (
-              <Typography variant="caption" sx={{ color: '#aaa' }}>
-                Select a course and assessment above first.
-              </Typography>
-            )}
-          </SectionCard>
-
-          <SectionCard title="TOS Coverage">
-            <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
-              Current assessment blueprint from your Table of Specifications.
-            </Typography>
-            {blueprint.hasMajorExam ? (
-              <Stack spacing={0.5}>
-                <Typography variant="caption" sx={{ color: '#555' }}>
-                  Exam: <strong>{blueprint.assessmentName}</strong> ({blueprint.totalItems} items)
-                </Typography>
-                {blueprint.selectedExam && (blueprint.selectedExam.topics || []).map((t, idx) => (
-                  <Box key={t.id || idx} sx={{ px: 1, py: 0.4, bgcolor: BG, borderRadius: 1 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 600, color: '#444' }}>{t.topic || `Topic ${idx + 1}`}</Typography>
-                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mt: 0.25 }}>
-                      {['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'].map(k => {
-                        const count = Number(t?.bloom_items?.[k] || 0)
-                        return count > 0 ? (
-                          <Chip key={k} size="small" label={`${k}: ${count}`}
-                            sx={{ bgcolor: MAROON_LIGHT, color: MAROON, height: 18, fontSize: '0.6rem' }} />
-                        ) : null
-                      })}
-                    </Box>
-                  </Box>
-                ))}
-              </Stack>
-            ) : (
-              <Typography variant="caption" sx={{ color: '#999' }}>
-                No major TOS exam defined. Go to the Syllabus tab → TOS section to set up your exam blueprint.
-              </Typography>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Quality Metrics">
-            <Typography variant="body2" sx={{ color: '#666', mb: 1 }}>
-              Compute curriculum quality metrics from your syllabus.
-            </Typography>
-            <GenButton onClick={handleComputeMetrics} disabled={qualityLoading} sx={{ fontSize: '0.75rem' }}>
-              {qualityLoading ? 'Computing…' : 'Compute Metrics'}
-            </GenButton>
-            {qualityError && <Alert severity="error" sx={{ mt: 1 }}>{qualityError}</Alert>}
-            {qualityMetrics && qualityMetrics.success && (
-              <Stack spacing={0.6} sx={{ mt: 1.5 }}>
-                {[
-                  { key: 'ilo_coverage', label: 'ILO Coverage' },
-                  { key: 'assessment_mapping', label: 'Assessment Mapping' },
-                  { key: 'cognitive_balance', label: 'Cognitive Balance' },
-                  { key: 'scaffolding', label: 'Scaffolding' },
-                  { key: 'formative_alignment', label: 'Formative Alignment' },
-                  { key: 'curriculum_rigor', label: 'Curriculum Rigor' },
-                ].map(({ key, label }) => {
-                  const val = qualityMetrics[key] || qualityMetrics.metrics?.[key]
-                  const num = typeof val === 'number' ? val : parseFloat(val)
-                  return typeof num === 'number' && !isNaN(num) ? (
-                    <Box key={key} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="caption" sx={{ color: '#555', minWidth: 130 }}>{label}</Typography>
-                      <LinearProgress variant="determinate" value={Math.round(num * 100)} sx={{ flex: 1, height: 6, borderRadius: 3 }} />
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>{(num * 100).toFixed(0)}%</Typography>
-                    </Box>
-                  ) : null
-                })}
-              </Stack>
-            )}
-          </SectionCard>
-        </Stack>
-
-        {resultText && (
-          <SectionCard title="Result">
-            <Box component="pre" sx={{ whiteSpace: 'pre-wrap', fontSize: '0.7rem', color: '#555', maxHeight: 300, overflow: 'auto', m: 0 }}>
-              {resultText}
-            </Box>
-          </SectionCard>
-        )}
-      </Stack>
-    )
-  }
-
   function renderUploadPanel() {
     const docs = docsApi.data?.documents || docsApi.data?.results || []
     return (
@@ -5696,7 +5464,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <CircularProgress size={14} sx={{ color: MAROON }} />
         ) : null}
         <Box sx={{ flex: 1 }} />
-        {isMobile && (
+        {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Tooltip title="Knowledge Base">
             <IconButton onClick={() => setMobileUploadOpen(true)} size="small" sx={{ color: MAROON, mr: 0.5 }}>
               <CloudUploadIcon fontSize="small" />
@@ -5724,14 +5492,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       {/* Mobile nav Drawer */}
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
-        PaperProps={{ sx: { width: 220 } }}>
+        PaperProps={{ sx: { width: 220, display: 'flex', flexDirection: 'column' } }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
           <Typography variant="caption"
             sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
             Workspace
           </Typography>
         </Box>
-        <Stack sx={{ p: 1, gap: 0.25 }}>
+        <Stack sx={{ p: 1, gap: 0.25, flex: 1 }}>
           {WORKSPACE_TABS.map(({ key, label, Icon }) => {
             const on = activeTab === key
             return (
@@ -5751,6 +5519,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )
           })}
         </Stack>
+        <Divider sx={{ borderColor: 'rgba(0,0,0,0.06)' }} />
+        <Button onClick={() => { logout(); navigate('/signin') }} fullWidth
+          startIcon={<LogoutIcon sx={{ fontSize: '1.05rem !important' }} />}
+          sx={{
+            justifyContent: 'flex-start', px: 1.5, py: 0.9, borderRadius: 0,
+            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#C0392B',
+            '&:hover': { bgcolor: 'rgba(192,57,43,0.08)' },
+          }}>
+          Sign Out
+        </Button>
       </Drawer>
 
       {/* Mobile upload Drawer */}
@@ -5759,8 +5537,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Box sx={{ p: 2 }}>
           {activeTab === 'assessment' && selectedAssessment && assessmentDetail
             ? renderAssessmentToolsPanel()
-            : activeTab === 'analytics'
-            ? renderAnalyticsPanel()
             : renderUploadPanel()}
         </Box>
       </Drawer>
@@ -5785,7 +5561,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Typography sx={{ color: '#30D158', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em' }}>FACULTY</Typography>
               </Box>
             </Box>
-            <Stack sx={{ p: 1, gap: 0.25 }}>
+            <Stack sx={{ p: 1, gap: 0.25, flex: 1, overflowY: 'auto' }}>
               {WORKSPACE_TABS.map(({ key, label, Icon }) => {
                 const on = activeTab === key
                 return (
@@ -5807,15 +5583,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 )
               })}
             </Stack>
-            <Box sx={{ mt: 'auto', borderTop: '1px solid rgba(255,255,255,0.06)', p: 1.5 }}>
-              <Button onClick={() => { logout(); navigate('/signin') }} fullWidth sx={{ justifyContent: 'flex-start', gap: 1.25, px: 1.25, py: 1, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5, textTransform: 'none', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
-                <Avatar sx={{ width: 32, height: 32, bgcolor: '#8B0000', fontSize: '0.78rem', fontWeight: 800 }}>{(user?.name || user?.email || 'U')[0].toUpperCase()}</Avatar>
-                <Box sx={{ minWidth: 0, textAlign: 'left' }}>
-                  <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#F0F0F2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0] || 'User'}</Typography>
-                  <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email || 'Faculty'}</Typography>
-                </Box>
-              </Button>
-            </Box>
+            <SidebarUserMenu
+              user={user}
+              metaLabel="Faculty"
+              onSignOut={() => { logout(); navigate('/signin') }}
+            />
           </Box>
         )}
 
@@ -5839,6 +5611,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Tooltip>
                 )
               })}
+              <Box sx={{ mt: 'auto', width: '100%' }}>
+                <SidebarUserMenu
+                  collapsed
+                  user={user}
+                  metaLabel="Faculty"
+                  onSignOut={() => { logout(); navigate('/signin') }}
+                />
+              </Box>
             </Box>
           </Box>
         )}
@@ -5863,7 +5643,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Box>
 
         {/* Drag — right (desktop only when expanded) */}
-        {!isMobile && !rightCollapsed && (
+        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box onMouseDown={() => setDragging('right')}
             sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
                   bgcolor: dragging === 'right' ? MAROON + '44' : 'transparent',
@@ -5871,11 +5651,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )}
 
         {/* RIGHT — sources panel (desktop) or compact rail when collapsed */}
-        {!isMobile && !rightCollapsed && (
+        {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box sx={{ width: rightWidth, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.88)', borderLeft: '1px solid rgba(255,255,255,0.08)', overflow: 'auto', p: 0 }}>
             <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#F0F0F2' }}>
-                {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : activeTab === 'analytics' ? 'Analytics' : 'Sources'}
+                {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : 'Sources'}
               </Typography>
               <Tooltip title="Collapse panel">
                 <IconButton size="small" onClick={toggleRightPanel} sx={{ color: 'rgba(255,255,255,0.55)' }}>
@@ -5886,14 +5666,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{ p: 2 }}>
               {activeTab === 'assessment' && selectedAssessment && assessmentDetail
                 ? renderAssessmentToolsPanel()
-                : activeTab === 'analytics'
-                ? renderAnalyticsPanel()
                 : renderUploadPanel()}
             </Box>
           </Box>
         )}
 
-        {!isMobile && rightCollapsed && (
+        {!isMobile && rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box sx={{ width: 68, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.88)', borderLeft: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'center', py: 1 }}>
             <Box sx={{ width: 44, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75, py: 1 }}>
               <Tooltip title="Expand sources">
