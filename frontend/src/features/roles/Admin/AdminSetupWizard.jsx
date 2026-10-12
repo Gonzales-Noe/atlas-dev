@@ -1,35 +1,26 @@
-// src/features/roles/Admin/AdminSetupWizard.jsx
-// First-time setup modal for the institutional admin. Runs on first login and
-// blocks every other admin module until it is finished.
-//
-// Step 1  Colleges
-// Step 2  Programs (per college)
-// Step 3  Year levels & sections (per program)
-// Step 4  Courses (per program, with recommended GEd subjects)
-// Step 5  Knowledge base (optional — can be skipped for later)
-
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
-  Alert, Box, CircularProgress, Dialog, DialogContent, Divider, IconButton,
-  LinearProgress, MenuItem, Stack, Step, StepLabel, Stepper, TextField,
-  Typography,
+  Alert, Box, Button, CircularProgress, Dialog, DialogContent, Divider,
+  FormControlLabel, IconButton, LinearProgress, Stack, Step,
+  StepLabel, Stepper, Switch, TextField, Typography,
 } from '@mui/material'
-import CloseIcon from '@mui/icons-material/Close'
-import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AddIcon from '@mui/icons-material/Add'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
-import { useNavigate } from 'react-router-dom'
-
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import {
-  COURSE_CATEGORIES, RECOMMENDED_GE_COURSES, WIZARD_STEPS,
-  completeSetup, createCollege, createCourse, createProgram, createSection,
-  createYearLevel, deleteCollege, deleteCourse, deleteProgram, deleteSection,
-  deleteYearLevel, fetchAcademicStructure,
+  analyzeSyllabusTemplate,
+  completeSetup,
+  createFacultyWithAssignments,
+  fetchFacultyAssignments,
+  fetchInstitutionCustomization,
+  saveInstitutionCustomization,
+  uploadInstitutionKnowledgeDocument,
+  WIZARD_STEPS,
 } from './academicApi'
 import { PrimaryBtn, OutlineBtn } from '../../../components/ui'
-import { ROUTES } from '../../../config/route'
 
-const EMPTY_STRUCTURE = { colleges: [], programs: [], yearLevels: [], sections: [], courses: [] }
+const EMPTY_ASSIGNMENT = () => ({ section: '', courses: [{ course_code: '', course_title: '' }] })
 
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
@@ -38,88 +29,57 @@ const inputSx = {
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
 }
 
-const labelSx = { fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6, display: 'block' }
-
-// Turns a DRF error body into one readable sentence.
 function toMessage(err, fallback) {
   const data = err?.response?.data
-  if (!data) return fallback
   if (typeof data === 'string') return data
-  if (typeof data.detail === 'string') return data.detail
-  const parts = Object.entries(data).map(([key, value]) => {
-    const text = Array.isArray(value) ? value.join(', ') : String(value)
-    return key === 'non_field_errors' || key === 'detail' ? text : `${key}: ${text}`
-  })
-  return parts.length ? parts.join(' · ') : fallback
-}
-
-function RowList({ items, onDelete, emptyText }) {
-  if (items.length === 0) {
-    return (
-      <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-        {emptyText}
-      </Typography>
-    )
+  if (typeof data?.detail === 'string') return data.detail
+  if (data && typeof data === 'object') {
+    return Object.entries(data)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : String(value)}`)
+      .join(' · ')
   }
-  return (
-    <Stack spacing={1}>
-      {items.map(item => (
-        <div
-          key={item.id}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            gap: 12, padding: '10px 12px', borderRadius: 12,
-            border: '1px solid var(--border-color)', background: 'var(--bg-header)',
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {item.title}
-            </div>
-            {item.subtitle && (
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{item.subtitle}</div>
-            )}
-          </div>
-          <IconButton size="small" onClick={() => onDelete(item.id)} sx={{ color: '#FF6B6B' }}>
-            <DeleteOutlinedIcon fontSize="small" />
-          </IconButton>
-        </div>
-      ))}
-    </Stack>
-  )
+  return fallback
 }
 
-export default function AdminSetupWizard({ open, onFinished, onDismiss }) {
-  const navigate = useNavigate()
+function sectionKey(label) {
+  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+export default function AdminSetupWizard({ open, onFinished }) {
   const [activeStep, setActiveStep] = useState(0)
-  const [structure, setStructure] = useState(EMPTY_STRUCTURE)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const [templateName, setTemplateName] = useState('')
+  const [sections, setSections] = useState([])
+  const [manualSection, setManualSection] = useState('')
+  const [facultyForm, setFacultyForm] = useState({ full_name: '', email: '', password: '' })
+  const [assignmentGroups, setAssignmentGroups] = useState([EMPTY_ASSIGNMENT()])
+  const [hasAssignedFaculty, setHasAssignedFaculty] = useState(false)
+  const [facultyCount, setFacultyCount] = useState(0)
+  const [knowledgeFile, setKnowledgeFile] = useState(null)
+  const [knowledgeUploaded, setKnowledgeUploaded] = useState(false)
 
-  // Step 1 form
-  const [collegeForm, setCollegeForm] = useState({ code: '', name: '', description: '' })
-  // Step 2 form
-  const [programForm, setProgramForm] = useState({ college: '', code: '', name: '', description: '' })
-  // Step 3 form
-  const [programForStructure, setProgramForStructure] = useState('')
-  const [yearForm, setYearForm] = useState({ year_number: '', label: '' })
-  const [sectionForm, setSectionForm] = useState({ year_level: '', code: '', name: '' })
-  // Step 4 form
-  const [programForCourses, setProgramForCourses] = useState('')
-  const [courseForm, setCourseForm] = useState({
-    course_code: '', course_title: '', category: 'professional', units: '',
-    year_level: '', section: '',
-  })
-
-  const load = useCallback(async () => {
+  const loadInitialData = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      setStructure(await fetchAcademicStructure())
+      const [customization, assignmentsData] = await Promise.all([
+        fetchInstitutionCustomization(),
+        fetchFacultyAssignments(),
+      ])
+      const savedSections = Array.isArray(customization.syllabus_sections)
+        ? customization.syllabus_sections
+        : []
+      setTemplateName(customization.syllabus_template_name || '')
+      setSections(savedSections)
+      const assignedFacultyIds = new Set((assignmentsData.assignments || []).map(item => item.faculty_id))
+      const existingCount = (assignmentsData.faculty || []).filter(faculty => assignedFacultyIds.has(faculty.user_id)).length
+      setHasAssignedFaculty(existingCount > 0)
+      setFacultyCount(existingCount)
     } catch (err) {
-      setError(toMessage(err, 'Could not load your academic structure.'))
+      setError(toMessage(err, 'Could not load your institution setup. Retry to continue.'))
     } finally {
       setLoading(false)
     }
@@ -128,161 +88,157 @@ export default function AdminSetupWizard({ open, onFinished, onDismiss }) {
   useEffect(() => {
     if (open) {
       setActiveStep(0)
-      setNotice('')
       setError('')
-      load()
+      setNotice('')
+      loadInitialData()
     }
-  }, [open, load])
+  }, [open, loadInitialData])
 
-  const programsForCollege = useCallback(
-    (collegeId) => structure.programs.filter(p => p.college === collegeId),
-    [structure.programs],
-  )
-  const yearsForProgram = useCallback(
-    (programId) => structure.yearLevels.filter(y => y.program === programId),
-    [structure.yearLevels],
-  )
-  const sectionsForYear = useCallback(
-    (yearId) => structure.sections.filter(s => s.year_level === yearId),
-    [structure.sections],
-  )
-  const coursesForProgram = useCallback(
-    (programId) => structure.courses.filter(c => c.program === programId),
-    [structure.courses],
-  )
+  function updateSection(index, changes) {
+    setSections(current => current.map((section, i) => i === index ? { ...section, ...changes } : section))
+  }
 
-  const programName = useCallback(
-    (programId) => {
-      const program = structure.programs.find(p => p.program_id === programId)
-      return program ? `${program.code} — ${program.name}` : ''
-    },
-    [structure.programs],
-  )
-
-  async function run(label, action, successMessage) {
+  async function handleTemplateUpload(file) {
+    if (!file) return
     setSaving(true)
     setError('')
     setNotice('')
     try {
-      await action()
-      await load()
-      if (successMessage) setNotice(successMessage)
+      const result = await analyzeSyllabusTemplate(file)
+      setTemplateName(result.template_name || file.name)
+      if (Array.isArray(result.sections) && result.sections.length) {
+        setSections(result.sections)
+        setNotice(`Detected ${result.sections.length} possible section${result.sections.length === 1 ? '' : 's'}. Review them and choose what faculty can edit.`)
+      } else {
+        setNotice(result.detail || 'No headings were detected. Add your sections manually below.')
+      }
     } catch (err) {
-      setError(toMessage(err, `${label} failed.`))
+      setError(toMessage(err, 'Could not analyze the syllabus template.'))
     } finally {
       setSaving(false)
     }
   }
 
-  // ── Step 1: colleges ────────────────────────────────────────────────────────
-  async function addCollege() {
-    if (!collegeForm.code.trim() || !collegeForm.name.trim()) return
-    await run('Adding college', async () => {
-      await createCollege(collegeForm)
-      setCollegeForm({ code: '', name: '', description: '' })
-    }, 'College added.')
-  }
-
-  // ── Step 2: programs ────────────────────────────────────────────────────────
-  async function addProgram() {
-    if (!programForm.college || !programForm.code.trim() || !programForm.name.trim()) return
-    await run('Adding program', async () => {
-      await createProgram(programForm)
-      setProgramForm(prev => ({ ...prev, code: '', name: '', description: '' }))
-    }, 'Program added.')
-  }
-
-  // ── Step 3: years & sections ────────────────────────────────────────────────
-  async function addYear() {
-    if (!programForStructure || !yearForm.year_number) return
-    await run('Adding year level', async () => {
-      await createYearLevel({
-        program: programForStructure,
-        year_number: Number(yearForm.year_number),
-        label: yearForm.label.trim(),
-      })
-      setYearForm({ year_number: '', label: '' })
-    }, 'Year level added.')
-  }
-
-  async function addSection() {
-    if (!sectionForm.year_level || !sectionForm.code.trim()) return
-    await run('Adding section', async () => {
-      await createSection({
-        year_level: sectionForm.year_level,
-        code: sectionForm.code,
-        name: sectionForm.name.trim(),
-      })
-      setSectionForm({ year_level: '', code: '', name: '' })
-    }, 'Section added.')
-  }
-
-  // ── Step 4: courses ─────────────────────────────────────────────────────────
-  async function addCourse(payloadOverride) {
-    const payload = payloadOverride || courseForm
-    if (!programForCourses || !payload.course_code.trim() || !payload.course_title.trim()) return
-    await run('Adding course', async () => {
-      await createCourse({
-        program: programForCourses,
-        year_level: payload.year_level || null,
-        section: payload.section || null,
-        course_code: payload.course_code,
-        course_title: payload.course_title,
-        category: payload.category || 'professional',
-        units: payload.units === '' || payload.units == null ? null : Number(payload.units),
-      })
-      setCourseForm(prev => ({ ...prev, course_code: '', course_title: '', units: '' }))
-    }, 'Course added.')
-  }
-
-  async function addRecommendedGed() {
-    if (!programForCourses) return
-    const existing = new Set(
-      coursesForProgram(programForCourses).map(c => (c.course_code || '').toUpperCase()),
-    )
-    const pending = RECOMMENDED_GE_COURSES.filter(c => !existing.has(c.course_code))
-    if (pending.length === 0) {
-      setNotice('All recommended GEd subjects are already added for this program.')
+  function addManualSection() {
+    const label = manualSection.trim()
+    if (!label) return
+    const key = sectionKey(label)
+    if (sections.some(section => section.label?.trim().toLowerCase() === label.toLowerCase())) {
+      setError('That section is already in the template.')
       return
     }
-    await run('Adding recommended GEd subjects', async () => {
-      for (const item of pending) {
-        await createCourse({
-          program: programForCourses,
-          year_level: null,
-          section: null,
-          ...item,
-        })
-      }
-    }, `Added ${pending.length} recommended GEd subject${pending.length === 1 ? '' : 's'}.`)
+    setSections(current => [...current, {
+      key: key || `section-${current.length + 1}`,
+      label,
+      enabled: true,
+      is_static: false,
+      static_content: '',
+    }])
+    setManualSection('')
+    setError('')
   }
 
-  // ── Step 5: finish ──────────────────────────────────────────────────────────
-  const counts = useMemo(() => ({
-    colleges: structure.colleges.length,
-    programs: structure.programs.length,
-    years: structure.yearLevels.length,
-    sections: structure.sections.length,
-    courses: structure.courses.length,
-  }), [structure])
-
-  const missing = useMemo(() => {
-    const list = []
-    if (counts.colleges < 1) list.push('1 college')
-    if (counts.programs < 1) list.push('1 program')
-    if (counts.years < 1) list.push('1 year level')
-    if (counts.sections < 1) list.push('1 section')
-    if (counts.courses < 1) list.push('1 course')
-    return list
-  }, [counts])
-
-  async function finish(skipKnowledgeBase = true) {
+  async function saveTemplateAndContinue() {
+    const enabledSections = sections
+      .filter(section => section.enabled && section.label?.trim())
+      .map(section => ({
+        ...section,
+        key: section.key?.trim() || sectionKey(section.label),
+        label: section.label.trim(),
+        static_content: section.is_static ? (section.static_content || '').trim() : '',
+      }))
+    if (!enabledSections.length) {
+      setError('Add and enable at least one syllabus section to continue.')
+      return
+    }
+    if (enabledSections.some(section => section.is_static && !section.static_content)) {
+      setError('Add the fixed content for each section marked as static.')
+      return
+    }
     setSaving(true)
     setError('')
     try {
-      await completeSetup(skipKnowledgeBase)
+      await saveInstitutionCustomization({
+        syllabus_template_name: templateName,
+        syllabus_sections: enabledSections,
+      })
+      setSections(enabledSections)
+      setActiveStep(1)
+    } catch (err) {
+      setError(toMessage(err, 'Could not save the syllabus template.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function updateCourse(groupIndex, courseIndex, field, value) {
+    setAssignmentGroups(current => current.map((group, i) => i !== groupIndex ? group : {
+      ...group,
+      courses: group.courses.map((course, j) => j === courseIndex ? { ...course, [field]: value } : course),
+    }))
+  }
+
+  async function addFaculty() {
+    const assignments = assignmentGroups.map(group => ({
+      section: group.section.trim(),
+      courses: group.courses.map(course => ({
+        course_code: course.course_code.trim(),
+        course_title: course.course_title.trim(),
+      })),
+    }))
+    if (!facultyForm.full_name.trim() || !facultyForm.email.trim() || facultyForm.password.length < 8) {
+      setError('Enter the faculty name, a valid email, and a password with at least 8 characters.')
+      return
+    }
+    if (assignments.some(group => !group.section || !group.courses.length
+      || group.courses.some(course => !course.course_code || !course.course_title))) {
+      setError('For each section, enter the section name and at least one course code and title.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      await createFacultyWithAssignments({ ...facultyForm, assignments })
+      setHasAssignedFaculty(true)
+      setFacultyCount(count => count + 1)
+      setFacultyForm({ full_name: '', email: '', password: '' })
+      setAssignmentGroups([EMPTY_ASSIGNMENT()])
+      setNotice('Faculty account and all section/course assignments were added together.')
+    } catch (err) {
+      setError(toMessage(err, 'Could not add the faculty account and teaching loads.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function uploadKnowledgeBase() {
+    if (!knowledgeFile) return
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      await uploadInstitutionKnowledgeDocument(knowledgeFile)
+      setKnowledgeUploaded(true)
+      setNotice('Knowledge base document uploaded.')
+    } catch (err) {
+      setError(toMessage(err, 'Could not upload the knowledge base document. You can skip this optional step.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function finishSetup() {
+    if (!hasAssignedFaculty) {
+      setError('Add at least one faculty account with a course and section assignment before finishing.')
+      setActiveStep(1)
+      return
+    }
+    setSaving(true)
+    setError('')
+    try {
+      await completeSetup(!knowledgeUploaded)
       onFinished?.()
-      if (!skipKnowledgeBase) navigate(ROUTES.ADMIN.KNOWLEDGE_BASE)
     } catch (err) {
       setError(toMessage(err, 'Could not finish setup.'))
     } finally {
@@ -297,55 +253,38 @@ export default function AdminSetupWizard({ open, onFinished, onDismiss }) {
     borderRadius: '20px !important',
   }
 
-  const yearsOfSelectedStructureProgram = yearsForProgram(programForStructure)
-  const yearsOfSelectedCourseProgram = yearsForProgram(programForCourses)
-
   return (
     <Dialog
       open={open}
-      // A non-dismissable dialog is intentional: setup must finish before other modules.
-      onClose={() => { if (onDismiss) onDismiss() }}
+      onClose={() => {}}
       fullWidth
       maxWidth="md"
       disableEscapeKeyDown
       PaperProps={{ sx: dialogPaper }}
     >
-      <Box sx={{ px: 3, pt: 2.5, pb: 1.5, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
-        <Box>
-          <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#FF9F0A', textTransform: 'uppercase' }}>
-            First-time setup
-          </Typography>
-          <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', mt: 0.5 }}>
-            Set up your institution
-          </Typography>
-          <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)', mt: 0.5 }}>
-            These steps are required once. You can refine everything later from Academic Structure.
-          </Typography>
-        </Box>
-        {onDismiss && (
-          <IconButton size="small" onClick={onDismiss} sx={{ color: 'var(--text-secondary)' }}>
-            <CloseIcon fontSize="small" />
-          </IconButton>
-        )}
+      <Box sx={{ px: 3, pt: 2.5, pb: 1.5 }}>
+        <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#FF9F0A', textTransform: 'uppercase' }}>
+          First-time setup
+        </Typography>
+        <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', mt: 0.5 }}>
+          Set up your institution
+        </Typography>
+        <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)', mt: 0.5 }}>
+          Complete the syllabus template and faculty assignments to unlock the admin workspace.
+        </Typography>
       </Box>
 
       <Divider sx={{ borderColor: 'var(--border-color)' }} />
-
       <Box sx={{ px: 3, pt: 2 }}>
-        <Stepper activeStep={activeStep} alternativeLabel
-          sx={{
-            '& .MuiStepLabel-label': { color: 'var(--text-tertiary)', fontSize: '0.72rem' },
-            '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
-            '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.12)' },
-            '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#FF9F0A' },
-          }}
-        >
-          {WIZARD_STEPS.map(step => (
-            <Step key={step.key}><StepLabel>{step.label}</StepLabel></Step>
-          ))}
+        <Stepper activeStep={activeStep} alternativeLabel sx={{
+          '& .MuiStepLabel-label': { color: 'var(--text-tertiary)', fontSize: '0.72rem' },
+          '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
+          '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.12)' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#FF9F0A' },
+        }}>
+          {WIZARD_STEPS.map(step => <Step key={step.key}><StepLabel>{step.label}</StepLabel></Step>)}
         </Stepper>
       </Box>
-
       <LinearProgress
         variant="determinate"
         value={((activeStep + 1) / WIZARD_STEPS.length) * 100}
@@ -354,356 +293,168 @@ export default function AdminSetupWizard({ open, onFinished, onDismiss }) {
 
       <DialogContent dividers sx={{ px: 3, py: 2.5, bgcolor: 'var(--bg-card)', borderColor: 'var(--border-color) !important' }}>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={28} sx={{ color: '#FF9F0A' }} />
-          </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={28} sx={{ color: '#FF9F0A' }} /></Box>
         ) : (
           <Stack spacing={2}>
             {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
             {notice && <Alert severity="success" onClose={() => setNotice('')}>{notice}</Alert>}
 
-            {/* ── Step 1 · Colleges ─────────────────────────────────────────── */}
             {activeStep === 0 && (
               <>
-                <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Add your colleges
+                <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the institution syllabus template</Typography>
+                <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Upload a PDF/DOCX to detect section headings, or add sections manually. Enabled sections appear in every faculty syllabus; mark shared institutional information as fixed.
                 </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  e.g. College of Engineering, College of Business, College of Arts and Sciences.
-                </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '140px 1fr' }, gap: 1.5 }}>
-                  <TextField label="Code" placeholder="CE" size="small" value={collegeForm.code}
-                    onChange={e => setCollegeForm({ ...collegeForm, code: e.target.value.toUpperCase() })}
-                    sx={inputSx} />
-                  <TextField label="College name" placeholder="College of Engineering" size="small" value={collegeForm.name}
-                    onChange={e => setCollegeForm({ ...collegeForm, name: e.target.value })} sx={inputSx} />
-                </Box>
-                <TextField label="Description (optional)" size="small" value={collegeForm.description}
-                  onChange={e => setCollegeForm({ ...collegeForm, description: e.target.value })} sx={inputSx} />
-                <PrimaryBtn small disabled={saving || !collegeForm.code.trim() || !collegeForm.name.trim()} onClick={addCollege}>
-                  <AddIcon fontSize="small" /> Add college
-                </PrimaryBtn>
-                <RowList
-                  emptyText="No colleges yet."
-                  onDelete={id => run('Removing college', () => deleteCollege(id), 'College removed.')}
-                  items={structure.colleges.map(c => ({
-                    id: c.college_id,
-                    title: `${c.code} — ${c.name}`,
-                    subtitle: `${programsForCollege(c.college_id).length} program(s)`,
-                  }))}
-                />
+                <Button
+                  component="label"
+                  variant="outlined"
+                  startIcon={<CloudUploadIcon />}
+                  disabled={saving}
+                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#FF9F0A', color: '#FF9F0A' }}
+                >
+                  {templateName || 'Upload syllabus template (PDF or DOCX)'}
+                  <input hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={event => { handleTemplateUpload(event.target.files?.[0]); event.target.value = '' }} />
+                </Button>
+                {templateName && <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Template: {templateName}</Typography>}
+                {sections.map((section, index) => (
+                  <Box key={`${section.key || section.label}-${index}`} sx={{ p: 1.5, border: '1px solid var(--border-color)', borderRadius: 2 }}>
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                      <TextField
+                        label="Section name"
+                        size="small"
+                        fullWidth
+                        value={section.label || ''}
+                        onChange={event => updateSection(index, { label: event.target.value, key: sectionKey(event.target.value) })}
+                        sx={inputSx}
+                      />
+                      <FormControlLabel
+                        control={<Switch checked={section.enabled !== false} onChange={event => updateSection(index, { enabled: event.target.checked })} />}
+                        label="Show to faculty"
+                        sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                      />
+                      <FormControlLabel
+                        control={<Switch checked={Boolean(section.is_static)} onChange={event => updateSection(index, { is_static: event.target.checked })} />}
+                        label="Fixed for all"
+                        sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                      />
+                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#FF6B6B' }}>
+                        <DeleteOutlinedIcon />
+                      </IconButton>
+                    </Stack>
+                    {section.is_static && (
+                      <TextField
+                        label="Shared fixed content"
+                        value={section.static_content || ''}
+                        onChange={event => updateSection(index, { static_content: event.target.value })}
+                        fullWidth
+                        multiline
+                        minRows={2}
+                        size="small"
+                        sx={{ ...inputSx, mt: 1.5 }}
+                        placeholder="For example, the institution's mission and vision."
+                      />
+                    )}
+                  </Box>
+                ))}
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    label="Add a section manually"
+                    value={manualSection}
+                    onChange={event => setManualSection(event.target.value)}
+                    onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addManualSection() } }}
+                    fullWidth
+                    size="small"
+                    sx={inputSx}
+                  />
+                  <OutlineBtn onClick={addManualSection} disabled={!manualSection.trim()}><AddIcon fontSize="small" /> Add section</OutlineBtn>
+                </Stack>
               </>
             )}
 
-            {/* ── Step 2 · Programs ─────────────────────────────────────────── */}
             {activeStep === 1 && (
               <>
-                <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Add programs per college
+                <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>2. Add a faculty account and teaching load</Typography>
+                <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Add the faculty member and all their sections and courses in one submission. You can add more than one course to a section.
                 </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Every course you add later belongs to one of these programs.
-                </Typography>
-                {structure.colleges.length === 0 ? (
-                  <Alert severity="info">Go back to step 1 and add at least one college first.</Alert>
-                ) : (
-                  <>
-                    <TextField select label="College" size="small" value={programForm.college}
-                      onChange={e => setProgramForm({ ...programForm, college: e.target.value })} sx={inputSx}>
-                      <MenuItem value="">— select college —</MenuItem>
-                      {structure.colleges.map(c => (
-                        <MenuItem key={c.college_id} value={c.college_id}>{c.code} — {c.name}</MenuItem>
-                      ))}
-                    </TextField>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '140px 1fr' }, gap: 1.5 }}>
-                      <TextField label="Code" placeholder="BSCS" size="small" value={programForm.code}
-                        onChange={e => setProgramForm({ ...programForm, code: e.target.value.toUpperCase() })}
-                        sx={inputSx} />
-                      <TextField label="Program name" placeholder="BS Computer Science" size="small" value={programForm.name}
-                        onChange={e => setProgramForm({ ...programForm, name: e.target.value })} sx={inputSx} />
-                    </Box>
-                    <TextField label="Description (optional)" size="small" value={programForm.description}
-                      onChange={e => setProgramForm({ ...programForm, description: e.target.value })} sx={inputSx} />
-                    <PrimaryBtn small disabled={saving || !programForm.college || !programForm.code.trim() || !programForm.name.trim()} onClick={addProgram}>
-                      <AddIcon fontSize="small" /> Add program
-                    </PrimaryBtn>
-                  </>
+                {hasAssignedFaculty && (
+                  <Alert severity="success">{facultyCount} faculty account(s) already have a course and section assignment.</Alert>
                 )}
-                <RowList
-                  emptyText="No programs yet."
-                  onDelete={id => run('Removing program', () => deleteProgram(id), 'Program removed.')}
-                  items={structure.programs.map(p => ({
-                    id: p.program_id,
-                    title: `${p.code} — ${p.name}`,
-                    subtitle: `${p.college_name} · ${yearsForProgram(p.program_id).length} year level(s)`,
-                  }))}
-                />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                  <TextField label="Faculty name" value={facultyForm.full_name} onChange={event => setFacultyForm({ ...facultyForm, full_name: event.target.value })} size="small" sx={inputSx} />
+                  <TextField label="Email" type="email" value={facultyForm.email} onChange={event => setFacultyForm({ ...facultyForm, email: event.target.value })} size="small" sx={inputSx} />
+                  <TextField label="Temporary password (8+ characters)" type="password" value={facultyForm.password} onChange={event => setFacultyForm({ ...facultyForm, password: event.target.value })} size="small" sx={inputSx} />
+                </Box>
+                {assignmentGroups.map((group, groupIndex) => (
+                  <Box key={groupIndex} sx={{ p: 1.5, border: '1px solid var(--border-color)', borderRadius: 2 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <TextField
+                        label="Section"
+                        placeholder="e.g. BSCS 1A"
+                        value={group.section}
+                        onChange={event => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, section: event.target.value } : item))}
+                        fullWidth
+                        size="small"
+                        sx={inputSx}
+                      />
+                      <IconButton aria-label="Remove section" disabled={assignmentGroups.length === 1} onClick={() => setAssignmentGroups(current => current.filter((_, i) => i !== groupIndex))} sx={{ color: '#FF6B6B' }}>
+                        <DeleteOutlinedIcon />
+                      </IconButton>
+                    </Stack>
+                    <Stack spacing={1} sx={{ mt: 1.5 }}>
+                      {group.courses.map((course, courseIndex) => (
+                        <Box key={courseIndex} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 1fr auto' }, gap: 1 }}>
+                          <TextField label="Course code" value={course.course_code} onChange={event => updateCourse(groupIndex, courseIndex, 'course_code', event.target.value)} size="small" sx={inputSx} />
+                          <TextField label="Course name" value={course.course_title} onChange={event => updateCourse(groupIndex, courseIndex, 'course_title', event.target.value)} size="small" sx={inputSx} />
+                          <IconButton aria-label="Remove course" disabled={group.courses.length === 1} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: item.courses.filter((_, j) => j !== courseIndex) } : item))} sx={{ color: '#FF6B6B' }}>
+                            <DeleteOutlinedIcon />
+                          </IconButton>
+                        </Box>
+                      ))}
+                      <Button startIcon={<AddIcon />} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item))} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#FF9F0A' }}>
+                        Add course to this section
+                      </Button>
+                    </Stack>
+                  </Box>
+                ))}
+                <OutlineBtn onClick={() => setAssignmentGroups(current => [...current, EMPTY_ASSIGNMENT()])}><AddIcon fontSize="small" /> Add another section</OutlineBtn>
+                <PrimaryBtn onClick={addFaculty} disabled={saving}>
+                  {saving ? <CircularProgress size={18} /> : <><AddIcon fontSize="small" /> Add faculty and assignments</>}
+                </PrimaryBtn>
               </>
             )}
 
-            {/* ── Step 3 · Years & Sections ────────────────────────────────── */}
             {activeStep === 2 && (
               <>
-                <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Add year levels and sections
-                </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Sections are the blocks a faculty member handles, e.g. BSCS-1A.
-                </Typography>
-                {structure.programs.length === 0 ? (
-                  <Alert severity="info">Go back to step 2 and add at least one program first.</Alert>
-                ) : (
-                  <>
-                    <TextField select label="Program" size="small" value={programForStructure}
-                      onChange={e => { setProgramForStructure(e.target.value); setSectionForm({ year_level: '', code: '', name: '' }) }}
-                      sx={inputSx}>
-                      <MenuItem value="">— select program —</MenuItem>
-                      {structure.programs.map(p => (
-                        <MenuItem key={p.program_id} value={p.program_id}>{p.code} — {p.name}</MenuItem>
-                      ))}
-                    </TextField>
-
-                    <Box sx={{ border: '1px solid var(--border-color)', borderRadius: 14, p: 2 }}>
-                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Year levels
-                      </Typography>
-                      <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '120px 1fr auto' }, gap: 1.5 }}>
-                          <TextField label="Year #" type="number" size="small" value={yearForm.year_number}
-                            onChange={e => setYearForm({ ...yearForm, year_number: e.target.value })} sx={inputSx} />
-                          <TextField label="Label (optional)" placeholder="First Year" size="small" value={yearForm.label}
-                            onChange={e => setYearForm({ ...yearForm, label: e.target.value })} sx={inputSx} />
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <PrimaryBtn small disabled={saving || !programForStructure || !yearForm.year_number} onClick={addYear}>
-                              <AddIcon fontSize="small" /> Add year
-                            </PrimaryBtn>
-                          </Box>
-                        </Box>
-
-                        {yearsOfSelectedStructureProgram.length === 0 ? (
-                          <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                            No year levels yet for this program.
-                          </Typography>
-                        ) : (
-                          <Stack spacing={1}>
-                            {yearsOfSelectedStructureProgram.map(year => (
-                              <Box key={year.year_id} sx={{ border: '1px solid var(--border-color)', borderRadius: 12, p: 1.5 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                                  <Typography sx={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                    {year.label || `Year ${year.year_number}`}
-                                  </Typography>
-                                  <IconButton size="small" onClick={() => run('Removing year level', () => deleteYearLevel(year.year_id), 'Year level removed.')}
-                                    sx={{ color: '#FF6B6B' }}>
-                                    <DeleteOutlinedIcon fontSize="small" />
-                                  </IconButton>
-                                </div>
-                                <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', mt: 0.5 }}>
-                                  {sectionsForYear(year.year_id).length
-                                    ? sectionsForYear(year.year_id).map(s => s.code).join(', ')
-                                    : 'No sections yet'}
-                                </Typography>
-                              </Box>
-                            ))}
-                          </Stack>
-                        )}
-                      </Stack>
-                    </Box>
-
-                    <Box sx={{ border: '1px solid var(--border-color)', borderRadius: 14, p: 2 }}>
-                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                        Sections
-                      </Typography>
-                      <Stack spacing={1.5} sx={{ mt: 1.5 }}>
-                        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 140px 1fr' }, gap: 1.5 }}>
-                          <TextField select label="Year level" size="small" value={sectionForm.year_level}
-                            onChange={e => setSectionForm({ ...sectionForm, year_level: e.target.value })} sx={inputSx}>
-                            <MenuItem value="">— select year —</MenuItem>
-                            {yearsOfSelectedStructureProgram.map(y => (
-                              <MenuItem key={y.year_id} value={y.year_id}>{y.label || `Year ${y.year_number}`}</MenuItem>
-                            ))}
-                          </TextField>
-                          <TextField label="Section code" placeholder="1A" size="small" value={sectionForm.code}
-                            onChange={e => setSectionForm({ ...sectionForm, code: e.target.value.toUpperCase() })} sx={inputSx} />
-                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <PrimaryBtn small disabled={saving || !sectionForm.year_level || !sectionForm.code.trim()} onClick={addSection}>
-                              <AddIcon fontSize="small" /> Add section
-                            </PrimaryBtn>
-                          </Box>
-                        </Box>
-
-                        <RowList
-                          emptyText="No sections yet for this program."
-                          onDelete={id => run('Removing section', () => deleteSection(id), 'Section removed.')}
-                          items={structure.sections
-                            .filter(s => s.program === programForStructure)
-                            .map(s => ({ id: s.section_id, title: s.code, subtitle: s.display_name }))}
-                        />
-                      </Stack>
-                    </Box>
-                  </>
-                )}
-              </>
-            )}
-
-            {/* ── Step 4 · Courses ─────────────────────────────────────────── */}
-            {activeStep === 3 && (
-              <>
-                <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Add courses per program
-                </Typography>
-                <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                  Courses added here appear in the course dropdown when you assign teaching loads to faculty.
-                </Typography>
-                {structure.programs.length === 0 ? (
-                  <Alert severity="info">Go back to step 2 and add at least one program first.</Alert>
-                ) : (
-                  <>
-                    <TextField select label="Program" size="small" value={programForCourses}
-                      onChange={e => { setProgramForCourses(e.target.value); setCourseForm(prev => ({ ...prev, year_level: '', section: '' })) }}
-                      sx={inputSx}>
-                      <MenuItem value="">— select program —</MenuItem>
-                      {structure.programs.map(p => (
-                        <MenuItem key={p.program_id} value={p.program_id}>{p.code} — {p.name}</MenuItem>
-                      ))}
-                    </TextField>
-
-                    <OutlineBtn small disabled={saving || !programForCourses} onClick={addRecommendedGed}>
-                      <AutoAwesomeIcon fontSize="small" /> Add recommended GEd subjects
-                    </OutlineBtn>
-
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '140px 1fr' }, gap: 1.5 }}>
-                      <TextField label="Course code" placeholder="BSCS101" size="small" value={courseForm.course_code}
-                        onChange={e => setCourseForm({ ...courseForm, course_code: e.target.value.toUpperCase() })} sx={inputSx} />
-                      <TextField label="Course title" placeholder="Introduction to Computing" size="small" value={courseForm.course_title}
-                        onChange={e => setCourseForm({ ...courseForm, course_title: e.target.value })} sx={inputSx} />
-                    </Box>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1.5 }}>
-                      <TextField select label="Category" size="small" value={courseForm.category}
-                        onChange={e => setCourseForm({ ...courseForm, category: e.target.value })} sx={inputSx}>
-                        {COURSE_CATEGORIES.map(c => (
-                          <MenuItem key={c.value} value={c.value}>{c.label}</MenuItem>
-                        ))}
-                      </TextField>
-                      <TextField select label="Year level" size="small" value={courseForm.year_level}
-                        onChange={e => setCourseForm({ ...courseForm, year_level: e.target.value, section: '' })} sx={inputSx}>
-                        <MenuItem value="">Any year</MenuItem>
-                        {yearsOfSelectedCourseProgram.map(y => (
-                          <MenuItem key={y.year_id} value={y.year_id}>{y.label || `Year ${y.year_number}`}</MenuItem>
-                        ))}
-                      </TextField>
-                      <TextField label="Units" type="number" size="small" value={courseForm.units}
-                        onChange={e => setCourseForm({ ...courseForm, units: e.target.value })} sx={inputSx} />
-                    </Box>
-                    <TextField select label="Section" size="small" value={courseForm.section}
-                      onChange={e => setCourseForm({ ...courseForm, section: e.target.value })} sx={inputSx}>
-                      <MenuItem value="">Any section</MenuItem>
-                      {structure.sections
-                        .filter(s => s.program === programForCourses && (!courseForm.year_level || s.year_level === courseForm.year_level))
-                        .map(s => (
-                          <MenuItem key={s.section_id} value={s.section_id}>{s.code} — {s.display_name}</MenuItem>
-                        ))}
-                    </TextField>
-                    <PrimaryBtn small
-                      disabled={saving || !programForCourses || !courseForm.course_code.trim() || !courseForm.course_title.trim()}
-                      onClick={() => addCourse()}>
-                      <AddIcon fontSize="small" /> Add course
-                    </PrimaryBtn>
-
-                    <RowList
-                      emptyText="No courses yet for this program."
-                      onDelete={id => run('Removing course', () => deleteCourse(id), 'Course removed.')}
-                      items={coursesForProgram(programForCourses).map(c => ({
-                        id: c.course_id,
-                        title: `${c.course_code} — ${c.course_title}`,
-                        subtitle: [
-                          c.category === 'ged' ? 'GEd' : c.category,
-                          c.year_label,
-                          c.section_code,
-                          c.units ? `${c.units} units` : null,
-                        ].filter(Boolean).join(' · '),
-                      }))}
-                    />
-                  </>
-                )}
-              </>
-            )}
-
-            {/* ── Step 5 · Knowledge base ──────────────────────────────────── */}
-            {activeStep === 4 && (
-              <>
-                <Typography sx={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                  Knowledge base (optional)
-                </Typography>
+                <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>3. Upload a knowledge base (optional)</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Upload CHED handbooks, syllabi, policies and reference material so ATLAS can ground syllabus
-                  and assessment generation in your institutional documents. You can skip this and add documents
-                  any time later from the Knowledge Base module.
+                  Add institutional reference documents now, or skip and upload them later from Knowledge Base.
                 </Typography>
-                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)' }, gap: 1.5 }}>
-                  {[
-                    { title: 'CHED Handbooks', text: 'Memo circulars and program guidelines.' },
-                    { title: 'Institutional Syllabi', text: 'Reference formats and existing course outlines.' },
-                    { title: 'Policies', text: 'Academic, grading and conduct policies.' },
-                    { title: 'Assessment Samples', text: 'Past TOS and test banks for alignment.' },
-                  ].map(card => (
-                    <div key={card.title} style={{
-                      border: '1px solid var(--border-color)', borderRadius: 14, padding: 14,
-                      background: 'var(--bg-header)',
-                    }}>
-                      <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>{card.title}</div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-tertiary)', marginTop: 4 }}>{card.text}</div>
-                    </div>
-                  ))}
-                </Box>
-                <Alert severity="info">
-                  Setup summary — {counts.colleges} college(s), {counts.programs} program(s), {counts.years} year level(s),
-                  {' '}{counts.sections} section(s), {counts.courses} course(s).
-                </Alert>
+                <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={saving}
+                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>
+                  {knowledgeFile?.name || 'Choose PDF or DOCX'}
+                  <input hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={event => setKnowledgeFile(event.target.files?.[0] || null)} />
+                </Button>
+                {knowledgeFile && (
+                  <Button onClick={uploadKnowledgeBase} disabled={saving || knowledgeUploaded} startIcon={<AutoAwesomeIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#FF9F0A' }}>
+                    {knowledgeUploaded ? 'Uploaded' : 'Upload knowledge base'}
+                  </Button>
+                )}
+                {knowledgeUploaded && <Alert severity="success">Knowledge base uploaded successfully.</Alert>}
               </>
             )}
           </Stack>
         )}
       </DialogContent>
 
-      <Divider sx={{ borderColor: 'var(--border-color)' }} />
-
-      <Box sx={{ px: 3, py: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}>
-        <Box>
-          {activeStep > 0 && (
-            <OutlineBtn small disabled={saving} onClick={() => { setError(''); setNotice(''); setActiveStep(step => step - 1) }}>
-              Back
-            </OutlineBtn>
-          )}
-        </Box>
-
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {activeStep < WIZARD_STEPS.length - 1 ? (
-            <PrimaryBtn disabled={saving} onClick={() => { setError(''); setNotice(''); setActiveStep(step => step + 1) }}>
-              Next
-            </PrimaryBtn>
-          ) : (
-            <>
-              <OutlineBtn disabled={saving || missing.length > 0} onClick={() => finish(true)}>
-                Skip &amp; finish
-              </OutlineBtn>
-              <PrimaryBtn disabled={saving || missing.length > 0} onClick={() => finish(false)}>
-                Finish setup
-              </PrimaryBtn>
-            </>
-          )}
-        </Box>
-      </Box>
-
-      {activeStep === WIZARD_STEPS.length - 1 && missing.length > 0 && (
-        <Box sx={{ px: 3, pb: 2 }}>
-          <Typography sx={{ fontSize: '0.75rem', color: '#FFB74D' }}>
-            Still needed before you can finish: {missing.join(', ')}.
-          </Typography>
-        </Box>
-      )}
-      {saving && (
-        <Box sx={{ px: 3, pb: 2 }}>
-          <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>Saving…</Typography>
+      {!loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, px: 3, py: 2 }}>
+          <OutlineBtn onClick={() => setActiveStep(step => Math.max(0, step - 1))} disabled={saving || activeStep === 0}>Back</OutlineBtn>
+          {activeStep === 0 && <PrimaryBtn onClick={saveTemplateAndContinue} disabled={saving}>Save and continue</PrimaryBtn>}
+          {activeStep === 1 && <PrimaryBtn onClick={() => hasAssignedFaculty && setActiveStep(2)} disabled={!hasAssignedFaculty || saving}>Continue</PrimaryBtn>}
+          {activeStep === 2 && <PrimaryBtn onClick={finishSetup} disabled={saving}>{saving ? <CircularProgress size={18} /> : 'Finish setup'}</PrimaryBtn>}
         </Box>
       )}
     </Dialog>
