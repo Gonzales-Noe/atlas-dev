@@ -139,11 +139,11 @@ class BubbleAnswerKeySerializer(serializers.Serializer):
         for item_no, ans in value.items():
             if not str(item_no).isdigit():
                 raise serializers.ValidationError(f"Key must be a digit string, got '{item_no}'.")
-            if ans.upper() not in "ABCDE":
+            if ans.upper() not in "ABCDE*":
                 raise serializers.ValidationError(
-                    f"Answer for item {item_no} must be A–E, got '{ans}'."
+                    f"Answer for item {item_no} must be A–E or * (bonus), got '{ans}'."
                 )
-        return {str(k): v.upper() for k, v in value.items()}
+        return {str(k): v.upper() for k, v in value.items() if str(v).strip()}
 
 
 class BubbleSheetScanSerializer(serializers.Serializer):

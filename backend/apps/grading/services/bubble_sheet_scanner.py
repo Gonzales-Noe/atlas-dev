@@ -8,7 +8,7 @@ ArUco → 300 DPI → inner-core → z-score pipeline as the mobile Python sidec
 from decimal import Decimal
 from pathlib import Path
 
-from .omr_core import process_sheet
+from .omr_core import is_correct, process_sheet
 
 
 def _truncate_flag_reason(reason: str | None, max_len: int = 255) -> str | None:
@@ -62,12 +62,10 @@ class BubbleSheetScannerService:
     def _grade(responses: dict, answer_key: dict) -> tuple[Decimal, Decimal, Decimal]:
         if not answer_key:
             return Decimal("0"), Decimal("0"), Decimal("0")
-        key = {str(k): str(v) for k, v in answer_key.items()}
-        correct = sum(
-            1
-            for k, v in key.items()
-            if str(responses.get(k, "?")).upper() == str(v).upper()
-        )
+        key = {str(k): str(v) for k, v in answer_key.items() if str(v or "").strip()}
+        if not key:
+            return Decimal("0"), Decimal("0"), Decimal("0")
+        correct = sum(1 for k, v in key.items() if is_correct(responses.get(k), v))
         max_score = Decimal(str(len(key)))
         score_raw = Decimal(str(correct))
         score_percent = (
