@@ -48,9 +48,9 @@ import api from '../config/api'
 import { extractApiError } from '../utils'
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const MAROON       = '#8B0000'
+const MAROON = '#8B0000'
 const MAROON_LIGHT = '#FFF5F5'
-const BG           = '#F7F9FC'
+const BG = '#F7F9FC'
 
 // ── Shared mini-components ─────────────────────────────────────────────────
 function SCard({ title, action, children }) {
@@ -163,7 +163,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
 function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
-  const [creating, setCreating]   = useState(false)
+  const [creating, setCreating] = useState(false)
   const [keyDialog, setKeyDialog] = useState(null) // template obj
 
   return (
@@ -185,8 +185,8 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
           ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
           : templates.length === 0
             ? <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-                No templates yet. Create one to generate a printable bubble sheet.
-              </Typography>
+              No templates yet. Create one to generate a printable bubble sheet.
+            </Typography>
             : (
               <Stack spacing={1.5}>
                 {templates.map(t => (
@@ -226,13 +226,13 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
 }
 
 function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
-  const [pdfLoading,     setPdfLoading]     = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
-  const [previewUrl,     setPreviewUrl]     = useState(null)
-  const [qrOpen,         setQrOpen]         = useState(false)
-  const [deleting,       setDeleting]       = useState(false)
-  const [err,            setErr]            = useState('')
-  const [syncingKey,     setSyncingKey]     = useState(false)
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [qrOpen, setQrOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [err, setErr] = useState('')
+  const [syncingKey, setSyncingKey] = useState(false)
 
   async function fetchPdfBlob() {
     const r = await api.post(
@@ -247,9 +247,9 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
     setPdfLoading(true)
     setErr('')
     try {
-      const url  = await fetchPdfBlob()
+      const url = await fetchPdfBlob()
       const link = document.createElement('a')
-      link.href  = url
+      link.href = url
       link.download = `bubble_sheet_${t.name.replace(/\s+/g, '_')}.pdf`
       link.click()
       URL.revokeObjectURL(url)
@@ -452,8 +452,8 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
     essay_lines: 10,
     parts: [{ label: 'Part I', start_item: 1, end_item: 30 }],
   })
-  const [saving,  setSaving]  = useState(false)
-  const [errors,  setErrors]  = useState({})
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState({})
   const [fetchingItems, setFetchingItems] = useState(false)
   const [selectedAssessmentId, setSelectedAssessmentId] = useState('')
   const [keyCountPreview, setKeyCountPreview] = useState(null) // { count: N, total: M }
@@ -572,7 +572,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
             <LF select label="Choices per item" value={form.num_choices}
               onChange={e => setField('num_choices', Number(e.target.value))}>
               {[2, 3, 4, 5].map(n => (
-                <MenuItem key={n} value={n}>{n} ({['A–B','A–C','A–D','A–E'][n-2]})</MenuItem>
+                <MenuItem key={n} value={n}>{n} ({['A–B', 'A–C', 'A–D', 'A–E'][n - 2]})</MenuItem>
               ))}
             </LF>
           </Stack>
@@ -645,6 +645,9 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
 }
 
 // ── Answer Key Dialog ──────────────────────────────────────────────────────
+// Answer-key value for a bonus item (matches the backend's omr_core.BONUS_KEY).
+const BONUS_KEY = '*'
+
 function AnswerKeyDialog({ template, onClose, onSaved }) {
   // initialise from existing key
   const initKey = () => {
@@ -656,7 +659,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
   }
   const [key, setKey] = useState(initKey)
   const [saving, setSaving] = useState(false)
-  const [err, setErr]       = useState('')
+  const [err, setErr] = useState('')
 
   const choices = Array.from({ length: template.num_choices }, (_, i) => String.fromCharCode(65 + i))
 
@@ -695,6 +698,8 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         {err && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{err}</Alert>}
         <Typography variant="caption" sx={{ color: '#777', fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
           Click the correct answer for each item. Items with no selection will be excluded from grading.
+          ★ marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
+          Saving re-scores sheets that were already scanned.
         </Typography>
         <Stack spacing={0.75}>
           {rows.map((rowItems, rIdx) => (
@@ -722,6 +727,22 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                       {ch}
                     </Box>
                   ))}
+                  <Box
+                    title="Bonus — every paper gets the point"
+                    onClick={() => setAnswer(itemNo, key[String(itemNo)] === BONUS_KEY ? '' : BONUS_KEY)}
+                    sx={{
+                      width: 24, height: 24, borderRadius: '50%',
+                      border: `1.5px solid ${key[String(itemNo)] === BONUS_KEY ? '#2e7d32' : '#bbb'}`,
+                      bgcolor: key[String(itemNo)] === BONUS_KEY ? '#2e7d32' : 'transparent',
+                      color: key[String(itemNo)] === BONUS_KEY ? '#fff' : '#888',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                      transition: 'all 0.12s',
+                      '&:hover': { borderColor: '#2e7d32' },
+                    }}
+                  >
+                    ★
+                  </Box>
                 </Box>
               ))}
             </Stack>
@@ -743,9 +764,9 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 // ── Student QR Dialog ──────────────────────────────────────────────────────
 function StudentQrDialog({ template, onClose }) {
   const [studentId, setStudentId] = useState('')
-  const [qrSrc,     setQrSrc]    = useState(null)
-  const [loading,   setLoading]  = useState(false)
-  const [err,       setErr]      = useState('')
+  const [qrSrc, setQrSrc] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState('')
 
   async function fetchQr() {
     if (!studentId.trim()) return
@@ -828,11 +849,11 @@ function StudentQrDialog({ template, onClose }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function ScanTab({ courseId, templates, onScanned }) {
   const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [file,    setFile]    = useState(null)
+  const [file, setFile] = useState(null)
   const [preview, setPreview] = useState(null)
   const [scanning, setScanning] = useState(false)
-  const [result,   setResult]   = useState(null)
-  const [err,      setErr]      = useState('')
+  const [result, setResult] = useState(null)
+  const [err, setErr] = useState('')
   const fileRef = useRef()
 
   const readyTemplates = templates.filter(t => t.has_answer_key)
@@ -881,8 +902,8 @@ function ScanTab({ courseId, templates, onScanned }) {
       <Stack spacing={2}>
         {readyTemplates.length === 0
           ? <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-              No templates with an answer key yet. Go to the Templates tab to create one and set its key.
-            </Alert>
+            No templates with an answer key yet. Go to the Templates tab to create one and set its key.
+          </Alert>
           : null
         }
 
@@ -996,10 +1017,10 @@ function Row({ label, value, warn = false }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function ResultsTab({ courseId, templates }) {
   const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [scans,   setScans]   = useState([])
+  const [scans, setScans] = useState([])
   const [loading, setLoading] = useState(false)
   const [flagOnly, setFlagOnly] = useState(false)
-  const [err,     setErr]     = useState('')
+  const [err, setErr] = useState('')
   const [editScan, setEditScan] = useState(null)
 
   async function loadScans(tmplId, fo) {
@@ -1068,8 +1089,8 @@ function ResultsTab({ courseId, templates }) {
         ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
         : selectedTemplate && scans.length === 0
           ? <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', pl: 0.5 }}>
-              No scan results yet for this template.
-            </Typography>
+            No scan results yet for this template.
+          </Typography>
           : scans.length > 0 && (
             <>
               {avg !== null && (
