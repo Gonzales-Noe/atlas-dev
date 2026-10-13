@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .serializers import BubblePartSerializer
 
+MIN_ITEMS = 50
 MAX_ITEMS = 100
 
 
@@ -66,7 +67,7 @@ class QuickExamCreateSerializer(serializers.Serializer):
     subject_id = serializers.UUIDField(required=False, allow_null=True)
     course_id = serializers.UUIDField(required=False, allow_null=True)
     name = serializers.CharField(max_length=150)
-    total_items = serializers.IntegerField(min_value=1, max_value=MAX_ITEMS)
+    total_items = serializers.IntegerField(min_value=MIN_ITEMS, max_value=MAX_ITEMS)
     num_choices = serializers.IntegerField(required=False, default=4, min_value=2, max_value=4)
     num_id_columns = serializers.IntegerField(required=False, default=8, min_value=4, max_value=8)
     parts = BubblePartSerializer(many=True, required=False, default=list)
@@ -91,7 +92,7 @@ class QuickExamUpdateSerializer(serializers.Serializer):
     subject_id = serializers.UUIDField(required=False)
     course_id = serializers.UUIDField(required=False)
     name = serializers.CharField(required=False, max_length=150)
-    total_items = serializers.IntegerField(required=False, min_value=1, max_value=MAX_ITEMS)
+    total_items = serializers.IntegerField(required=False, min_value=MIN_ITEMS, max_value=MAX_ITEMS)
     num_choices = serializers.IntegerField(required=False, min_value=2, max_value=4)
     num_id_columns = serializers.IntegerField(required=False, min_value=4, max_value=8)
     parts = BubblePartSerializer(many=True, required=False)
@@ -99,6 +100,7 @@ class QuickExamUpdateSerializer(serializers.Serializer):
         required=False, allow_null=True, max_digits=5, decimal_places=2, min_value=0, max_value=100
     )
     layout_metadata = serializers.DictField(required=False)
+    questions = QuickQuestionSerializer(many=True, required=False, allow_null=True)
 
 
 class QuickAnswerKeySerializer(serializers.Serializer):
@@ -112,9 +114,9 @@ class QuickAnswerKeySerializer(serializers.Serializer):
             if not str(item_no).isdigit():
                 raise serializers.ValidationError(f"Key must be a digit string, got '{item_no}'.")
             letter = str(ans).strip().upper()
-            if letter not in ("A", "B", "C", "D"):
+            if letter not in ("A", "B", "C", "D", "*"):
                 raise serializers.ValidationError(
-                    f"Answer for item {item_no} must be A–D, got '{ans}'."
+                    f"Answer for item {item_no} must be A–D or * (bonus), got '{ans}'."
                 )
             out[str(int(item_no))] = letter
         return out

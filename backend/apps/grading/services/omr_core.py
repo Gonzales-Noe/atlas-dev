@@ -396,11 +396,24 @@ def detect_assessment_qr(color: Optional[np.ndarray], gray: np.ndarray) -> Optio
     return None
 
 
+# Answer-key value for a bonus item: every paper earns the point, even blank
+# or multi-shaded answers.
+BONUS_KEY = "*"
+
+
+def is_correct(response, key_value) -> bool:
+    key = str(key_value or "").strip().upper()
+    if key == BONUS_KEY:
+        return True
+    answer = str(response or "").strip().upper()
+    return bool(answer) and answer != "?" and answer == key
+
+
 def grade(responses: dict, answer_key: dict) -> tuple[int, int, float]:
     if not answer_key:
         return 0, 0, 0.0
-    key = {str(k): str(v) for k, v in answer_key.items()}
-    correct = sum(1 for k, v in key.items() if responses.get(k) == v)
+    key = {str(k): str(v) for k, v in answer_key.items() if str(v or "").strip()}
+    correct = sum(1 for k, v in key.items() if is_correct(responses.get(k), v))
     n = len(key)
     return correct, n, (correct / n * 100.0) if n else 0.0
 

@@ -5,6 +5,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError, PermissionDenied
 
+from apps.grading.services.omr_core import is_correct
 from apps.integrations.models import (
     Assessment,
     AssessmentItem,
@@ -696,13 +697,14 @@ def bloom_item_analysis(request):
             student_total_items += 1
             section_total[section] = section_total.get(section, 0) + 1
 
-            if chosen == correct_ans:
+            hit = is_correct(chosen, correct_ans)
+            if hit:
                 student_total_correct += 1
                 section_correct[section] = section_correct.get(section, 0) + 1
 
             if bloom and bloom in student_bloom:
                 student_bloom[bloom]["total"] += 1
-                if chosen == correct_ans:
+                if hit:
                     student_bloom[bloom]["correct"] += 1
 
         score_pct = (student_total_correct / student_total_items * 100) if student_total_items > 0 else 0

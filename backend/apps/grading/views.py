@@ -603,9 +603,22 @@ def _extract_answer_key_from_assessment(assessment, total_items: int) -> dict:
         if not (1 <= idx <= total_items):
             continue
         ans = str(rubric.get("correct_answer", "")).strip().upper()
-        if ans in "ABCDE":
+        if ans and ans in "ABCDE*":
             key[str(idx)] = ans
     return key
+
+
+def regrade_template_scans(t: BubbleSheetTemplate) -> int:
+    """Re-score every scan of [t] against its current answer key."""
+    from apps.grading.services.bubble_sheet_scanner import BubbleSheetScannerService
+
+    scans = list(BubbleSheetScan.objects.filter(template=t))
+    for s in scans:
+        s.score_raw, s.max_score, s.score_percent = BubbleSheetScannerService._grade(
+            s.responses or {}, t.answer_key or {}
+        )
+    BubbleSheetScan.objects.bulk_update(scans, ["score_raw", "max_score", "score_percent"])
+    return len(scans)
 
 
 def _bs_template_payload(t: BubbleSheetTemplate) -> dict:
@@ -1462,9 +1475,16 @@ def bubble_sheet_set_answer_key(request, template_id):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-    t.answer_key = answer_key
-    t.save(update_fields=["answer_key", "updated_at"])
-    return Response({"success": True, "detail": "Answer key saved.", "total_keyed_items": len(answer_key)})
+    with transaction.atomic():
+        t.answer_key = answer_key
+        t.save(update_fields=["answer_key", "updated_at"])
+        regraded = regrade_template_scans(t)
+    return Response({
+        "success": True,
+        "detail": "Answer key saved.",
+        "total_keyed_items": len(answer_key),
+        "regraded_scans": regraded,
+    })
 
 
 @api_view(["POST"])
@@ -1490,8 +1510,10 @@ def bubble_sheet_sync_key(request, template_id):
         )
 
     answer_key = _extract_answer_key_from_assessment(t.assessment, t.total_items)
-    t.answer_key = answer_key
-    t.save(update_fields=["answer_key", "updated_at"])
+    with transaction.atomic():
+        t.answer_key = answer_key
+        t.save(update_fields=["answer_key", "updated_at"])
+        regrade_template_scans(t)
     return Response({
         "success": True,
         "detail": f"Answer key synced — {len(answer_key)} of {t.total_items} items have answers.",

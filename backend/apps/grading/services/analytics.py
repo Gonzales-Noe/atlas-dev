@@ -23,6 +23,7 @@ from statistics import mean, median, pstdev
 from django.db.models import Q
 
 from apps.grading.models import BubbleSheetScan, BubbleSheetTemplate
+from apps.grading.services.omr_core import is_correct
 from apps.integrations.models import AssessmentItem, Block
 
 UNASSIGNED = "Unassigned"
@@ -313,7 +314,7 @@ def bloom_mastery(records, item_meta) -> dict:
                 untagged_items.add((t.template_id, item_no))
                 continue
             items_per_level[level].add((t.template_id, item_no))
-            hit = 1 if _response(r["responses"], item_no) == correct_letter else 0
+            hit = 1 if is_correct(_response(r["responses"], item_no), correct_letter) else 0
             targets = [overall] + [grouped[dim][gk] for dim, (gk, _) in group_keys.items()]
             if r["identified"]:
                 targets.append(per_student[r["student_id"]])
@@ -434,7 +435,7 @@ def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, d
     # Step 1: score every paper against the key and rank highest → lowest.
     scored = []
     for r in records:
-        marks = {i: (_response(r["responses"], i) == key[i]) for i in item_numbers}
+        marks = {i: is_correct(_response(r["responses"], i), key[i]) for i in item_numbers}
         scored.append((sum(marks.values()), r, marks))
     scored.sort(key=lambda x: x[0], reverse=True)
     totals = [s[0] for s in scored]

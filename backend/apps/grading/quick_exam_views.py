@@ -19,6 +19,7 @@ from apps.grading.services.bubble_sheet_scanner import (
     _truncate_flag_reason,
 )
 
+from apps.grading.services.omr_core import BONUS_KEY, is_correct
 from .quick_exam_serializers import (
     QuickAnswerKeySerializer,
     QuickExamCreateSerializer,
@@ -28,6 +29,7 @@ from .quick_exam_serializers import (
     QuickSubjectSerializer,
     _validate_layout,
     _validate_parts,
+    normalize_questions,
 )
 from .views import (
     _clean_student_id,
@@ -372,6 +374,8 @@ def quick_exam_detail(request, exam_id):
         try:
             _validate_parts(exam.parts, total)
             _validate_layout(exam.layout_metadata, total)
+            if "questions" in d:
+                exam.questions = normalize_questions(d["questions"], total)
         except serializers.ValidationError as exc:
             transaction.set_rollback(True)
             return _bad(" ".join(str(m) for m in exc.detail))
@@ -381,7 +385,7 @@ def quick_exam_detail(request, exam_id):
         letters = "ABCD"[: exam.num_choices]
         exam.answer_key = {
             k: v for k, v in (exam.answer_key or {}).items()
-            if int(k) <= total and v in letters
+            if int(k) <= total and (v in letters or v == BONUS_KEY)
         }
         exam.save()
     stats = _exam_stats_map([exam.exam_id]).get(exam.exam_id, EMPTY_STATS)
@@ -410,7 +414,7 @@ def quick_exam_answer_key(request, exam_id):
     for item_no, ans in key.items():
         if not 1 <= int(item_no) <= exam.total_items:
             return _bad(f"Item {item_no} is out of range (1–{exam.total_items}).")
-        if ans not in letters:
+        if ans != BONUS_KEY and ans not in letters:
             return _bad(f"Item {item_no}: this exam only uses choices {letters[0]}–{letters[-1]}.")
 
     with transaction.atomic():
@@ -453,7 +457,10 @@ def quick_exam_scans(request, exam_id):
         k = str(i)
         answered = [s.responses.get(k) for s in scans if (s.responses or {}).get(k)]
         correct = key.get(k)
-        n_correct = sum(1 for a in answered if correct and a == correct)
+        n_correct = (
+            len(scans) if correct == BONUS_KEY
+            else sum(1 for a in answered if correct and is_correct(a, correct))
+        )
         items.append({
             "item": i,
             "correct_answer": correct,
