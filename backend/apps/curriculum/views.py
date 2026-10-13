@@ -3,6 +3,7 @@ import logging
 import re
 from collections import defaultdict
 
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -2862,6 +2863,32 @@ def get_assessment_detail(request, assessment_id):
     )
 
 
+def _apply_item_answer_to_sheets(item):
+    """Copy the item's correct answer into the answer key of every bubble sheet
+    for its assessment, then re-score the scanned sheets."""
+    from apps.grading.models import BubbleSheetTemplate
+    from apps.grading.views import regrade_template_scans
+
+    rubric = item.rubric if isinstance(item.rubric, dict) else {}
+    number = _to_int(rubric.get('item_number'), 0)
+    if number < 1:
+        return
+    answer = str(rubric.get('correct_answer') or '').strip().upper()
+    for t in BubbleSheetTemplate.objects.select_for_update().filter(assessment=item.assessment):
+        if number > t.total_items:
+            continue
+        key = dict(t.answer_key or {})
+        if answer:
+            key[str(number)] = answer
+        else:
+            key.pop(str(number), None)
+        if key == (t.answer_key or {}):
+            continue
+        t.answer_key = key
+        t.save(update_fields=['answer_key', 'updated_at'])
+        regrade_template_scans(t)
+
+
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated])
 def update_assessment_item(request, item_id):
@@ -2923,9 +2950,9 @@ def update_assessment_item(request, item_id):
 
     if 'correct_answer' in data:
         answer = str(data['correct_answer'] or '').strip()[:1].upper()
-        if answer and answer not in 'ABCD':
+        if answer and answer not in 'ABCD*':
             return Response(
-                {'success': False, 'detail': 'correct_answer must be A–D.'},
+                {'success': False, 'detail': 'correct_answer must be A–D or * (bonus).'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         rubric['correct_answer'] = answer
@@ -2943,7 +2970,10 @@ def update_assessment_item(request, item_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    item.save(update_fields=update_fields)
+    with transaction.atomic():
+        item.save(update_fields=update_fields)
+        if 'correct_answer' in data:
+            _apply_item_answer_to_sheets(item)
 
     metadata = item.rubric if isinstance(item.rubric, dict) else {}
     customization = InstitutionCustomization.objects.filter(institution=request.user.institution).first()
