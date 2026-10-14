@@ -97,6 +97,7 @@ else:
     _db_user = os.environ['DB_USER']
 
 _is_transaction_pooler = str(_db_port) == '6543'
+_is_supabase_pooler = _db_host.lower().endswith('.pooler.supabase.com')
 
 DATABASES = {
     'default': {
@@ -106,7 +107,8 @@ DATABASES = {
         'PASSWORD': os.environ['DB_PASSWORD'],
         'HOST': _db_host,
         'PORT': _db_port,
-        'CONN_MAX_AGE': 0 if _is_transaction_pooler else 60,
+        # Don't retain client sessions in Supabase's small session-mode pool.
+        'CONN_MAX_AGE': 0 if _is_transaction_pooler or _is_supabase_pooler else 60,
         'DISABLE_SERVER_SIDE_CURSORS': _is_transaction_pooler,
         'OPTIONS': {
             'sslmode': os.environ.get('DB_SSLMODE', 'require'),
@@ -142,6 +144,12 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
 EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() == 'true'
 EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'false').lower() == 'true'
 EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '15'))
+
+PAYMONGO_SECRET_KEY = os.environ.get('PAYMONGO_SECRET_KEY', '').strip()
+PAYMONGO_WEBHOOK_SECRET = os.environ.get('PAYMONGO_WEBHOOK_SECRET', '').strip()
+PAYMONGO_API_BASE = os.environ.get('PAYMONGO_API_BASE', 'https://api.paymongo.com').rstrip('/')
+PAYMONGO_SUCCESS_URL = os.environ.get('PAYMONGO_SUCCESS_URL', 'http://localhost:5173/billing/onboarding?status=success')
+PAYMONGO_CANCEL_URL = os.environ.get('PAYMONGO_CANCEL_URL', 'http://localhost:5173/billing/onboarding?status=cancelled')
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [

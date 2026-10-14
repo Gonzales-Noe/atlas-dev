@@ -49,6 +49,15 @@ class Institution(models.Model):
     payment_method = models.CharField(max_length=30, blank=True, default='')
     reviewed_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    trial_started_at = models.DateTimeField(null=True, blank=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    subscription_ends_at = models.DateTimeField(null=True, blank=True)
+    paymongo_customer_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_subscription_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_checkout_session_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_reference_number = models.CharField(max_length=120, blank=True, default='')
+    paymongo_checkout_url = models.URLField(blank=True, default='')
+    paymongo_last_event_id = models.CharField(max_length=120, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     setup_completed = models.BooleanField(default=False)
@@ -81,6 +90,7 @@ class UserProfile(models.Model):
     full_name = models.CharField(max_length=255, blank=True, default='')
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
+    trial_generation_count = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     picture_url = models.URLField(max_length=500, blank=True, null=True)
@@ -450,6 +460,10 @@ class ChildChunk(models.Model):
 
 class GlobalDocument(models.Model):
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(
+        Institution, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='knowledge_documents',
+    )
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
     # Metadata for filtered retrieval
