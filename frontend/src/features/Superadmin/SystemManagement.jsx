@@ -57,7 +57,7 @@ export default function SystemManagement() {
         <ResponsiveContainer width="100%" height={320}>
           <AreaChart data={performanceData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
             <defs>
-              <linearGradient id="gCpu"    x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#C0392B" stopOpacity={0.45}/><stop offset="95%" stopColor="#C0392B" stopOpacity={0}/></linearGradient>
+              <linearGradient id="gCpu"    x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#16A34A" stopOpacity={0.45}/><stop offset="95%" stopColor="#16A34A" stopOpacity={0}/></linearGradient>
               <linearGradient id="gMemory" x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#0A84FF" stopOpacity={0.45}/><stop offset="95%" stopColor="#0A84FF" stopOpacity={0}/></linearGradient>
               <linearGradient id="gDisk"   x1="0" y1="0" x2="0" y2="1"><stop offset="5%"  stopColor="#FF9F0A" stopOpacity={0.4}/><stop offset="95%" stopColor="#FF9F0A" stopOpacity={0}/></linearGradient>
             </defs>
@@ -66,7 +66,7 @@ export default function SystemManagement() {
             <YAxis domain={[0,100]} tick={axisStyle} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={tooltipStyle} />
             <Legend formatter={v => <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem' }}>{v}</span>} />
-            <Area type="monotone" dataKey="cpu"    name="CPU %"    stroke="#C0392B" strokeWidth={2} fill="url(#gCpu)"    dot={false} />
+            <Area type="monotone" dataKey="cpu"    name="CPU %"    stroke="#16A34A" strokeWidth={2} fill="url(#gCpu)"    dot={false} />
             <Area type="monotone" dataKey="memory" name="Memory %" stroke="#0A84FF" strokeWidth={2} fill="url(#gMemory)" dot={false} />
             <Area type="monotone" dataKey="disk"   name="Disk %"   stroke="#FF9F0A" strokeWidth={2} fill="url(#gDisk)"   dot={false} />
           </AreaChart>
@@ -76,7 +76,7 @@ export default function SystemManagement() {
       {/* Resource gauges */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 16 }}>
         {[
-          { label: 'CPU Usage',    value: 52, color: '#C0392B' },
+          { label: 'CPU Usage',    value: 52, color: '#16A34A' },
           { label: 'Memory Usage', value: 65, color: '#0A84FF' },
           { label: 'Disk Usage',   value: 78, color: '#FF9F0A' },
         ].map(({ label, value, color }) => (
@@ -108,7 +108,7 @@ export default function SystemManagement() {
                   <TableCell>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ flex: 1, height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden', minWidth: 50 }}>
-                        <div style={{ height: '100%', width: `${srv.cpu}%`, background: srv.cpu > 70 ? '#FF453A' : '#C0392B', borderRadius: 99 }} />
+                        <div style={{ height: '100%', width: `${srv.cpu}%`, background: srv.cpu > 70 ? '#FF453A' : '#16A34A', borderRadius: 99 }} />
                       </div>
                       <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', minWidth: 30 }}>{srv.cpu}%</span>
                     </div>
@@ -192,7 +192,7 @@ export default function SystemManagement() {
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>This will create a full backup of all databases and user files. This may take 10–15 minutes and will not affect user access.</p>
           <div style={{ marginTop: 12 }}>
             <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.07em', marginBottom: 4 }}>ESTIMATED SIZE</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#FF6B6B' }}>~2.4 GB</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#86EFAC' }}>~2.4 GB</div>
           </div>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>

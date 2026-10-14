@@ -19,6 +19,7 @@ import {
   WIZARD_STEPS,
 } from './academicApi'
 import { PrimaryBtn, OutlineBtn } from '../../../components/ui'
+import LoadingState from '../../../components/LoadingState'
 
 const EMPTY_ASSIGNMENT = () => ({ section: '', courses: [{ course_code: '', course_title: '' }] })
 
@@ -58,6 +59,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
   const [assignmentGroups, setAssignmentGroups] = useState([EMPTY_ASSIGNMENT()])
   const [hasAssignedFaculty, setHasAssignedFaculty] = useState(false)
   const [facultyCount, setFacultyCount] = useState(0)
+  const [assignedLoads, setAssignedLoads] = useState([])
   const [knowledgeFile, setKnowledgeFile] = useState(null)
   const [knowledgeUploaded, setKnowledgeUploaded] = useState(false)
 
@@ -78,6 +80,14 @@ export default function AdminSetupWizard({ open, onFinished }) {
       const existingCount = (assignmentsData.faculty || []).filter(faculty => assignedFacultyIds.has(faculty.user_id)).length
       setHasAssignedFaculty(existingCount > 0)
       setFacultyCount(existingCount)
+      const facultyById = new Map((assignmentsData.faculty || []).map(faculty => [
+        faculty.user_id,
+        faculty.full_name || faculty.email,
+      ]))
+      setAssignedLoads((assignmentsData.assignments || []).map(assignment => ({
+        ...assignment,
+        faculty_name: facultyById.get(assignment.faculty_id) || 'Faculty',
+      })))
     } catch (err) {
       setError(toMessage(err, 'Could not load your institution setup. Retry to continue.'))
     } finally {
@@ -94,8 +104,155 @@ export default function AdminSetupWizard({ open, onFinished }) {
     }
   }, [open, loadInitialData])
 
+  useEffect(() => {
+    if (!notice) return undefined
+    const timeout = setTimeout(() => setNotice(''), 4500)
+    return () => clearTimeout(timeout)
+  }, [notice])
+
+  useEffect(() => {
+    setNotice('')
+  }, [activeStep])
+
   function updateSection(index, changes) {
     setSections(current => current.map((section, i) => i === index ? { ...section, ...changes } : section))
+  }
+
+  function updateSubsection(sectionIndex, subsectionIndex, changes) {
+    setSections(current => current.map((section, i) => (
+      i === sectionIndex
+        ? {
+            ...section,
+            subsections: (section.subsections || []).map((subsection, j) => (
+              j === subsectionIndex ? { ...subsection, ...changes } : subsection
+            )),
+          }
+        : section
+    )))
+  }
+
+  function updateTableColumn(sectionIndex, subsectionIndex, columnIndex, value) {
+    if (subsectionIndex == null) {
+      const section = sections[sectionIndex]
+      updateSection(sectionIndex, {
+        table_columns: (section.table_columns || []).map((column, i) => i === columnIndex ? value : column),
+      })
+      return
+    }
+    const subsection = sections[sectionIndex].subsections[subsectionIndex]
+    updateSubsection(sectionIndex, subsectionIndex, {
+      table_columns: (subsection.table_columns || []).map((column, i) => i === columnIndex ? value : column),
+    })
+  }
+
+  function updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, value) {
+    const field = subsectionIndex == null
+      ? sections[sectionIndex]
+      : sections[sectionIndex].subsections[subsectionIndex]
+    const groups = Array.isArray(field?.table_column_groups) ? field.table_column_groups : []
+    const nextGroups = Array.from(
+      { length: (field?.table_columns || []).length },
+      (_, index) => index === columnIndex ? value : (groups[index] || ''),
+    )
+    if (subsectionIndex == null) {
+      updateSection(sectionIndex, { table_column_groups: nextGroups })
+      return
+    }
+    updateSubsection(sectionIndex, subsectionIndex, { table_column_groups: nextGroups })
+  }
+
+  function addTableColumn(sectionIndex, subsectionIndex) {
+    if (subsectionIndex == null) {
+      updateSection(sectionIndex, {
+        table_columns: [...(sections[sectionIndex].table_columns || []), ''],
+        table_column_groups: [...(sections[sectionIndex].table_column_groups || []), ''],
+      })
+      return
+    }
+    const subsection = sections[sectionIndex].subsections[subsectionIndex]
+    updateSubsection(sectionIndex, subsectionIndex, {
+      table_columns: [...(subsection.table_columns || []), ''],
+      table_column_groups: [...(subsection.table_column_groups || []), ''],
+    })
+  }
+
+  function removeTableColumn(sectionIndex, subsectionIndex, columnIndex) {
+    if (subsectionIndex == null) {
+      updateSection(sectionIndex, {
+        table_columns: (sections[sectionIndex].table_columns || []).filter((_, i) => i !== columnIndex),
+        table_column_groups: (sections[sectionIndex].table_column_groups || []).filter((_, i) => i !== columnIndex),
+      })
+      return
+    }
+    const subsection = sections[sectionIndex].subsections[subsectionIndex]
+    updateSubsection(sectionIndex, subsectionIndex, {
+      table_columns: (subsection.table_columns || []).filter((_, i) => i !== columnIndex),
+      table_column_groups: (subsection.table_column_groups || []).filter((_, i) => i !== columnIndex),
+    })
+  }
+
+  function renderTableColumns(section, sectionIndex, subsectionIndex = null) {
+    const field = subsectionIndex == null
+      ? section
+      : (section.subsections || [])[subsectionIndex]
+    const columns = Array.isArray(field?.table_columns) ? field.table_columns : []
+    return (
+      <Stack spacing={1} sx={{ pl: 2 }}>
+        {columns.map((column, columnIndex) => (
+          <Stack key={columnIndex} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
+            <TextField
+              label={`Column ${columnIndex + 1} heading`}
+              size="small"
+              fullWidth
+              value={column}
+              onChange={event => updateTableColumn(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
+              sx={inputSx}
+            />
+            <TextField
+              label={`Group heading ${columnIndex + 1} (optional)`}
+              helperText="Repeat the same heading on adjacent columns to merge them."
+              size="small"
+              fullWidth
+              value={field.table_column_groups?.[columnIndex] || ''}
+              onChange={event => updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
+              sx={inputSx}
+            />
+            <IconButton aria-label={`Remove column ${columnIndex + 1}`} onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)} sx={{ color: '#86EFAC' }}>
+              <DeleteOutlinedIcon />
+            </IconButton>
+          </Stack>
+        ))}
+        <OutlineBtn onClick={() => addTableColumn(sectionIndex, subsectionIndex)} style={{ alignSelf: 'flex-start' }}>
+          <AddIcon fontSize="small" /> Add column
+        </OutlineBtn>
+      </Stack>
+    )
+  }
+
+  function addSubsection(sectionIndex) {
+    setSections(current => current.map((section, i) => (
+      i === sectionIndex
+        ? {
+            ...section,
+            subsections: [
+              ...(Array.isArray(section.subsections) ? section.subsections : []),
+              {
+                key: `subsection-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                label: '',
+                required: false,
+              },
+            ],
+          }
+        : section
+    )))
+  }
+
+  function removeSubsection(sectionIndex, subsectionIndex) {
+    setSections(current => current.map((section, i) => (
+      i === sectionIndex
+        ? { ...section, subsections: (section.subsections || []).filter((_, j) => j !== subsectionIndex) }
+        : section
+    )))
   }
 
   async function handleTemplateUpload(file) {
@@ -133,12 +290,36 @@ export default function AdminSetupWizard({ open, onFinished }) {
       enabled: true,
       is_static: false,
       static_content: '',
+      subsections: [],
     }])
     setManualSection('')
     setError('')
   }
 
   async function saveTemplateAndContinue() {
+    const hasUnnamedSubsection = sections.some(section =>
+      section.enabled
+      && !section.is_static
+      && (Array.isArray(section.subsections) ? section.subsections : [])
+        .some(subsection => !subsection.label?.trim()),
+    )
+    if (hasUnnamedSubsection) {
+      setError('Add a name to each syllabus subsection before continuing.')
+      return
+    }
+    const hasInvalidTable = sections.some(section => {
+      if (!section.enabled || section.is_static) return false
+      const hasInvalidColumns = field => field.table_enabled
+        && (!Array.isArray(field.table_columns)
+          || !field.table_columns.length
+          || field.table_columns.some(column => !String(column).trim()))
+      return hasInvalidColumns(section)
+        || (Array.isArray(section.subsections) ? section.subsections : []).some(hasInvalidColumns)
+    })
+    if (hasInvalidTable) {
+      setError('Add a heading for every table column before continuing.')
+      return
+    }
     const enabledSections = sections
       .filter(section => section.enabled && section.label?.trim())
       .map(section => ({
@@ -146,6 +327,27 @@ export default function AdminSetupWizard({ open, onFinished }) {
         key: section.key?.trim() || sectionKey(section.label),
         label: section.label.trim(),
         static_content: section.is_static ? (section.static_content || '').trim() : '',
+        subsections: (Array.isArray(section.subsections) ? section.subsections : [])
+          .filter(subsection => subsection.label?.trim())
+          .map(subsection => ({
+            ...subsection,
+            label: subsection.label.trim(),
+            required: Boolean(subsection.required),
+            table_enabled: Boolean(subsection.table_enabled),
+            table_columns: Array.isArray(subsection.table_columns)
+              ? subsection.table_columns.map(column => column.trim())
+              : [],
+            table_column_groups: Array.isArray(subsection.table_column_groups)
+              ? subsection.table_column_groups.map(group => group.trim())
+              : [],
+          })),
+        table_enabled: Boolean(section.table_enabled),
+        table_columns: Array.isArray(section.table_columns)
+          ? section.table_columns.map(column => column.trim())
+          : [],
+        table_column_groups: Array.isArray(section.table_column_groups)
+          ? section.table_column_groups.map(group => group.trim())
+          : [],
       }))
     if (!enabledSections.length) {
       setError('Add and enable at least one syllabus section to continue.')
@@ -200,6 +402,16 @@ export default function AdminSetupWizard({ open, onFinished }) {
     setNotice('')
     try {
       await createFacultyWithAssignments({ ...facultyForm, assignments })
+      const facultyName = facultyForm.full_name.trim()
+      setAssignedLoads(current => [
+        ...current,
+        ...assignments.flatMap(group => group.courses.map(course => ({
+          faculty_name: facultyName,
+          course_code: course.course_code,
+          course_title: course.course_title,
+          section: group.section,
+        }))),
+      ])
       setHasAssignedFaculty(true)
       setFacultyCount(count => count + 1)
       setFacultyForm({ full_name: '', email: '', password: '' })
@@ -260,10 +472,12 @@ export default function AdminSetupWizard({ open, onFinished }) {
       fullWidth
       maxWidth="md"
       disableEscapeKeyDown
+      transitionDuration={0}
+      BackdropProps={{ sx: { backgroundColor: 'transparent' } }}
       PaperProps={{ sx: dialogPaper }}
     >
       <Box sx={{ px: 3, pt: 2.5, pb: 1.5 }}>
-        <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#FF9F0A', textTransform: 'uppercase' }}>
+        <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#86EFAC', textTransform: 'uppercase' }}>
           First-time setup
         </Typography>
         <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', mt: 0.5 }}>
@@ -280,7 +494,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
           '& .MuiStepLabel-label': { color: 'var(--text-tertiary)', fontSize: '0.72rem' },
           '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.12)' },
-          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#FF9F0A' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#86EFAC' },
         }}>
           {WIZARD_STEPS.map(step => <Step key={step.key}><StepLabel>{step.label}</StepLabel></Step>)}
         </Stepper>
@@ -288,12 +502,12 @@ export default function AdminSetupWizard({ open, onFinished }) {
       <LinearProgress
         variant="determinate"
         value={((activeStep + 1) / WIZARD_STEPS.length) * 100}
-        sx={{ height: 3, background: 'transparent', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg,#FF9F0A,#FF453A)' } }}
+        sx={{ height: 3, background: 'transparent', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg,#16A34A,#86EFAC)' } }}
       />
 
       <DialogContent dividers sx={{ px: 3, py: 2.5, bgcolor: 'var(--bg-card)', borderColor: 'var(--border-color) !important' }}>
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress size={28} sx={{ color: '#FF9F0A' }} /></Box>
+          <LoadingState label="Loading your institution setup..." />
         ) : (
           <Stack spacing={2}>
             {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
@@ -303,14 +517,14 @@ export default function AdminSetupWizard({ open, onFinished }) {
               <>
                 <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the institution syllabus template</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Upload a PDF/DOCX to detect section headings, or add sections manually. Enabled sections appear in every faculty syllabus; mark shared institutional information as fixed.
+                  Upload a PDF/DOCX to detect section headings, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared institutional information can be fixed for everyone.
                 </Typography>
                 <Button
                   component="label"
                   variant="outlined"
                   startIcon={<CloudUploadIcon />}
                   disabled={saving}
-                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#FF9F0A', color: '#FF9F0A' }}
+                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#86EFAC', color: '#86EFAC' }}
                 >
                   {templateName || 'Upload syllabus template (PDF or DOCX)'}
                   <input hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -338,7 +552,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         label="Fixed for all"
                         sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
                       />
-                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#FF6B6B' }}>
+                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#86EFAC' }}>
                         <DeleteOutlinedIcon />
                       </IconButton>
                     </Stack>
@@ -354,6 +568,52 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         sx={{ ...inputSx, mt: 1.5 }}
                         placeholder="For example, the institution's mission and vision."
                       />
+                    )}
+                    {!section.is_static && (
+                      <Stack spacing={1} sx={{ mt: 1.5 }}>
+                        <FormControlLabel
+                          control={<Switch checked={Boolean(section.table_enabled)} onChange={event => updateSection(index, { table_enabled: event.target.checked })} />}
+                          label="Include a table in this section"
+                          sx={{ color: 'var(--text-secondary)' }}
+                        />
+                        {section.table_enabled && renderTableColumns(section, index)}
+                      </Stack>
+                    )}
+                    {!section.is_static && (
+                      <Stack spacing={1} sx={{ mt: 1.5, pl: 1.5, borderLeft: '2px solid var(--border-color)' }}>
+                        <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Subsections / answer fields</Typography>
+                        {(Array.isArray(section.subsections) ? section.subsections : []).map((subsection, subsectionIndex) => (
+                          <Stack key={subsection.key || subsectionIndex} spacing={1}>
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+                              <TextField
+                                label="Subsection name"
+                                size="small"
+                                fullWidth
+                                value={subsection.label || ''}
+                                onChange={event => updateSubsection(index, subsectionIndex, { label: event.target.value })}
+                                sx={inputSx}
+                              />
+                              <FormControlLabel
+                                control={<Switch checked={Boolean(subsection.required)} onChange={event => updateSubsection(index, subsectionIndex, { required: event.target.checked })} />}
+                                label="Required"
+                                sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                              />
+                              <IconButton aria-label={`Remove ${subsection.label || 'subsection'}`} onClick={() => removeSubsection(index, subsectionIndex)} sx={{ color: '#86EFAC' }}>
+                                <DeleteOutlinedIcon />
+                              </IconButton>
+                            </Stack>
+                            <FormControlLabel
+                              control={<Switch checked={Boolean(subsection.table_enabled)} onChange={event => updateSubsection(index, subsectionIndex, { table_enabled: event.target.checked })} />}
+                              label="Use a table for this subsection"
+                              sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
+                            />
+                            {subsection.table_enabled && renderTableColumns(section, index, subsectionIndex)}
+                          </Stack>
+                        ))}
+                        <OutlineBtn onClick={() => addSubsection(index)} style={{ alignSelf: 'flex-start' }}>
+                          <AddIcon fontSize="small" /> Add subsection
+                        </OutlineBtn>
+                      </Stack>
                     )}
                   </Box>
                 ))}
@@ -398,7 +658,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         size="small"
                         sx={inputSx}
                       />
-                      <IconButton aria-label="Remove section" disabled={assignmentGroups.length === 1} onClick={() => setAssignmentGroups(current => current.filter((_, i) => i !== groupIndex))} sx={{ color: '#FF6B6B' }}>
+                      <IconButton aria-label="Remove section" disabled={assignmentGroups.length === 1} onClick={() => setAssignmentGroups(current => current.filter((_, i) => i !== groupIndex))} sx={{ color: '#86EFAC' }}>
                         <DeleteOutlinedIcon />
                       </IconButton>
                     </Stack>
@@ -407,21 +667,44 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         <Box key={courseIndex} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 1fr auto' }, gap: 1 }}>
                           <TextField label="Course code" value={course.course_code} onChange={event => updateCourse(groupIndex, courseIndex, 'course_code', event.target.value)} size="small" sx={inputSx} />
                           <TextField label="Course name" value={course.course_title} onChange={event => updateCourse(groupIndex, courseIndex, 'course_title', event.target.value)} size="small" sx={inputSx} />
-                          <IconButton aria-label="Remove course" disabled={group.courses.length === 1} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: item.courses.filter((_, j) => j !== courseIndex) } : item))} sx={{ color: '#FF6B6B' }}>
+                          <IconButton aria-label="Remove course" disabled={group.courses.length === 1} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: item.courses.filter((_, j) => j !== courseIndex) } : item))} sx={{ color: '#86EFAC' }}>
                             <DeleteOutlinedIcon />
                           </IconButton>
                         </Box>
                       ))}
-                      <Button startIcon={<AddIcon />} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item))} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#FF9F0A' }}>
-                        Add course to this section
+                      <Button size="small" startIcon={<AddIcon />} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item))} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: 'var(--brand-accent)' }}>
+                        Add course
                       </Button>
                     </Stack>
                   </Box>
                 ))}
-                <OutlineBtn onClick={() => setAssignmentGroups(current => [...current, EMPTY_ASSIGNMENT()])}><AddIcon fontSize="small" /> Add another section</OutlineBtn>
-                <PrimaryBtn onClick={addFaculty} disabled={saving}>
+                <OutlineBtn small onClick={() => setAssignmentGroups(current => [...current, EMPTY_ASSIGNMENT()])}><AddIcon fontSize="small" /> Add another section</OutlineBtn>
+                <Button variant="contained" size="small" onClick={addFaculty} disabled={saving} sx={{ alignSelf: 'flex-start', textTransform: 'none', bgcolor: 'var(--brand-primary)', '&:hover': { bgcolor: 'var(--brand-primary-hover)' } }}>
                   {saving ? <CircularProgress size={18} /> : <><AddIcon fontSize="small" /> Add faculty and assignments</>}
-                </PrimaryBtn>
+                </Button>
+                <Box sx={{ mt: 1, p: 1.5, border: '1px solid var(--border-color)', borderRadius: 2 }}>
+                  <Typography sx={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)', mb: 1 }}>
+                    Current faculty teaching loads ({assignedLoads.length})
+                  </Typography>
+                  {assignedLoads.length ? (
+                    <Stack spacing={0.75} sx={{ maxHeight: 180, overflowY: 'auto' }}>
+                      {assignedLoads.map((load, index) => (
+                        <Box key={load.assignment_id || `${load.faculty_name}-${load.course_code}-${load.section}-${index}`} sx={{ px: 1.25, py: 0.75, bgcolor: 'var(--bg-elevated)', borderRadius: 1 }}>
+                          <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {load.faculty_name}
+                          </Typography>
+                          <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            {load.course_code} — {load.course_title} · Section {load.section}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </Stack>
+                  ) : (
+                    <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      Faculty accounts and course assignments will appear here after they are added.
+                    </Typography>
+                  )}
+                </Box>
               </>
             )}
 
@@ -438,7 +721,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                     onChange={event => setKnowledgeFile(event.target.files?.[0] || null)} />
                 </Button>
                 {knowledgeFile && (
-                  <Button onClick={uploadKnowledgeBase} disabled={saving || knowledgeUploaded} startIcon={<AutoAwesomeIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#FF9F0A' }}>
+                  <Button onClick={uploadKnowledgeBase} disabled={saving || knowledgeUploaded} startIcon={<AutoAwesomeIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#86EFAC' }}>
                     {knowledgeUploaded ? 'Uploaded' : 'Upload knowledge base'}
                   </Button>
                 )}

@@ -15,28 +15,31 @@
 
   /* Borders */
   --border-color:  rgba(255, 255, 255, 0.09);
-  --border-active: rgba(192, 57, 43, 0.55);
+  --border-active: rgba(34, 197, 94, 0.55);
   --border-subtle: rgba(255, 255, 255, 0.05);
 
   /* Brand */
-  --red-deep:   #6B0000;
-  --red-core:   #8B0000;
-  --red-mid:    #C0392B;
-  --red-bright: #E74C3C;
-  --red-glow:   rgba(139, 0, 0, 0.35);
+  --brand-green-deep:   #052E16;
+  --brand-green-core:   #14532D;
+  --brand-green-mid:    #16A34A;
+  --brand-green-bright: #86EFAC;
+  --brand-green-glow:   rgba(34, 197, 94, 0.35);
+  --brand-primary: #14532D;
+  --brand-primary-hover: #166534;
+  --brand-accent: #86EFAC;
 
   /* Text */
   --text-primary:   #F0F0F2;
   --text-secondary: rgba(255, 255, 255, 0.50);
   --text-tertiary:  rgba(255, 255, 255, 0.28);
-  --text-accent:    #FF6B6B;
+  --text-accent:    #86EFAC;
 
   /* Interactive surfaces (dark) */
   --input-bg:           rgba(255, 255, 255, 0.04);
   --bg-header:          rgba(255, 255, 255, 0.06);
-  --active-color:       #FF6B6B;
-  --active-color-hover: #FF4444;
-  --active-bg:          rgba(255, 107, 107, 0.12);
+  --active-color:       #86EFAC;
+  --active-color-hover: #BBF7D0;
+  --active-bg:          rgba(134, 239, 172, 0.12);
 
   /* Status */
   --green:  #34C759;
@@ -54,7 +57,7 @@
   /* Shadows */
   --shadow-card:  0 4px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg:    0 16px 48px rgba(0, 0, 0, 0.6);
-  --shadow-glow:  0 0 32px rgba(139, 0, 0, 0.25);
+  --shadow-glow:  0 0 32px rgba(34, 197, 94, 0.25);
 
   /* Sidebar */
   --sidebar-width: 240px;
@@ -260,7 +263,7 @@ p {
 /* Switch */
 .MuiSwitch-thumb { background: #fff !important; }
 .MuiSwitch-track { background: rgba(255,255,255,0.2) !important; }
-.MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track { background: var(--red-core) !important; opacity: 1 !important; }
+.MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track { background: var(--brand-green-core) !important; opacity: 1 !important; }
 
 /* Tabs */
 .MuiTabs-root .MuiTab-root {
@@ -269,7 +272,7 @@ p {
   font-weight: 600 !important;
 }
 .MuiTabs-root .MuiTab-root.Mui-selected { color: var(--text-accent) !important; }
-.MuiTabs-indicator { background: var(--red-core) !important; }
+.MuiTabs-indicator { background: var(--brand-green-core) !important; }
 
 /* List items */
 .MuiListItem-root { color: var(--text-primary) !important; }
@@ -281,14 +284,65 @@ p {
   border-radius: var(--r-lg) !important;
   font-family: var(--font-sans) !important;
 }
-.MuiAlert-standardError   { background: rgba(192, 57, 43, 0.15) !important; border: 1px solid rgba(192, 57, 43, 0.35) !important; color: #FF8080 !important; }
+.MuiAlert-standardError   { background: rgba(22, 163, 74, 0.15) !important; border: 1px solid rgba(22, 163, 74, 0.35) !important; color: #FF8080 !important; }
 .MuiAlert-standardWarning { background: rgba(255, 159, 10, 0.12) !important; border: 1px solid rgba(255, 159, 10, 0.3) !important; color: #FFB74D !important; }
 .MuiAlert-standardSuccess { background: rgba(52, 199, 89, 0.12) !important; border: 1px solid rgba(52, 199, 89, 0.3) !important; color: #5EDA7E !important; }
 .MuiAlert-standardInfo    { background: rgba(10, 132, 255, 0.12) !important; border: 1px solid rgba(10, 132, 255, 0.3) !important; color: #60AAFF !important; }
 .MuiAlert-icon { display: none !important; }
 
 /* CircularProgress */
-.MuiCircularProgress-root { color: var(--red-core) !important; }
+.MuiCircularProgress-root { color: var(--brand-green-bright); }
+
+.atlas-loading {
+  display: flex;
+  min-height: 7rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.atlas-loading--screen {
+  min-height: 100vh;
+}
+
+.atlas-loading__bar {
+  display: block;
+  width: 2.75rem;
+  height: 0.25rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.atlas-loading__bar::after {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--brand-green-mid), var(--brand-green-bright));
+  content: '';
+  animation: atlas-loading-slide 1.1s ease-in-out infinite;
+}
+
+.atlas-loading__label {
+  font-size: 0.875rem;
+  letter-spacing: 0.01em;
+}
+
+@keyframes atlas-loading-slide {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(250%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atlas-loading__bar::after {
+    width: 55%;
+    margin-left: 22.5%;
+    animation: none;
+  }
+}
 
 /* ── Utility classes ────────────────────────────────────── */
 .glass {
@@ -300,7 +354,7 @@ p {
 }
 
 .glow-text {
-  background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+  background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -346,7 +400,7 @@ body.atlas-light {
   --bg-card-hover: #f0f2f5;
   --bg-elevated:   #ffffff;
   --border-color:  rgba(0, 0, 0, 0.08);
-  --border-active: rgba(139, 0, 0, 0.55);
+  --border-active: rgba(21, 128, 61, 0.55);
   --border-subtle: rgba(0, 0, 0, 0.05);
   --text-primary:  #1A1A1A;
   --text-secondary: rgba(0, 0, 0, 0.6);
@@ -356,9 +410,12 @@ body.atlas-light {
   /* Interactive surfaces (light) */
   --input-bg:           #ffffff;
   --bg-header:          #F3F4F6;
-  --active-color:       #8B0000;
-  --active-color-hover: #6B0000;
-  --active-bg:          #FFF5F5;
+  --brand-primary: #166534;
+  --brand-primary-hover: #14532D;
+  --brand-accent: #166534;
+  --active-color:       #166534;
+  --active-color-hover: #14532D;
+  --active-bg:          #F0FDF4;
   color: var(--text-primary);
   background: var(--bg-base);
 }
@@ -428,7 +485,7 @@ body.atlas-light #root {
   border-color: rgba(0, 0, 0, 0.3) !important;
 }
 .atlas-light .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
-  border-color: rgba(139, 0, 0, 0.55) !important;
+  border-color: rgba(21, 128, 61, 0.55) !important;
 }
 .atlas-light .MuiInputBase-input::placeholder { color: var(--text-tertiary) !important; }
 
@@ -453,7 +510,7 @@ body.atlas-light #root {
 .atlas-light .MuiDivider-root { border-color: rgba(0, 0, 0, 0.08) !important; }
 .atlas-light .MuiIconButton-root { color: rgba(0, 0, 0, 0.54) !important; }
 .atlas-light .MuiTabs-root .MuiTab-root { color: var(--text-secondary) !important; }
-.atlas-light .MuiTabs-root .MuiTab-root.Mui-selected { color: #8B0000 !important; }
+.atlas-light .MuiTabs-root .MuiTab-root.Mui-selected { color: var(--brand-primary) !important; }
 
 .atlas-light .MuiDrawer-paper {
   background: #fff !important;
@@ -522,13 +579,13 @@ body.atlas-light #root {
 }
 .faculty-workspace .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline,
 .faculty-workspace .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline {
-  border-color: rgba(255,107,107,0.65) !important;
+  border-color: rgba(134,239,172,0.65) !important;
 }
 .faculty-workspace .MuiTabs-root .MuiTab-root {
   color: var(--workspace-muted) !important;
 }
 .faculty-workspace .MuiTabs-root .MuiTab-root.Mui-selected {
-  color: #FF6B6B !important;
+  color: var(--brand-accent) !important;
 }
 .faculty-workspace .MuiTableCell-root {
   border-color: var(--workspace-border) !important;
@@ -553,8 +610,8 @@ body.atlas-light #root {
   border-color: var(--workspace-border) !important;
 }
 .faculty-workspace .MuiButton-outlined {
-  border-color: rgba(255,107,107,0.6) !important;
-  color: #FF6B6B !important;
+  border-color: rgba(134,239,172,0.6) !important;
+  color: var(--brand-accent) !important;
 }
 .faculty-workspace .MuiIconButton-root {
   color: var(--workspace-muted) !important;

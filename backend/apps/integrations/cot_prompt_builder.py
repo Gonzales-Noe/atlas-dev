@@ -652,6 +652,7 @@ OUTPUT — Return the assessment using exactly this structure:
         mode: str,
         context_chunks: list,
         context_summary: str = "",
+        extra_instructions: str = "",
     ) -> tuple:
         """
         Build a prompt to generate or continue a single syllabus field.
@@ -705,6 +706,9 @@ OUTPUT — Return the assessment using exactly this structure:
                 "Be concise but complete. Output only the field content — "
                 "no headers, no explanations, no extra commentary."
             )
+
+        if extra_instructions:
+            user += f"\n\nAdditional instructions:\n{extra_instructions}"
 
         return system, user
 
