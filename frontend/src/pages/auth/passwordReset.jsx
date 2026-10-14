@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
+import { Eye, EyeOff } from 'lucide-react'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/route'
 import atlasLogo        from '../../assets/atlas-logo.png'
@@ -385,16 +386,18 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           right: 12px;
           top: 50%;
           transform: translateY(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
           background: none;
           border: none;
           cursor: pointer;
           color: rgba(255,255,255,0.35);
-          font-size: 0.85rem;
-          font-family: inherit;
           transition: color 0.2s;
-          padding: 2px 4px;
+          padding: 4px;
         }
         .password-toggle:hover { color: rgba(255,255,255,0.7); }
+        .password-toggle:focus-visible { outline: 2px solid #FF6B6B; outline-offset: 2px; }
 
         .mobile-menu-drawer {
           position: absolute;
@@ -503,7 +506,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
             className="mascot-col"
             style={{
               width: '42%',
-              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -514,8 +517,8 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 280, height: 280, background: 'rgba(180,20,20,0.25)', top: -60, right: -60 }} />
-            <Orb style={{ width: 180, height: 180, background: 'rgba(100,0,0,0.3)', bottom: -40, left: -40 }} />
+            <Orb style={{ width: 280, height: 280, background: 'rgba(21, 128, 61, 0.8)', top: -60, right: -60 }} />
+            <Orb style={{ width: 180, height: 180, background: 'rgba(134, 239, 172, 0)', bottom: -40, left: -40 }} />
 
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
               {/* Logo */}
@@ -685,8 +688,14 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                         autoFocus
                         style={{ paddingRight: '3.5rem' }}
                       />
-                      <button type="button" className="password-toggle" onClick={() => setShowNewPass(!showNewPass)}>
-                        {showNewPass ? 'Hide' : 'Show'}
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        aria-label={showNewPass ? 'Hide new password' : 'Show new password'}
+                        title={showNewPass ? 'Hide new password' : 'Show new password'}
+                        onClick={() => setShowNewPass(show => !show)}
+                      >
+                        {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
                   </div>
@@ -703,8 +712,14 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                         required
                         style={{ paddingRight: '3.5rem' }}
                       />
-                      <button type="button" className="password-toggle" onClick={() => setShowConfirm(!showConfirm)}>
-                        {showConfirm ? 'Hide' : 'Show'}
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        aria-label={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'}
+                        title={showConfirm ? 'Hide confirmation password' : 'Show confirmation password'}
+                        onClick={() => setShowConfirm(show => !show)}
+                      >
+                        {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
                   </div>

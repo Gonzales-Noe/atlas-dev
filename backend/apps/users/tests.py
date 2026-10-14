@@ -1,13 +1,15 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.contrib.auth.hashers import check_password, make_password
+from django.test import SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
 
 from apps.integrations.models import UserProfile
 from apps.users.serializers import (
     FacultyCreateSerializer,
+    ProfileSettingsUpdateSerializer,
     UserAccountSerializer,
     UserProfileSerializer,
     UserProfileTokenRefreshSerializer,
@@ -98,6 +100,89 @@ class UserProfileTokenRefreshTests(SimpleTestCase):
             response.data['detail'],
             'No active account found with the given credentials.',
         )
+
+
+class ProfileSettingsUpdateSerializerTests(SimpleTestCase):
+    def setUp(self):
+        self.user = SimpleNamespace(
+            full_name='Previous Name',
+            picture_url=None,
+            password_hash=make_password('CurrentPassword9!'),
+            save=Mock(),
+        )
+
+    def test_updates_display_name_and_image_url(self):
+        serializer = ProfileSettingsUpdateSerializer(
+            self.user,
+            data={
+                'full_name': 'Updated Name',
+                'picture_url': 'https://images.example.com/profile.png',
+            },
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+
+        self.assertEqual(self.user.full_name, 'Updated Name')
+        self.assertEqual(self.user.picture_url, 'https://images.example.com/profile.png')
+        self.user.save.assert_called_once_with(update_fields=['full_name', 'picture_url'])
+
+    def test_password_change_requires_the_correct_current_password(self):
+        serializer = ProfileSettingsUpdateSerializer(
+            self.user,
+            data={
+                'current_password': 'incorrect-password',
+                'new_password': 'NewPassword9!',
+            },
+            partial=True,
+        )
+
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('current_password', serializer.errors)
+        self.user.save.assert_not_called()
+
+    def test_password_change_hashes_the_new_password(self):
+        serializer = ProfileSettingsUpdateSerializer(
+            self.user,
+            data={
+                'current_password': 'CurrentPassword9!',
+                'new_password': 'NewPassword9!',
+            },
+            partial=True,
+        )
+
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        serializer.save()
+
+        self.assertTrue(check_password('NewPassword9!', self.user.password_hash))
+        self.user.save.assert_called_once_with(update_fields=['password_hash'])
+
+
+class MeProfileUpdateApiTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email='profile-settings@example.com',
+            full_name='Previous Name',
+            password_hash=make_password('CurrentPassword9!'),
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_saved_display_name_is_returned_for_the_sidebar(self):
+        response = self.client.patch(
+            '/api/auth/me/',
+            {
+                'full_name': 'Updated Display Name',
+                'picture_url': 'https://images.example.com/profile.png',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['full_name'], 'Updated Display Name')
+        self.assertEqual(response.data['name'], 'Updated Display Name')
+        self.assertEqual(response.data['picture_url'], 'https://images.example.com/profile.png')
 
 
 @override_settings(

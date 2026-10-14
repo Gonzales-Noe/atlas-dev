@@ -219,25 +219,26 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
+  const pageRef = useRef(null)
   const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
   const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', message: '' })
   const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 40)
-      const sections = ['home', 'features', 'testimonials', 'team', 'pricing', 'contact']
-      for (const id of sections.reverse()) {
+      const scrollTop = pageRef.current?.scrollTop ?? window.scrollY
+      setScrolled(scrollTop > 40)
+      const sections = NAV_LINKS.map(({ href }) => href.slice(1))
+      const activeId = sections.reverse().find((id) => {
         const el = document.getElementById(id)
-        if (el && window.scrollY >= el.offsetTop - 120) {
-          setActiveSection(id)
-          break
-        }
-      }
+        return el && el.getBoundingClientRect().top <= 120
+      }) || 'home'
+      setActiveSection(activeId)
     }
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    const scrollContainer = pageRef.current
+    scrollContainer?.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll()
-    return () => window.removeEventListener('scroll', handleScroll)
+    return () => scrollContainer?.removeEventListener('scroll', handleScroll)
   }, [])
 
   useEffect(() => {
@@ -310,7 +311,7 @@ export default function LandingPage() {
   const [pricingRef, pricingInView] = useInView()
 
   return (
-    <div style={{
+    <div ref={pageRef} style={{
       minHeight: '100vh',
       background: '#0A0A0B',
       color: '#F0F0F0',
@@ -726,9 +727,7 @@ export default function LandingPage() {
         top: 0, left: 0, right: 0,
         zIndex: 1000,
         transition: 'all 0.35s ease',
-        background: scrolled ? 'rgba(10,10,11,0.92)' : 'transparent',
-        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.08)' : 'none',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
+       
       }}>
         <div style={{
           maxWidth: 1200,
@@ -800,7 +799,7 @@ export default function LandingPage() {
       {/* Mobile Menu */}
       <div className={`mobile-menu ${mobileOpen ? 'open' : ''}`}>
         {NAV_LINKS.map(({ label, href }) => (
-          <button key={label} className="nav-link" style={{ fontSize: '1rem', padding: '0.5rem 0' }} onClick={() => scrollTo(href.replace('#', ''))}>
+          <button key={label} className={`nav-link ${activeSection === href.replace('#', '') ? 'active' : ''}`} style={{ fontSize: '1rem', padding: '0.5rem 0' }} onClick={() => scrollTo(href.replace('#', ''))}>
             {label}
           </button>
         ))}
