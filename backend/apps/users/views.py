@@ -44,6 +44,7 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
+    ProfileSettingsUpdateSerializer,
     RegisterSerializer,
     StudentDetailsUpdateSerializer,
     UserAccountSerializer,
@@ -179,10 +180,20 @@ class MeView(APIView):
 
     def patch(self, request):
         user = request.user
-        serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
+        profile_fields = {'full_name', 'picture_url', 'current_password', 'new_password'}
+        if profile_fields.intersection(request.data):
+            serializer = ProfileSettingsUpdateSerializer(
+                user,
+                data=request.data,
+                partial=True,
+                context={'request': request},
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
 
-        if 'courses_enrolled' in serializer.validated_data:
+        if 'courses_enrolled' in request.data:
+            serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
             student_data, _ = StudentData.objects.get_or_create(user=user)
             student_data.courses_enrolled = serializer.validated_data['courses_enrolled']
             student_data.save()

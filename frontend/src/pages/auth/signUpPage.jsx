@@ -825,7 +825,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '44%',
-              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -836,8 +836,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 280, height: 280, background: 'rgba(180,20,20,0.25)', top: -60, right: -60 }} />
-            <Orb style={{ width: 200, height: 200, background: 'rgba(100,0,0,0.3)', bottom: -40, left: -40 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.8)', top: -60, right: -60 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.5), rgba(134, 239, 172, 0)', bottom: -40, left: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>

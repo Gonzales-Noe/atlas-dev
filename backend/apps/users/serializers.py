@@ -475,3 +475,48 @@ class FacultyCreateSerializer(serializers.Serializer):
 
 class StudentDetailsUpdateSerializer(serializers.Serializer):
     courses_enrolled = serializers.JSONField(required=False)
+
+
+class ProfileSettingsUpdateSerializer(serializers.Serializer):
+    full_name = serializers.CharField(max_length=255, required=False, allow_blank=False)
+    picture_url = serializers.URLField(max_length=500, required=False, allow_blank=True, allow_null=True)
+    current_password = serializers.CharField(required=False, write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(required=False, write_only=True, min_length=8, trim_whitespace=False)
+
+    def validate_full_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Display name cannot be blank.')
+        return value
+
+    def validate(self, attrs):
+        has_current_password = 'current_password' in attrs
+        has_new_password = 'new_password' in attrs
+        if has_current_password != has_new_password:
+            raise serializers.ValidationError({
+                'new_password': 'Enter both your current and new password to change your password.',
+            })
+
+        if has_new_password:
+            user = self.instance
+            if not check_password(attrs['current_password'], user.password_hash):
+                raise serializers.ValidationError({
+                    'current_password': 'Current password is incorrect.',
+                })
+
+        return attrs
+
+    def update(self, instance, validated_data):
+        update_fields = []
+        if 'full_name' in validated_data:
+            instance.full_name = validated_data['full_name']
+            update_fields.append('full_name')
+        if 'picture_url' in validated_data:
+            instance.picture_url = validated_data['picture_url'] or None
+            update_fields.append('picture_url')
+        if 'new_password' in validated_data:
+            instance.password_hash = make_password(validated_data['new_password'])
+            update_fields.append('password_hash')
+        if update_fields:
+            instance.save(update_fields=update_fields)
+        return instance

@@ -1,9 +1,11 @@
 import { useEffect } from 'react'
+import { applyStoredThemePreference } from '../utils/userPreferences'
 
-/** Apply light-theme MUI overrides for faculty dashboard/workspace pages. */
+/** Keep workspace MUI overrides synchronized with the saved theme preference. */
 export default function useAtlasLightTheme() {
   useEffect(() => {
-    document.body.classList.add('atlas-light')
-    return () => document.body.classList.remove('atlas-light')
+    applyStoredThemePreference()
+    window.addEventListener('atlas-theme-change', applyStoredThemePreference)
+    return () => window.removeEventListener('atlas-theme-change', applyStoredThemePreference)
   }, [])
 }

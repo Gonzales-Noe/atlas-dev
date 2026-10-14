@@ -276,6 +276,13 @@ export function AuthProvider({ children }) {
     })
   }
 
+  async function updateProfile(payload) {
+    const { data } = await api.patch('/auth/me/', payload)
+    localStorage.setItem('atlas_user', JSON.stringify(data))
+    dispatch({ type: 'AUTH_SUCCESS', payload: data })
+    return data
+  }
+
   function logout() {
     localStorage.removeItem('atlas_access_token')
     localStorage.removeItem('atlas_refresh_token')
@@ -285,7 +292,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, logout }}
+      value={{ ...state, login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, updateProfile, logout }}
     >
       {children}
     </AuthContext.Provider>

@@ -41,6 +41,27 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function normalizeDocTypeLabel(value) {
+  const raw = (value || '').toString().trim()
+  if (!raw) return 'Uncategorized'
+
+  const mapping = {
+    CHED_Handbook: 'CHED Handbook',
+    CHED_Handbook_for_OBE: 'CHED Handbook for OBE',
+    CHED_Handbook_on_Topology: 'CHED Handbook on Topology',
+    Handbook_on_Typology: 'Handbook on Typology',
+    OBE_Handbook_on_Typology: 'OBE Handbook on Typology',
+    Institution_Knowledge_Base: 'Institution Knowledge Base',
+    Syllabus: 'Syllabus',
+    Assessment: 'Assessment',
+    Policy: 'Policy',
+    Reference: 'Reference',
+    Files: 'Files',
+  }
+
+  return mapping[raw] || raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())
+}
+
 const CAT_STYLE = {
   CHED_Handbook: { bg: 'rgba(22,163,74,0.14)', border: 'rgba(22,163,74,0.35)', color: '#86EFAC' },
   Syllabus:      { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
@@ -51,10 +72,11 @@ const CAT_STYLE = {
 }
 
 function CategoryBadge({ cat }) {
-  const c = CAT_STYLE[cat] || { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
+  const label = normalizeDocTypeLabel(cat)
+  const c = CAT_STYLE[cat] || CAT_STYLE[label] || { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 7, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, color: c.color, letterSpacing: '0.04em', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}>
-      {cat || 'Uncategorized'}
+      {label}
     </span>
   )
 }
@@ -95,17 +117,18 @@ export default function AdminKnowledgeBase() {
     }
   }
 
-  const categories = ['All', ...new Set(documents.map(doc => doc.doc_type).filter(Boolean))]
+  const categories = ['All', ...new Set(documents.map(doc => normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)).filter(Boolean))]
 
   const filtered = documents.filter(doc => {
     const q = searchTerm.toLowerCase()
+    const docTypeLabel = normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)
     const matchSearch = !q
       || (doc.title || '').toLowerCase().includes(q)
       || (doc.discipline || '').toLowerCase().includes(q)
       || (doc.program || '').toLowerCase().includes(q)
-      || (doc.doc_type || '').toLowerCase().includes(q)
+      || docTypeLabel.toLowerCase().includes(q)
       || (doc.description || '').toLowerCase().includes(q)
-    const matchCat = activeCategory === 'All' || doc.doc_type === activeCategory
+    const matchCat = activeCategory === 'All' || docTypeLabel === activeCategory
     return matchSearch && matchCat
   })
 
@@ -241,7 +264,7 @@ export default function AdminKnowledgeBase() {
           {selected && (
             <Stack spacing={2}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <CategoryBadge cat={selected.doc_type} />
+                <CategoryBadge cat={selected.doc_type_label || selected.doc_type} />
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{selected.discipline || 'No discipline'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.program || 'No program'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.total_chunks || 0} chunks</span>
@@ -371,7 +394,7 @@ function DocumentCard({ doc, onView }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-        <CategoryBadge cat={doc.doc_type} />
+        <CategoryBadge cat={doc.doc_type_label || doc.doc_type} />
         <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{doc.total_chunks || 0} chunks</span>
       </div>
       <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>

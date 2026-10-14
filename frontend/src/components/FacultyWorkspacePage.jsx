@@ -5,7 +5,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import AutoAlert from './AutoAlert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
@@ -68,13 +67,14 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
-import { toInitials, extractApiError } from '../utils'
+import { extractApiError } from '../utils'
+import { notifyGenerationComplete } from '../utils/userPreferences'
 import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
-import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -254,22 +254,6 @@ const EMPTY_SYLLABUS = {
   custom_sections:   {},
   custom_subsections: {},
   custom_tables: {},
-}
-
-// ── Sidebar toggle icons ─────────────────────────────────────────────────
-function PanelLeftIcon(props) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 20 18">
-      {/* outer rounded rect */}
-      <rect x="1" y="1" width="18" height="16" rx="2.5" ry="2.5"
-        fill="none" stroke="currentColor" strokeWidth="1.5" />
-      {/* vertical divider */}
-      <line x1="7" y1="1" x2="7" y2="17" stroke="currentColor" strokeWidth="1.5" />
-      {/* left strip filled */}
-      <rect x="2" y="2" width="4.5" height="14" rx="1.5"
-        fill="currentColor" opacity="0.55" />
-    </SvgIcon>
-  )
 }
 
 function PanelRightIcon(props) {
@@ -710,19 +694,25 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuth()
-  const [anchorEl, setAnchorEl] = useState(null)
+  const { user, logout, updateProfile } = useAuth()
 
   const { courseId: courseIdParam } = useParams()
   const [searchParams] = useSearchParams()
   const courseId = courseIdParam || searchParams.get('course') || ''
+  const sidebarPreferenceKey = `atlas-dashboard-sidebar-collapsed:${user?.id ?? user?.email ?? 'faculty'}`
 
   const [activeTab, setActiveTab]     = useState(initialTab)
   const [syllabusSub, setSyllabusSub] = useState('overview')
 
   const [leftWidth, setLeftWidth]   = useState(240)
   const [rightWidth, setRightWidth] = useState(380)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [leftCollapsed, setLeftCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(sidebarPreferenceKey) === 'true'
+    } catch {
+      return false
+    }
+  })
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
@@ -731,8 +721,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
 
   function toggleLeftPanel() {
-    setLeftCollapsed(v => !v)
+    updateLeftSidebarPreference(!leftCollapsed)
     setDragging(null)
+  }
+
+  function updateLeftSidebarPreference(nextCollapsed) {
+    setLeftCollapsed(nextCollapsed)
+    try {
+      window.localStorage.setItem(sidebarPreferenceKey, String(nextCollapsed))
+    } catch {
+      // Keep the sidebar usable when browser storage is unavailable.
+    }
   }
 
   function toggleRightPanel() {
@@ -1375,6 +1374,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setAiPipelineProgress({ completed: fields.length, total: fields.length, label: '' })
       setAiReviewOpen(true)
       setAiField(null)
+      notifyGenerationComplete('Syllabus', `${fields.length} section${fields.length === 1 ? '' : 's'} generated`)
     } catch (err) {
       setAiError(extractApiError(err))
       setAiPipelineProgress(null)
@@ -1841,6 +1841,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
       setResultText(data.generated_syllabus || '')
       workspaceApi.execute()
+      notifyGenerationComplete('Syllabus', `${course.course_code} ${course.course_title}`)
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
   }
@@ -1874,6 +1875,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setChatMessages([])
         setModuleCreating(false)
         workspaceApi.execute()
+        notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
       }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
@@ -1990,6 +1992,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         }))
         setModuleContentDirty(true)
         setExpandedSubtopics(prev => { const next = new Set(prev); next.add(subtopicId); return next })
+        notifyGenerationComplete('Subtopic', subtopicTitle)
       }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setSubtopicGenerating(null) }
@@ -2285,6 +2288,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       setAssessmentCreating(false)
       workspaceApi.execute()
+      notifyGenerationComplete('Assessment', getSelectedExamDisplayName())
       if (latestAssessmentSummary?.assessment_id) {
         await handleOpenAssessment(latestAssessmentSummary)
       }
@@ -5025,23 +5029,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     const isExpanded = expandedSubtopics.has(st.id)
                     const isGen = subtopicGenerating === st.id
                     return (
-                      <Box key={st.id} sx={{ border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1.5, overflow: 'hidden' }}>
+                      <Box key={st.id} sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, overflow: 'hidden', bgcolor: '#16161E' }}>
                         {/* Subtopic header */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.9,
-                                   bgcolor: isExpanded ? MAROON_LIGHT : '#fafafa', cursor: 'pointer' }}
+                                   bgcolor: isExpanded ? 'rgba(22,163,74,0.14)' : 'rgba(255,255,255,0.04)', cursor: 'pointer',
+                                   '&:hover': { bgcolor: isExpanded ? 'rgba(22,163,74,0.18)' : 'rgba(255,255,255,0.07)' } }}
                           onClick={() => setExpandedSubtopics(prev => {
                             const next = new Set(prev)
                             isExpanded ? next.delete(st.id) : next.add(st.id)
                             return next
                           })}>
-                          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600, color: '#333', fontSize: '0.84rem' }}>
+                          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600, color: '#F0F0F2', fontSize: '0.84rem' }}>
                             {st.title || '(Untitled)'}
                           </Typography>
                           <Tooltip title="Generate content from sources">
                             <span>
                               <IconButton size="small" disabled={isGen}
                                 onClick={e => { e.stopPropagation(); handleGenerateSubtopicContent(st.id, st.title) }}
-                                sx={{ color: MAROON, '&:hover': { bgcolor: MAROON_LIGHT } }}>
+                                sx={{ color: '#86EFAC', '&:hover': { bgcolor: 'rgba(22,163,74,0.16)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' } }}>
                                 {isGen
                                   ? <CircularProgress size={14} sx={{ color: MAROON }} />
                                   : <AutoAwesomeIcon sx={{ fontSize: '1rem' }} />}
@@ -5049,18 +5054,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             </span>
                           </Tooltip>
                           {isExpanded
-                            ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: '#666' }} />
-                            : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: '#666' }} />}
+                            ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.68)' }} />
+                            : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.68)' }} />}
                         </Box>
                         {/* Subtopic content */}
                         {isExpanded && (
-                          <Box sx={{ px: 1.5, py: 1, bgcolor: '#1A1A1F' }}>
+                          <Box sx={{ px: 1.5, py: 1, bgcolor: '#111318' }}>
                             <TextField multiline minRows={5} fullWidth
                               value={st.content || ''}
                               onChange={e => updateSubtopicField(st.id, 'content', e.target.value)}
                               onClick={() => setChatField(`subtopic:${st.id}`)}
                               placeholder="Subtopic content will appear here after generation or manual editing…"
-                              sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.83rem' } }} />
+                              sx={{
+                                '& .MuiOutlinedInput-root': {
+                                  fontSize: '0.83rem', color: '#F0F0F2', bgcolor: '#15181A',
+                                  '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
+                                  '&.Mui-focused fieldset': { borderColor: MAROON },
+                                },
+                                '& .MuiInputBase-input': { color: '#F0F0F2' },
+                                '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.45)', opacity: 1 },
+                              }} />
                           </Box>
                         )}
                       </Box>
@@ -6143,11 +6157,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {/* Top bar */}
       <Box component="header"
         sx={{
-          display: 'flex', alignItems: 'center', gap: 1.5,
-          px: 2, py: 0.75, bgcolor: 'rgba(8,8,10,0.92)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-          flexShrink: 0, minHeight: 48,
+          display: 'flex', alignItems: 'center', gap: 2,
+          px: 3, height: 60, minHeight: 60,
+          ml: isMobile ? 0 : `${leftCollapsed ? 64 : leftWidth}px`,
+          width: isMobile ? '100%' : `calc(100% - ${leftCollapsed ? 64 : leftWidth}px)`,
+          bgcolor: 'rgba(8,8,10,0.85)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          flexShrink: 0,
+          transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
         {isMobile && (
           <Tooltip title="Navigation">
@@ -6157,25 +6175,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Tooltip>
         )}
         <Tooltip title="Back to courses">
-            <IconButton onClick={() => navigate('/faculty/dashboard')} size="small" sx={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowBackIcon fontSize="small" />
-          </IconButton>
+          <Button onClick={() => navigate('/faculty/dashboard')} startIcon={<ArrowBackIcon fontSize="small" />} sx={{
+            height: 36, px: 1.5, borderRadius: 2,
+            color: 'rgba(255,255,255,0.75)',
+            bgcolor: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            textTransform: 'none', fontSize: '0.82rem', fontWeight: 600,
+            whiteSpace: 'nowrap',
+            transition: 'color 200ms, background-color 200ms',
+            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.18)' },
+          }}>
+            Back to Courses
+          </Button>
         </Tooltip>
-        <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-        <AtlasLogo size={24} />
-        {course ? (
-          <>
-            <Typography variant="caption"
-              sx={{ color: '#86EFAC', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>
-              {syllabusData.course_code || course.course_code}
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#F0F0F2', fontWeight: 600 }} noWrap>
-              {syllabusData.course_title || course.course_title}
-            </Typography>
-          </>
-        ) : courseId ? (
-          <CircularProgress size={14} sx={{ color: MAROON }} />
-        ) : null}
         <Box sx={{ flex: 1 }} />
         {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Tooltip title="Knowledge Base">
@@ -6184,23 +6196,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </IconButton>
           </Tooltip>
         )}
-        <Chip label="FACULTY" size="small"
-          sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, fontSize: '0.62rem', letterSpacing: '0.07em', mr: 1 }} />
-        <Tooltip title={user?.email || ''}>
-            <IconButton onClick={e => setAnchorEl(e.currentTarget)} size="small">
-            <Avatar sx={{ width: 30, height: 30, bgcolor: '#15803D', fontSize: 11, fontWeight: 700 }}>
-              {toInitials(user?.name || user?.email || 'U')}
-            </Avatar>
-          </IconButton>
-        </Tooltip>
-        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-          <MenuItem disabled>
-            <Typography variant="caption" sx={{ color: '#888' }}>{user?.email}</Typography>
-          </MenuItem>
-          <MenuItem onClick={() => { logout(); navigate('/signin') }}>
-            <LogoutIcon fontSize="small" sx={{ mr: 1, color: MAROON }} /> Sign Out
-          </MenuItem>
-        </Menu>
       </Box>
 
       {/* Mobile nav Drawer */}
@@ -6257,14 +6252,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {/* Three-panel area */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', userSelect: dragging ? 'none' : 'auto', bgcolor: '#0F0F12' }}>
 
+        {!isMobile && <Box sx={{ width: leftCollapsed ? 64 : leftWidth, flexShrink: 0 }} />}
+
         {/* LEFT — nav (desktop) or compact rail when collapsed */}
         {!isMobile && !leftCollapsed && (
-          <Box sx={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)' }}>
+          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
             <Box sx={{ height: 60, px: 2, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <AtlasLogo size={26} />
-              <Tooltip title="Collapse panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#fff' } }}>
-                  <PanelLeftIcon fontSize="small" />
+              <Tooltip title="Collapse sidebar">
+                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+                  <PanelLeftClose size={22} strokeWidth={2.75} />
                 </IconButton>
               </Tooltip>
             </Box>
@@ -6299,39 +6296,53 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <SidebarUserMenu
               user={user}
               metaLabel="Faculty"
+              sidebarCollapsed={leftCollapsed}
+              onSidebarCollapsedChange={updateLeftSidebarPreference}
+              onUpdateProfile={updateProfile}
               onSignOut={() => { logout(); navigate('/signin') }}
             />
           </Box>
         )}
 
         {!isMobile && leftCollapsed && (
-          <Box sx={{ width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'center', py: 1 }}>
-            <Box sx={{ width: 44, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75, py: 1 }}>
+          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
+            <Box sx={{ height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
               <Tooltip title="Expand panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ color: '#666' }}>
-                  <PanelLeftIcon fontSize="small" />
+                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+                  <PanelLeftOpen size={22} strokeWidth={2.75} />
                 </IconButton>
               </Tooltip>
-              <Divider flexItem sx={{ mx: 0.5 }} />
+            </Box>
+            <Stack component="nav" sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1, gap: 0.25 }}>
               {WORKSPACE_TABS.map(({ key, label, Icon }) => {
                 const on = activeTab === key
                 return (
                   <Tooltip key={key} title={label} placement="right">
-                    <IconButton size="small" onClick={() => { setActiveTab(key); setLeftCollapsed(false) }}
-                      sx={{ color: on ? '#86EFAC' : 'rgba(255,255,255,0.5)', bgcolor: on ? MAROON_LIGHT : 'transparent', '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#86EFAC' } }}>
-                      <Icon sx={{ fontSize: '1rem' }} />
+                    <IconButton size="small" onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
+                      sx={{
+                        width: 'calc(100% - 16px)', height: 44, mx: 1, borderRadius: 1.5,
+                        color: on ? '#86EFAC' : 'rgba(255,255,255,0.45)',
+                        background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
+                        border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
+                        boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
+                        '&:hover': { background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'rgba(255,255,255,0.06)', color: '#86EFAC' },
+                      }}>
+                      <Icon sx={{ fontSize: 20 }} />
                     </IconButton>
                   </Tooltip>
                 )
               })}
-              <Box sx={{ mt: 'auto', width: '100%' }}>
-                <SidebarUserMenu
-                  collapsed
-                  user={user}
-                  metaLabel="Faculty"
-                  onSignOut={() => { logout(); navigate('/signin') }}
-                />
-              </Box>
+            </Stack>
+            <Box sx={{ mt: 'auto', width: '100%' }}>
+              <SidebarUserMenu
+                collapsed
+                user={user}
+                metaLabel="Faculty"
+                sidebarCollapsed={leftCollapsed}
+                onSidebarCollapsedChange={updateLeftSidebarPreference}
+                onUpdateProfile={updateProfile}
+                onSignOut={() => { logout(); navigate('/signin') }}
+              />
             </Box>
           </Box>
         )}
