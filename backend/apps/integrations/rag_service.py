@@ -206,6 +206,7 @@ def _progressive_context_summary(query: str, chunks: list) -> tuple:
 
 def semantic_search(
     query: str,
+    institution_id: str | None = None,
     top_k: int = 5,
     discipline: str | None = None,
     program: str | None = None,
@@ -224,6 +225,10 @@ def semantic_search(
         list of dicts with keys: text, document_title, discipline, program,
         page_number, score.  Returns [] on error or empty DB.
     """
+    if not institution_id:
+        logger.warning("Skipping global RAG search without an institution context.")
+        return []
+
     try:
         query_vec = embed_query(query)
 
@@ -231,6 +236,7 @@ def semantic_search(
             GlobalDocumentChunk.objects
             .select_related("document", "parent", "parent__document")
             .filter(chunk_role="CHILD", embedding_vector__isnull=False)
+            .filter(document__institution_id=institution_id)
         )
         if discipline:
             child_qs = child_qs.filter(document__discipline__iexact=discipline)
@@ -330,6 +336,7 @@ def semantic_search(
 
 def semantic_search_with_summary(
     query: str,
+    institution_id: str | None = None,
     top_k: int = 5,
     discipline: str | None = None,
     program: str | None = None,
@@ -355,7 +362,7 @@ def semantic_search_with_summary(
         }
     """
     chunks = semantic_search(
-        query=query, top_k=top_k,
+        query=query, institution_id=institution_id, top_k=top_k,
         discipline=discipline, program=program, doc_type=doc_type,
     )
 
@@ -521,4 +528,3 @@ def course_semantic_search_with_summary(
         "context_summary": summary,
         "summary_sources": sources,
     }
-

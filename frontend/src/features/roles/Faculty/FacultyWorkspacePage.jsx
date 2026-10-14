@@ -1,5 +1,5 @@
 // src/components/FacultyWorkspacePage.jsx
-// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#8B0000).
+// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#15803D).
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
 import { useEffect, useRef, useState } from 'react'
@@ -57,8 +57,8 @@ import atlasLogo from '../../../assets/atlas-logo.png'
 import AutoAlert from '../../../components/AutoAlert'
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const MAROON = '#8B0000'
-const MAROON_LIGHT = '#FFF5F5'
+const MAROON = '#15803D'
+const MAROON_LIGHT = '#F0FDF4'
 const BG = '#F7F9FC'
 
 const WORKSPACE_TABS = [
@@ -112,11 +112,11 @@ const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '
 const SCHEDULE_WEEKS = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18]
 
 const TABLE_TH = {
-  padding: '8px 12px', borderBottom: '1px solid rgba(139,0,0,0.1)', borderRight: '1px solid rgba(139,0,0,0.05)',
+  padding: '8px 12px', borderBottom: '1px solid rgba(21,128,61,0.1)', borderRight: '1px solid rgba(21,128,61,0.05)',
   backgroundColor: 'rgba(255,255,255,0.4)', color: MAROON, fontWeight: 800, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap', backdropFilter: 'blur(10px)',
 }
 const TABLE_TD = {
-  padding: '4px 6px', borderBottom: '1px solid rgba(139,0,0,0.05)', borderRight: '1px solid rgba(139,0,0,0.05)', verticalAlign: 'top', color: '#333', background: 'rgba(255,255,255,0.2)',
+  padding: '4px 6px', borderBottom: '1px solid rgba(21,128,61,0.05)', borderRight: '1px solid rgba(21,128,61,0.05)', verticalAlign: 'top', color: '#333', background: 'rgba(255,255,255,0.2)',
 }
 
 const EMPTY_SYLLABUS = {
@@ -166,8 +166,8 @@ const EMPTY_SYLLABUS = {
 function SectionCard({ title, children, action }) {
   return (
     <Paper elevation={0}
-      sx={{ border: '1px solid rgba(255,255,255,0.5)', borderRadius: 4, mb: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(139,0,0,0.04), inset 0 0 0 1px rgba(255,255,255,0.6)', color: '#333' }}>
-      <Box sx={{ px: 2.5, py: 1.5, background: 'linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2))', borderBottom: '1px solid rgba(139,0,0,0.06)', display: 'flex', alignItems: 'center' }}>
+      sx={{ border: '1px solid rgba(255,255,255,0.5)', borderRadius: 4, mb: 2, overflow: 'hidden', background: 'rgba(255,255,255,0.6)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)', boxShadow: '0 8px 32px rgba(21,128,61,0.04), inset 0 0 0 1px rgba(255,255,255,0.6)', color: '#333' }}>
+      <Box sx={{ px: 2.5, py: 1.5, background: 'linear-gradient(90deg, rgba(255,255,255,0.6), rgba(255,255,255,0.2))', borderBottom: '1px solid rgba(21,128,61,0.06)', display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
           sx={{ fontWeight: 800, color: MAROON, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
           {title}
@@ -189,16 +189,16 @@ function LField({ label, ...props }) {
           backdropFilter: 'blur(12px)',
           color: '#333',
           transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-          '& fieldset': { borderColor: 'rgba(139,0,0,0.15)', borderWidth: '1px' },
-          '&:hover fieldset': { borderColor: 'rgba(139,0,0,0.3)' },
-          '&.Mui-focused fieldset': { borderColor: MAROON, borderWidth: '2px', boxShadow: '0 0 16px rgba(139,0,0,0.15)' },
+          '& fieldset': { borderColor: 'rgba(21,128,61,0.15)', borderWidth: '1px' },
+          '&:hover fieldset': { borderColor: 'rgba(21,128,61,0.3)' },
+          '&.Mui-focused fieldset': { borderColor: MAROON, borderWidth: '2px', boxShadow: '0 0 16px rgba(21,128,61,0.15)' },
           '&.Mui-focused': { background: 'rgba(255,255,255,0.9)' },
         },
-        '& .MuiInputLabel-root': { color: 'rgba(139,0,0,0.6)' },
+        '& .MuiInputLabel-root': { color: 'rgba(21,128,61,0.6)' },
         '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
         ...props.sx,
       }}
-      SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(24px)', color: '#333', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 3, boxShadow: '0 8px 32px rgba(139,0,0,0.1)' } } }, ...props.SelectProps }}
+      SelectProps={{ MenuProps: { PaperProps: { sx: { bgcolor: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(24px)', color: '#333', border: '1px solid rgba(255,255,255,0.5)', borderRadius: 3, boxShadow: '0 8px 32px rgba(21,128,61,0.1)' } } }, ...props.SelectProps }}
     />
   )
 }
@@ -208,11 +208,11 @@ function GenButton({ children, ...props }) {
     <Button variant="contained" fullWidth {...props}
       sx={{ 
         bgcolor: MAROON, 
-        '&:hover': { bgcolor: '#a00', boxShadow: '0 6px 20px rgba(139,0,0,0.3)', transform: 'translateY(-1px)' }, 
+        '&:hover': { bgcolor: '#14532D', boxShadow: '0 6px 20px rgba(21,128,61,0.3)', transform: 'translateY(-1px)' },
         textTransform: 'none', 
         fontWeight: 700, 
         borderRadius: 2.5, 
-        boxShadow: '0 4px 12px rgba(139,0,0,0.15)',
+        boxShadow: '0 4px 12px rgba(21,128,61,0.15)',
         transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
         ...props.sx 
       }}>
@@ -264,8 +264,8 @@ function inlineInput(value, onChange, minWidth = 80, onFocus) {
           color: '#333',
           transition: 'all 0.2s',
           '& fieldset': { borderColor: 'transparent' },
-          '&:hover fieldset': { borderColor: 'rgba(139,0,0,0.2)' },
-          '&.Mui-focused fieldset': { borderColor: MAROON, boxShadow: '0 0 12px rgba(139,0,0,0.15)' },
+          '&:hover fieldset': { borderColor: 'rgba(21,128,61,0.2)' },
+          '&.Mui-focused fieldset': { borderColor: MAROON, boxShadow: '0 0 12px rgba(21,128,61,0.15)' },
           '&.Mui-focused': { background: 'rgba(255,255,255,0.9)' },
         },
       }}
@@ -1085,43 +1085,43 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <thead>
                   <tr style={{ backgroundColor: 'transparent' }}>
                     {fixedCols.map(c => (
-                      <th key={c.key} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(139,0,0,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800, whiteSpace: 'nowrap' }}>{c.label}</th>
+                      <th key={c.key} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(21,128,61,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800, whiteSpace: 'nowrap' }}>{c.label}</th>
                     ))}
                     {Array.from({ length: iloCount }, (_, i) => (
-                      <th key={`iloh${i}`} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(139,0,0,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800, whiteSpace: 'nowrap' }}>ILO{i + 1}</th>
+                      <th key={`iloh${i}`} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(21,128,61,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800, whiteSpace: 'nowrap' }}>ILO{i + 1}</th>
                     ))}
-                    <th colSpan={3} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(139,0,0,0.1)', textAlign: 'center', color: MAROON, fontWeight: 800 }}>Domain</th>
-                    <th style={{ padding: '6px 4px', borderBottom: '1px solid rgba(139,0,0,0.1)' }} />
+                    <th colSpan={3} style={{ padding: '6px 8px', borderBottom: '1px solid rgba(21,128,61,0.1)', textAlign: 'center', color: MAROON, fontWeight: 800 }}>Domain</th>
+                    <th style={{ padding: '6px 4px', borderBottom: '1px solid rgba(21,128,61,0.1)' }} />
                   </tr>
                   <tr style={{ backgroundColor: 'transparent' }}>
                     {Array.from({ length: fixedCols.length + iloCount }, (_, i) => (
-                      <th key={i} style={{ borderBottom: '1px solid rgba(139,0,0,0.05)' }} />
+                      <th key={i} style={{ borderBottom: '1px solid rgba(21,128,61,0.05)' }} />
                     ))}
                     {domainCols.map(c => (
-                      <th key={c.key} style={{ padding: '2px 8px', borderBottom: '1px solid rgba(139,0,0,0.05)', textAlign: 'center', color: '#777', fontWeight: 700, fontSize: '0.72rem' }}>{c.label}</th>
+                      <th key={c.key} style={{ padding: '2px 8px', borderBottom: '1px solid rgba(21,128,61,0.05)', textAlign: 'center', color: '#777', fontWeight: 700, fontSize: '0.72rem' }}>{c.label}</th>
                     ))}
-                    <th style={{ borderBottom: '1px solid rgba(139,0,0,0.05)' }} />
+                    <th style={{ borderBottom: '1px solid rgba(21,128,61,0.05)' }} />
                   </tr>
                 </thead>
                 <tbody>
                   {syllabusData.assessment_tasks.map((t, i) => (
                     <tr key={i}>
                       {fixedCols.map(c => (
-                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(139,0,0,0.05)' }}>
+                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(21,128,61,0.05)' }}>
                           {inlineInput(t[c.key] || '', e => setSylArrObj('assessment_tasks', i, c.key, e.target.value), c.width)}
                         </td>
                       ))}
                       {Array.from({ length: iloCount }, (_, j) => (
-                        <td key={`ilo${j}`} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(139,0,0,0.05)' }}>
+                        <td key={`ilo${j}`} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(21,128,61,0.05)' }}>
                           {inlineInput((t.ilo_values || [])[j] || '', e => setSylTaskIlo(i, j, e.target.value), 55)}
                         </td>
                       ))}
                       {domainCols.map(c => (
-                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(139,0,0,0.05)' }}>
+                        <td key={c.key} style={{ padding: '4px 5px', borderBottom: '1px solid rgba(21,128,61,0.05)' }}>
                           {inlineInput(t[c.key] || '', e => setSylArrObj('assessment_tasks', i, c.key, e.target.value), c.width)}
                         </td>
                       ))}
-                      <td style={{ padding: '4px 4px', borderBottom: '1px solid rgba(139,0,0,0.05)' }}>
+                      <td style={{ padding: '4px 4px', borderBottom: '1px solid rgba(21,128,61,0.05)' }}>
                         <RemoveBtn onClick={() => removeSylItem('assessment_tasks', i)} disabled={syllabusData.assessment_tasks.length <= 1} />
                       </td>
                     </tr>
@@ -1163,7 +1163,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               action={<AddRowBtn label="Add" onClick={() => addSylItem(field, EMPTY_ATTR)} />}>
               <Stack spacing={1.5}>
                 {(syllabusData[field] || [{ ...EMPTY_ATTR }]).map((item, i) => (
-                  <Box key={i} sx={{ background: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 3, p: 1.5, boxShadow: '0 2px 8px rgba(139,0,0,0.02)' }}>
+                  <Box key={i} sx={{ background: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 3, p: 1.5, boxShadow: '0 2px 8px rgba(21,128,61,0.02)' }}>
                     <Box sx={{ display: 'flex', gap: 1.25, mb: 1, alignItems: 'center' }}>
                       <LField label="Code" value={item.code}
                         onChange={e => setSylArrObj(field, i, 'code', e.target.value)} sx={{ maxWidth: 110 }} />
@@ -1193,7 +1193,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <thead>
                   <tr style={{ backgroundColor: 'transparent' }}>
                     {['Rating', 'Grade', 'Range'].map(h => (
-                      <th key={h} style={{ padding: '6px 10px', borderBottom: '1px solid rgba(139,0,0,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800 }}>{h}</th>
+                      <th key={h} style={{ padding: '6px 10px', borderBottom: '1px solid rgba(21,128,61,0.1)', textAlign: 'left', color: MAROON, fontWeight: 800 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -1202,9 +1202,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     ? syllabusData.grading_rows
                     : DEFAULT_GRADING_ROWS
                   ).map((row, i) => (
-                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'rgba(139,0,0,0.02)' : 'transparent' }}>
+                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'rgba(21,128,61,0.02)' : 'transparent' }}>
                       {['rating', 'grade', 'range'].map(k => (
-                        <td key={k} style={{ padding: '3px 6px', borderBottom: '1px solid rgba(139,0,0,0.05)' }}>
+                        <td key={k} style={{ padding: '3px 6px', borderBottom: '1px solid rgba(21,128,61,0.05)' }}>
                           {inlineInput(row[k], e => setSylArrObj('grading_rows', i, k, e.target.value), k === 'rating' ? 160 : 70)}
                         </td>
                       ))}
@@ -1219,7 +1219,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             action={<AddRowBtn label="Add Policy" onClick={() => addSylItem('policies', EMPTY_POLICY)} />}>
             <Stack spacing={2}>
               {syllabusData.policies.map((p, i) => (
-                <Box key={i} sx={{ background: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 3, p: 1.5, boxShadow: '0 2px 8px rgba(139,0,0,0.02)' }}>
+                <Box key={i} sx={{ background: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.6)', borderRadius: 3, p: 1.5, boxShadow: '0 2px 8px rgba(21,128,61,0.02)' }}>
                   <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
                     <LField label="Policy Title" value={p.title}
                       onChange={e => setSylArrObj('policies', i, 'title', e.target.value)} />
@@ -1371,7 +1371,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th key={ci} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
                       <input value={h || ''} placeholder="SO #"
                         onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, so_headers: s.so_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
-                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(139,0,0,0.2)',
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(21,128,61,0.2)',
                           background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: MAROON, outline: 'none', padding: '1px 2px' }} />
                     </th>
                   ))}
@@ -1452,7 +1452,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th key={ci} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
                       <input value={h || ''} placeholder="IGA #"
                         onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, iga_headers: s.iga_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
-                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(139,0,0,0.2)',
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(21,128,61,0.2)',
                           background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: MAROON, outline: 'none', padding: '1px 2px' }} />
                     </th>
                   ))}
@@ -1530,7 +1530,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th key={`cdio-${ci}`} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
                       <input value={h || ''} placeholder="CDIO #"
                         onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, cdio_headers: s.cdio_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
-                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(139,0,0,0.2)',
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(21,128,61,0.2)',
                           background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: MAROON, outline: 'none', padding: '1px 2px' }} />
                     </th>
                   ))}
@@ -1538,7 +1538,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th key={`sdg-${ci}`} style={{ ...TABLE_TH, textAlign: 'center', minWidth: 60, padding: '4px 6px' }}>
                       <input value={h || ''} placeholder="SDG #"
                         onChange={e => { setIsDirty(true); setSaveSuccess(false); setSyllabusData(s => ({ ...s, sdg_headers: s.sdg_headers.map((v, i) => i === ci ? e.target.value : v) })) }}
-                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(139,0,0,0.2)',
+                        style={{ width: 52, textAlign: 'center', border: 'none', borderBottom: '2px solid rgba(21,128,61,0.2)',
                           background: 'transparent', fontSize: '0.82rem', fontWeight: 700, color: MAROON, outline: 'none', padding: '1px 2px' }} />
                     </th>
                   ))}
@@ -1608,7 +1608,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Paper elevation={0} sx={{ 
           border: '1px solid rgba(255, 255, 255, 0.5)', borderRadius: 4, p: 4, 
           background: 'rgba(255, 255, 255, 0.65)', backdropFilter: 'blur(24px)', 
-          boxShadow: '0 8px 32px rgba(139, 0, 0, 0.05)' }}>
+          boxShadow: '0 8px 32px rgba(21, 128, 61, 0.05)' }}>
           <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>No Course Selected</Typography>
           <Typography variant="body2" sx={{ color: '#666', mb: 2 }}>Go back and select a course.</Typography>
           <Button variant="outlined" onClick={() => navigate('/faculty/dashboard')}
@@ -1664,9 +1664,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         borderRadius: 2.5,
                         background: 'rgba(255, 255, 255, 0.5)',
                         backdropFilter: 'blur(10px)',
-                        boxShadow: '0 2px 8px rgba(139, 0, 0, 0.1)',
+                        boxShadow: '0 2px 8px rgba(21, 128, 61, 0.1)',
                         transition: 'all 0.2s',
-                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON, boxShadow: '0 4px 16px rgba(139, 0, 0, 0.2)' },
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON, boxShadow: '0 4px 16px rgba(21, 128, 61, 0.2)' },
                       }}
                     >
                       {syllabusUploading ? 'Parsing…' : 'Upload Syllabus'}
@@ -1702,19 +1702,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   const isCompleted = getSectionStatus(syllabusData, section.key)
                   const isActive = syllabusSub === section.key
                   
-                  let borderColor = 'rgba(139, 0, 0, 0.1)'
+                  let borderColor = 'rgba(21, 128, 61, 0.1)'
                   let bgColor = 'rgba(255, 255, 255, 0.5)'
                   let textColor = '#666'
                   let glow = 'none'
                   
                   if (isActive) {
-                    borderColor = 'rgba(139, 0, 0, 0.5)'
+                    borderColor = 'rgba(21, 128, 61, 0.5)'
                     bgColor = 'rgba(255, 255, 255, 0.8)'
                     textColor = MAROON
-                    glow = '0 0 16px rgba(139, 0, 0, 0.15)'
+                    glow = '0 0 16px rgba(21, 128, 61, 0.15)'
                   } else if (isCompleted) {
-                    borderColor = 'rgba(139, 0, 0, 0.2)'
-                    bgColor = 'rgba(139, 0, 0, 0.04)'
+                    borderColor = 'rgba(21, 128, 61, 0.2)'
+                    bgColor = 'rgba(21, 128, 61, 0.04)'
                     textColor = MAROON
                   }
 
@@ -1729,17 +1729,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         boxShadow: glow,
                         backdropFilter: 'blur(12px)',
                         cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                        '&:hover': { borderColor: MAROON, transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(139, 0, 0, 0.1)' }
+                        '&:hover': { borderColor: MAROON, transform: 'translateY(-2px)', boxShadow: '0 4px 12px rgba(21, 128, 61, 0.1)' }
                       }}
                     >
                       <Box sx={{
                         width: 24, height: 24, borderRadius: '50%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         background: isCompleted ? MAROON : (isActive ? MAROON : 'rgba(255, 255, 255, 0.5)'),
-                        border: `1px solid ${isCompleted ? MAROON : (isActive ? MAROON : 'rgba(139, 0, 0, 0.2)')}`,
+                        border: `1px solid ${isCompleted ? MAROON : (isActive ? MAROON : 'rgba(21, 128, 61, 0.2)')}`,
                         color: (isCompleted || isActive) ? '#fff' : '#888',
                         fontSize: '0.75rem', fontWeight: 800,
-                        boxShadow: (isCompleted || isActive) ? '0 0 10px rgba(139, 0, 0, 0.3)' : 'none'
+                        boxShadow: (isCompleted || isActive) ? '0 0 10px rgba(21, 128, 61, 0.3)' : 'none'
                       }}>
                         {parsingSections?.[section.key] ? (
                           <CircularProgress size={12} sx={{ color: (isCompleted || isActive) ? '#fff' : MAROON }} />
@@ -1766,7 +1766,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               position: 'sticky', bottom: showAiFooter ? 76 : 16,
               background: 'rgba(255, 255, 255, 0.8)', backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
               border: '1px solid rgba(255, 255, 255, 0.8)',
-              boxShadow: '0 12px 40px rgba(139, 0, 0, 0.12)',
+              boxShadow: '0 12px 40px rgba(21, 128, 61, 0.12)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
               zIndex: 10,
@@ -1790,7 +1790,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Discard
               </Button>
               <Button variant="contained" size="small" disabled={saveLoading} onClick={handleSaveSyllabus}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00', boxShadow: '0 0 16px rgba(139,0,0,0.4)' }, textTransform: 'none', fontWeight: 700, borderRadius: 2.5, minWidth: 100 }}>
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D', boxShadow: '0 0 16px rgba(21,128,61,0.4)' }, textTransform: 'none', fontWeight: 700, borderRadius: 2.5, minWidth: 100 }}>
                 {saveLoading ? 'Saving...' : 'Save Syllabus'}
               </Button>
             </Box>
@@ -1800,10 +1800,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {showAiFooter && (
             <Box sx={{
               position: 'sticky', bottom: 16,
-              background: 'linear-gradient(135deg, rgba(139, 0, 0, 0.9), rgba(100, 0, 0, 0.95))',
+              background: 'linear-gradient(135deg, rgba(21, 128, 61, 0.9), rgba(100, 0, 0, 0.95))',
               backdropFilter: 'blur(32px)', WebkitBackdropFilter: 'blur(32px)',
               border: '1px solid rgba(255, 255, 255, 0.15)',
-              boxShadow: '0 12px 40px rgba(139, 0, 0, 0.3)',
+              boxShadow: '0 12px 40px rgba(21, 128, 61, 0.3)',
               px: 2, py: 1,
               display: 'flex', alignItems: 'center', gap: 1.5,
               zIndex: 20,
@@ -2067,7 +2067,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               {docs.map((doc, i) => (
                 <Box key={doc.id || doc.records_id || i}
                   sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.75,
-                        background: 'rgba(255, 255, 255, 0.6)', backdropFilter: 'blur(10px)', borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 2px 8px rgba(139,0,0,0.04)' }}>
+                        background: 'rgba(255, 255, 255, 0.6)', backdropFilter: 'blur(10px)', borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.8)', boxShadow: '0 2px 8px rgba(21,128,61,0.04)' }}>
                   <InsertDriveFileIcon sx={{ fontSize: 15, color: MAROON, flexShrink: 0 }} />
                   <Typography variant="caption"
                     sx={{ color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2144,7 +2144,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               mt: 1.2,
               background: MAROON_LIGHT,
               color: MAROON,
-              border: '1px solid rgba(139, 0, 0, 0.3)',
+              border: '1px solid rgba(21, 128, 61, 0.3)',
               fontWeight: 700,
               fontSize: '0.68rem',
               letterSpacing: '0.06em',
@@ -2170,10 +2170,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   py: 1,
                   px: isCollapsed ? 0 : 2,
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
-                  background: isActive ? 'rgba(139, 0, 0, 0.08)' : 'transparent',
+                  background: isActive ? 'rgba(21, 128, 61, 0.08)' : 'transparent',
                   color: isActive ? MAROON : 'rgba(0,0,0,0.7)',
                   '&:hover': {
-                    background: 'rgba(139, 0, 0, 0.08)',
+                    background: 'rgba(21, 128, 61, 0.08)',
                     color: MAROON,
                   },
                 }}
@@ -2228,7 +2228,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 sx={{
                   justifyContent: isCollapsed ? 'center' : 'flex-start',
                   borderRadius: 2, py: 1, px: isCollapsed ? 0 : 2, color: 'rgba(0,0,0,0.7)',
-                  '&:hover': { background: 'rgba(139, 0, 0, 0.05)', color: MAROON },
+                  '&:hover': { background: 'rgba(21, 128, 61, 0.05)', color: MAROON },
                 }}
               >
                 <ListItemIcon sx={{ minWidth: isCollapsed ? 0 : 36, mr: isCollapsed ? 0 : 1, justifyContent: 'center', color: 'inherit' }}>
@@ -2246,11 +2246,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Root ──────────────────────────────────────────────────────────────────
   return (
     <Box ref={containerRef}
-      sx={{ height: '100vh', background: '#F9F5F5', backgroundImage: 'radial-gradient(circle at 10% 20%, rgba(139, 0, 0, 0.05) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(139, 0, 0, 0.08) 0%, transparent 40%), radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.8) 0%, transparent 100%)', display: 'flex', overflow: 'hidden' }}>
+      sx={{ height: '100vh', background: '#F9F5F5', backgroundImage: 'radial-gradient(circle at 10% 20%, rgba(21, 128, 61, 0.05) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(21, 128, 61, 0.08) 0%, transparent 40%), radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.8) 0%, transparent 100%)', display: 'flex', overflow: 'hidden' }}>
 
       {/* LEFT — nav (hidden on mobile, accessible via Drawer) */}
       <Box sx={{ width: isMobile ? 0 : actualLeftWidth, transition: 'width 0.2s', overflowX: 'hidden', flexShrink: 0, display: isMobile ? 'none' : 'block',
-                 background: 'rgba(255,255,255,0.4)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)', borderRight: '1px solid rgba(255,255,255,0.6)', position: 'relative', boxShadow: '1px 0 24px rgba(139,0,0,0.03)' }}>
+                 background: 'rgba(255,255,255,0.4)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)', borderRight: '1px solid rgba(255,255,255,0.6)', position: 'relative', boxShadow: '1px 0 24px rgba(21,128,61,0.03)' }}>
         {sidebarContent}
       </Box>
 
@@ -2259,7 +2259,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box onMouseDown={() => setDragging('left')}
             sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
                 bgcolor: dragging === 'left' ? MAROON_LIGHT : 'transparent',
-                '&:hover': { bgcolor: 'rgba(139,0,0,0.1)' }, transition: 'background-color 0.15s' }} />
+                '&:hover': { bgcolor: 'rgba(21,128,61,0.1)' }, transition: 'background-color 0.15s' }} />
         )}
 
       {/* Main content area */}
@@ -2273,7 +2273,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             backdropFilter: 'blur(24px)',
             WebkitBackdropFilter: 'blur(24px)',
             borderBottom: '1px solid rgba(255,255,255,0.4)',
-            boxShadow: '0 4px 24px rgba(139,0,0,0.03)',
+            boxShadow: '0 4px 24px rgba(21,128,61,0.03)',
             zIndex: (theme) => theme.zIndex.drawer - 1,
           }}
         >
@@ -2387,12 +2387,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box onMouseDown={() => setDragging('right')}
               sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
                   bgcolor: dragging === 'right' ? MAROON_LIGHT : 'transparent',
-                  '&:hover': { bgcolor: 'rgba(139,0,0,0.1)' }, transition: 'background-color 0.15s' }} />
+                  '&:hover': { bgcolor: 'rgba(21,128,61,0.1)' }, transition: 'background-color 0.15s' }} />
           )}
 
           {/* RIGHT */}
           <Box sx={{ width: isMobile ? 0 : rightWidth, display: isMobile ? 'none' : 'block', flexShrink: 0, background: 'rgba(255,255,255,0.4)', backdropFilter: 'blur(40px)', WebkitBackdropFilter: 'blur(40px)',
-                     borderLeft: '1px solid rgba(255,255,255,0.6)', boxShadow: '-1px 0 24px rgba(139,0,0,0.03)', overflow: 'auto', p: isMobile ? 0 : 2 }}>
+                     borderLeft: '1px solid rgba(255,255,255,0.6)', boxShadow: '-1px 0 24px rgba(21,128,61,0.03)', overflow: 'auto', p: isMobile ? 0 : 2 }}>
             {renderUploadPanel()}
           </Box>
         </Box>

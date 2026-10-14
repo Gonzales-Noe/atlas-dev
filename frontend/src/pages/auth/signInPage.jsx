@@ -172,7 +172,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           padding: 4px 0;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.active { color: #FF6B6B; }
+        .auth-nav-link.active { color: #86EFAC; }
 
         .dark-input {
           width: 100%;
@@ -188,7 +188,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           margin-bottom: 0;
         }
         .dark-input:focus {
-          border-color: rgba(192,57,43,0.7);
+          border-color: rgba(22,163,74,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
@@ -214,7 +214,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -232,8 +232,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(139,0,0,0.5);
-          background: linear-gradient(135deg, #A00000, #D44);
+          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
+          background: linear-gradient(135deg, #14532D, #16A34A);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -277,8 +277,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(192,57,43,0.15);
-          border: 1px solid rgba(192,57,43,0.35);
+          background: rgba(22,163,74,0.15);
+          border: 1px solid rgba(22,163,74,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -305,7 +305,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -359,13 +359,13 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(255, 107, 107, 0) 0%,
-            rgba(255, 107, 107, 0.5) 12.5%,
-            rgba(139, 0, 0, 0.5) 25%,
-            rgba(255, 107, 107, 0) 50%,
-            rgba(255, 107, 107, 0.5) 62.5%,
-            rgba(139, 0, 0, 0.5) 75%,
-            rgba(255, 107, 107, 0) 100%
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -434,7 +434,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.15)', top: -120, right: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -120, right: -100 }} />
       <Orb style={{ width: 400, height: 400, background: 'rgba(100,0,0,0.12)', bottom: -80, left: -120 }} />
 
       {/* Grid overlay */}
@@ -474,7 +474,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <Link to="/">
-              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain' }} />
             </Link>
 
             <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
@@ -526,7 +526,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '45%',
-              background: 'linear-gradient(145deg, rgba(139,0,0,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(80,0,0,0.6))',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -562,7 +562,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
               {/* Header */}
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 34, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.2rem' }} />
+                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 34, objectFit: 'contain', marginBottom: '1.2rem' }} />
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
                   Welcome Back to <span className="glow-text">ATLAS!</span>
                 </h1>
@@ -597,11 +597,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                       PASSWORD
                     </label>
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#FF6B6B', fontWeight: 600 }}>
+                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#86EFAC', fontWeight: 600 }}>
                         Forgot password?
                       </button>
                     ) : (
-                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#FF6B6B', fontWeight: 600, textDecoration: 'none' }}>
+                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#86EFAC', fontWeight: 600, textDecoration: 'none' }}>
                         Forgot password?
                       </Link>
                     )}
@@ -656,11 +656,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
                 Don't have an account?{' '}
                 {isModal ? (
-                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
                     Sign Up
                   </button>
                 ) : (
-                  <Link to={ROUTES.SIGN_UP} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
+                  <Link to={ROUTES.SIGN_UP} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>
                     Sign Up
                   </Link>
                 )}
