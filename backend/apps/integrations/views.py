@@ -40,6 +40,31 @@ def _is_faculty_user(request) -> bool:
     return bool(request.user and getattr(request.user, 'role', None) == UserRole.FACULTY)
 
 
+def _normalize_doc_type_label(doc_type: str | None) -> str:
+    if not doc_type:
+        return 'Uncategorized'
+
+    raw = str(doc_type).strip()
+    if not raw:
+        return 'Uncategorized'
+
+    mapping = {
+        'CHED_Handbook': 'CHED Handbook',
+        'CHED_Handbook_for_OBE': 'CHED Handbook for OBE',
+        'CHED_Handbook_on_Topology': 'CHED Handbook on Topology',
+        'Handbook_on_Typology': 'Handbook on Typology',
+        'OBE_Handbook_on_Typology': 'OBE Handbook on Typology',
+        'Institution_Knowledge_Base': 'Institution Knowledge Base',
+        'Syllabus': 'Syllabus',
+        'Assessment': 'Assessment',
+        'Policy': 'Policy',
+        'Reference': 'Reference',
+        'Files': 'Files',
+    }
+
+    return mapping.get(raw, raw.replace('_', ' ').replace('-', ' ').title())
+
+
 def _forbidden_admin_only_response():
     return Response(
         {
@@ -577,6 +602,7 @@ def list_rag_documents(request):
                     "discipline": doc.discipline,
                     "program": doc.program,
                     "doc_type": doc.doc_type,
+                    "doc_type_label": _normalize_doc_type_label(doc.doc_type),
                     "created_at": doc.created_at,
                     "total_chunks": doc.globaldocumentchunk_set.count(),
                 }
