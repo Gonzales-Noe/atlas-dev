@@ -5,42 +5,29 @@
 //   <ProtectedRoute role="admin">  — needs admin role
 
 import { Navigate, useLocation } from 'react-router-dom'
-import CircularProgress from '@mui/material/CircularProgress'
-import Box             from '@mui/material/Box'
 import { useAuth }     from '../store/authStore'
 import { ROUTES }      from '../config/route'
+import LoadingState from './LoadingState'
 
 export default function ProtectedRoute({ children, role }) {
   const { isAuthenticated, isLoading, user } = useAuth()
   const location = useLocation()
 
   if (isLoading) {
-    // Reached only on a hard page load or during sign-in, never on navigation,
-    // so nothing is mounted yet. No background paint: the page background from
-    // index.css shows through, so there is no white/black flash.
-    return (
-      <Box sx={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <CircularProgress size={28} sx={{ color: 'var(--red-mid, #C0392B)' }} />
-      </Box>
-    )
+    return <LoadingState fullScreen label="Restoring your session..." />
   }
 
   if (!isAuthenticated) {
     return <Navigate to={ROUTES.SIGN_IN} state={{ from: location }} replace />
   }
 
-  let locallyApproved = false
-  try {
-    locallyApproved = JSON.parse(localStorage.getItem('atlas_signup_application'))?.status === 'active'
-  } catch {
-    locallyApproved = false
-  }
-
-  if (
-    user?.role === 'admin'
+  const applicationNeedsBilling = user?.role === 'admin'
     && user?.institution_application_status
     && user.institution_application_status !== 'active'
-    && !locallyApproved
+  const institutionAccessExpired = user?.role !== 'superadmin'
+    && user?.institution_access_active === false
+  if (
+    (applicationNeedsBilling || institutionAccessExpired)
     && location.pathname !== ROUTES.BILLING
   ) {
     return <Navigate to={ROUTES.BILLING} replace />

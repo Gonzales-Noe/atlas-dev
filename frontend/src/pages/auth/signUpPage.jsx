@@ -26,8 +26,8 @@ function Orb({ style }) {
 function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="7" fill="rgba(192,57,43,0.25)" stroke="rgba(192,57,43,0.5)" strokeWidth="1" />
-      <path d="M4 7l2 2 4-4" stroke="#FF6B6B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="7" cy="7" r="7" fill="rgba(22,163,74,0.25)" stroke="rgba(22,163,74,0.5)" strokeWidth="1" />
+      <path d="M4 7l2 2 4-4" stroke="#86EFAC" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -215,7 +215,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: color 0.2s;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.highlighted { color: #FF6B6B !important; }
+        .auth-nav-link.highlighted { color: #86EFAC !important; }
 
         .dark-input {
           width: 100%;
@@ -230,7 +230,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: border-color 0.2s, background 0.2s;
         }
         .dark-input:focus {
-          border-color: rgba(192,57,43,0.7);
+          border-color: rgba(22,163,74,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input.email-invalid,
@@ -292,7 +292,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -310,8 +310,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(139,0,0,0.5);
-          background: linear-gradient(135deg, #A00000, #D44);
+          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
+          background: linear-gradient(135deg, #14532D, #16A34A);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -355,8 +355,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(192,57,43,0.15);
-          border: 1px solid rgba(192,57,43,0.35);
+          background: rgba(22,163,74,0.15);
+          border: 1px solid rgba(22,163,74,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -398,7 +398,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -462,9 +462,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         .custom-checkbox {
           width: 16px;
           height: 16px;
-          border: 1px solid rgba(192,57,43,0.5);
+          border: 1px solid rgba(22,163,74,0.5);
           border-radius: 4px;
-          background: rgba(192,57,43,0.1);
+          background: rgba(22,163,74,0.1);
           cursor: pointer;
           flex-shrink: 0;
           appearance: none;
@@ -473,8 +473,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           margin: 0;
         }
         .custom-checkbox:checked {
-          background: #C0392B;
-          border-color: #C0392B;
+          background: #16A34A;
+          border-color: #16A34A;
         }
         .custom-checkbox:checked::after {
           content: '✓';
@@ -522,13 +522,13 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(255, 107, 107, 0) 0%,
-            rgba(255, 107, 107, 0.5) 12.5%,
-            rgba(139, 0, 0, 0.5) 25%,
-            rgba(255, 107, 107, 0) 50%,
-            rgba(255, 107, 107, 0.5) 62.5%,
-            rgba(139, 0, 0, 0.5) 75%,
-            rgba(255, 107, 107, 0) 100%
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -563,7 +563,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.14)', top: -100, left: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.14)', top: -100, left: -100 }} />
       <Orb style={{ width: 400, height: 400, background: 'rgba(100,0,0,0.12)', bottom: -80, right: -80 }} />
 
       {/* Grid overlay */}
@@ -603,7 +603,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <Link to="/">
-              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain' }} />
             </Link>
 
             <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
@@ -655,7 +655,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
             {success ? (
               <div className="form-enter" style={{ textAlign: 'center' }}>
-                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.5rem' }} />
+                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.5rem' }} />
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 1rem' }}>
                   Application <span className="glow-text">Submitted!</span>
@@ -679,7 +679,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
               <div className="form-enter">
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.2rem' }} />
+                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.2rem' }} />
                   <h1 style={{ fontSize: '1.55rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
                     Get <span className="glow-text">ATLAS</span> for Your Institution
                   </h1>
@@ -795,11 +795,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.38)', margin: '1.25rem 0 0.75rem' }}>
                   Already have an account?{' '}
                   {isModal ? (
-                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
                       Sign In
                     </button>
                   ) : (
-                    <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                    <Link to={ROUTES.SIGN_IN} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
                   )}
                 </p>
 
@@ -813,7 +813,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   />
                   <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.5, textAlign: 'center' }}>
                     I agree to the{' '}
-                    <span style={{ color: '#FF6B6B', fontWeight: 600 }}>Terms and Conditions of Use and Privacy Policy</span>
+                    <span style={{ color: '#86EFAC', fontWeight: 600 }}>Terms and Conditions of Use and Privacy Policy</span>
                   </span>
                 </label>
               </div>
@@ -825,7 +825,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '44%',
-              background: 'linear-gradient(145deg, rgba(139,0,0,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(80,0,0,0.6))',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',

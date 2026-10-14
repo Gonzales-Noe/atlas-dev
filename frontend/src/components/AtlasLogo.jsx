@@ -1,18 +1,20 @@
 import React from 'react'
 import Box from '@mui/material/Box'
+import atlasLogo from '../assets/atlas-logo.png'
 
 export default function AtlasLogo({
   className,
   style,
   sx,
   alt = 'ATLAS Logo',
-  height = 36,
+  size,
+  height = size ?? 36,
   ...props
 }) {
   return (
     <Box
       component="img"
-      src="/ATLAS-Logo.svg"
+      src={atlasLogo}
       alt={alt}
       className={className}
       style={style}

@@ -60,16 +60,16 @@ function OtpInput({ value, onChange }) {
             fontWeight: 800,
             fontFamily: '"Plus Jakarta Sans", sans-serif',
             background: 'rgba(255,255,255,0.06)',
-            border: digits[i] ? '2px solid rgba(192,57,43,0.8)' : '1px solid rgba(255,255,255,0.14)',
+            border: digits[i] ? '2px solid rgba(22,163,74,0.8)' : '1px solid rgba(255,255,255,0.14)',
             borderRadius: 14,
             outline: 'none',
             color: '#F0F0F0',
             transition: 'border-color 0.2s, background 0.2s',
             cursor: 'text',
-            boxShadow: digits[i] ? '0 0 16px rgba(192,57,43,0.2)' : 'none',
+            boxShadow: digits[i] ? '0 0 16px rgba(22,163,74,0.2)' : 'none',
           }}
           onFocus={e => {
-            e.target.style.borderColor = 'rgba(192,57,43,0.8)'
+            e.target.style.borderColor = 'rgba(22,163,74,0.8)'
             e.target.style.background = 'rgba(255,255,255,0.1)'
           }}
           onBlur={e => {
@@ -110,7 +110,7 @@ function StepDots({ current }) {
           width: i === current ? 20 : 7,
           height: 7,
           borderRadius: 4,
-          background: i <= current ? 'linear-gradient(90deg, #8B0000, #C0392B)' : 'rgba(255,255,255,0.12)',
+          background: i <= current ? 'linear-gradient(90deg, #15803D, #16A34A)' : 'rgba(255,255,255,0.12)',
           transition: 'all 0.4s ease',
         }} />
       ))}
@@ -258,14 +258,14 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           transition: border-color 0.2s, background 0.2s;
         }
         .dark-input:focus {
-          border-color: rgba(192,57,43,0.7);
+          border-color: rgba(22,163,74,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -282,12 +282,12 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(139,0,0,0.5);
+          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-inline {
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -304,7 +304,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           flex-shrink: 0;
         }
         .btn-inline:hover:not(:disabled) {
-          box-shadow: 0 6px 20px rgba(139,0,0,0.45);
+          box-shadow: 0 6px 20px rgba(21,128,61,0.45);
           transform: translateY(-1px);
         }
         .btn-inline:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -318,8 +318,8 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(192,57,43,0.15);
-          border: 1px solid rgba(192,57,43,0.35);
+          background: rgba(22,163,74,0.15);
+          border: 1px solid rgba(22,163,74,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -337,7 +337,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -430,7 +430,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.15)', top: -150, left: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -150, left: -100 }} />
       <Orb style={{ width: 350, height: 350, background: 'rgba(100,0,0,0.12)', bottom: -80, right: -80 }} />
       <div style={{
         position: 'fixed', inset: 0,
@@ -464,7 +464,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 2rem', height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Link to="/">
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain' }} />
           </Link>
           <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
             {NAV_LINKS.map(({ label, to }) => (
@@ -503,7 +503,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
             className="mascot-col"
             style={{
               width: '42%',
-              background: 'linear-gradient(145deg, rgba(139,0,0,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(80,0,0,0.6))',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -519,7 +519,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
 
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
               {/* Logo */}
-              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28 }} />
 
               {/* Speech bubble — updates per step */}
               <div className="speech-bubble" style={{ maxWidth: 260 }}>
@@ -538,7 +538,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     {['Email', 'Verify', 'Password'].map((label, i) => (
                       <span key={label} style={{
                         fontSize: '0.7rem',
-                        color: i <= step ? '#FF6B6B' : 'rgba(255,255,255,0.25)',
+                        color: i <= step ? '#86EFAC' : 'rgba(255,255,255,0.25)',
                         fontWeight: 600,
                         transition: 'color 0.3s',
                       }}>
@@ -550,7 +550,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     <div style={{
                       height: '100%',
                       width: `${((step) / 2) * 100}%`,
-                      background: 'linear-gradient(90deg, #8B0000, #C0392B)',
+                      background: 'linear-gradient(90deg, #15803D, #16A34A)',
                       borderRadius: 4,
                       transition: 'width 0.5s ease',
                     }} />
@@ -596,11 +596,11 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
                     Remembered it?{' '}
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
                         Sign In
                       </button>
                     ) : (
-                      <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>
+                      <Link to={ROUTES.SIGN_IN} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>
                         Sign In
                       </Link>
                     )}
@@ -647,7 +647,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                       style={{
                         background: 'none', border: 'none', padding: 0,
                         cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
-                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#FF6B6B',
+                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#86EFAC',
                         fontWeight: 700, fontSize: '0.83rem',
                         fontFamily: 'inherit', transition: 'color 0.2s',
                       }}

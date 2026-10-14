@@ -19,6 +19,16 @@ MIDDLEWARE += [
 
 INTERNAL_IPS = ['127.0.0.1']
 
+# The SQL panel can fail while interpreting psycopg isolation levels and turn
+# otherwise successful API responses into 500s in development.
+DEBUG_TOOLBAR_CONFIG = {
+    'DISABLE_PANELS': {
+        'debug_toolbar.panels.profiling.ProfilingPanel',
+        'debug_toolbar.panels.redirects.RedirectsPanel',
+        'debug_toolbar.panels.sql.SQLPanel',
+    },
+}
+
 # Extended logging
 LOGGING = {
     'version': 1,
