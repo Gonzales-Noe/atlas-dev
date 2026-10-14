@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
+import { Check, Circle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
@@ -41,6 +42,15 @@ const NAV_LINKS = [
 const PERKS = [
 ];
 
+const PASSWORD_REQUIREMENTS = [
+  { key: 'length', label: 'At least 8 characters' },
+  { key: 'uppercase', label: 'One uppercase letter' },
+  { key: 'lowercase', label: 'One lowercase letter' },
+  { key: 'number', label: 'One number' },
+  { key: 'special', label: 'One special character' },
+];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const navigate = useNavigate();
   const { register, loginWithGoogle } = useAuth();
@@ -49,12 +59,24 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   const [form, setForm] = useState({
-    full_name: '', email: '', institution_name: '', password: '',
+    full_name: '', email: '', institution_name: '', password: '', confirm_password: '',
   });
+  const emailIsValid = EMAIL_PATTERN.test(form.email.trim());
+  const emailIsInvalid = form.email.length > 0 && !emailIsValid;
+  const passwordChecks = {
+    length: form.password.length >= 8,
+    uppercase: /[A-Z]/.test(form.password),
+    lowercase: /[a-z]/.test(form.password),
+    number: /[0-9]/.test(form.password),
+    special: /[^A-Za-z0-9]/.test(form.password),
+  };
+  const isPasswordStrong = PASSWORD_REQUIREMENTS.every(({ key }) => passwordChecks[key]);
 
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});
@@ -118,26 +140,31 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
     const institutionName = form.institution_name.trim();
     const email = form.email.trim();
     const password = form.password;
+    const confirmPassword = form.confirm_password;
 
     if (!agreed) { setError('Please agree to the Terms and Conditions.'); return; }
-    if (!fullName || !institutionName || !email || !password) {
+    if (!fullName || !institutionName || !email || !password || !confirmPassword) {
       setError('Please fill in all fields.'); return;
     }
 
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(email)) {
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    if (!emailIsValid) {
       setError('Please enter a valid institutional email address.');
       return;
     }
 
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-      setError('Password must be at least 8 characters and include both letters and numbers.');
+    if (!isPasswordStrong) {
+      setError('Password must meet all listed requirements.');
       return;
     }
 
     setLoading(true);
     try {
-      const user = await register({ ...form, full_name: fullName, institution_name: institutionName, email, password });
+      const user = await register({ full_name: fullName, institution_name: institutionName, email, password });
       localStorage.setItem('atlas_signup_application', JSON.stringify({
         institution: institutionName,
         email,
@@ -206,7 +233,62 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           border-color: rgba(192,57,43,0.7);
           background: rgba(255,255,255,0.09);
         }
+        .dark-input.email-invalid,
+        .dark-input.email-invalid:focus {
+          border-color: #FF6B6B;
+        }
+        .dark-input.password-strong,
+        .dark-input.password-strong:focus {
+          border-color: #71D99E;
+        }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
+
+        .field-help {
+          display: block;
+          margin-top: 0.4rem;
+          color: rgba(255,255,255,0.5);
+          font-size: 0.75rem;
+          line-height: 1.4;
+        }
+        .field-help.invalid { color: #FF8A8A; }
+
+        .password-input-wrap { position: relative; }
+        .password-input-wrap .dark-input { padding-right: 3rem; }
+        .password-toggle {
+          position: absolute;
+          top: 50%;
+          right: 0.9rem;
+          transform: translateY(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.25rem;
+          color: rgba(255,255,255,0.55);
+          background: none;
+          border: 0;
+          cursor: pointer;
+        }
+        .password-toggle:hover { color: #fff; }
+        .password-toggle:focus-visible { outline: 2px solid #FF6B6B; outline-offset: 2px; }
+
+        .password-checklist {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.35rem 0.6rem;
+          margin: 0.55rem 0 0;
+          padding: 0;
+          list-style: none;
+        }
+        .password-check-item {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          color: rgba(255,255,255,0.55);
+          font-size: 0.72rem;
+          line-height: 1.35;
+        }
+        .password-check-item.met { color: #71D99E; }
+        .password-check-item svg { flex: none; }
 
         .btn-primary {
           width: 100%;
@@ -644,11 +726,64 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                     </div>
                     <div>
                       <span className="label-text">INSTITUTIONAL EMAIL</span>
-                      <input className="dark-input" name="email" type="email" placeholder="you@institution.edu.ph" value={form.email} onChange={handleChange} required />
+                      <input
+                        className={`dark-input${emailIsInvalid ? ' email-invalid' : ''}`}
+                        name="email"
+                        type="email"
+                        placeholder="you@institution.edu.ph"
+                        value={form.email}
+                        onChange={handleChange}
+                        aria-invalid={emailIsInvalid}
+                        aria-describedby={emailIsInvalid ? 'institution-email-help' : undefined}
+                        required
+                      />
+                      {emailIsInvalid && (
+                        <span id="institution-email-help" className="field-help invalid">
+                          Please enter a valid institutional email address.
+                        </span>
+                      )}
                     </div>
                     <div>
                       <span className="label-text">PASSWORD</span>
-                      <input className="dark-input" name="password" type="password" placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                      <div className="password-input-wrap">
+                        <input className={`dark-input${isPasswordStrong ? ' password-strong' : ''}`} name="password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                        <button
+                          className="password-toggle"
+                          type="button"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          title={showPassword ? 'Hide password' : 'Show password'}
+                          onClick={() => setShowPassword(show => !show)}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                      {form.password.length > 0 && !isPasswordStrong && (
+                        <ul className="password-checklist" aria-label="Password requirements">
+                          {PASSWORD_REQUIREMENTS.map(({ key, label }) => (
+                            <li key={key} className={`password-check-item${passwordChecks[key] ? ' met' : ''}`}>
+                              {passwordChecks[key]
+                                ? <Check size={14} aria-hidden="true" />
+                                : <Circle size={14} aria-hidden="true" />}
+                              <span>{label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <span className="label-text">CONFIRM PASSWORD</span>
+                      <div className="password-input-wrap">
+                        <input className="dark-input" name="confirm_password" type={showConfirmPassword ? 'text' : 'password'} placeholder="Re-enter your password" value={form.confirm_password} onChange={handleChange} required />
+                        <button
+                          className="password-toggle"
+                          type="button"
+                          aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                          title={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                          onClick={() => setShowConfirmPassword(show => !show)}
+                        >
+                          {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </div>
                     <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '0.25rem' }}>
                       {loading ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Submit Registration'}

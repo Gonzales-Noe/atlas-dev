@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
@@ -38,6 +39,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const { redirectToDashboard } = useRoleRedirect();
 
   const [form, setForm] = useState({ email: '', password: '' });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -190,6 +192,25 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           background: rgba(255,255,255,0.09);
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
+
+        .password-input-wrap { position: relative; }
+        .password-input-wrap .dark-input { padding-right: 3rem; }
+        .password-toggle {
+          position: absolute;
+          top: 50%;
+          right: 0.9rem;
+          transform: translateY(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.25rem;
+          color: rgba(255,255,255,0.55);
+          background: none;
+          border: 0;
+          cursor: pointer;
+        }
+        .password-toggle:hover { color: #fff; }
+        .password-toggle:focus-visible { outline: 2px solid #FF6B6B; outline-offset: 2px; }
 
         .btn-primary {
           width: 100%;
@@ -585,15 +606,26 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                       </Link>
                     )}
                   </div>
-                  <input
-                    className="dark-input"
-                    name="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={handleChange}
-                    required
-                  />
+                  <div className="password-input-wrap">
+                    <input
+                      className="dark-input"
+                      name="password"
+                      type={showPassword ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      value={form.password}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      className="password-toggle"
+                      type="button"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowPassword(show => !show)}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
                 </div>
 
                 <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '0.5rem' }}>
