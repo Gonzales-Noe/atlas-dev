@@ -30,6 +30,9 @@ export default function AccountManagement() {
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [confirmDeleteInstitution, setConfirmDeleteInstitution] = useState(null)
+  const [deletingInstitution, setDeletingInstitution] = useState(false)
   const [editForm, setEditForm] = useState({ institution: '', subscription_plan: '', is_active: true })
 
   useEffect(() => {
@@ -62,6 +65,26 @@ export default function AccountManagement() {
       status: isActive ? 'active' : 'rejected',
     } : item))
     handleMenuClose()
+  }
+
+  // ── Hard-delete an institution and all data under it ─────────────────────
+  const deleteInstitution = async () => {
+    if (!confirmDeleteInstitution) return
+    setDeletingInstitution(true)
+    setError('')
+    try {
+      await api.delete(`/auth/institutions/${confirmDeleteInstitution.id}/`)
+      setAccounts(current => current.filter(item => item.id !== confirmDeleteInstitution.id))
+      setNotice(
+        `“${confirmDeleteInstitution.institution}” and all of its accounts and data were permanently deleted.`,
+      )
+      setConfirmDeleteInstitution(null)
+      handleMenuClose()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to delete the institution.')
+    } finally {
+      setDeletingInstitution(false)
+    }
   }
 
   const openEdit = (account) => {
@@ -105,7 +128,7 @@ export default function AccountManagement() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <StatCard title="Total Institutions" value={accounts.length} icon="🏛️" accent="#FF6B6B" />
+        <StatCard title="Total Institutions" value={accounts.length} icon="🏛️" accent="#86EFAC" />
         <StatCard title="Active" value={accounts.filter(a => a.status === 'active').length} icon="✅" accent="#5EDA7E" />
         <StatCard title="Total Users" value={accounts.reduce((sum, account) => sum + account.users, 0).toLocaleString()} icon="👥" accent="#60AAFF" />
         <StatCard title="Pending Review" value={pendingApplications.length} icon="⏳" accent="#FFB74D" />
@@ -113,6 +136,16 @@ export default function AccountManagement() {
 
       {/* Filters */}
       <GlassCard style={{ marginBottom: 16 }}>
+        {notice && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(94,218,126,0.12)', border: '1px solid rgba(94,218,126,0.4)', color: '#5EDA7E', fontSize: '0.85rem' }}>
+            {notice}
+          </div>
+        )}
+        {error && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(134,239,172,0.12)', border: '1px solid rgba(134,239,172,0.4)', color: '#86EFAC', fontSize: '0.85rem' }}>
+            {error}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             placeholder="Search institution, admin, or email…"
@@ -171,8 +204,9 @@ export default function AccountManagement() {
                       <MenuItem onClick={() => { setSelectedAccount(acc); setUsageOpen(true); handleMenuClose() }}>View Usage</MenuItem>
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08) !important', my: '4px !important' }} />
                       {acc.status === 'active'
-                        ? <MenuItem sx={{ color: '#FF6B6B !important' }} onClick={() => setAccountActive(acc, false)}>Suspend Account</MenuItem>
+                        ? <MenuItem sx={{ color: '#86EFAC !important' }} onClick={() => setAccountActive(acc, false)}>Suspend Account</MenuItem>
                         : <MenuItem sx={{ color: '#5EDA7E !important' }} onClick={() => setAccountActive(acc, true)}>Reactivate Account</MenuItem>}
+                      <MenuItem sx={{ color: '#86EFAC !important' }} onClick={() => { setConfirmDeleteInstitution(acc); handleMenuClose() }}>Delete Institution</MenuItem>
                     </Menu>
                   </TableCell>
                 </TableRow>
@@ -260,7 +294,7 @@ export default function AccountManagement() {
               <option value="">Not selected</option><option value="Starter">Starter</option><option value="Professional">Professional</option><option value="Enterprise">Enterprise</option>
             </TextField>
             <FormControlLabel
-              control={<Switch checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#8B0000 !important' } }} />}
+              control={<Switch checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#15803D !important' } }} />}
               label={<span style={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Active Account</span>}
             />
           </Stack>
@@ -268,6 +302,32 @@ export default function AccountManagement() {
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <OutlineBtn onClick={() => { setCreateOpen(false); setEditOpen(false) }}>Cancel</OutlineBtn>
           <PrimaryBtn onClick={async () => { if (editOpen) await updateInstitution({ selected_plan: editForm.subscription_plan, is_active: editForm.is_active }); setCreateOpen(false); setEditOpen(false) }}>{editOpen ? 'Update' : 'Create'}</PrimaryBtn>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete institution confirmation */}
+      <Dialog
+        open={Boolean(confirmDeleteInstitution)}
+        onClose={() => { if (!deletingInstitution) setConfirmDeleteInstitution(null) }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete institution?</DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 2.5 }}>
+          <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
+            This permanently deletes{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{confirmDeleteInstitution?.institution}</strong>{' '}
+            ({confirmDeleteInstitution?.users ?? 0} users) and all of its data — colleges, programs, courses,
+            sections, syllabi, assessments, files, and every account under it. Deleted emails can be registered
+            fresh. This cannot be undone.
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <OutlineBtn onClick={() => setConfirmDeleteInstitution(null)} disabled={deletingInstitution}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={deleteInstitution} disabled={deletingInstitution}>
+            {deletingInstitution ? 'Deleting…' : 'Delete Institution'}
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
     </SuperAdminLayout>

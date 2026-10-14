@@ -1,6 +1,7 @@
 from django.contrib.auth.hashers import check_password, make_password
 from django.core import signing
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
@@ -8,12 +9,20 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.integrations.models import (
-    College,
     Course,
     CourseLoad,
     Institution,
+    PaymentStatusEnum,
+    Section,
+    SubscriptionStatusEnum,
     UserProfile,
     UserRole,
+)
+from apps.integrations.trial import (
+    TRIAL_FACULTY_LIMIT,
+    institution_access_is_active,
+    trial_expiry,
+    trial_is_active,
 )
 
 
@@ -42,12 +51,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
     role_code = serializers.CharField(source='role', read_only=True)
     name = serializers.CharField(read_only=True)
     institution_name = serializers.CharField(source='institution.name', read_only=True, allow_null=True)
-    college_id = serializers.UUIDField(source='college.college_id', read_only=True, allow_null=True)
-    college_name = serializers.CharField(source='college.name', read_only=True, allow_null=True)
-    college_code = serializers.CharField(source='college.code', read_only=True, allow_null=True)
     dashboard_path = serializers.SerializerMethodField()
     institution_application_status = serializers.CharField(source='institution.application_status', read_only=True, allow_null=True)
     institution_payment_status = serializers.CharField(source='institution.payment_status', read_only=True, allow_null=True)
+    institution_subscription_status = serializers.CharField(source='institution.subscription_status', read_only=True, allow_null=True)
+    institution_trial_started_at = serializers.DateTimeField(source='institution.trial_started_at', read_only=True, allow_null=True)
+    institution_trial_ends_at = serializers.DateTimeField(source='institution.trial_ends_at', read_only=True, allow_null=True)
+    institution_subscription_ends_at = serializers.DateTimeField(source='institution.subscription_ends_at', read_only=True, allow_null=True)
+    institution_access_active = serializers.SerializerMethodField()
     setup_completed = serializers.SerializerMethodField()
 
     class Meta:
@@ -60,12 +71,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             'role',
             'role_code',
             'institution_name',
-            'college_id',
-            'college_name',
-            'college_code',
             'dashboard_path',
             'institution_application_status',
             'institution_payment_status',
+            'institution_subscription_status',
+            'institution_trial_started_at',
+            'institution_trial_ends_at',
+            'institution_subscription_ends_at',
+            'institution_access_active',
+            'trial_generation_count',
             'setup_completed',
             'is_active',
             'created_at',
@@ -74,6 +88,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_setup_completed(self, obj):
         return bool(obj.institution_id and obj.institution.setup_completed)
+
+    def get_institution_access_active(self, obj):
+        return institution_access_is_active(obj.institution, timezone.now())
 
     def get_role(self, obj):
         return normalize_role(obj.role)
@@ -129,13 +146,13 @@ class UserProfileTokenRefreshSerializer(TokenRefreshSerializer):
                 profile = UserProfile.objects.get(user_id=user_id)
             except UserProfile.DoesNotExist as exc:
                 raise AuthenticationFailed(
-                    self.error_messages['no_active_account'],
+                    'No active account found with the given credentials.',
                     'no_active_account',
                 ) from exc
 
             if not profile.is_active:
                 raise AuthenticationFailed(
-                    self.error_messages['no_active_account'],
+                    'No active account found with the given credentials.',
                     'no_active_account',
                 )
 
@@ -180,6 +197,12 @@ class RegisterSerializer(serializers.Serializer):
         # Public signup creates the institution's first administrator.
         return UserRole.ADMIN
 
+    def validate_selected_plan(self, value):
+        selected_plan = value.strip()
+        if selected_plan and selected_plan not in {'Starter', 'Professional'}:
+            raise serializers.ValidationError('Choose a currently available plan.')
+        return selected_plan
+
     @transaction.atomic
     def create(self, validated_data):
         institution_name = validated_data.pop('institution_name').strip()
@@ -187,16 +210,19 @@ class RegisterSerializer(serializers.Serializer):
         role = validated_data.pop('role', UserRole.ADMIN)
         password = validated_data.pop('password')
         full_name = validated_data.pop('full_name', '').strip()
+        trial_started_at, trial_ends_at = trial_expiry()
 
         institution, _ = Institution.objects.get_or_create(
             name=institution_name,
             defaults={
                 'plan_tier': 'free',
-                'subscription_status': 'trialing',
-                'application_status': 'pending_review',
-                'payment_status': 'unpaid',
+                'subscription_status': SubscriptionStatusEnum.TRIALING,
+                'application_status': 'active',
+                'payment_status': PaymentStatusEnum.UNPAID,
                 'selected_plan': selected_plan,
-                'is_active': False,
+                'is_active': True,
+                'trial_started_at': trial_started_at,
+                'trial_ends_at': trial_ends_at,
             },
         )
 
@@ -244,9 +270,6 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 class UserAccountSerializer(serializers.ModelSerializer):
     role = serializers.SerializerMethodField()
     institution_name = serializers.CharField(source='institution.name', read_only=True, allow_null=True)
-    college_id = serializers.UUIDField(source='college.college_id', read_only=True, allow_null=True)
-    college_name = serializers.CharField(source='college.name', read_only=True, allow_null=True)
-    college_code = serializers.CharField(source='college.code', read_only=True, allow_null=True)
     dashboard_path = serializers.SerializerMethodField()
 
     class Meta:
@@ -258,9 +281,6 @@ class UserAccountSerializer(serializers.ModelSerializer):
             'role',
             'role_code',
             'institution_name',
-            'college_id',
-            'college_name',
-            'college_code',
             'dashboard_path',
             'is_active',
             'created_at',
@@ -310,7 +330,6 @@ class FacultyCreateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255)
     email = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
-    college_id = serializers.UUIDField(required=False, allow_null=True)
     assignments = serializers.ListField(
         child=serializers.DictField(),
         required=True,
@@ -324,15 +343,18 @@ class FacultyCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError('A user with this email already exists.')
         return normalized
 
-    def validate_college_id(self, value):
-        if value:
-            request = self.context.get('request')
-            if request and hasattr(request, 'user'):
-                institution = request.user.institution
-                if institution:
-                    if not College.objects.filter(college_id=value, institution=institution).exists():
-                        raise serializers.ValidationError('College not found in your institution.')
-        return value
+    @staticmethod
+    def _get_assignment_section(institution, section_code):
+        section = Section.objects.filter(
+            institution=institution,
+            code__iexact=section_code,
+        ).first()
+        if section is None:
+            section = Section.objects.create(
+                institution=institution,
+                code=section_code,
+            )
+        return section
 
     def validate_assignments(self, assignments):
         request = self.context.get('request')
@@ -391,19 +413,28 @@ class FacultyCreateSerializer(serializers.Serializer):
         institution = admin_user.institution
         if not institution:
             raise serializers.ValidationError('Admin user has no associated institution.')
+        if institution.subscription_status == SubscriptionStatusEnum.TRIALING:
+            institution = Institution.objects.select_for_update().get(pk=institution.pk)
+            if not trial_is_active(institution):
+                raise serializers.ValidationError(
+                    'The free trial has ended. Choose a paid plan before adding faculty.'
+                )
+            faculty_count = UserProfile.objects.filter(
+                institution=institution,
+                role=UserRole.FACULTY,
+                is_active=True,
+            ).count()
+            if faculty_count >= TRIAL_FACULTY_LIMIT:
+                raise serializers.ValidationError(
+                    f'The free trial includes up to {TRIAL_FACULTY_LIMIT} faculty accounts.'
+                )
 
         password = validated_data.pop('password')
-        college_id = validated_data.pop('college_id', None)
         full_name = validated_data.pop('full_name', '').strip()
         assignments = validated_data.pop('assignments', [])
 
-        college = None
-        if college_id:
-            college = College.objects.filter(college_id=college_id, institution=institution).first()
-
         profile = UserProfile.objects.create(
             institution=institution,
-            college=college,
             email=validated_data['email'],
             full_name=full_name,
             password_hash=make_password(password),
@@ -411,6 +442,7 @@ class FacultyCreateSerializer(serializers.Serializer):
             is_active=True,
         )
         for assignment in assignments:
+            section = self._get_assignment_section(institution, assignment['section'])
             for course_data in assignment['courses']:
                 if 'course_id' in course_data:
                     course = Course.objects.get(
@@ -436,7 +468,7 @@ class FacultyCreateSerializer(serializers.Serializer):
                 CourseLoad.objects.get_or_create(
                     course=course,
                     faculty=profile,
-                    section=assignment['section'],
+                    section=section,
                 )
         return profile
 

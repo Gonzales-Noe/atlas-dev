@@ -1,3 +1,4 @@
+import { Component } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ROUTES } from './config/route'
 import SignInPage from './pages/auth/signInPage.jsx'
@@ -10,11 +11,6 @@ import SuperAdminSystemManagement from './features/Superadmin/SystemManagement.j
 import SuperAdminAccountManagement from './features/Superadmin/AccountManagement.jsx'
 import FacultyWorkspacePage from './components/FacultyWorkspacePage.jsx'
 import FacultyDashboardPage from './features/roles/Faculty/Dashboard.jsx'
-import FacultySyllabusPage from './features/roles/Faculty/Syllabus.jsx'
-import FacultyModulePage from './features/roles/Faculty/Module.jsx'
-import FacultyAssessmentPage from './features/roles/Faculty/Assessment.jsx'
-import FacultyGradingPage from './features/roles/Faculty/Grading.jsx'
-import FacultyAnalytics from './features/roles/Faculty/Analytics.jsx'
 import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
 import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
@@ -23,6 +19,48 @@ import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
 import BillingOnboarding from './pages/billing/BillingOnboarding.jsx'
+
+class FacultyWorkspaceErrorBoundary extends Component {
+  state = { error: null }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error, info) {
+    console.error('Faculty workspace render failed.', error, info.componentStack)
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+
+    return (
+      <main style={{
+        minHeight: '100vh',
+        boxSizing: 'border-box',
+        padding: '48px 24px',
+        background: '#08080A',
+        color: '#F0F0F2',
+        fontFamily: 'system-ui, sans-serif',
+      }}>
+        <section style={{ maxWidth: 760, margin: '0 auto' }}>
+          <h1 style={{ fontSize: '1.4rem' }}>This course workspace could not be displayed.</h1>
+          <p>Reload the workspace or return to your course list. If the problem continues, share the error details below with your administrator.</p>
+          <div style={{ display: 'flex', gap: 12, margin: '24px 0' }}>
+            <button type="button" onClick={() => window.location.reload()}>Reload workspace</button>
+            <button type="button" onClick={() => { window.location.href = '/faculty/dashboard' }}>Back to courses</button>
+          </div>
+          <details>
+            <summary>Error details</summary>
+            <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+              {this.state.error?.stack || String(this.state.error)}
+            </pre>
+          </details>
+        </section>
+      </main>
+    )
+  }
+}
 
 function App() {
   return (
@@ -86,7 +124,9 @@ function App() {
           path={ROUTES.FACULTY.WORKSPACE}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyWorkspacePage />
+              <FacultyWorkspaceErrorBoundary>
+                <FacultyWorkspacePage />
+              </FacultyWorkspaceErrorBoundary>
             </ProtectedRoute>
           }
         />
@@ -94,7 +134,7 @@ function App() {
           path={ROUTES.FACULTY.SYLLABUS}
           element={
             <ProtectedRoute role="faculty">
-              <FacultySyllabusPage />
+              <Navigate to={ROUTES.FACULTY.DASHBOARD} replace />
             </ProtectedRoute>
           }
         />
@@ -102,7 +142,7 @@ function App() {
           path={ROUTES.FACULTY.MODULE}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyModulePage />
+              <Navigate to={ROUTES.FACULTY.DASHBOARD} replace />
             </ProtectedRoute>
           }
         />
@@ -110,7 +150,7 @@ function App() {
           path={ROUTES.FACULTY.ASSESSMENT}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyAssessmentPage />
+              <Navigate to={ROUTES.FACULTY.DASHBOARD} replace />
             </ProtectedRoute>
           }
         />
@@ -118,7 +158,7 @@ function App() {
           path={ROUTES.FACULTY.GRADING}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyGradingPage />
+              <Navigate to={ROUTES.FACULTY.DASHBOARD} replace />
             </ProtectedRoute>
           }
         />
@@ -126,7 +166,7 @@ function App() {
           path={ROUTES.FACULTY.ANALYTICS}
           element={
             <ProtectedRoute role="faculty">
-              <FacultyAnalytics />
+              <Navigate to={ROUTES.FACULTY.DASHBOARD} replace />
             </ProtectedRoute>
           }
         />

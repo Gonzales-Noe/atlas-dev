@@ -48,8 +48,8 @@ import api from '../config/api'
 import { extractApiError } from '../utils'
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const MAROON       = '#8B0000'
-const MAROON_LIGHT = '#FFF5F5'
+const MAROON       = '#15803D'
+const MAROON_LIGHT = '#F0FDF4'
 const BG           = '#F7F9FC'
 
 // ── Shared mini-components ─────────────────────────────────────────────────
@@ -174,7 +174,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
           <Stack direction="row" spacing={1}>
             <Tooltip title="Refresh"><IconButton size="small" onClick={onRefresh}><RefreshIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
             <Button size="small" variant="contained" startIcon={<AddIcon />}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, fontSize: '0.72rem', textTransform: 'none' }}
+              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, fontSize: '0.72rem', textTransform: 'none' }}
               onClick={() => setCreating(true)}>
               New Template
             </Button>
@@ -432,7 +432,7 @@ function PdfPreviewDialog({ title, url, onClose, onDownload }) {
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
         <Button variant="contained" startIcon={<DownloadIcon />} onClick={onDownload}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Download PDF
         </Button>
       </DialogActions>
@@ -636,7 +636,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Create Template
         </Button>
       </DialogActions>
@@ -716,7 +716,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                         transition: 'all 0.12s',
-                        '&:hover': { borderColor: MAROON, bgcolor: key[String(itemNo)] === ch ? '#6a0000' : MAROON_LIGHT },
+                        '&:hover': { borderColor: MAROON, bgcolor: key[String(itemNo)] === ch ? '#14532D' : MAROON_LIGHT },
                       }}
                     >
                       {ch}
@@ -732,7 +732,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Answer Key
         </Button>
       </DialogActions>
@@ -960,7 +960,7 @@ function ScanTab({ courseId, templates, onScanned }) {
             startIcon={scanning ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <CloudUploadIcon />}
             disabled={!selectedTemplate || !file || scanning}
             onClick={handleScan}
-            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}
           >
             {scanning ? 'Scanning…' : 'Scan Sheet'}
           </Button>
@@ -1240,7 +1240,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Changes
         </Button>
       </DialogActions>

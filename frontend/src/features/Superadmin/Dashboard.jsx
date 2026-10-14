@@ -5,7 +5,7 @@ import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, MetricRow } from '../../components/ui'
 import api from '../../config/api'
 
-const COLORS = ['#C0392B', '#FF6B6B', 'rgba(255,107,107,0.35)']
+const COLORS = ['#16A34A', '#86EFAC', 'rgba(134,239,172,0.35)']
 
 const tooltipStyle = {
   background: '#16161E',
@@ -66,7 +66,7 @@ export default function SuperAdminDashboard() {
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Total Institutions" value={valueFor('Institutions')} icon="🏛️" accent="#FF6B6B" />
+        <StatCard title="Total Institutions" value={valueFor('Institutions')} icon="🏛️" accent="#86EFAC" />
         <StatCard title="Active Institutions" value={valueFor('Active institutions')} icon="✅" accent="#5EDA7E" />
         <StatCard title="Users" value={valueFor('Users')} icon="👥" accent="#60AAFF" />
         <StatCard title="Pending Applications" value={valueFor('Pending applications')} icon="⏳" accent="#FFB74D" />
@@ -96,15 +96,15 @@ export default function SuperAdminDashboard() {
             <AreaChart data={summary.institution_trend} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
               <defs>
                 <linearGradient id="gTraffic" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#C0392B" stopOpacity={0.5} />
-                  <stop offset="95%" stopColor="#C0392B" stopOpacity={0} />
+                  <stop offset="5%"  stopColor="#16A34A" stopOpacity={0.5} />
+                  <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
               <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} />
               <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
               <Tooltip contentStyle={tooltipStyle} />
-              <Area type="monotone" dataKey="institutions" name="Institutions" stroke="#C0392B" strokeWidth={2} fill="url(#gTraffic)" dot={false} activeDot={{ r: 5, fill: '#FF6B6B' }} />
+              <Area type="monotone" dataKey="institutions" name="Institutions" stroke="#16A34A" strokeWidth={2} fill="url(#gTraffic)" dot={false} activeDot={{ r: 5, fill: '#86EFAC' }} />
               <Area type="monotone" dataKey="users" name="Users" stroke="#60AAFF" strokeWidth={2} fill="transparent" dot={false} activeDot={{ r: 5, fill: '#60AAFF' }} />
             </AreaChart>
           </ResponsiveContainer>

@@ -8,17 +8,7 @@ import { Alert, Box } from '@mui/material'
 import { useAuth } from '../store/authStore'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
 import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
-
-const DONE_KEY = 'atlas_setup_completed'
-
-function flagDone(value) {
-  try {
-    if (value) localStorage.setItem(DONE_KEY, '1')
-    else localStorage.removeItem(DONE_KEY)
-  } catch {
-    // Storage unavailable — the server-side flag remains the source of truth.
-  }
-}
+import LoadingState from './LoadingState'
 
 function toMessage(err, fallback) {
   const data = err?.response?.data
@@ -29,18 +19,23 @@ function toMessage(err, fallback) {
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()
+  const [checking, setChecking] = useState(
+    () => user?.role === 'admin' && user?.setup_completed !== true,
+  )
   const [needsSetup, setNeedsSetup] = useState(false)
-  const [statusKnown, setStatusKnown] = useState(false)
+  const [statusKnown, setStatusKnown] = useState(
+    () => user?.role !== 'admin' || user?.setup_completed === true,
+  )
   const [error, setError] = useState('')
 
   const check = useCallback(async () => {
+    setChecking(true)
     setError('')
     try {
-      const status = await fetchSetupStatus()
+      const status = await fetchSetupStatus(false)
       const done = Boolean(status?.setup_completed)
       setNeedsSetup(!done)
       setStatusKnown(true)
-      flagDone(done)
     } catch (err) {
       setStatusKnown(false)
       setNeedsSetup(false)
@@ -52,6 +47,7 @@ export default function AdminSetupGate({ children }) {
 
   useEffect(() => {
     if (user?.role !== 'admin') {
+      setChecking(false)
       setNeedsSetup(false)
       setStatusKnown(true)
       return
@@ -60,7 +56,6 @@ export default function AdminSetupGate({ children }) {
   }, [user, check])
 
   const handleFinished = useCallback(() => {
-    flagDone(true)
     setNeedsSetup(false)
     setStatusKnown(true)
     // Keep the cached user payload in sync so a page refresh skips the wizard.
@@ -77,9 +72,13 @@ export default function AdminSetupGate({ children }) {
 
   if (user?.role !== 'admin') return children
 
+  if (checking && !statusKnown) {
+    return <LoadingState fullScreen label="Checking your setup..." />
+  }
+
   if (!statusKnown && error) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, background: 'var(--bg-page, #0B0B0F)' }}>
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, background: 'var(--bg-page)' }}>
         <Alert
           severity="error"
           action={<button onClick={check} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
@@ -91,12 +90,17 @@ export default function AdminSetupGate({ children }) {
     )
   }
 
+  return (
+    <>
       <Box
         aria-hidden={needsSetup}
+        sx={{
           pointerEvents: needsSetup ? 'none' : 'auto',
           userSelect: needsSetup ? 'none' : 'auto',
         }}
-
+      >
+        {children}
+      </Box>
       <AdminSetupWizard open={needsSetup} onFinished={handleFinished} />
     </>
   )

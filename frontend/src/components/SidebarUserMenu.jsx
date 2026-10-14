@@ -53,7 +53,7 @@ export default function SidebarUserMenu({
         {/* Avatar */}
         <div style={{
           width: 32, height: 32, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #8B0000, #C0392B)',
+          background: 'linear-gradient(135deg, #15803D, #16A34A)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
         }}>
@@ -100,7 +100,7 @@ export default function SidebarUserMenu({
           <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />
           <button
             onClick={onSignOut}
-            style={{ ...itemStyle, color: '#FF6B6B', fontWeight: 600 }}
+            style={{ ...itemStyle, color: '#86EFAC', fontWeight: 600 }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.08)' }}
             onMouseLeave={leave}
           >

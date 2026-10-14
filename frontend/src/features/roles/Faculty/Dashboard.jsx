@@ -11,7 +11,6 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
-import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
@@ -27,7 +26,7 @@ import { ROUTES } from '../../../config/route'
 import FacultyLayout from './FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#8B0000', '#A52A2A', '#B71C1C', '#C62828', '#D32F2F']
+const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
@@ -36,14 +35,14 @@ export default function FacultyDashboard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
+  const [form, setForm] = useState({ course_title: '', course_code: '', description: '' })
 
   useEffect(() => { setErrorDismissed(false) }, [error])
 
   const courses = data?.courses || []
 
   const openDialog = () => {
-    setForm({ course_title: '', course_code: '', description: '', year_level: '', semester: '', section: '' })
+    setForm({ course_title: '', course_code: '', description: '' })
     setCreateError('')
     setDialogOpen(true)
   }
@@ -91,7 +90,7 @@ export default function FacultyDashboard() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#8B0000' }} />
+            <CircularProgress sx={{ color: '#15803D' }} />
           </Box>
         ) : (
           <Box
@@ -105,18 +104,18 @@ export default function FacultyDashboard() {
               onClick={openDialog}
               sx={{
                 borderRadius: 4,
-                border: '2px dashed rgba(139, 0, 0, 0.3)',
+                border: '2px dashed rgba(21, 128, 61, 0.3)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: '#8B0000', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.3)' },
+                '&:hover': { borderColor: '#15803D', boxShadow: '0 8px 32px 0 rgba(0,0,0,0.3)' },
               }}
             >
               <CardActionArea sx={{ height: '100%', borderRadius: 4 }}>
                 <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 180, gap: 1, '&:last-child': { pb: 3 } }}>
-                  <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'rgba(139, 0, 0, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 32, color: '#8B0000' }} />
+                  <Box sx={{ width: 56, height: 56, borderRadius: '50%', bgcolor: 'rgba(21, 128, 61, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 32, color: '#15803D' }} />
                   </Box>
-                  <Typography variant="body1" sx={{ fontWeight: 700, color: '#8B0000', mt: 1 }}>
+                  <Typography variant="body1" sx={{ fontWeight: 700, color: '#15803D', mt: 1 }}>
                     Create new course
                   </Typography>
                 </CardContent>
@@ -156,7 +155,7 @@ export default function FacultyDashboard() {
               )
             })}
 
-            {courses.length === 0 && (
+            {courses.length === 0 && !loading && !error && (
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
                 <SchoolIcon sx={{ fontSize: 72, color: 'var(--border-color)', mb: 2 }} />
                 <Typography variant="body1" color="text.secondary">No assigned courses yet.</Typography>
@@ -174,7 +173,7 @@ export default function FacultyDashboard() {
           }
         }}
       >
-        <DialogTitle sx={{ fontWeight: 800, color: '#8B0000' }}>New Course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#15803D' }}>New Course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
           {createError && (
             <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
@@ -184,7 +183,7 @@ export default function FacultyDashboard() {
             name="course_title"
             value={form.course_title}
             onChange={handleFormChange}
-            placeholder="e.g. Business Analytics"
+            placeholder="Enter course title"
             size="small"
             autoFocus
             disabled={creating}
@@ -195,7 +194,7 @@ export default function FacultyDashboard() {
             name="course_code"
             value={form.course_code}
             onChange={handleFormChange}
-            placeholder="e.g. BA401"
+            placeholder="Enter course code"
             size="small"
             disabled={creating}
             inputProps={{ maxLength: 100 }}
@@ -211,50 +210,6 @@ export default function FacultyDashboard() {
             rows={3}
             disabled={creating}
           />
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField
-              select
-              label="Year Level"
-              name="year_level"
-              value={form.year_level}
-              onChange={handleFormChange}
-              size="small"
-              disabled={creating}
-              fullWidth
-            >
-              <MenuItem value="1st Year">1st Year</MenuItem>
-              <MenuItem value="2nd Year">2nd Year</MenuItem>
-              <MenuItem value="3rd Year">3rd Year</MenuItem>
-              <MenuItem value="4th Year">4th Year</MenuItem>
-              <MenuItem value="5th Year">5th Year</MenuItem>
-              <MenuItem value="Others">Others</MenuItem>
-            </TextField>
-            <TextField
-              select
-              label="Semester"
-              name="semester"
-              value={form.semester}
-              onChange={handleFormChange}
-              size="small"
-              disabled={creating}
-              fullWidth
-            >
-              <MenuItem value="1st Semester">1st Semester</MenuItem>
-              <MenuItem value="2nd Semester">2nd Semester</MenuItem>
-              <MenuItem value="3rd Semester">3rd Semester</MenuItem>
-              <MenuItem value="Others">Others</MenuItem>
-            </TextField>
-          </Box>
-          <TextField
-            label="Section / Block"
-            name="section"
-            value={form.section}
-            onChange={handleFormChange}
-            placeholder="e.g. A, B, Block 1"
-            size="small"
-            disabled={creating}
-            inputProps={{ maxLength: 100 }}
-          />
         </DialogContent>
         <DialogActions sx={{ p: 3, borderTop: '1px solid var(--border-color)' }}>
           <Button onClick={closeDialog} disabled={creating} sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 600 }}>
@@ -264,7 +219,7 @@ export default function FacultyDashboard() {
             variant="contained"
             disabled={creating}
             onClick={handleCreate}
-            sx={{ background: '#8B0000', '&:hover': { background: '#6B0000' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
+            sx={{ background: '#15803D', '&:hover': { background: '#14532D' }, borderRadius: 2, textTransform: 'none', fontWeight: 700 }}
           >
             {creating ? 'Creating…' : 'Create Course'}
           </Button>

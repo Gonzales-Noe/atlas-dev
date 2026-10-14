@@ -11,6 +11,7 @@ from .anthropic_service import AnthropicService
 from .document_processor import DocumentProcessor
 from .llm_service import LLMService
 from .models import (
+    AuditLog,
     ChildChunk,
     Course,
     CourseFile,
@@ -26,6 +27,7 @@ from .serializers import (
     FileUploadSerializer,
     SemanticSearchSerializer,
 )
+from .trial import trial_generation_gate
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +90,12 @@ def _get_faculty_course_or_403(request, course_id):
 
 def _handle_global_rag_upload(request):
     """Shared implementation for global RAG document uploads."""
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     serializer = FileUploadSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -136,6 +144,7 @@ def _handle_global_rag_upload(request):
 
         with transaction.atomic():
             document = GlobalDocument.objects.create(
+                institution=request.user.institution,
                 title=file_obj.name[:255],
                 discipline=discipline,
                 program=program,
@@ -226,6 +235,10 @@ def claude_api_test(request):
         401 Unauthorized: Missing/invalid JWT token
         500 Internal Server Error: API error
     """
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
+
     try:
         # Validate request
         serializer = AnthropicTestSerializer(data=request.data)
@@ -543,8 +556,16 @@ def list_rag_documents(request):
     if not _is_admin_user(request):
         return _forbidden_admin_only_response()
 
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     try:
-        documents = GlobalDocument.objects.order_by("-created_at")
+        documents = GlobalDocument.objects.filter(
+            institution_id=request.user.institution_id,
+        ).order_by("-created_at")
         payload = []
 
         for doc in documents:
@@ -571,6 +592,47 @@ def list_rag_documents(request):
             {"success": False, "error": f"Failed to list documents: {exc}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def list_audit_logs(request):
+    """List persisted audit events for the authenticated admin's institution."""
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    logs = (
+        AuditLog.objects
+        .select_related("user")
+        .filter(user__institution_id=request.user.institution_id)
+        .order_by("-timestamp")[:500]
+    )
+    return Response(
+        {
+            "success": True,
+            "logs": [
+                {
+                    "log_id": str(log.log_id),
+                    "timestamp": log.timestamp,
+                    "user": (
+                        log.user.full_name or log.user.email
+                        if log.user_id else "Unknown user"
+                    ),
+                    "action": log.action_type,
+                    "resource_type": log.resource_type,
+                    "resource_id": str(log.resource_id) if log.resource_id else None,
+                    "details": log.details or {},
+                }
+                for log in logs
+            ],
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
@@ -612,6 +674,7 @@ def semantic_search(request):
     try:
         results = rag_service.semantic_search(
             query=query_text,
+            institution_id=request.user.institution_id,
             top_k=top_k,
             discipline=discipline,
             program=program,

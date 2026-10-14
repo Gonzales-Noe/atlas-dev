@@ -11,8 +11,8 @@ import SidebarUserMenu from './SidebarUserMenu'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
-  superadmin: { label: 'Super Admin',   accent: '#FF453A', badge: 'SA' },
-  admin:      { label: 'Admin',          accent: '#FF9F0A', badge: 'AD' },
+  superadmin: { label: 'Super Admin',   accent: '#86EFAC', badge: 'SA' },
+  admin:      { label: 'Admin',          accent: '#16A34A', badge: 'AD' },
   faculty:    { label: 'Faculty',        accent: '#30D158', badge: 'FA' },
 }
 
@@ -37,12 +37,12 @@ function NavItem({ item, collapsed }) {
         borderRadius: 12,
         margin: '2px 8px',
         background: isActive
-          ? 'linear-gradient(135deg, rgba(139,0,0,0.35), rgba(192,57,43,0.20))'
+          ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))'
           : 'transparent',
         border: isActive
-          ? '1px solid rgba(192,57,43,0.35)'
+          ? '1px solid rgba(22,163,74,0.35)'
           : '1px solid transparent',
-        boxShadow: isActive ? '0 4px 16px rgba(139,0,0,0.2)' : 'none',
+        boxShadow: isActive ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
         transition: 'all 200ms cubic-bezier(0.4,0,0.2,1)',
         cursor: 'pointer',
         position: 'relative',
@@ -67,7 +67,7 @@ function NavItem({ item, collapsed }) {
             position: 'absolute',
             left: 0, top: '20%', bottom: '20%',
             width: 3,
-            background: 'linear-gradient(180deg, #FF6B6B, #8B0000)',
+            background: 'linear-gradient(180deg, #86EFAC, #15803D)',
             borderRadius: '0 3px 3px 0',
           }} />
         )}
@@ -80,7 +80,7 @@ function NavItem({ item, collapsed }) {
           width: 22,
           height: 22,
           flexShrink: 0,
-          color: isActive ? '#FF6B6B' : 'rgba(255,255,255,0.45)',
+          color: isActive ? '#86EFAC' : 'rgba(255,255,255,0.45)',
           transition: 'color 200ms',
         }}>
           {React.cloneElement(item.icon, { style: { fontSize: 20 } })}
@@ -144,7 +144,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
 
       {/* ── Background orbs ─────────────────────────────────────────────── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'rgba(139,0,0,0.08)', filter: 'blur(100px)', top: -100, left: -100 }} />
+        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'rgba(21,128,61,0.08)', filter: 'blur(100px)', top: -100, left: -100 }} />
         <div style={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'rgba(100,0,0,0.06)', filter: 'blur(80px)', bottom: -80, right: -80 }} />
         {/* Subtle grid */}
         <div style={{
@@ -199,13 +199,19 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
             <img
               src={atlasLogo}
               alt="ATLAS"
-              style={{ height: 26, objectFit: 'contain', filter: 'brightness(0) invert(1)', opacity: 0.9 }}
+              style={{
+                height: 26,
+                objectFit: 'contain',
+                backgroundColor: '#fff',
+                borderRadius: 4,
+                padding: 2,
+              }}
             />
           )}
           {collapsed && !isMobile && (
             <div style={{
               width: 30, height: 30, borderRadius: 8,
-              background: 'linear-gradient(135deg, #8B0000, #C0392B)',
+              background: 'linear-gradient(135deg, #15803D, #16A34A)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '0.72rem', fontWeight: 800, color: '#fff',
             }}>

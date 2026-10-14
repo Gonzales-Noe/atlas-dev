@@ -247,8 +247,9 @@ export function AuthProvider({ children }) {
         localStorage.setItem('atlas_refresh_token', data.refresh)
         localStorage.setItem('atlas_user', JSON.stringify(data.user))
         dispatch({ type: 'AUTH_SUCCESS', payload: data.user })
+      } else {
+        dispatch({ type: 'AUTH_ERROR', payload: null })
       }
-      dispatch({ type: 'AUTH_ERROR', payload: null }) // not logged in yet — pending approval
       return data.user
     } catch (err) {
       const msg = err.response?.data?.email?.[0]

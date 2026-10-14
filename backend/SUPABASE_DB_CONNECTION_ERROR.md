@@ -210,3 +210,14 @@ Note: local DB will not contain cloud data unless you restore a dump.
 | **Fix** | Resume or recreate/select the correct Supabase project, then replace `DB_*` with fresh dashboard connection values (or switch to local Postgres for offline dev) |
 
 After credentials and project status are correct, this error goes away; no application code change is required for this specific failure.
+
+## Supabase pool client limit reached
+
+If requests fail with `EMAXCONNSESSION` and mention that session-mode clients are
+limited by `pool_size`, the session pooler has run out of client connections.
+Django now closes Supabase pooler connections after each request instead of
+retaining them for 60 seconds. For sustained or concurrent development traffic,
+prefer the transaction pooler: set `DB_PORT=6543` in `backend/.env` using the
+matching connection details from the Supabase dashboard. The backend settings
+disable persistent connections and server-side cursors for transaction pooling.
+Restart Django after changing the environment.

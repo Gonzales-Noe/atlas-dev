@@ -241,39 +241,47 @@ class LLMService:
             return ""
 
     def generate_response_with_fallback(
-        self, messages, preferred_provider=None, system=None, max_tokens=2048
+        self, messages, preferred_provider=None, system=None, max_tokens=2048,
+        return_provider=False,
     ):
         """
-        Try providers in fallback order when the preferred one fails.
-        Fallback chain: preferred → gemini → groq → anthropic → gpt
+        Try the preferred provider, then other configured providers.
+        OpenRouter aliases are attempted only once because they share a credit balance.
         """
-        fallback_order = ['gemini', 'groq', 'anthropic', 'gpt']
-        providers_to_try: list = []
-        if preferred_provider and preferred_provider.lower() not in fallback_order:
-            providers_to_try.append(preferred_provider)
-        if preferred_provider:
-            choice = preferred_provider.lower()
-            if choice in fallback_order:
-                providers_to_try.append(choice)
-        for p in fallback_order:
-            if p not in providers_to_try:
-                providers_to_try.append(p)
+        primary_provider = (preferred_provider or self.default_provider).lower()
+        fallback_order = [primary_provider, 'groq', 'anthropic', 'ollama', 'gemini']
+        providers_to_try = list(dict.fromkeys(fallback_order))
+        attempted_backends = set()
+        failures = []
 
-        last_error = None
-        for provider in providers_to_try:
+        for provider_choice in providers_to_try:
             try:
+                backend, _ = self.get_provider_and_model(provider_choice)
+                if backend in attempted_backends:
+                    continue
+                attempted_backends.add(backend)
                 result = self.generate_response(
                     messages,
-                    provider_choice=provider,
+                    provider_choice=provider_choice,
                     system=system,
                     max_tokens=max_tokens,
                 )
                 if result:
+                    if provider_choice != primary_provider:
+                        logger.warning(
+                            "LLM provider '%s' failed over to '%s'",
+                            primary_provider,
+                            provider_choice,
+                        )
+                    if return_provider:
+                        return result, provider_choice
                     return result
+                raise ValueError(f"Provider '{provider_choice}' returned an empty response.")
             except Exception as exc:
-                logger.warning("LLM provider '%s' failed: %s", provider, exc)
-                last_error = exc
-                continue
+                logger.warning("LLM provider '%s' failed: %s", provider_choice, exc)
+                failures.append(f"{provider_choice}: {exc}")
 
-        raise ValueError(f"All LLM providers failed. Last error: {last_error}")
-
+        raise ValueError(
+            "AI generation failed with all available providers. "
+            + ("; ".join(failures) if failures else "No providers were available.")
+        )
