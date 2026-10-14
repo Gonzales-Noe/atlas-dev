@@ -1,5 +1,5 @@
 // src/components/FacultyCoursesBoard.jsx
-// Course landing page — light theme matching sign-in page.
+// Course landing page ï¿½ light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
@@ -13,8 +13,6 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
-import Menu from '@mui/material/Menu'
-import MenuItem from '@mui/material/MenuItem'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
@@ -30,7 +28,7 @@ import AutoAlert from './AutoAlert'
 import FacultyLayout from '../features/roles/Faculty/FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#8B0000', '#A52A2A', '#B71C1C', '#C62828', '#D32F2F']
+const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
 
 export default function FacultyCoursesBoard() {
   const navigate = useNavigate()
@@ -43,10 +41,10 @@ export default function FacultyCoursesBoard() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_code: '', course_title: '', description: '', year_level: '' })
+  const [form, setForm] = useState({ course_code: '', course_title: '', description: '' })
 
   const openDialog = () => {
-    setForm({ course_code: '', course_title: '', description: '', year_level: '' })
+    setForm({ course_code: '', course_title: '', description: '' })
     setCreateError('')
     setDialogOpen(true)
   }
@@ -86,12 +84,12 @@ export default function FacultyCoursesBoard() {
           My Courses
         </Typography>
         <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
-          Select a course to open your workspace — syllabus, modules, assessments, grading, and knowledge uploads.
+          Select a course to open your workspace ï¿½ syllabus, modules, assessments, grading, and knowledge uploads.
         </Typography>
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#8B0000' }} />
+            <CircularProgress sx={{ color: '#15803D' }} />
           </Box>
         ) : (
           <Box
@@ -106,18 +104,18 @@ export default function FacultyCoursesBoard() {
               onClick={openDialog}
               sx={{
                 bgcolor: '#fff', borderRadius: 3,
-                border: '2px dashed rgba(139,0,0,0.25)',
+                border: '2px dashed rgba(21,128,61,0.25)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: '#8B0000', boxShadow: '0 4px 16px rgba(139,0,0,0.10)' },
+                '&:hover': { borderColor: '#15803D', boxShadow: '0 4px 16px rgba(21,128,61,0.10)' },
               }}
             >
               <CardActionArea sx={{ height: '100%' }}>
                 <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
-                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#FFF5F5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 28, color: '#8B0000' }} />
+                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 28, color: '#15803D' }} />
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#8B0000', mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#15803D', mt: 0.5 }}>
                     Create new course
                   </Typography>
                 </CardContent>
@@ -153,7 +151,7 @@ export default function FacultyCoursesBoard() {
                         {course.course_title}
                       </Typography>
                       <Typography variant="caption" sx={{ color: '#888' }}>
-                        {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
+                        {course.syllabus_count ?? 0} syllabi ï¿½ {course.assessment_count ?? 0} assessments
                       </Typography>
                     </CardContent>
                   </CardActionArea>
@@ -174,7 +172,7 @@ export default function FacultyCoursesBoard() {
 
       {/* -- Create new course dialog -- */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, color: '#8B0000' }}>New Course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: '#15803D' }}>New Course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
           {createError && (
             <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
@@ -211,65 +209,6 @@ export default function FacultyCoursesBoard() {
             minRows={2}
             disabled={creating}
           />
-          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
-            <TextField
-              select
-              label="Year Level"
-              name="year_level"
-              value={form.year_level}
-              onChange={handleFormChange}
-              size="small"
-              disabled={creating}
-              fullWidth
-            >
-              <MenuItem value="1st Year">1st Year</MenuItem>
-              <MenuItem value="2nd Year">2nd Year</MenuItem>
-              <MenuItem value="3rd Year">3rd Year</MenuItem>
-              <MenuItem value="4th Year">4th Year</MenuItem>
-              <MenuItem value="5th Year">5th Year</MenuItem>
-              <MenuItem value="Others">Others</MenuItem>
-            </TextField>
-            <TextField
-              select
-              label="Semester"
-              name="semester"
-              value={form.semester}
-              onChange={handleFormChange}
-              size="small"
-              disabled={creating}
-              fullWidth
-            >
-              <MenuItem value="1st Semester">1st Semester</MenuItem>
-              <MenuItem value="2nd Semester">2nd Semester</MenuItem>
-              <MenuItem value="3rd Semester">3rd Semester</MenuItem>
-              <MenuItem value="Others">Others</MenuItem>
-            </TextField>
-          </Box>
-          <TextField
-            label="Section / Block"
-            name="section"
-            value={form.section}
-            onChange={handleFormChange}
-            placeholder="e.g. A, B, Block 1"
-            size="small"
-            disabled={creating}
-            inputProps={{ maxLength: 100 }}
-          />
-          <TextField
-            select
-            label="Year Level"
-            name="year_level"
-            value={form.year_level || ''}
-            onChange={handleFormChange}
-            size="small"
-            disabled={creating}
-          >
-            <MenuItem value="">— Not specified —</MenuItem>
-            <MenuItem value="1st Year">1st Year</MenuItem>
-            <MenuItem value="2nd Year">2nd Year</MenuItem>
-            <MenuItem value="3rd Year">3rd Year</MenuItem>
-            <MenuItem value="4th Year">4th Year</MenuItem>
-          </TextField>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={closeDialog} disabled={creating} sx={{ color: '#666' }}>
@@ -280,9 +219,9 @@ export default function FacultyCoursesBoard() {
             onClick={handleCreate}
             disabled={creating}
             startIcon={creating ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
-            sx={{ bgcolor: '#8B0000', '&:hover': { bgcolor: '#6B0000' }, fontWeight: 700, borderRadius: 2 }}
+            sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#14532D' }, fontWeight: 700, borderRadius: 2 }}
           >
-            {creating ? 'Creating…' : 'Create'}
+            {creating ? 'Creatingï¿½' : 'Create'}
           </Button>
         </DialogActions>
       </Dialog>
