@@ -29,6 +29,7 @@ from apps.integrations.rag_service import (
     semantic_search,
     semantic_search_with_summary,
 )
+from apps.integrations.trial import trial_generation_gate
 
 from .docx_builders import (
     add_framework_mapping,
@@ -61,9 +62,16 @@ def _faculty_only_response():
 
 
 def _get_assigned_course_or_403(request, course_id):
+    institution_id = getattr(request.user, 'institution_id', None)
+    if not institution_id:
+        return None, Response(
+            {'success': False, 'detail': 'Your account is not linked to an institution.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
     assignment = CourseLoad.objects.select_related('course').filter(
         faculty=request.user,
         course_id=course_id,
+        course__institution_id=institution_id,
     ).first()
     if not assignment:
         return None, Response(
@@ -98,8 +106,16 @@ def faculty_courses(request):
     """Return the courses currently handled by the authenticated faculty user."""
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {'success': False, 'detail': 'Your account is not linked to an institution.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    assignments = CourseLoad.objects.select_related('course').filter(faculty=request.user)
+    assignments = CourseLoad.objects.select_related('course').filter(
+        faculty=request.user,
+        course__institution_id=request.user.institution_id,
+    )
     courses = []
     seen_course_ids = set()
     for assignment in assignments:
@@ -161,6 +177,22 @@ def faculty_course_workspace(request, course_id):
         .order_by('-generated_at', '-assessment_id')
         .values('assessment_id', 'title', 'assessment_type', 'term', 'status', 'generated_at')
     )
+    customization = InstitutionCustomization.objects.filter(
+        institution_id=request.user.institution_id,
+    ).first()
+    assigned_sections = list(
+        CourseLoad.objects.filter(faculty=request.user, course=course)
+        .filter(section__isnull=False)
+        .select_related('section')
+        .values_list('section__code', flat=True)
+    )
+    year_levels = (
+        [
+            {'value': year.display_name, 'label': year.display_name}
+            for year in course.program.year_levels.all()
+        ]
+        if course.program_id else []
+    )
 
     return Response(
         {
@@ -170,7 +202,29 @@ def faculty_course_workspace(request, course_id):
                 'course_code': course.course_code,
                 'course_title': course.course_title,
                 'description': course.description,
+                'course_category': course.category,
+                'credit_hours': str(course.units) if course.units is not None else '',
+                'institution_name': course.institution.name if course.institution_id else '',
+                'college_name': (
+                    course.program.college.name
+                    if course.program_id and course.program.college_id else ''
+                ),
+                'program_name': course.program.name if course.program_id else '',
+                'year_level': course.year_level.display_name if course.year_level_id else '',
+                'year_levels': year_levels,
+                'assigned_sections': assigned_sections,
+                'instructor_name': request.user.full_name,
+                'instructor_email': request.user.email,
             },
+            'customization': {
+                'header_image_url': customization.header_image_url,
+                'footer_image_url': customization.footer_image_url,
+                'header_text': customization.header_text,
+                'footer_text': customization.footer_text,
+                'syllabus_template_name': customization.syllabus_template_name,
+                'syllabus_sections': customization.syllabus_sections,
+                'field_labels': customization.field_labels,
+            } if customization else {'syllabus_sections': [], 'field_labels': {}},
             'syllabus': {
                 'syllabus_id': str(latest_syllabus.syllabus_id) if latest_syllabus else None,
                 'syllabus_content': latest_syllabus.syllabus_content if latest_syllabus else None,
@@ -294,6 +348,9 @@ def generate_syllabus(request):
             {"success": False, "errors": serializer.errors},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
 
     data = serializer.validated_data
     course_id = data.get("course_id")
@@ -309,7 +366,9 @@ def generate_syllabus(request):
 
     try:
         # Step 1 — Global semantic search with progressive summary
-        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        rag_result = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        )
         global_chunks = rag_result["chunks"]
         global_summary = rag_result["context_summary"]
         course_chunks = []
@@ -344,11 +403,12 @@ def generate_syllabus(request):
 
         # Step 3 — Call LLM
         llm = LLMService()
-        generated_text = llm.generate_response(
+        generated_text, provider_used = llm.generate_response_with_fallback(
             messages=[{"role": "user", "content": user_prompt}],
-            provider_choice=provider,
+            preferred_provider=provider,
             system=system_prompt,
             max_tokens=2048,
+            return_provider=True,
         )
 
         return Response(
@@ -357,7 +417,7 @@ def generate_syllabus(request):
                 "course_name": course_name,
                 "course_code": course_code,
                 "num_weeks": num_weeks,
-                "provider_used": provider or llm.default_provider,
+                "provider_used": provider_used,
                 "rag_chunks_used": len(chunks),
                 "generated_syllabus": generated_text,
             },
@@ -393,6 +453,9 @@ def generate_module(request):
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
 
     serializer = GenerateModuleSerializer(data=request.data)
     if not serializer.is_valid():
@@ -458,7 +521,9 @@ def generate_module(request):
 
     try:
         # ── Step 1: Global knowledge base RAG ──────────────────────────────
-        global_rag = semantic_search_with_summary(search_query, top_k=top_k)
+        global_rag = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        )
         global_chunks = global_rag["chunks"]
         global_summary = global_rag["context_summary"]
 
@@ -645,6 +710,9 @@ def generate_subtopic_content(request):
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
 
     module_id = request.data.get("module_id")
     subtopic_title = (request.data.get("subtopic_title") or "").strip()
@@ -671,7 +739,9 @@ def generate_subtopic_content(request):
     search_query = f"{module.module_title} {subtopic_title} concepts explanation"
 
     try:
-        global_rag = semantic_search_with_summary(search_query, top_k=5)
+        global_rag = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=5,
+        )
         course_rag = course_semantic_search_with_summary(
             query=search_query,
             course=course,
@@ -721,6 +791,9 @@ def module_ai_assist(request):
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
 
     module_id = request.data.get("module_id")
     field = (request.data.get("field") or "").strip()
@@ -1785,6 +1858,9 @@ def generate_assessment(request):
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
 
     course_id = request.data.get('course_id')
     assessment_type = str(request.data.get('assessment_type') or '').strip().lower()
@@ -1977,7 +2053,9 @@ def generate_assessment(request):
             f"{course.course_title} {source['assessment_name']} {target_section.get('section_title')} MCQ"
         )
         top_k = max(1, _to_int(request.data.get('top_k'), 3))
-        global_rag = semantic_search_with_summary(search_query, top_k=top_k)
+        global_rag = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        )
         course_rag = course_semantic_search_with_summary(
             query=search_query,
             course=course,
@@ -2359,7 +2437,11 @@ Requirements:
     # document chunks with global knowledge-base context, then ask the LLM to populate the
     # section blueprint with actual item text, rubrics, and answer keys.
     search_query = request.data.get('search_query') or f"{course.course_title} {source['assessment_name']} assessment items TOS blooms score distribution"
-    global_rag = semantic_search_with_summary(search_query, top_k=max(1, _to_int(request.data.get('top_k'), 5)))
+    global_rag = semantic_search_with_summary(
+        search_query,
+        institution_id=request.user.institution_id,
+        top_k=max(1, _to_int(request.data.get('top_k'), 5)),
+    )
     course_rag = course_semantic_search_with_summary(
         query=search_query,
         course=course,
@@ -3069,6 +3151,11 @@ def create_course(request):
     """Create a new course and auto-assign it to the requesting faculty user."""
     if not _is_faculty_user(request):
         return _faculty_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     course_code = (request.data.get("course_code") or "").strip()
     course_title = (request.data.get("course_title") or "").strip()
@@ -3085,13 +3172,17 @@ def create_course(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if Course.objects.filter(course_code=course_code).exists():
+    if Course.objects.filter(
+        course_code=course_code,
+        institution_id=request.user.institution_id,
+    ).exists():
         return Response(
             {"success": False, "detail": f"A course with code '{course_code}' already exists."},
             status=status.HTTP_409_CONFLICT,
         )
 
     course = Course.objects.create(
+        institution_id=request.user.institution_id,
         course_code=course_code,
         course_title=course_title,
         description=description or None,
@@ -3152,6 +3243,7 @@ def generate_syllabus_field(request):
     field_label = request.data.get("field_label", "Syllabus Field")
     existing_content = request.data.get("existing_content", "")
     mode = request.data.get("mode", "generate")
+    extra_instructions = str(request.data.get("extra_instructions") or "").strip()[:4000]
     provider = request.data.get("provider") or None
     top_k = max(1, int(request.data.get("top_k", 5)))
 
@@ -3164,11 +3256,16 @@ def generate_syllabus_field(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
 
     try:
         # ── Step 1: Global RAG with progressive summary ────────────────────
         search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
-        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        rag_result = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        )
         global_chunks = rag_result["chunks"]
 
         # ── Step 2: Course-specific RAG (uploaded faculty documents) ───────
@@ -3201,27 +3298,29 @@ def generate_syllabus_field(request):
             mode=mode,
             context_chunks=all_chunks,
             context_summary=rag_result["context_summary"],
+            extra_instructions=extra_instructions,
         )
 
         # ── Step 4: Call LLM ─────────────────────────────────────────────
         llm = LLMService()
-        generated_text = llm.generate_response(
+        generated_text, provider_used = llm.generate_response_with_fallback(
             messages=[{"role": "user", "content": user_prompt}],
-            provider_choice=provider,
+            preferred_provider=provider,
             system=system_prompt,
             max_tokens=1500,
+            return_provider=True,
         )
 
         logger.info(
             "generate_syllabus_field: section=%r field=%r mode=%r course=%r provider=%r chunks=%d",
-            section, field_label, mode, course.course_code, provider, len(all_chunks),
+            section, field_label, mode, course.course_code, provider_used, len(all_chunks),
         )
 
         return Response(
             {
                 "success": True,
                 "generated_text": generated_text,
-                "provider_used": provider or llm.default_provider,
+                "provider_used": provider_used,
                 "rag_chunks_used": len(all_chunks),
             },
             status=status.HTTP_200_OK,
@@ -3371,7 +3470,129 @@ def _resolve_institution_branding(course):
         'footer_text': customization.footer_text or '',
         'header_image': customization.header_image_url or '',
         'footer_image': customization.footer_image_url or '',
+        'syllabus_sections': customization.syllabus_sections or [],
     }
+
+
+def _append_configured_syllabus_fields(doc, data, configured_sections):
+    """Append institution-defined custom answers and tables to an exported DOCX."""
+    if not isinstance(configured_sections, list):
+        return
+
+    custom_subsections = data.get('custom_subsections')
+    custom_tables = data.get('custom_tables')
+    custom_subsections = custom_subsections if isinstance(custom_subsections, dict) else {}
+    custom_tables = custom_tables if isinstance(custom_tables, dict) else {}
+
+    def add_heading(text, level):
+        paragraph = doc.add_heading(text, level=level)
+        if level == 1 and paragraph.runs:
+            from docx.shared import RGBColor
+            paragraph.runs[0].font.color.rgb = RGBColor(0x16, 0xA3, 0x4A)
+
+    def add_table(title, columns, rows, column_groups=None):
+        headers = [str(column or '').strip() for column in columns]
+        if not any(headers):
+            return
+        add_heading(title, 2)
+        groups = [
+            str(column_groups[index] or '').strip()
+            if isinstance(column_groups, list) and index < len(column_groups)
+            else ''
+            for index in range(len(headers))
+        ]
+        has_groups = any(groups)
+        table = doc.add_table(rows=2 if has_groups else 1, cols=len(headers))
+        table.style = 'Table Grid'
+        if has_groups:
+            group_cells = table.rows[0].cells
+            index = 0
+            while index < len(headers):
+                label = groups[index]
+                end = index + 1
+                if label:
+                    while end < len(headers) and groups[end] == label:
+                        end += 1
+                cell = group_cells[index]
+                if end - index > 1:
+                    cell = cell.merge(group_cells[end - 1])
+                cell.text = label
+                if cell.paragraphs[0].runs:
+                    cell.paragraphs[0].runs[0].bold = True
+                index = end
+        for index, header in enumerate(headers):
+            cell = table.rows[1 if has_groups else 0].cells[index]
+            cell.text = header
+            if cell.paragraphs[0].runs:
+                cell.paragraphs[0].runs[0].bold = True
+        for row_values in (rows if isinstance(rows, list) else []):
+            if not isinstance(row_values, list):
+                continue
+            values = []
+            for index in range(len(headers)):
+                value = row_values[index] if index < len(row_values) else ''
+                values.append('' if value is None else str(value))
+            if any(value.strip() for value in values):
+                cells = table.add_row().cells
+                for index, value in enumerate(values):
+                    cells[index].text = value
+
+    for configured_section in configured_sections:
+        if not isinstance(configured_section, dict) or configured_section.get('enabled') is False:
+            continue
+        section_key = str(configured_section.get('key') or '')
+        section_label = str(configured_section.get('label') or section_key).strip()
+        if not section_key or not section_label:
+            continue
+
+        section_tables = custom_tables.get(section_key)
+        section_tables = section_tables if isinstance(section_tables, dict) else {}
+        section_rows = section_tables.get('__section__', [])
+        configured_subsections = configured_section.get('subsections')
+        configured_subsections = configured_subsections if isinstance(configured_subsections, list) else []
+        subsection_values = []
+        for subsection in configured_subsections:
+            if not isinstance(subsection, dict):
+                continue
+            subsection_key = str(subsection.get('key') or '')
+            subsection_label = str(subsection.get('label') or subsection_key).strip()
+            if not subsection_key or not subsection_label:
+                continue
+            subsection_answers = custom_subsections.get(section_key)
+            subsection_answers = subsection_answers if isinstance(subsection_answers, dict) else {}
+            answer = str(subsection_answers.get(subsection_key) or '').strip()
+            rows = section_tables.get(subsection_key, [])
+            columns = subsection.get('table_columns')
+            has_table = bool(subsection.get('table_enabled')) and isinstance(columns, list) and bool(columns)
+            if answer or has_table:
+                subsection_values.append((
+                    subsection_label,
+                    answer,
+                    columns or [],
+                    rows,
+                    subsection.get('table_column_groups'),
+                    has_table,
+                ))
+
+        columns = configured_section.get('table_columns')
+        has_section_table = bool(configured_section.get('table_enabled')) and isinstance(columns, list) and bool(columns)
+        if not (has_section_table or subsection_values):
+            continue
+
+        add_heading(section_label, 1)
+        if has_section_table:
+            add_table(
+                f'{section_label} table',
+                columns,
+                section_rows,
+                configured_section.get('table_column_groups'),
+            )
+        for subsection_label, answer, columns, rows, column_groups, has_table in subsection_values:
+            add_heading(subsection_label, 2)
+            if answer and not has_table:
+                doc.add_paragraph(answer)
+            if has_table:
+                add_table(subsection_label, columns, rows, column_groups)
 
 
 def _build_plain_syllabus_docx(data, branding=None):
@@ -3570,6 +3791,11 @@ def _build_plain_syllabus_docx(data, branding=None):
         for ref in valid_refs:
             doc.add_paragraph(str(ref), style='List Bullet')
 
+    _append_configured_syllabus_fields(
+        doc,
+        data,
+        (branding or {}).get('syllabus_sections'),
+    )
     apply_page_header_footer(doc, branding)
 
     return doc
@@ -3782,6 +4008,11 @@ def export_syllabus_docx(request):
             if template_file:
                 doc = Document(template_file)
                 _fill_docx_template(doc, syllabus)
+                _append_configured_syllabus_fields(
+                    doc,
+                    syllabus,
+                    (branding or {}).get('syllabus_sections'),
+                )
             else:
                 doc = _build_plain_syllabus_docx(syllabus, branding)
 
@@ -4039,6 +4270,9 @@ def parse_syllabus_upload(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
 
     filename = file_obj.name.lower()
     allowed = (".txt", ".docx", ".pdf", ".xlsx")
@@ -4270,6 +4504,9 @@ def segment_syllabus_upload(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
 
     filename = file_obj.name.lower()
     allowed = (".txt", ".docx", ".pdf", ".xlsx")
@@ -4429,6 +4666,9 @@ def parse_syllabus_segment(request):
             {"success": True, "parsed_data": {}},
             status=status.HTTP_200_OK,
         )
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
 
     try:
         import json
