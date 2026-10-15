@@ -760,13 +760,13 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                     onClick={() => setAnswer(itemNo, key[String(itemNo)] === BONUS_KEY ? '' : BONUS_KEY)}
                     sx={{
                       width: 24, height: 24, borderRadius: '50%',
-                      border: `1.5px solid ${key[String(itemNo)] === BONUS_KEY ? '#2e7d32' : '#bbb'}`,
-                      bgcolor: key[String(itemNo)] === BONUS_KEY ? '#2e7d32' : 'transparent',
-                      color: key[String(itemNo)] === BONUS_KEY ? '#fff' : '#888',
+                      border: `1.5px solid ${key[String(itemNo)] === BONUS_KEY ? MAROON : BORDER}`,
+                      bgcolor: key[String(itemNo)] === BONUS_KEY ? MAROON : 'transparent',
+                      color: key[String(itemNo)] === BONUS_KEY ? '#fff' : MUTED,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
                       transition: 'all 0.12s',
-                      '&:hover': { borderColor: '#2e7d32' },
+                      '&:hover': { borderColor: '#86EFAC', bgcolor: key[String(itemNo)] === BONUS_KEY ? '#14532D' : MAROON_LIGHT },
                     }}
                   >
                     ★
