@@ -47,7 +47,6 @@ from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, 
 
 logger = logging.getLogger(__name__)
 
-
 def _is_faculty_user(request) -> bool:
     return bool(request.user and getattr(request.user, 'role', None) == UserRole.FACULTY)
 
@@ -331,7 +330,7 @@ def generate_syllabus(request):
         "course_name": "Data Structures and Algorithms",
         "course_code": "CS 201",          // optional
         "num_weeks": 18,                  // optional, default 16
-        "provider": "gemini",             // optional: gemini|gpt|groq|anthropic|openrouter
+        "provider": "groq",               // optional: groq|openrouter
         "top_k": 5,                       // optional, RAG chunks to retrieve
         "search_query": "...",            // optional override for semantic search
         "extra_instructions": "..."       // optional faculty notes
@@ -3254,7 +3253,7 @@ def generate_syllabus_field(request):
         "field_label":      "TLA Strategies", // human-readable label shown in footer
         "existing_content": "...",            // current field value (used for 'continue')
         "mode":             "generate",       // 'generate' | 'continue'
-        "provider":         "gemini",         // optional LLM provider
+        "provider":         "groq",           // optional LLM provider
         "top_k":            5                 // optional RAG top-k
     }
 
@@ -4339,87 +4338,34 @@ def parse_syllabus_upload(request):
         )
 
         llm = LLMService()
-        parse_max_tokens = 8192
-        # The syllabus parse prompt can be very large; prioritize Anthropic first.
-        # OpenRouter may fail on credits, and Groq can reject oversized requests (413).
-        raw_response = None
-        last_exc = None
-        openrouter_payment_blocked = False
-        attempted_providers = []
-        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
-        if approx_prompt_tokens > 10000:
-            # For oversized prompts, avoid OpenRouter providers entirely.
-            provider_fallback_order = ["anthropic", "groq"]
-        else:
-            provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
-        logger.info(
-            "parse_syllabus_upload: approx_prompt_tokens=%s provider_order=%s",
-            approx_prompt_tokens,
-            provider_fallback_order,
-        )
-
-        for provider_choice in provider_fallback_order:
-            backend_name, _ = llm.get_provider_and_model(provider_choice)
-            if provider_choice == "groq" and approx_prompt_tokens > 10000:
-                logger.warning(
-                    "parse_syllabus_upload: skipping groq due large prompt (~%s tokens)",
-                    approx_prompt_tokens,
-                )
-                continue
-            if openrouter_payment_blocked and backend_name == "openrouter":
-                logger.warning(
-                    "parse_syllabus_upload: skipping provider %s because OpenRouter credits are exhausted",
-                    provider_choice,
-                )
-                continue
-
-            try:
-                attempted_providers.append(provider_choice)
-                raw_response = llm.generate_response(
-                    messages=[{"role": "user", "content": user_prompt}],
-                    provider_choice=provider_choice,
-                    system=system_prompt,
-                    max_tokens=parse_max_tokens,
-                )
-                logger.info(
-                    "parse_syllabus_upload: succeeded with provider %s for course %r",
-                    provider_choice,
-                    course.course_code,
-                )
-                break
-            except Exception as exc:
-                last_exc = exc
-                status_code = getattr(getattr(exc, "response", None), "status_code", None)
-                if backend_name == "openrouter" and status_code == 402:
-                    openrouter_payment_blocked = True
-                logger.warning(
-                    "parse_syllabus_upload: provider %s failed for course %r: %s",
-                    provider_choice,
-                    course.course_code,
-                    exc,
-                )
-
-        if raw_response is None:
-            if openrouter_payment_blocked:
-                user_error = (
-                    "Syllabus parsing is unavailable: OpenRouter credits are exhausted and no other configured "
-                    "provider succeeded (Groq/Anthropic). Please top up OpenRouter or configure another provider key."
-                )
-            else:
-                user_error = (
-                    "Syllabus parsing is unavailable: no configured LLM provider succeeded. "
-                    "Check API keys for OpenRouter, Groq, and Anthropic."
-                )
+        try:
+            raw_response, provider_used = llm.generate_response_with_fallback(
+                [{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                max_tokens=8192,
+                return_provider=True,
+            )
+        except ValueError as exc:
             logger.error(
-                "parse_syllabus_upload: all providers failed for course %r. attempted=%s last_error=%s",
+                "parse_syllabus_upload: all providers failed for course %r: %s",
                 course.course_code,
-                attempted_providers,
-                last_exc,
+                exc,
             )
             return Response(
-                {"success": False, "error": user_error},
+                {
+                    "success": False,
+                    "error": (
+                        "Syllabus parsing is unavailable: every free AI provider is busy or not configured. "
+                        "Try again in a minute, or add another provider key."
+                    ),
+                },
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
+        logger.info(
+            "parse_syllabus_upload: succeeded with provider %s for course %r",
+            provider_used,
+            course.course_code,
+        )
 
         # Robustly extract and parse JSON from the LLM response.
         # The model may add preamble text or wrap in a markdown code fence.
@@ -4455,9 +4401,9 @@ def parse_syllabus_upload(request):
                     "Repair this JSON so it parses. Preserve content and structure as much as possible:\n\n"
                     f"{raw_json}"
                 )
-                repaired = llm.generate_response(
+                repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    provider_choice="anthropic",
+                    preferred_provider="groq",
                     system=repair_system,
                     max_tokens=8192,
                 )
@@ -4571,43 +4517,15 @@ def segment_syllabus_upload(request):
         )
 
         llm = LLMService()
-        parse_max_tokens = 8192
-        raw_response = None
-        last_exc = None
-        openrouter_payment_blocked = False
-        attempted_providers = []
-        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
-        
-        if approx_prompt_tokens > 10000:
-            provider_fallback_order = ["anthropic", "groq"]
-        else:
-            provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
-
-        for provider_choice in provider_fallback_order:
-            backend_name, _ = llm.get_provider_and_model(provider_choice)
-            if provider_choice == "groq" and approx_prompt_tokens > 10000:
-                continue
-            if openrouter_payment_blocked and backend_name == "openrouter":
-                continue
-
-            try:
-                attempted_providers.append(provider_choice)
-                raw_response = llm.generate_response(
-                    messages=[{"role": "user", "content": user_prompt}],
-                    provider_choice=provider_choice,
-                    system=system_prompt,
-                    max_tokens=parse_max_tokens,
-                )
-                break
-            except Exception as exc:
-                last_exc = exc
-                status_code = getattr(getattr(exc, "response", None), "status_code", None)
-                if backend_name == "openrouter" and status_code == 402:
-                    openrouter_payment_blocked = True
-
-        if raw_response is None:
+        try:
+            raw_response = llm.generate_response_with_fallback(
+                [{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                max_tokens=8192,
+            )
+        except ValueError as exc:
             return Response(
-                {"success": False, "error": f"Segmentation failed: {last_exc}"},
+                {"success": False, "error": f"Segmentation failed: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -4634,9 +4552,9 @@ def segment_syllabus_upload(request):
                 # Fallback simple repair
                 repair_system = "You repair malformed JSON. Return ONLY valid JSON with the same keys/values. Do not add commentary or markdown fences."
                 repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
-                repaired = llm.generate_response(
+                repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    provider_choice="anthropic",
+                    preferred_provider="groq",
                     system=repair_system,
                     max_tokens=8192,
                 )
@@ -4712,38 +4630,15 @@ def parse_syllabus_segment(request):
         )
 
         llm = LLMService()
-        parse_max_tokens = 4096
-        raw_response = None
-        last_exc = None
-        openrouter_payment_blocked = False
-        attempted_providers = []
-        approx_prompt_tokens = (len(system_prompt) + len(user_prompt)) // 4
-
-        provider_fallback_order = ["anthropic", "groq", "gemini", "gpt"]
-
-        for provider_choice in provider_fallback_order:
-            backend_name, _ = llm.get_provider_and_model(provider_choice)
-            if openrouter_payment_blocked and backend_name == "openrouter":
-                continue
-
-            try:
-                attempted_providers.append(provider_choice)
-                raw_response = llm.generate_response(
-                    messages=[{"role": "user", "content": user_prompt}],
-                    provider_choice=provider_choice,
-                    system=system_prompt,
-                    max_tokens=parse_max_tokens,
-                )
-                break
-            except Exception as exc:
-                last_exc = exc
-                status_code = getattr(getattr(exc, "response", None), "status_code", None)
-                if backend_name == "openrouter" and status_code == 402:
-                    openrouter_payment_blocked = True
-
-        if raw_response is None:
+        try:
+            raw_response = llm.generate_response_with_fallback(
+                [{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                max_tokens=4096,
+            )
+        except ValueError as exc:
             return Response(
-                {"success": False, "error": f"Parsing section {section_key} failed: {last_exc}"},
+                {"success": False, "error": f"Parsing section {section_key} failed: {exc}"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -4770,9 +4665,9 @@ def parse_syllabus_segment(request):
                 # Fallback simple repair
                 repair_system = "You repair malformed JSON. Return ONLY valid JSON. Do not add commentary or markdown fences."
                 repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
-                repaired = llm.generate_response(
+                repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    provider_choice="anthropic",
+                    preferred_provider="groq",
                     system=repair_system,
                     max_tokens=4096,
                 )

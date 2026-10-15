@@ -10,7 +10,9 @@ import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import {
   analyzeSyllabusTemplate,
+  BUILTIN_SYLLABUS_EDITORS,
   completeSetup,
+  describeDetectedStructure,
   createFacultyWithAssignments,
   fetchFacultyAssignments,
   fetchInstitutionCustomization,
@@ -265,7 +267,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
       setTemplateName(result.template_name || file.name)
       if (Array.isArray(result.sections) && result.sections.length) {
         setSections(result.sections)
-        setNotice(`Detected ${result.sections.length} possible section${result.sections.length === 1 ? '' : 's'}. Review them and choose what faculty can edit.`)
+        setNotice(describeDetectedStructure(result))
       } else {
         setNotice(result.detail || 'No headings were detected. Add your sections manually below.')
       }
@@ -517,7 +519,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
               <>
                 <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the institution syllabus template</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Upload a PDF/DOCX to detect section headings, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared institutional information can be fixed for everyone.
+                  Upload a PDF/DOCX syllabus to detect its sections, subsections and tables automatically, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared institutional information can be fixed for everyone.
                 </Typography>
                 <Button
                   component="label"
@@ -539,7 +541,13 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         size="small"
                         fullWidth
                         value={section.label || ''}
-                        onChange={event => updateSection(index, { label: event.target.value, key: sectionKey(event.target.value) })}
+                        onChange={event => updateSection(index, {
+                          label: event.target.value,
+                          key: BUILTIN_SYLLABUS_EDITORS[section.key] ? section.key : sectionKey(event.target.value),
+                        })}
+                        helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
+                          ? `Faculty fill this with the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
+                          : undefined}
                         sx={inputSx}
                       />
                       <FormControlLabel

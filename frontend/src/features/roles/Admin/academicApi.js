@@ -38,6 +38,28 @@ export async function analyzeSyllabusTemplate(file) {
   return data
 }
 
+// Section keys the faculty workspace renders with a dedicated editor.
+export const BUILTIN_SYLLABUS_EDITORS = {
+  basic: 'Basic Info',
+  details: 'Course Details',
+  iloat: 'ILOs & Assessments',
+  schedule: 'Weekly Schedule',
+  tos: 'Table of Specifications',
+  grading: 'Grading',
+  policies: 'Policies',
+}
+
+export function describeDetectedStructure(result) {
+  const sections = Array.isArray(result?.sections) ? result.sections : []
+  const subsectionCount = sections.reduce(
+    (total, section) => total + (Array.isArray(section.subsections) ? section.subsections.length : 0),
+    0,
+  )
+  const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
+  const method = result?.source === 'ai' ? 'AI-assisted' : 'heading-based'
+  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} (${method}). Review them before saving.`
+}
+
 export async function createFacultyWithAssignments(payload) {
   const { data } = await api.post('/users/faculty/', payload)
   return data

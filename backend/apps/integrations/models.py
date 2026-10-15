@@ -433,6 +433,8 @@ class CourseFile(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     storage_path = models.TextField()
     rag_status = models.CharField(max_length=50, choices=RagStatusEnum.choices, default=RagStatusEnum.PENDING)
+    error_message = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
 
     class Meta:
         db_table = 'course_files'
@@ -459,6 +461,11 @@ class ChildChunk(models.Model):
         db_table = 'child_chunk'
 
 class GlobalDocument(models.Model):
+    class IndexStatus(models.TextChoices):
+        PROCESSING = 'PROCESSING', 'Processing'
+        READY = 'READY', 'Ready'
+        FAILED = 'FAILED', 'Failed'
+
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     institution = models.ForeignKey(
         Institution, on_delete=models.CASCADE, null=True, blank=True,
@@ -470,6 +477,11 @@ class GlobalDocument(models.Model):
     discipline = models.CharField(max_length=100, null=True, blank=True)  # e.g. 'Engineering'
     program = models.CharField(max_length=100, null=True, blank=True)     # e.g. 'BSCS'
     doc_type = models.CharField(max_length=50, null=True, blank=True)     # e.g. 'CHED_Handbook'
+    status = models.CharField(
+        max_length=20, choices=IndexStatus.choices, default=IndexStatus.READY,
+        db_default=IndexStatus.READY,
+    )
+    error_message = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

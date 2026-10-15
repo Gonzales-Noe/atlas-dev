@@ -1,83 +1,78 @@
 from django.core.management.base import BaseCommand, CommandError
 import logging
 
-from apps.integrations.anthropic_service import AnthropicService
+from apps.integrations.llm_service import LLMService
 from apps.integrations.models import GlobalDocument, GlobalDocumentChunk
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = 'Test Anthropic Claude API connection and RAG system'
+    help = 'Test the open-source LLM providers (Groq / OpenRouter) and the RAG system'
 
     def add_arguments(self, parser):
         parser.add_argument(
-            '--test-anthropic',
+            '--test-llm',
             action='store_true',
-            help='Test Anthropic API connection'
+            help='Only test the LLM providers'
+        )
+        parser.add_argument(
+            '--provider',
+            type=str,
+            default=None,
+            help='Provider to test: groq or openrouter (default: DEFAULT_LLM_PROVIDER)'
         )
         parser.add_argument(
             '--message',
             type=str,
             default='Explain OBE (Outcome-Based Education) in 2 sentences.',
-            help='Message to send to Claude'
+            help='Message to send to the model'
         )
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS('=== ATLAS Integration Testing ===\n'))
 
-        if options['test_anthropic']:
-            self.test_anthropic_api(options.get('message'))
+        if options['test_llm']:
+            self.test_llm(options.get('message'), options.get('provider'))
         else:
-            self.test_all()
+            self.test_all(options.get('provider'))
 
-    def test_anthropic_api(self, message):
-        """Test Anthropic API connection."""
-        self.stdout.write(self.style.WARNING('\n▶ Testing Anthropic Claude API...'))
+    def test_llm(self, message, provider=None):
+        """Send one message through the configured provider (with fallback)."""
+        self.stdout.write(self.style.WARNING('\n▶ Testing LLM provider...'))
 
-        claude_service = AnthropicService()
-
-        if not claude_service.is_configured():
-            raise CommandError(
-                'Anthropic API not configured. Set ANTHROPIC_API_KEY environment variable.'
-            )
-
+        llm = LLMService()
         try:
-            response = claude_service.send_message(
+            text, provider_used = llm.generate_response_with_fallback(
                 messages=[{"role": "user", "content": message}],
-                max_tokens=1024
+                preferred_provider=provider,
+                max_tokens=512,
+                return_provider=True,
             )
-
-            self.stdout.write(self.style.SUCCESS('✓ Claude API Connection Successful'))
-            self.stdout.write(f'\nModel: {response["model"]}')
-            self.stdout.write(f'Input tokens: {response["usage"]["input_tokens"]}')
-            self.stdout.write(f'Output tokens: {response["usage"]["output_tokens"]}')
-            self.stdout.write(f'\nResponse Content:')
-            for block in response['content']:
-                if block['type'] == 'text':
-                    self.stdout.write(f'  {block["text"][:200]}...\n')
-
         except Exception as e:
-            raise CommandError(f'Claude API test failed: {str(e)}')
+            raise CommandError(f'LLM test failed: {e}')
 
-    def test_all(self):
+        _, model = llm.get_provider_and_model(provider_used)
+        self.stdout.write(self.style.SUCCESS(f'✓ {provider_used} responded ({model})'))
+        self.stdout.write(f'\n  {text[:200]}...\n')
+
+    def test_all(self, provider=None):
         """Test all systems."""
-        self.test_anthropic_api('What is ATLAS?')
-        
+        self.test_llm('What is ATLAS?', provider)
+
         self.stdout.write(self.style.WARNING('\n▶ Checking RAG System Setup...'))
-        
-        # Check if tables exist
+
         try:
             total_docs = GlobalDocument.objects.count()
             total_segments = GlobalDocumentChunk.objects.count()
-            
+
             self.stdout.write(self.style.SUCCESS('✓ RAG Database Tables Ready'))
             self.stdout.write(f'  Global documents: {total_docs}')
             self.stdout.write(f'  Global chunks: {total_segments}')
-            
-        except Exception as e:
+
+        except Exception:
             self.stdout.write(
-                self.style.WARNING(f'⚠ RAG tables not created. Run: python manage.py migrate')
+                self.style.WARNING('⚠ RAG tables not created. Run: python manage.py migrate')
             )
 
         self.stdout.write(self.style.SUCCESS('\n=== All tests completed ==='))

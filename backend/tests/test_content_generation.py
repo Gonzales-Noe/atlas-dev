@@ -10,7 +10,7 @@ Run from repo root:
     .venv\\Scripts\\python.exe backend/tests/test_content_generation.py
 
 Filter providers:
-    .venv\\Scripts\\python.exe backend/tests/test_content_generation.py --providers gemini,groq,anthropic
+    .venv\\Scripts\\python.exe backend/tests/test_content_generation.py --providers groq,openrouter
 
 Save full responses to a file:
     .venv\\Scripts\\python.exe backend/tests/test_content_generation.py --save-output results.txt
@@ -39,7 +39,7 @@ PASS_MARK = "[PASS]"
 FAIL_MARK = "[FAIL]"
 WARN_MARK = "[WARN]"
 
-DEFAULT_PROVIDERS = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
+DEFAULT_PROVIDERS = ["groq", "nvidia", "mistral", "gemma", "cloudflare", "openrouter", "huggingface"]
 
 # The five required section headings produced by CoTPromptBuilder.build_module_prompt
 REQUIRED_SECTIONS = [

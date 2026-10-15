@@ -3,7 +3,6 @@ import hashlib
 import hmac
 import json
 import logging
-import re
 import secrets
 import uuid
 from datetime import timedelta
@@ -25,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from apps.integrations import syllabus_structure
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
@@ -1114,7 +1114,11 @@ class InstitutionCustomizationView(APIView):
 
 
 class SyllabusTemplateAnalyzeView(APIView):
-    """Extract likely section headings from a PDF or DOCX syllabus template."""
+    """
+    Derive the syllabus form structure (sections, subsections and table
+    columns) from a PDF or DOCX syllabus template for the admin to review.
+    Pass refine=false to skip the LLM cleanup and use the heading outline only.
+    """
 
     def post(self, request):
         if normalize_role(request.user.role) != 'admin':
@@ -1130,7 +1134,7 @@ class SyllabusTemplateAnalyzeView(APIView):
             return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            pages = DocumentProcessor.extract_text(uploaded_file, file_type)
+            markdown = syllabus_structure.markdown_from_upload(uploaded_file, file_type)
         except Exception:
             logger.exception('Could not extract text from syllabus template %s', uploaded_file.name)
             return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1148,46 +1152,20 @@ class SyllabusTemplateAnalyzeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        sections = []
-        seen = set()
-        for page_text, _page_number in pages:
-            for line in page_text.splitlines():
-                original = line.strip()
-                match = re.match(r'^(?:(\d+(?:\.\d+)*|[IVXLC]+)[.)]?\s+|[•*\-]\s*)?(.+?)\s*$', original, re.IGNORECASE)
-                if not match:
-                    continue
-                label = match.group(2).strip().rstrip(':;.')
-                words = label.split()
-                if (
-                    not 1 <= len(words) <= 12
-                    or len(label) > 100
-                    or label.casefold() in {'syllabus', 'course syllabus', 'table of contents'}
-                    or label.casefold() in seen
-                ):
-                    continue
-                is_heading = bool(match.group(1)) or original.endswith(':') or label.isupper()
-                is_heading = is_heading or all(word[:1].isupper() for word in words if word[:1].isalpha())
-                if not is_heading:
-                    continue
-                seen.add(label.casefold())
-                key = re.sub(r'[^a-z0-9]+', '-', label.casefold()).strip('-')
-                sections.append({
-                    'key': key or f'section-{len(sections) + 1}',
-                    'label': label,
-                    'enabled': True,
-                    'is_static': False,
-                    'static_content': '',
-                })
+        refine = str(request.data.get('refine', 'true')).lower() not in {'0', 'false', 'no'}
+        sections, source = syllabus_structure.extract_syllabus_structure(markdown, refine=refine)
 
         if not sections:
             return Response({
                 'detail': 'No section headings were detected. Add the syllabus sections manually.',
                 'sections': [],
+                'source': source,
                 'template_name': uploaded_file.name,
             })
 
         return Response({
             'sections': sections,
+            'source': source,
             'template_name': uploaded_file.name,
         })
 

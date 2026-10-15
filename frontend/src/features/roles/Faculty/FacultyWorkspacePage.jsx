@@ -82,8 +82,8 @@ const SYLLABUS_SECTIONS = [
   { key: 'schedules',       label: 'Schedules & Mappings' },
 ]
 
-const PROVIDERS = ['ollama', 'gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
-const AI_PROVIDERS = ['gemini', 'anthropic', 'groq', 'gpt']
+const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+const AI_PROVIDERS = PROVIDERS
 const AI_EXCLUDED_SECTIONS = new Set(['header', 'specs', 'schedules'])
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
@@ -361,7 +361,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── AI footer state ─────────────────────────────────────────────────────
   // aiField: null | { section, label, fieldType, field, arrField, arrIndex, arrObjKey }
   const [aiField, setAiField]         = useState(null)
-  const [aiProvider, setAiProvider]   = useState('gemini')
+  const [aiProvider, setAiProvider]   = useState('auto')
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError]         = useState('')
 

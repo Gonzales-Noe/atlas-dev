@@ -72,7 +72,10 @@ class SetupStatusView(APIView):
             role=UserRole.FACULTY,
             is_active=True,
         )
-        documents = GlobalDocument.objects.filter(institution=institution)
+        documents = GlobalDocument.objects.filter(
+            institution=institution,
+            status=GlobalDocument.IndexStatus.READY,
+        )
 
         payload.update({
             'section_count': sections.count(),

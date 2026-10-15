@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-PROVIDER_CHOICES = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
+from apps.integrations.llm_service import ACCEPTED_PROVIDER_CHOICES as PROVIDER_CHOICES
 
 
 class GenerateSyllabusSerializer(serializers.Serializer):

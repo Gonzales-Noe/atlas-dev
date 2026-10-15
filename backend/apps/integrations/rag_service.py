@@ -17,8 +17,11 @@ Embedding notes:
 """
 
 import logging
+import math
 import os
 import re
+import threading
+import time
 
 from pgvector.django import CosineDistance
 
@@ -64,22 +67,26 @@ _STOP_WORDS: frozenset = frozenset({
 
 # ── Lazy singletons ──────────────────────────────────────────────────────────
 _EMBEDDER = None
+_EMBEDDER_LOCK = threading.Lock()
 _RERANKER = None
 
 
 def _get_embedder():
     global _EMBEDDER
-    if _EMBEDDER is None:
-        try:
-            from sentence_transformers import SentenceTransformer
-        except ImportError:
-            raise ValueError(
-                "sentence-transformers is not installed. "
-                "Run: pip install sentence-transformers"
-            )
-        model_name = os.environ.get("LOCAL_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
-        _EMBEDDER = SentenceTransformer(model_name)
-        logger.info("Loaded embedding model: %s", model_name)
+    if _EMBEDDER is not None:
+        return _EMBEDDER
+    with _EMBEDDER_LOCK:
+        if _EMBEDDER is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError:
+                raise ValueError(
+                    "sentence-transformers is not installed. "
+                    "Run: pip install sentence-transformers"
+                )
+            model_name = os.environ.get("LOCAL_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+            _EMBEDDER = SentenceTransformer(model_name)
+            logger.info("Loaded embedding model: %s", model_name)
     return _EMBEDDER
 
 
@@ -102,28 +109,89 @@ def _get_reranker():
 
 # ── Public embedding helpers ─────────────────────────────────────────────────
 
+def embedding_provider() -> str:
+    """'local' (sentence-transformers) or 'huggingface' (hosted HF Inference API)."""
+    return os.environ.get("EMBEDDING_PROVIDER", "local").strip().lower()
+
+
+_HF_BATCH_SIZE = 32
+_HF_MAX_ATTEMPTS = 4
+
+
+def _hf_encode(texts: list) -> list:
+    """
+    Embed texts with the same BGE model via the Hugging Face Inference API, so
+    vectors match locally-indexed ones without installing PyTorch.
+    """
+    import requests
+
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token:
+        raise ValueError(
+            "EMBEDDING_PROVIDER=huggingface requires HF_TOKEN "
+            "(a Hugging Face token with Inference Providers permission)."
+        )
+    model_name = os.environ.get("LOCAL_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+    url = os.environ.get(
+        "HF_EMBEDDING_URL",
+        f"https://router.huggingface.co/hf-inference/models/{model_name}/pipeline/feature-extraction",
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    vectors: list = []
+    for start in range(0, len(texts), _HF_BATCH_SIZE):
+        batch = texts[start:start + _HF_BATCH_SIZE]
+        for attempt in range(1, _HF_MAX_ATTEMPTS + 1):
+            response = requests.post(
+                url,
+                headers=headers,
+                json={"inputs": batch, "normalize": True, "truncate": True},
+                timeout=120,
+            )
+            # 503 = model cold-starting, 429 = rate limited; both are transient.
+            if response.status_code in (429, 503) and attempt < _HF_MAX_ATTEMPTS:
+                time.sleep(2 ** attempt)
+                continue
+            if response.status_code != 200:
+                raise ValueError(
+                    f"Hugging Face embedding request failed "
+                    f"({response.status_code}): {response.text[:300]}"
+                )
+            break
+        vectors.extend(response.json())
+
+    return [_l2_normalize(v) for v in vectors]
+
+
+def _l2_normalize(vector: list) -> list:
+    norm = math.sqrt(sum(x * x for x in vector)) or 1.0
+    return [x / norm for x in vector]
+
+
+def _encode(texts: list) -> list:
+    if embedding_provider() == "huggingface":
+        return _hf_encode(texts)
+    embedder = _get_embedder()
+    vectors = embedder.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
+    return [v.tolist() for v in vectors]
+
+
 def embed_document(text: str) -> list:
     """Embed a single document passage for indexing (no instruction prefix)."""
-    embedder = _get_embedder()
-    vector = embedder.encode(text, normalize_embeddings=True)
-    return vector.tolist()
+    return _encode([text])[0]
 
 
 def embed_documents_batch(texts: list) -> list:
     """Batch-embed document passages (faster than looping embed_document)."""
     if not texts:
         return []
-    embedder = _get_embedder()
-    vectors = embedder.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
-    return [v.tolist() for v in vectors]
+    return _encode(texts)
 
 
 def embed_query(text: str) -> list:
     """Embed a query string with the BGE asymmetric instruction prefix."""
-    embedder = _get_embedder()
     instruction = "Represent this sentence for searching relevant passages: "
-    vector = embedder.encode(instruction + text, normalize_embeddings=True)
-    return vector.tolist()
+    return _encode([instruction + text])[0]
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────

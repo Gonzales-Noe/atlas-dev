@@ -19,7 +19,12 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
-import { fetchAcademicStructure } from './academicApi'
+import {
+  analyzeSyllabusTemplate,
+  BUILTIN_SYLLABUS_EDITORS,
+  describeDetectedStructure,
+  fetchAcademicStructure,
+} from './academicApi'
 import { ROUTES } from '../../../config/route'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
@@ -79,6 +84,7 @@ export default function AdminAccountManagement() {
     header_image_url: '', footer_image_url: '', header_text: '',
     footer_text: '', syllabus_sections: [],
   })
+  const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
 
   const [anchorEl, setAnchorEl] = useState(null)
   const [menuItem, setMenuItem] = useState(null)
@@ -339,6 +345,35 @@ export default function AdminAccountManagement() {
     }
   }
 
+  // Replaces the sections in the dialog; they are persisted only by "Save Format".
+  async function importSyllabusTemplate(file) {
+    if (!file) return
+    setTemplateImport({ busy: true, message: 'Reading the syllabus template…', severity: 'info' })
+    try {
+      const result = await analyzeSyllabusTemplate(file)
+      if (Array.isArray(result.sections) && result.sections.length) {
+        setCustomization(current => ({
+          ...current,
+          syllabus_template_name: result.template_name || file.name,
+          syllabus_sections: result.sections,
+        }))
+        setTemplateImport({ busy: false, message: describeDetectedStructure(result), severity: 'success' })
+      } else {
+        setTemplateImport({
+          busy: false,
+          message: result.detail || 'No sections were detected. Add them manually below.',
+          severity: 'warning',
+        })
+      }
+    } catch (err) {
+      setTemplateImport({
+        busy: false,
+        message: err.response?.data?.detail || 'Could not analyze the syllabus template.',
+        severity: 'error',
+      })
+    }
+  }
+
   function updateSyllabusSection(index, changes) {
     setCustomization(current => ({
       ...current,
@@ -550,7 +585,7 @@ export default function AdminAccountManagement() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </TextField>
-          <OutlineBtn onClick={() => setCustomizationDialog(true)}>
+          <OutlineBtn onClick={() => { setTemplateImport({ busy: false, message: '', severity: 'info' }); setCustomizationDialog(true) }}>
             <SettingsIcon fontSize="small" /> Syllabus Format
           </OutlineBtn>
         </div>
@@ -1050,15 +1085,31 @@ export default function AdminAccountManagement() {
 
             <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Syllabus sections</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Add your required sections, then define the answer fields faculty should complete as subsections.
+              Import a syllabus template to detect sections, subsections and tables automatically, or add them yourself and define the answer fields faculty should complete as subsections.
             </div>
+            <div>
+              <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
+                {templateImport.busy ? 'Analyzing template…' : 'Import from syllabus file (PDF/DOCX)'}
+              </OutlineBtn>
+              <input id="syllabus-template-import" hidden type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={e => { importSyllabusTemplate(e.target.files?.[0]); e.target.value = '' }} />
+            </div>
+            {templateImport.message && (
+              <Alert severity={templateImport.severity} onClose={templateImport.busy ? undefined : () => setTemplateImport(current => ({ ...current, message: '' }))}>
+                {templateImport.message}
+              </Alert>
+            )}
             {(customization.syllabus_sections || []).map((section, index) => (
               <Stack key={`${section.key}-${index}`} spacing={1}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>
                   <TextField size="small" label="Key" value={section.key || ''}
                     onChange={e => updateSyllabusSection(index, { key: e.target.value })} sx={inputSx} />
                   <TextField size="small" label="Section title" value={section.label || ''}
-                    onChange={e => updateSyllabusSection(index, { label: e.target.value })} sx={inputSx} />
+                    onChange={e => updateSyllabusSection(index, { label: e.target.value })} sx={inputSx}
+                    helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
+                      ? `Uses the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
+                      : undefined} />
                   <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: current.syllabus_sections.filter((_, i) => i !== index) }))}>Remove</OutlineBtn>
                 </div>
                 <Stack direction="row" spacing={2}>
