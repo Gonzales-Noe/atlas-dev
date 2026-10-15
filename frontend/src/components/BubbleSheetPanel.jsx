@@ -48,23 +48,34 @@ import api from '../config/api'
 import { extractApiError } from '../utils'
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const MAROON = '#8B0000'
-const MAROON_LIGHT = '#FFF5F5'
-const BG = '#F7F9FC'
+const MAROON       = '#15803D'
+const MAROON_LIGHT = 'rgba(22,163,74,0.16)'
+const BG           = '#0F0F12'
+const SURFACE      = '#18181E'
+const TEXT          = '#F0F0F2'
+const MUTED         = 'rgba(255,255,255,0.58)'
+const BORDER        = 'rgba(255,255,255,0.09)'
+const DIALOG_PAPER_SX = {
+  bgcolor: SURFACE,
+  color: TEXT,
+  backgroundImage: 'none',
+  border: `1px solid ${BORDER}`,
+  '& .MuiDialogContent-root': { borderColor: BORDER },
+}
 
 // ── Shared mini-components ─────────────────────────────────────────────────
 function SCard({ title, action, children }) {
   return (
     <Paper elevation={0}
-      sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
-      <Box sx={{ px: 2.5, py: 1.25, bgcolor: BG, borderBottom: '1px solid rgba(0,0,0,0.07)', display: 'flex', alignItems: 'center' }}>
+      sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
+      <Box sx={{ px: 2.5, py: 1.25, bgcolor: BG, borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
-          sx={{ fontWeight: 700, color: '#444', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+          sx={{ fontWeight: 700, color: TEXT, fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
           {title}
         </Typography>
         {action}
       </Box>
-      <Box sx={{ p: 2.5 }}>{children}</Box>
+      <Box sx={{ p: 2.5, color: TEXT }}>{children}</Box>
     </Paper>
   )
 }
@@ -74,13 +85,22 @@ function LF({ label, ...props }) {
     <TextField size="small" fullWidth label={label} {...props}
       sx={{
         '& .MuiOutlinedInput-root': {
+          color: TEXT,
+          bgcolor: SURFACE,
+          '& fieldset': { borderColor: BORDER },
           '&:hover fieldset': { borderColor: MAROON },
           '&.Mui-focused fieldset': { borderColor: MAROON },
         },
-        '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
+        '& .MuiInputLabel-root': { color: MUTED },
+        '& .MuiInputLabel-root.Mui-focused': { color: '#86EFAC' },
+        '& .MuiFormHelperText-root': { color: MUTED },
+        '& .MuiSelect-icon': { color: MUTED },
         ...props.sx,
       }}
-      SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
+      SelectProps={{
+        MenuProps: { PaperProps: { elevation: 2, sx: { bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}` } } },
+        ...props.SelectProps,
+      }}
     />
   )
 }
@@ -117,9 +137,9 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
         onChange={(_, v) => setTab(v)}
         sx={{
           mb: 2,
-          borderBottom: '1px solid rgba(0,0,0,0.08)',
-          '& .MuiTab-root': { fontSize: '0.78rem', fontWeight: 600, textTransform: 'none', minHeight: 38 },
-          '& .Mui-selected': { color: MAROON },
+          borderBottom: `1px solid ${BORDER}`,
+          '& .MuiTab-root': { color: MUTED, fontSize: '0.78rem', fontWeight: 600, textTransform: 'none', minHeight: 38 },
+          '& .Mui-selected': { color: '#86EFAC !important' },
           '& .MuiTabs-indicator': { bgcolor: MAROON },
         }}
       >
@@ -174,7 +194,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
           <Stack direction="row" spacing={1}>
             <Tooltip title="Refresh"><IconButton size="small" onClick={onRefresh}><RefreshIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
             <Button size="small" variant="contained" startIcon={<AddIcon />}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, fontSize: '0.72rem', textTransform: 'none' }}
+              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, fontSize: '0.72rem', textTransform: 'none' }}
               onClick={() => setCreating(true)}>
               New Template
             </Button>
@@ -308,19 +328,23 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
   }
 
   return (
-    <Box sx={{ border: '1px solid rgba(0,0,0,0.08)', borderRadius: 2, p: 1.5 }}>
+    <Box sx={{ bgcolor: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 2, p: 1.5 }}>
       <Stack direction="row" alignItems="flex-start" spacing={1}>
         <Box sx={{ flex: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{t.name}</Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.5 }}>
-            <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
-            <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />
-            {t.has_essay && <Chip label="Essay" size="small" color="info" sx={{ height: 18, fontSize: '0.65rem' }} />}
+            <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            {t.has_essay && <Chip label="Essay" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(10,132,255,0.16)', color: '#93C5FD', border: '1px solid rgba(10,132,255,0.28)' }} />}
             <Chip
               label={t.has_answer_key ? 'Key set' : 'No key'}
               size="small"
-              color={t.has_answer_key ? 'success' : 'default'}
-              sx={{ height: 18, fontSize: '0.65rem' }}
+              sx={{
+                height: 18, fontSize: '0.65rem',
+                bgcolor: t.has_answer_key ? 'rgba(22,163,74,0.18)' : 'rgba(255,255,255,0.08)',
+                color: t.has_answer_key ? '#86EFAC' : MUTED,
+                border: `1px solid ${t.has_answer_key ? 'rgba(134,239,172,0.28)' : BORDER}`,
+              }}
             />
           </Stack>
           {err && <Typography sx={{ color: err.startsWith('Answer key synced') ? 'success.main' : 'error.main', fontSize: '0.75rem', mt: 0.5 }}>{err}</Typography>}
@@ -328,12 +352,12 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
 
         <Stack direction="row" spacing={0.5}>
           <Tooltip title="Set Answer Key">
-            <IconButton size="small" onClick={onSetKey}><KeyIcon sx={{ fontSize: 16 }} /></IconButton>
+            <IconButton size="small" onClick={onSetKey} sx={{ color: MUTED }}><KeyIcon sx={{ fontSize: 16 }} /></IconButton>
           </Tooltip>
           {t.assessment_id && (
             <Tooltip title="Sync Key from Assessment">
               <span>
-                <IconButton size="small" onClick={handleSyncKey} disabled={syncingKey}>
+                <IconButton size="small" onClick={handleSyncKey} disabled={syncingKey} sx={{ color: MUTED }}>
                   <RefreshIcon sx={{ fontSize: 16 }} />
                 </IconButton>
               </span>
@@ -353,7 +377,11 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
               disabled={previewLoading || pdfLoading}
               sx={{
                 minWidth: 80,
+                color: TEXT,
+                bgcolor: SURFACE,
+                '& .MuiSelect-icon': { color: MUTED },
                 '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: BORDER },
                   '&:hover fieldset': { borderColor: MAROON },
                   '&.Mui-focused fieldset': { borderColor: MAROON },
                 },
@@ -407,7 +435,7 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
 // ── PDF Preview Dialog ────────────────────────────────────────────────────
 function PdfPreviewDialog({ title, url, onClose, onDownload }) {
   return (
-    <Dialog open onClose={onClose} maxWidth="lg" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="lg" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
         <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
         {title}
@@ -419,7 +447,7 @@ function PdfPreviewDialog({ title, url, onClose, onDownload }) {
           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
         >
           <Box sx={{ p: 3, textAlign: 'center' }}>
-            <Typography sx={{ fontSize: '0.85rem', color: '#666', mb: 1.5 }}>
+            <Typography sx={{ fontSize: '0.85rem', color: MUTED, mb: 1.5 }}>
               Your browser cannot display the PDF inline.
             </Typography>
             <Button variant="outlined" startIcon={<DownloadIcon />} onClick={onDownload}
@@ -432,7 +460,7 @@ function PdfPreviewDialog({ title, url, onClose, onDownload }) {
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
         <Button variant="contained" startIcon={<DownloadIcon />} onClick={onDownload}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Download PDF
         </Button>
       </DialogActions>
@@ -538,7 +566,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
   }
 
   return (
-    <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>New Bubble Sheet Template</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
@@ -580,7 +608,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
           {/* Parts */}
           <Box>
             <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography variant="caption" sx={{ fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>
+              <Typography variant="caption" sx={{ fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>
                 Parts
               </Typography>
               <Button size="small" startIcon={<AddIcon />} onClick={addPart}
@@ -636,7 +664,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Create Template
         </Button>
       </DialogActions>
@@ -690,13 +718,13 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
         Answer Key — {template.name}
       </DialogTitle>
       <DialogContent dividers>
         {err && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{err}</Alert>}
-        <Typography variant="caption" sx={{ color: '#777', fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
+        <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
           Click the correct answer for each item. Items with no selection will be excluded from grading.
           ★ marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
           Saving re-scores sheets that were already scanned.
@@ -706,7 +734,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
             <Stack key={rIdx} direction="row" spacing={0.5} flexWrap="wrap">
               {rowItems.map(itemNo => (
                 <Box key={itemNo} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1.5 }}>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: '#555' }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: MUTED }}>
                     {itemNo}.
                   </Typography>
                   {choices.map(ch => (
@@ -715,13 +743,13 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                       onClick={() => setAnswer(itemNo, ch)}
                       sx={{
                         width: 24, height: 24, borderRadius: '50%',
-                        border: `1.5px solid ${key[String(itemNo)] === ch ? MAROON : '#bbb'}`,
+                        border: `1.5px solid ${key[String(itemNo)] === ch ? MAROON : BORDER}`,
                         bgcolor: key[String(itemNo)] === ch ? MAROON : 'transparent',
-                        color: key[String(itemNo)] === ch ? '#fff' : '#555',
+                        color: key[String(itemNo)] === ch ? '#fff' : TEXT,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                         transition: 'all 0.12s',
-                        '&:hover': { borderColor: MAROON, bgcolor: key[String(itemNo)] === ch ? '#6a0000' : MAROON_LIGHT },
+                        '&:hover': { borderColor: '#86EFAC', bgcolor: key[String(itemNo)] === ch ? '#14532D' : MAROON_LIGHT },
                       }}
                     >
                       {ch}
@@ -753,7 +781,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Answer Key
         </Button>
       </DialogActions>
@@ -795,13 +823,13 @@ function StudentQrDialog({ template, onClose }) {
   }
 
   return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
         Student QR Code
       </DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2}>
-          <Typography variant="caption" sx={{ color: '#666', fontSize: '0.78rem' }}>
+          <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.78rem' }}>
             Enter the student's preset identification number to generate a QR sticker.
             No personal information is encoded — only the numeric ID.
           </Typography>
@@ -825,8 +853,8 @@ function StudentQrDialog({ template, onClose }) {
           {loading && <LinearProgress sx={{ height: 3, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />}
           {qrSrc && (
             <Box sx={{ textAlign: 'center' }}>
-              <img src={qrSrc} alt={`QR for ${studentId}`} style={{ width: 160, height: 160, border: '1px solid #ddd', borderRadius: 6 }} />
-              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: '#555', fontSize: '0.72rem' }}>
+              <img src={qrSrc} alt={`QR for ${studentId}`} style={{ width: 160, height: 160, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
+              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: MUTED, fontSize: '0.72rem' }}>
                 ID: <strong>{studentId}</strong>
               </Typography>
               <Button size="small" startIcon={<DownloadIcon />} onClick={handleDownload}
@@ -922,14 +950,15 @@ function ScanTab({ courseId, templates, onScanned }) {
         <Box
           onClick={() => fileRef.current?.click()}
           sx={{
-            border: `2px dashed ${file ? MAROON : '#ccc'}`,
+            border: `2px dashed ${file ? '#86EFAC' : 'rgba(255,255,255,0.24)'}`,
             borderRadius: 2,
             p: 3,
             textAlign: 'center',
             cursor: 'pointer',
-            bgcolor: file ? MAROON_LIGHT : BG,
+            bgcolor: file ? MAROON_LIGHT : 'rgba(255,255,255,0.04)',
+            color: TEXT,
             transition: 'all 0.15s',
-            '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT },
+            '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(22,163,74,0.12)' },
           }}
         >
           <input
@@ -943,11 +972,11 @@ function ScanTab({ courseId, templates, onScanned }) {
             ? <img src={preview} alt="Preview" style={{ maxHeight: 180, maxWidth: '100%', borderRadius: 6, objectFit: 'contain' }} />
             : (
               <>
-                <CloudUploadIcon sx={{ fontSize: 36, color: '#aaa', mb: 0.5 }} />
-                <Typography sx={{ fontSize: '0.8rem', color: '#777' }}>
+                <CloudUploadIcon sx={{ fontSize: 36, color: MUTED, mb: 0.5 }} />
+                <Typography sx={{ fontSize: '0.8rem', color: TEXT }}>
                   Click or drag to upload a scanned sheet image
                 </Typography>
-                <Typography sx={{ fontSize: '0.7rem', color: '#aaa', mt: 0.5 }}>
+                <Typography sx={{ fontSize: '0.7rem', color: MUTED, mt: 0.5 }}>
                   JPEG · PNG · WebP
                 </Typography>
               </>
@@ -959,7 +988,7 @@ function ScanTab({ courseId, templates, onScanned }) {
 
         {/* Scan result */}
         {result && (
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: SURFACE, color: TEXT, borderColor: BORDER }}>
             <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
               <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Scan Result</Typography>
               {result.is_flagged && (
@@ -981,7 +1010,13 @@ function ScanTab({ courseId, templates, onScanned }) {
             startIcon={scanning ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <CloudUploadIcon />}
             disabled={!selectedTemplate || !file || scanning}
             onClick={handleScan}
-            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}
+            sx={{
+              bgcolor: MAROON,
+              '&:hover': { bgcolor: '#14532D' },
+              '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)', color: MUTED },
+              '&.Mui-disabled .MuiButton-startIcon': { color: MUTED },
+              textTransform: 'none', fontSize: '0.82rem',
+            }}
           >
             {scanning ? 'Scanning…' : 'Scan Sheet'}
           </Button>
@@ -1006,8 +1041,8 @@ function ScanTab({ courseId, templates, onScanned }) {
 function Row({ label, value, warn = false }) {
   return (
     <Stack direction="row" spacing={1}>
-      <Typography sx={{ fontSize: '0.78rem', color: '#888', minWidth: 110 }}>{label}</Typography>
-      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: warn ? 'error.main' : '#222' }}>{value}</Typography>
+      <Typography sx={{ fontSize: '0.78rem', color: MUTED, minWidth: 110 }}>{label}</Typography>
+      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: warn ? '#FCA5A5' : TEXT }}>{value}</Typography>
     </Stack>
   )
 }
@@ -1076,7 +1111,7 @@ function ResultsTab({ courseId, templates }) {
             <MenuItem value="1">Flagged only</MenuItem>
           </LF>
           <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => loadScans(selectedTemplate, flagOnly)}>
+            <IconButton size="small" onClick={() => loadScans(selectedTemplate, flagOnly)} sx={{ color: MUTED }}>
               <RefreshIcon sx={{ fontSize: 16 }} />
             </IconButton>
           </Tooltip>
@@ -1088,9 +1123,9 @@ function ResultsTab({ courseId, templates }) {
       {loading
         ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
         : selectedTemplate && scans.length === 0
-          ? <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem', pl: 0.5 }}>
-            No scan results yet for this template.
-          </Typography>
+          ? <Typography variant="body2" sx={{ fontSize: '0.82rem', pl: 0.5, color: MUTED }}>
+              No scan results yet for this template.
+            </Typography>
           : scans.length > 0 && (
             <>
               {avg !== null && (
@@ -1100,8 +1135,11 @@ function ResultsTab({ courseId, templates }) {
                   <StatCard label="Flagged" value={scans.filter(s => s.is_flagged).length} warn />
                 </Stack>
               )}
-              <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2, overflow: 'hidden' }}>
-                <Table size="small">
+              <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, overflow: 'hidden' }}>
+                <Table size="small" sx={{
+                  '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER },
+                  '& .MuiTableRow-root:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                }}>
                   <TableHead>
                     <TableRow sx={{ bgcolor: BG }}>
                       {['Student ID', 'Score', '%', 'Flag', 'Date', ''].map(h => (
@@ -1120,7 +1158,7 @@ function ResultsTab({ courseId, templates }) {
                             ? <Tooltip title={s.flag_reason || 'Flagged'}><FlagIcon sx={{ fontSize: 15, color: 'error.main' }} /></Tooltip>
                             : null}
                         </TableCell>
-                        <TableCell sx={{ fontSize: '0.72rem', color: '#888' }}>
+                        <TableCell sx={{ fontSize: '0.72rem', color: MUTED }}>
                           {new Date(s.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
@@ -1152,9 +1190,9 @@ function ResultsTab({ courseId, templates }) {
 
 function StatCard({ label, value, warn = false }) {
   return (
-    <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2, px: 2, py: 1 }}>
-      <Typography sx={{ fontSize: '0.68rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</Typography>
-      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: warn ? 'error.main' : MAROON }}>{value}</Typography>
+    <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, px: 2, py: 1 }}>
+      <Typography sx={{ fontSize: '0.68rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</Typography>
+      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: warn ? '#FCA5A5' : '#86EFAC' }}>{value}</Typography>
     </Paper>
   )
 }
@@ -1202,14 +1240,14 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
   }
 
   return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Edit Scan Result</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
           {err && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{err}</Alert>}
           <LF label="Student ID number" value={studentId} onChange={e => setStudentId(e.target.value)} />
 
-          <Typography variant="caption" sx={{ fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>
             Detected Responses — click to correct
           </Typography>
           <Stack spacing={0.75}>
@@ -1217,7 +1255,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
               <Stack key={rIdx} direction="row" spacing={0.5} flexWrap="wrap">
                 {rowItems.map(itemNo => (
                   <Box key={itemNo} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1.5 }}>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: '#555' }}>
+                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: MUTED }}>
                       {itemNo}.
                     </Typography>
                     {choices.map(ch => (
@@ -1226,9 +1264,9 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
                         onClick={() => setResponse(itemNo, ch)}
                         sx={{
                           width: 22, height: 22, borderRadius: '50%',
-                          border: `1.5px solid ${responses[String(itemNo)] === ch ? MAROON : '#bbb'}`,
+                          border: `1.5px solid ${responses[String(itemNo)] === ch ? MAROON : BORDER}`,
                           bgcolor: responses[String(itemNo)] === ch ? MAROON : 'transparent',
-                          color: responses[String(itemNo)] === ch ? '#fff' : '#555',
+                          color: responses[String(itemNo)] === ch ? '#fff' : TEXT,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
                           transition: 'all 0.12s',
@@ -1261,7 +1299,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Changes
         </Button>
       </DialogActions>

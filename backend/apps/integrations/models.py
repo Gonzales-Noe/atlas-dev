@@ -49,6 +49,15 @@ class Institution(models.Model):
     payment_method = models.CharField(max_length=30, blank=True, default='')
     reviewed_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
+    trial_started_at = models.DateTimeField(null=True, blank=True)
+    trial_ends_at = models.DateTimeField(null=True, blank=True)
+    subscription_ends_at = models.DateTimeField(null=True, blank=True)
+    paymongo_customer_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_subscription_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_checkout_session_id = models.CharField(max_length=80, blank=True, default='')
+    paymongo_reference_number = models.CharField(max_length=120, blank=True, default='')
+    paymongo_checkout_url = models.URLField(blank=True, default='')
+    paymongo_last_event_id = models.CharField(max_length=120, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
     setup_completed = models.BooleanField(default=False)
@@ -63,6 +72,8 @@ class InstitutionCustomization(models.Model):
     footer_image_url = models.TextField(blank=True, default='')
     header_text = models.CharField(max_length=500, blank=True, default='')
     footer_text = models.CharField(max_length=500, blank=True, default='')
+    syllabus_template_name = models.CharField(max_length=255, blank=True, default='')
+    syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -76,8 +87,10 @@ class UserProfile(models.Model):
     institution = models.ForeignKey(Institution, on_delete=models.SET_NULL, null=True, blank=True, db_column='institution_id')
     college = models.ForeignKey('College', on_delete=models.SET_NULL, null=True, blank=True, db_column='college_id', related_name='faculty')
     email = models.EmailField(unique=True)
+    full_name = models.CharField(max_length=255, blank=True, default='')
     password_hash = models.CharField(max_length=255)
     role = models.CharField(max_length=50, choices=UserRole.choices, default=UserRole.FACULTY)
+    trial_generation_count = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     picture_url = models.URLField(max_length=500, blank=True, null=True)
@@ -99,6 +112,8 @@ class UserProfile(models.Model):
 
     @property
     def name(self):
+        if self.full_name.strip():
+            return self.full_name.strip()
         local_part = self.email.split('@', 1)[0]
         return local_part.replace('.', ' ').replace('_', ' ').title()
 
@@ -445,6 +460,10 @@ class ChildChunk(models.Model):
 
 class GlobalDocument(models.Model):
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(
+        Institution, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='knowledge_documents',
+    )
     title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
     # Metadata for filtered retrieval

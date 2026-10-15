@@ -247,8 +247,9 @@ export function AuthProvider({ children }) {
         localStorage.setItem('atlas_refresh_token', data.refresh)
         localStorage.setItem('atlas_user', JSON.stringify(data.user))
         dispatch({ type: 'AUTH_SUCCESS', payload: data.user })
+      } else {
+        dispatch({ type: 'AUTH_ERROR', payload: null })
       }
-      dispatch({ type: 'AUTH_ERROR', payload: null }) // not logged in yet — pending approval
       return data.user
     } catch (err) {
       const msg = err.response?.data?.email?.[0]
@@ -275,6 +276,13 @@ export function AuthProvider({ children }) {
     })
   }
 
+  async function updateProfile(payload) {
+    const { data } = await api.patch('/auth/me/', payload)
+    localStorage.setItem('atlas_user', JSON.stringify(data))
+    dispatch({ type: 'AUTH_SUCCESS', payload: data })
+    return data
+  }
+
   function logout() {
     localStorage.removeItem('atlas_access_token')
     localStorage.removeItem('atlas_refresh_token')
@@ -284,7 +292,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ ...state, login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, logout }}
+      value={{ ...state, login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, updateProfile, logout }}
     >
       {children}
     </AuthContext.Provider>

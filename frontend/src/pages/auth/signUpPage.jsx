@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
+import { Check, Circle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
@@ -25,8 +26,8 @@ function Orb({ style }) {
 function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="7" fill="rgba(192,57,43,0.25)" stroke="rgba(192,57,43,0.5)" strokeWidth="1" />
-      <path d="M4 7l2 2 4-4" stroke="#FF6B6B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="7" cy="7" r="7" fill="rgba(22,163,74,0.25)" stroke="rgba(22,163,74,0.5)" strokeWidth="1" />
+      <path d="M4 7l2 2 4-4" stroke="#86EFAC" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -41,6 +42,15 @@ const NAV_LINKS = [
 const PERKS = [
 ];
 
+const PASSWORD_REQUIREMENTS = [
+  { key: 'length', label: 'At least 8 characters' },
+  { key: 'uppercase', label: 'One uppercase letter' },
+  { key: 'lowercase', label: 'One lowercase letter' },
+  { key: 'number', label: 'One number' },
+  { key: 'special', label: 'One special character' },
+];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const navigate = useNavigate();
   const { register, loginWithGoogle } = useAuth();
@@ -49,12 +59,24 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   const [showEmailForm, setShowEmailForm] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
   const [form, setForm] = useState({
-    full_name: '', email: '', institution_name: '', password: '',
+    full_name: '', email: '', institution_name: '', password: '', confirm_password: '',
   });
+  const emailIsValid = EMAIL_PATTERN.test(form.email.trim());
+  const emailIsInvalid = form.email.length > 0 && !emailIsValid;
+  const passwordChecks = {
+    length: form.password.length >= 8,
+    uppercase: /[A-Z]/.test(form.password),
+    lowercase: /[a-z]/.test(form.password),
+    number: /[0-9]/.test(form.password),
+    special: /[^A-Za-z0-9]/.test(form.password),
+  };
+  const isPasswordStrong = PASSWORD_REQUIREMENTS.every(({ key }) => passwordChecks[key]);
 
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});
@@ -118,26 +140,31 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
     const institutionName = form.institution_name.trim();
     const email = form.email.trim();
     const password = form.password;
+    const confirmPassword = form.confirm_password;
 
     if (!agreed) { setError('Please agree to the Terms and Conditions.'); return; }
-    if (!fullName || !institutionName || !email || !password) {
+    if (!fullName || !institutionName || !email || !password || !confirmPassword) {
       setError('Please fill in all fields.'); return;
     }
 
-    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailPattern.test(email)) {
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+
+    if (!emailIsValid) {
       setError('Please enter a valid institutional email address.');
       return;
     }
 
-    if (password.length < 8 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-      setError('Password must be at least 8 characters and include both letters and numbers.');
+    if (!isPasswordStrong) {
+      setError('Password must meet all listed requirements.');
       return;
     }
 
     setLoading(true);
     try {
-      const user = await register({ ...form, full_name: fullName, institution_name: institutionName, email, password });
+      const user = await register({ full_name: fullName, institution_name: institutionName, email, password });
       localStorage.setItem('atlas_signup_application', JSON.stringify({
         institution: institutionName,
         email,
@@ -188,7 +215,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: color 0.2s;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.highlighted { color: #FF6B6B !important; }
+        .auth-nav-link.highlighted { color: #86EFAC !important; }
 
         .dark-input {
           width: 100%;
@@ -203,14 +230,69 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: border-color 0.2s, background 0.2s;
         }
         .dark-input:focus {
-          border-color: rgba(192,57,43,0.7);
+          border-color: rgba(22,163,74,0.7);
           background: rgba(255,255,255,0.09);
+        }
+        .dark-input.email-invalid,
+        .dark-input.email-invalid:focus {
+          border-color: #FF6B6B;
+        }
+        .dark-input.password-strong,
+        .dark-input.password-strong:focus {
+          border-color: #71D99E;
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
 
+        .field-help {
+          display: block;
+          margin-top: 0.4rem;
+          color: rgba(255,255,255,0.5);
+          font-size: 0.75rem;
+          line-height: 1.4;
+        }
+        .field-help.invalid { color: #FF8A8A; }
+
+        .password-input-wrap { position: relative; }
+        .password-input-wrap .dark-input { padding-right: 3rem; }
+        .password-toggle {
+          position: absolute;
+          top: 50%;
+          right: 0.9rem;
+          transform: translateY(-50%);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0.25rem;
+          color: rgba(255,255,255,0.55);
+          background: none;
+          border: 0;
+          cursor: pointer;
+        }
+        .password-toggle:hover { color: #fff; }
+        .password-toggle:focus-visible { outline: 2px solid #FF6B6B; outline-offset: 2px; }
+
+        .password-checklist {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.35rem 0.6rem;
+          margin: 0.55rem 0 0;
+          padding: 0;
+          list-style: none;
+        }
+        .password-check-item {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          color: rgba(255,255,255,0.55);
+          font-size: 0.72rem;
+          line-height: 1.35;
+        }
+        .password-check-item.met { color: #71D99E; }
+        .password-check-item svg { flex: none; }
+
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -228,8 +310,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(139,0,0,0.5);
-          background: linear-gradient(135deg, #A00000, #D44);
+          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
+          background: linear-gradient(135deg, #14532D, #16A34A);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -273,8 +355,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(192,57,43,0.15);
-          border: 1px solid rgba(192,57,43,0.35);
+          background: rgba(22,163,74,0.15);
+          border: 1px solid rgba(22,163,74,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -316,7 +398,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -380,9 +462,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         .custom-checkbox {
           width: 16px;
           height: 16px;
-          border: 1px solid rgba(192,57,43,0.5);
+          border: 1px solid rgba(22,163,74,0.5);
           border-radius: 4px;
-          background: rgba(192,57,43,0.1);
+          background: rgba(22,163,74,0.1);
           cursor: pointer;
           flex-shrink: 0;
           appearance: none;
@@ -391,8 +473,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           margin: 0;
         }
         .custom-checkbox:checked {
-          background: #C0392B;
-          border-color: #C0392B;
+          background: #16A34A;
+          border-color: #16A34A;
         }
         .custom-checkbox:checked::after {
           content: '✓';
@@ -440,13 +522,13 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(255, 107, 107, 0) 0%,
-            rgba(255, 107, 107, 0.5) 12.5%,
-            rgba(139, 0, 0, 0.5) 25%,
-            rgba(255, 107, 107, 0) 50%,
-            rgba(255, 107, 107, 0.5) 62.5%,
-            rgba(139, 0, 0, 0.5) 75%,
-            rgba(255, 107, 107, 0) 100%
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -481,7 +563,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.14)', top: -100, left: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.14)', top: -100, left: -100 }} />
       <Orb style={{ width: 400, height: 400, background: 'rgba(100,0,0,0.12)', bottom: -80, right: -80 }} />
 
       {/* Grid overlay */}
@@ -521,7 +603,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           }}>
             <Link to="/">
-              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+              <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 28, objectFit: 'contain' }} />
             </Link>
 
             <div className="desktop-nav-links" style={{ display: 'flex', alignItems: 'center', gap: '2.5rem' }}>
@@ -573,7 +655,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
             {success ? (
               <div className="form-enter" style={{ textAlign: 'center' }}>
-                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.5rem' }} />
+                <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.5rem' }} />
                 <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 1rem' }}>
                   Application <span className="glow-text">Submitted!</span>
@@ -597,7 +679,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
               <div className="form-enter">
                 {/* Header */}
                 <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
-                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)', marginBottom: '1.2rem' }} />
+                  <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.2rem' }} />
                   <h1 style={{ fontSize: '1.55rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
                     Get <span className="glow-text">ATLAS</span> for Your Institution
                   </h1>
@@ -644,11 +726,64 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                     </div>
                     <div>
                       <span className="label-text">INSTITUTIONAL EMAIL</span>
-                      <input className="dark-input" name="email" type="email" placeholder="you@institution.edu.ph" value={form.email} onChange={handleChange} required />
+                      <input
+                        className={`dark-input${emailIsInvalid ? ' email-invalid' : ''}`}
+                        name="email"
+                        type="email"
+                        placeholder="you@institution.edu.ph"
+                        value={form.email}
+                        onChange={handleChange}
+                        aria-invalid={emailIsInvalid}
+                        aria-describedby={emailIsInvalid ? 'institution-email-help' : undefined}
+                        required
+                      />
+                      {emailIsInvalid && (
+                        <span id="institution-email-help" className="field-help invalid">
+                          Please enter a valid institutional email address.
+                        </span>
+                      )}
                     </div>
                     <div>
                       <span className="label-text">PASSWORD</span>
-                      <input className="dark-input" name="password" type="password" placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                      <div className="password-input-wrap">
+                        <input className={`dark-input${isPasswordStrong ? ' password-strong' : ''}`} name="password" type={showPassword ? 'text' : 'password'} placeholder="••••••••" value={form.password} onChange={handleChange} required />
+                        <button
+                          className="password-toggle"
+                          type="button"
+                          aria-label={showPassword ? 'Hide password' : 'Show password'}
+                          title={showPassword ? 'Hide password' : 'Show password'}
+                          onClick={() => setShowPassword(show => !show)}
+                        >
+                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                      {form.password.length > 0 && !isPasswordStrong && (
+                        <ul className="password-checklist" aria-label="Password requirements">
+                          {PASSWORD_REQUIREMENTS.map(({ key, label }) => (
+                            <li key={key} className={`password-check-item${passwordChecks[key] ? ' met' : ''}`}>
+                              {passwordChecks[key]
+                                ? <Check size={14} aria-hidden="true" />
+                                : <Circle size={14} aria-hidden="true" />}
+                              <span>{label}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <span className="label-text">CONFIRM PASSWORD</span>
+                      <div className="password-input-wrap">
+                        <input className="dark-input" name="confirm_password" type={showConfirmPassword ? 'text' : 'password'} placeholder="Re-enter your password" value={form.confirm_password} onChange={handleChange} required />
+                        <button
+                          className="password-toggle"
+                          type="button"
+                          aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                          title={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
+                          onClick={() => setShowConfirmPassword(show => !show)}
+                        >
+                          {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
                     </div>
                     <button type="submit" className="btn-primary" disabled={loading} style={{ marginTop: '0.25rem' }}>
                       {loading ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Submit Registration'}
@@ -660,11 +795,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.38)', margin: '1.25rem 0 0.75rem' }}>
                   Already have an account?{' '}
                   {isModal ? (
-                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#FF6B6B', fontWeight: 700 }}>
+                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
                       Sign In
                     </button>
                   ) : (
-                    <Link to={ROUTES.SIGN_IN} style={{ color: '#FF6B6B', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                    <Link to={ROUTES.SIGN_IN} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
                   )}
                 </p>
 
@@ -678,7 +813,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   />
                   <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.5, textAlign: 'center' }}>
                     I agree to the{' '}
-                    <span style={{ color: '#FF6B6B', fontWeight: 600 }}>Terms and Conditions of Use and Privacy Policy</span>
+                    <span style={{ color: '#86EFAC', fontWeight: 600 }}>Terms and Conditions of Use and Privacy Policy</span>
                   </span>
                 </label>
               </div>
@@ -690,7 +825,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '44%',
-              background: 'linear-gradient(145deg, rgba(139,0,0,0.4), rgba(80,0,0,0.6))',
+              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -701,8 +836,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 280, height: 280, background: 'rgba(180,20,20,0.25)', top: -60, right: -60 }} />
-            <Orb style={{ width: 200, height: 200, background: 'rgba(100,0,0,0.3)', bottom: -40, left: -40 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.8)', top: -60, right: -60 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.5), rgba(134, 239, 172, 0)', bottom: -40, left: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>

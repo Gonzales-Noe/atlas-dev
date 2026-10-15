@@ -162,7 +162,7 @@ export default function FacultyGrading() {
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={40} sx={{ color: '#8B0000' }} />
+            <CircularProgress size={40} sx={{ color: '#15803D' }} />
           </Box>
         ) : students.length === 0 && selectedAssessmentId ? (
           <Card sx={{ ...cardStyles, p: 4, textAlign: 'center' }}>
@@ -183,7 +183,7 @@ export default function FacultyGrading() {
                 <Card sx={cardStyles}>
                   <CardContent sx={{ textAlign: 'center' }}>
                     <Typography color="text.secondary" variant="body2">Total Students</Typography>
-                    <Typography sx={{ fontSize: '2rem', fontWeight: 800, color: '#8B0000' }}>
+                    <Typography sx={{ fontSize: '2rem', fontWeight: 800, color: '#15803D' }}>
                       {students.length}
                     </Typography>
                   </CardContent>

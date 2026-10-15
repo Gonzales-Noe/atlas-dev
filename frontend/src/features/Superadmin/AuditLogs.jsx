@@ -51,7 +51,7 @@ export default function AuditLogs() {
         {[
           { label: 'Total Events', value: mockLogs.length, color: '#60AAFF' },
           { label: 'Successful',   value: mockLogs.filter(l=>l.status==='success').length, color: '#5EDA7E' },
-          { label: 'Errors',       value: mockLogs.filter(l=>l.status==='error').length,   color: '#FF6B6B' },
+          { label: 'Errors',       value: mockLogs.filter(l=>l.status==='error').length,   color: '#86EFAC' },
           { label: 'Warnings',     value: mockLogs.filter(l=>l.status==='warning').length, color: '#FFB74D' },
         ].map(({ label, value, color }) => (
           <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 14, padding: '14px 18px', backdropFilter: 'blur(16px)' }}>
@@ -96,9 +96,9 @@ export default function AuditLogs() {
                   <TableCell><StatusChip label={log.status} type={statusType(log.status)} /></TableCell>
                   <TableCell>
                     <button onClick={() => { setSelectedLog(log); setDetailsOpen(true) }}
-                      style={{ background: 'rgba(139,0,0,0.15)', border: '1px solid rgba(192,57,43,0.3)', borderRadius: 7, color: '#FF6B6B', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', padding: '4px 10px', fontFamily: 'var(--font-sans)', transition: 'all 200ms' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(139,0,0,0.28)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(139,0,0,0.15)'}
+                      style={{ background: 'rgba(21,128,61,0.15)', border: '1px solid rgba(22,163,74,0.3)', borderRadius: 7, color: '#86EFAC', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', padding: '4px 10px', fontFamily: 'var(--font-sans)', transition: 'all 200ms' }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(21,128,61,0.28)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'rgba(21,128,61,0.15)'}
                     >View</button>
                   </TableCell>
                 </TableRow>
