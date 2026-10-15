@@ -3,8 +3,8 @@
 // institution-wide references) and lists what has been indexed.
 //
 // The "Upload File" button drives the real backend process:
-//   POST /integrations/upload-global-rag-document/  (multipart)
-//   GET  /integrations/rag-documents/               (indexed documents)
+//   POST /integrations/upload-global-rag-document/  (multipart, returns 202 while indexing)
+//   GET  /integrations/rag-documents/               (documents + PROCESSING/READY/FAILED status)
 
 import { useEffect, useRef, useState } from 'react'
 import {
@@ -39,6 +39,19 @@ function formatFileSize(bytes) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const POLL_INTERVAL_MS = 4000
+
+function apiErrorMessage(err, fallback) {
+  const data = err.response?.data
+  if (data?.error) return data.error
+  if (data?.detail) return data.detail
+  if (data?.errors && typeof data.errors === 'object') {
+    const first = Object.entries(data.errors)[0]
+    if (first) return `${first[0]}: ${[].concat(first[1]).join(' ')}`
+  }
+  return fallback
 }
 
 function normalizeDocTypeLabel(value) {
@@ -100,21 +113,43 @@ export default function AdminKnowledgeBase() {
   const [submitting, setSubmitting]   = useState(false)
   const [dragOver, setDragOver]       = useState(false)
   const fileInputRef = useRef(null)
+  const prevStatusRef = useRef({})
 
   useEffect(() => { loadDocuments() }, [])
 
-  async function loadDocuments() {
-    setLoading(true)
-    setError('')
+  const hasProcessing = documents.some(doc => doc.status === 'PROCESSING')
+  useEffect(() => {
+    if (!hasProcessing) return undefined
+    const timer = setTimeout(() => loadDocuments({ silent: true }), POLL_INTERVAL_MS)
+    return () => clearTimeout(timer)
+  }, [hasProcessing, documents])
+
+  async function loadDocuments({ silent = false } = {}) {
+    if (!silent) {
+      setLoading(true)
+      setError('')
+    }
     try {
       const { data } = await api.get('/integrations/rag-documents/')
-      setDocuments(data.documents || [])
+      const docs = data.documents || []
+      announceFinishedIndexing(docs)
+      setDocuments(docs)
       setDocumentsLoaded(true)
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to load knowledge documents.')
+      if (!silent) setError(apiErrorMessage(err, 'Failed to load knowledge documents.'))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
+  }
+
+  function announceFinishedIndexing(docs) {
+    const prev = prevStatusRef.current
+    for (const doc of docs) {
+      if (prev[doc.document_id] !== 'PROCESSING') continue
+      if (doc.status === 'READY') setNotice(`"${doc.title}" is indexed and ready for retrieval.`)
+      if (doc.status === 'FAILED') setError(`Indexing failed for "${doc.title}": ${doc.error_message || 'unknown error'}`)
+    }
+    prevStatusRef.current = Object.fromEntries(docs.map(doc => [doc.document_id, doc.status]))
   }
 
   const categories = ['All', ...new Set(documents.map(doc => normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)).filter(Boolean))]
@@ -184,13 +219,13 @@ export default function AdminKnowledgeBase() {
     try {
       await api.post('/integrations/upload-global-rag-document/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 1200000,
+        timeout: 300000,
       })
-      setNotice('Document uploaded and indexed successfully.')
+      setNotice(`"${file.name}" uploaded. Indexing runs in the background — it will show as ready here when done.`)
       handleModalClose()
-      await loadDocuments()
+      await loadDocuments({ silent: true })
     } catch (err) {
-      setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to upload document.')
+      setError(apiErrorMessage(err, 'Failed to upload document.'))
     } finally {
       setSubmitting(false)
     }
@@ -267,11 +302,18 @@ export default function AdminKnowledgeBase() {
                 <CategoryBadge cat={selected.doc_type_label || selected.doc_type} />
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{selected.discipline || 'No discipline'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.program || 'No program'}</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.total_chunks || 0} chunks</span>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>·</span>
+                <IndexStatus doc={selected} />
               </div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
-                {selected.description || 'This document has been indexed into the knowledge base and is available for RAG retrieval.'}
-              </div>
+              {selected.status === 'FAILED' ? (
+                <Alert severity="error">{selected.error_message || 'Indexing failed.'} Upload the file again to retry.</Alert>
+              ) : (
+                <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+                  {selected.description || (selected.status === 'PROCESSING'
+                    ? 'This document is being indexed. It will be available for RAG retrieval when indexing finishes.'
+                    : 'This document has been indexed into the knowledge base and is available for RAG retrieval.')}
+                </div>
+              )}
               <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
                 Uploaded {selected.created_at ? new Date(selected.created_at).toLocaleString() : '—'}
               </div>
@@ -377,6 +419,17 @@ export default function AdminKnowledgeBase() {
   )
 }
 
+function IndexStatus({ doc }) {
+  const base = { fontSize: '0.72rem', whiteSpace: 'nowrap', fontWeight: 700 }
+  if (doc.status === 'PROCESSING') {
+    return <span style={{ ...base, color: '#FFB74D' }}>Indexing…</span>
+  }
+  if (doc.status === 'FAILED') {
+    return <span style={{ ...base, color: '#F87171' }} title={doc.error_message || ''}>Failed</span>
+  }
+  return <span style={{ ...base, fontWeight: 400, color: 'var(--text-tertiary)' }}>{doc.total_chunks || 0} chunks</span>
+}
+
 function DocumentCard({ doc, onView }) {
   const [hovered, setHovered] = useState(false)
   return (
@@ -395,7 +448,7 @@ function DocumentCard({ doc, onView }) {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <CategoryBadge cat={doc.doc_type_label || doc.doc_type} />
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{doc.total_chunks || 0} chunks</span>
+        <IndexStatus doc={doc} />
       </div>
       <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
         {doc.title}
