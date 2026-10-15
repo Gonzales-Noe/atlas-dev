@@ -207,7 +207,7 @@ for query in SEARCH_QUERIES:
 # ─────────────────────────────────────────────────────────────────────────────
 # STEP 5 — LLM-Ready Context Block
 # ─────────────────────────────────────────────────────────────────────────────
-section("STEP 5 — LLM-Ready Context Block (what gets sent to Claude)")
+section("STEP 5 — LLM-Ready Context Block (what gets sent to the LLM)")
 
 DEMO_QUERY = SEARCH_QUERIES[0]
 demo_results = all_search_results.get(DEMO_QUERY, [])

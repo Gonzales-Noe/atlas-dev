@@ -9,7 +9,7 @@ Run from repo root:
     .venv\\Scripts\\python.exe backend/tests/test_llm_models_live.py
 
 Optional:
-    .venv\\Scripts\\python.exe backend/tests/test_llm_models_live.py --providers gemini,gpt,groq,anthropic,openrouter
+    .venv\\Scripts\\python.exe backend/tests/test_llm_models_live.py --providers groq,openrouter
     .venv\\Scripts\\python.exe backend/tests/test_llm_models_live.py --max-tokens 120
 """
 
@@ -26,7 +26,7 @@ PASS_MARK = "[PASS]"
 FAIL_MARK = "[FAIL]"
 WARN_MARK = "[WARN]"
 
-DEFAULT_PROVIDERS = ["gemini", "gpt", "groq", "anthropic", "openrouter"]
+DEFAULT_PROVIDERS = ["groq", "nvidia", "mistral", "gemma", "cloudflare", "openrouter", "huggingface"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--providers",
         default=",".join(DEFAULT_PROVIDERS),
-        help="Comma-separated providers (gemini,gpt,groq,anthropic,openrouter)",
+        help="Comma-separated providers (groq,openrouter)",
     )
     parser.add_argument(
         "--max-tokens",

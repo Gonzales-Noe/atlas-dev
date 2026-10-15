@@ -103,7 +103,17 @@ const SYLLABUS_SECTIONS = [
   { key: 'policies',      label: 'Policies' },
 ]
 
-const PROVIDERS = ['gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
+const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+const PROVIDER_LABELS = {
+  auto: 'Auto (best available free model)',
+  groq: 'Groq — GPT-OSS 120B',
+  nvidia: 'NVIDIA NIM — Nemotron 3 Super',
+  mistral: 'Mistral — Mistral Small',
+  gemma: 'Google AI Studio — Gemma 4 31B',
+  cloudflare: 'Cloudflare — GPT-OSS 120B',
+  openrouter: 'OpenRouter — free models',
+  huggingface: 'Hugging Face — GPT-OSS 120B',
+}
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
   'assignment', 'project', 'activity', 'performance task',
@@ -743,12 +753,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionError, setActionError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'groq', top_k: 5, extra_instructions: '' })
-  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
+  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'auto', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'auto', top_k: 5, extra_instructions: '' })
   const [assessmentParams, setAssessmentParams] = useState({
     faculty_topics: '',
     extra_instructions: '',
-    provider: 'gemini',
+    provider: 'auto',
     source_exam_code: '',
     source_exam_label: '',
     item_by_item: true,
@@ -1560,10 +1570,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     courseId ? `/curriculum/faculty-course-workspace/${courseId}/` : null,
     { immediate: Boolean(courseId), deps: [courseId] },
   )
-  const docsApi = useApi(
-    courseId ? `/integrations/course-rag-documents/?course_id=${courseId}` : null,
-    { immediate: Boolean(courseId), deps: [courseId] },
-  )
+  const docsUrl = courseId ? `/integrations/course-rag-documents/?course_id=${courseId}` : null
+  const docsApi = useApi(docsUrl, { immediate: Boolean(courseId), deps: [courseId] })
+  const docsIndexing = (docsApi.data?.documents || []).some(doc => doc.rag_status === 'PROCESSING')
+  useEffect(() => {
+    if (!docsIndexing || !docsUrl) return undefined
+    const timer = setTimeout(() => {
+      api.get(docsUrl).then(({ data }) => docsApi.setData(data)).catch(() => {})
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
   const customization = workspaceApi.data?.customization || {}
   const configuredSections = (Array.isArray(customization.syllabus_sections)
@@ -2701,7 +2717,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               value={assessmentParams.provider}
               onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}
             >
-              {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+              {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
             </LField>
 
             {assessmentBatchProgress && (
@@ -3001,10 +3017,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setUploading(true); setUploadStatus('Uploading your file...')
     try {
       const { data } = await api.post('/integrations/upload-course-rag-document/', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }, timeout: 1200000,
+        headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000,
       })
       setUploadProgress(100)
-      setUploadStatus('Done. This file is now ready for your course generation tools.')
+      setUploadStatus('Uploaded. Indexing runs in the background — the file shows COMPLETED below when it is ready.')
       setUploadSuccess(data?.message || 'File uploaded successfully.')
       setUploadFile(null)
       docsApi.execute()
@@ -5295,7 +5311,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {/* Provider */}
                 <LField select label="Model Provider" value={moduleParams.provider}
                   onChange={e => setModuleParams(p => ({ ...p, provider: e.target.value }))}>
-                  {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+                  {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
                 </LField>
 
                 <GenButton onClick={handleGenerateModule} disabled={actionLoading || !moduleParams.module_title.toString().trim()}>
@@ -5941,7 +5957,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 onChange={e => setAssessmentParams(p => ({ ...p, extra_instructions: e.target.value }))} />
               <LField select label="Model Provider" value={assessmentParams.provider}
                 onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}>
-                {PROVIDERS.map(p => <MenuItem key={p} value={p}>{cap(p)}</MenuItem>)}
+                {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
               </LField>
               <GenButton onClick={handleGenerateAssessment} disabled={actionLoading}>
                 {actionLoading ? 'Generating...' : 'Generate Selected Item'}
@@ -6048,10 +6064,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             fontSize: '0.72rem' }}>
                       {doc.storage_path || doc.file_name || 'Unnamed file'}
                     </Typography>
-                    <Chip label={doc.rag_status || 'OK'} size="small"
-                      sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
-                           bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : '#FFF3E0',
-                           color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : '#E65100' }} />
+                    <Tooltip title={doc.rag_status === 'FAILED' ? (doc.error_message || 'Indexing failed. Upload the file again.') : ''}>
+                      <Chip label={doc.rag_status === 'PROCESSING' ? 'INDEXING…' : (doc.rag_status || 'OK')} size="small"
+                        sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
+                             bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : doc.rag_status === 'FAILED' ? '#FFEBEE' : '#FFF3E0',
+                             color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : doc.rag_status === 'FAILED' ? '#C62828' : '#E65100' }} />
+                    </Tooltip>
                     <Tooltip title="Delete source and its vectors">
                       <IconButton size="small"
                         disabled={isDeleting}

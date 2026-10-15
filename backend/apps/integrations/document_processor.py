@@ -33,8 +33,19 @@ except ImportError:
     PYMUPDF_AVAILABLE = False
     fitz = None
 
+try:
+    from liteparse import LiteParse  # PDFium-based PDF → Markdown (tables + headings)
+    LITEPARSE_AVAILABLE = True
+except ImportError:
+    LITEPARSE_AVAILABLE = False
+    LiteParse = None
+
 from docx import Document as DocxDocument
+from docx.table import Table as DocxTable
+from docx.text.paragraph import Paragraph as DocxParagraph
 from pypdf import PdfReader
+
+_MD_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*\S)\s*$')
 
 logger = logging.getLogger(__name__)
 
@@ -95,13 +106,17 @@ class DocumentProcessor:
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
         # Strip leading/trailing whitespace per line
         lines = [line.strip() for line in text.split('\n')]
-        # Drop lines that are purely decorative: only digits, dashes, pipes, dots
-        lines = [ln for ln in lines if not re.fullmatch(r'[\s\d\.\-\–\—\|_=~*#]+', ln)]
+        # Drop lines that are purely decorative: only digits, dashes, pipes, dots.
+        # Markdown table rows (including |---| separators) start with a pipe and are kept.
+        lines = [
+            ln for ln in lines
+            if ln.startswith('|') or not re.fullmatch(r'[\s\d\.\-\–\—\|_=~*#]+', ln)
+        ]
         # Drop standalone page number lines (e.g., "Page 5", "PAGE 12", "5")
         lines = [ln for ln in lines if not re.fullmatch(r'\s*(page\s+\d+|\d+)\s*', ln, re.IGNORECASE)]
         return '\n'.join(lines).strip()
     
-    # Token encoder for Claude
+    # Approximate token counter used for chunk sizing
     ENCODER = tiktoken.get_encoding("cl100k_base") if TIKTOKEN_AVAILABLE else None
     
     @staticmethod
@@ -300,6 +315,142 @@ class DocumentProcessor:
             return []
 
     @staticmethod
+    def extract_markdown_from_pdf(file_obj):
+        """
+        Convert a PDF to Markdown with LiteParse (PDFium spatial parsing).
+
+        Keeps tables as Markdown tables and section titles as # headings,
+        without OCR or neural layout models, so a typical syllabus parses in
+        well under a second.
+
+        Returns:
+            list: List of tuples (markdown_text, page_number)
+        """
+        if isinstance(file_obj, bytes):
+            data = file_obj
+        else:
+            file_obj.seek(0)
+            data = file_obj.read()
+
+        # On Windows, loading the torch/pyarrow DLLs after PDFium has parsed a
+        # document crashes the process, so the embedding stack must load first.
+        try:
+            import sentence_transformers  # noqa: F401
+        except ImportError:
+            pass
+
+        parser = LiteParse(ocr_enabled=False, output_format="markdown", quiet=True)
+        try:
+            result = parser.parse(data)
+        finally:
+            parser.close()
+
+        pages = [
+            (page.markdown, page.page_num)
+            for page in result.pages
+            if page.markdown and page.markdown.strip()
+        ]
+        logger.info("[LiteParse] Converted %d PDF pages to Markdown", len(pages))
+        return pages
+
+    @staticmethod
+    def _docx_table_to_markdown(table):
+        rows = []
+        for row in table.rows:
+            try:
+                cells = row.cells
+            except Exception:
+                continue
+            rows.append([
+                " ".join(cell.text.split()).replace("|", "\\|") for cell in cells
+            ])
+        rows = [r for r in rows if any(r)]
+        if not rows:
+            return ""
+
+        width = max(len(r) for r in rows)
+        rows = [r + [""] * (width - len(r)) for r in rows]
+        lines = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * width]
+        lines += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+        return "\n".join(lines)
+
+    @staticmethod
+    def extract_markdown_from_docx(file_obj):
+        """
+        Convert a DOCX to Markdown in document order: Heading/Title styles
+        become # headings and tables become Markdown tables.
+
+        Returns:
+            list: [(markdown_text, None)] or [] when the document is empty
+        """
+        if isinstance(file_obj, bytes):
+            file_obj = BytesIO(file_obj)
+        else:
+            file_obj.seek(0)
+        doc = DocxDocument(file_obj)
+
+        blocks = []
+        for child in doc.element.body.iterchildren():
+            tag = child.tag.rsplit("}", 1)[-1]
+            if tag == "p":
+                paragraph = DocxParagraph(child, doc)
+                text = paragraph.text.strip()
+                if not text:
+                    continue
+                try:
+                    style = paragraph.style.name or ""
+                except Exception:
+                    style = ""
+                level = re.match(r"Heading (\d)", style)
+                if level:
+                    blocks.append("#" * min(int(level.group(1)), 6) + " " + text)
+                elif style == "Title":
+                    blocks.append("# " + text)
+                else:
+                    blocks.append(text)
+            elif tag == "tbl":
+                table_md = DocumentProcessor._docx_table_to_markdown(DocxTable(child, doc))
+                if table_md:
+                    blocks.append(table_md)
+
+        markdown = "\n\n".join(blocks)
+        return [(markdown, None)] if markdown.strip() else []
+
+    @staticmethod
+    def _markdown_sections(pages):
+        """
+        Split Markdown pages into heading-delimited sections.
+
+        Args:
+            pages: list of (markdown_text, page_number)
+
+        Returns:
+            list of dicts: [{"content": str, "page_number": int | None}]
+        """
+        sections = []
+        current_lines = []
+        current_page = None
+
+        def _flush():
+            content = DocumentProcessor.preprocess_text("\n".join(current_lines))
+            if content:
+                sections.append({"content": content, "page_number": current_page})
+
+        for text, page_num in pages:
+            for line in text.split("\n"):
+                heading = _MD_HEADING_RE.match(line.strip())
+                if heading and re.search(r"\w", heading.group(2)):
+                    _flush()
+                    current_lines = [line.strip()]
+                    current_page = page_num
+                else:
+                    if not current_lines:
+                        current_page = page_num
+                    current_lines.append(line)
+        _flush()
+        return sections
+
+    @staticmethod
     def extract_text(file_obj, file_type):
         """
         Extract text from file based on type.
@@ -373,7 +524,7 @@ class DocumentProcessor:
     @staticmethod
     def count_tokens(text):
         """
-        Count tokens in text using Claude's tokenizer.
+        Count tokens in text (approximate, cl100k_base).
         
         Args:
             text (str): Text to count tokens for
@@ -455,17 +606,69 @@ class DocumentProcessor:
         return segments
 
     @staticmethod
+    def _extract_sections(file_obj, file_type):
+        """
+        Return heading-delimited Markdown sections for chunking.
+
+        PDF fallback order: LiteParse Markdown → PyMuPDF font-based headers
+        → pypdf page text.
+        """
+        if file_type == "docx":
+            return DocumentProcessor._markdown_sections(
+                DocumentProcessor.extract_markdown_from_docx(file_obj)
+            )
+
+        if LITEPARSE_AVAILABLE:
+            try:
+                pages = DocumentProcessor.extract_markdown_from_pdf(file_obj)
+                if pages:
+                    return DocumentProcessor._markdown_sections(pages)
+                logger.warning("[LiteParse] No text found – falling back to PyMuPDF")
+            except Exception as exc:
+                logger.warning("[LiteParse] Failed (%s) – falling back to PyMuPDF", exc)
+
+        raw_sections = []
+        if PYMUPDF_AVAILABLE:
+            raw_sections = [
+                {
+                    "content": ("## " + s["content"]) if s.get("header") else s["content"],
+                    "page_number": s.get("page_number"),
+                }
+                for s in DocumentProcessor.extract_text_from_pdf_structured(file_obj)
+            ]
+        if not raw_sections:
+            if hasattr(file_obj, "seek"):
+                file_obj.seek(0)
+            raw_sections = [
+                {"content": text, "page_number": page_num}
+                for text, page_num in DocumentProcessor.extract_text(file_obj, file_type)
+            ]
+
+        sections = []
+        for section in raw_sections:
+            content = DocumentProcessor.preprocess_text(section["content"])
+            if content:
+                sections.append({"content": content, "page_number": section["page_number"]})
+        return sections
+
+    @staticmethod
     def process_file_hierarchical(file_obj, file_type, file_name):
         """
-        Two-pass hierarchical (Parent-Child) chunking.
+        Two-pass hierarchical (Parent-Child) chunking over Markdown.
 
-        Pass 1 – PARENT chunks: ~1 200 tokens / ~4 800 characters.
-            Large, coherent sections that give the LLM full context.
+        Source – the file is converted to Markdown (LiteParse for PDFs,
+            python-docx for DOCX) and split on # headings, so tables and
+            section titles survive intact.
+
+        Pass 1 – PARENT chunks: up to ~1 200 tokens / ~4 800 characters.
+            Consecutive heading sections are packed together until the budget
+            is reached; only a single oversized section is sub-split.
             No embedding is stored for parents.
 
-        Pass 2 – CHILD chunks (per parent): ~200 tokens / ~800 characters
-            with 200-char overlap.  These are embedded and searched during
-            vector retrieval; the matching parent is then fetched for the LLM.
+        Pass 2 – CHILD chunks (per parent): ~384 tokens / ~1 536 characters
+            with 256-char overlap, each prefixed with the nearest preceding
+            heading.  These are embedded and searched during vector
+            retrieval; the matching parent is then fetched for the LLM.
 
         Returns:
             dict:
@@ -523,73 +726,78 @@ class DocumentProcessor:
                 start += size - overlap
             return chunks
 
-        # ── Source sections ──────────────────────────────────────────────────
-        # PDFs: prefer PyMuPDF header-aware extraction so each parent chunk
-        # corresponds to a real document section (e.g. a CHED handbook chapter).
-        # Fallback 1: PyMuPDF returned nothing → pypdf page-by-page text.
-        # Non-PDF (DOCX): pypdf path not applicable; use standard extraction.
-        if file_type == "pdf" and PYMUPDF_AVAILABLE:
-            raw_sections = DocumentProcessor.extract_text_from_pdf_structured(file_obj)
-            if not raw_sections:
-                # Structured extraction found no sections – seek back and use pypdf.
-                if hasattr(file_obj, "seek"):
-                    file_obj.seek(0)
-                raw_sections = [
-                    {"content": text, "page_number": page_num}
-                    for text, page_num in DocumentProcessor.extract_text(file_obj, file_type)
-                ]
-        else:
-            raw_sections = [
-                {
-                    "content": text,
-                    "page_number": page_num if file_type == "pdf" else None,
-                }
-                for text, page_num in DocumentProcessor.extract_text(file_obj, file_type)
+        sections = DocumentProcessor._extract_sections(file_obj, file_type)
+
+        # ── Pass 1: pack heading sections into parents ───────────────────────
+        # Syllabus templates have many tiny sections (one per table label), so
+        # sections are merged until the parent budget is reached.
+        parent_sources = []  # (text, page_number)
+        buffer, buffer_len, buffer_page = [], 0, None
+
+        def _flush_buffer():
+            nonlocal buffer, buffer_len, buffer_page
+            if buffer:
+                parent_sources.append(("\n\n".join(buffer), buffer_page))
+            buffer, buffer_len, buffer_page = [], 0, None
+
+        for section in sections:
+            text = section["content"]
+            page = section.get("page_number")
+            if len(text) > PARENT_CHUNK_CHARS:
+                _flush_buffer()
+                for piece in _split(text, PARENT_CHUNK_CHARS, PARENT_OVERLAP_CHARS, parent_splitter):
+                    if piece.strip():
+                        parent_sources.append((piece, page))
+                continue
+            if buffer and buffer_len + len(text) + 2 > PARENT_CHUNK_CHARS:
+                _flush_buffer()
+            if not buffer:
+                buffer_page = page
+            buffer.append(text)
+            buffer_len += len(text) + 2
+        _flush_buffer()
+
+        # ── Pass 2: split parents into heading-prefixed children ────────────
+        parents = []
+        for parent_text, parent_page in parent_sources:
+            headings = [
+                (m.start(), m.group(0).strip())
+                for m in re.finditer(r"^#{1,6}\s+.*\w.*$", parent_text, re.MULTILINE)
             ]
 
-        parents = []
-        for section in raw_sections:
-            # Preprocess text: normalize whitespace, strip decorative lines
-            section_text = DocumentProcessor.preprocess_text(section.get("content", ""))
-            section_page = section.get("page_number")
-            if not section_text.strip():
-                continue
+            children = []
+            search_from = 0
+            for child_text in _split(
+                parent_text, CHILD_CHUNK_CHARS, CHILD_OVERLAP_CHARS, child_splitter
+            ):
+                if not child_text.strip():
+                    continue
+                start = parent_text.find(child_text, search_from)
+                if start == -1:
+                    start = search_from
+                search_from = start + 1
 
-            # Keep header-delimited sections whole when they fit within the
-            # parent budget; only sub-split oversized sections.
-            if len(section_text) <= PARENT_CHUNK_CHARS:
-                candidate_parents = [section_text]
-            else:
-                candidate_parents = _split(
-                    section_text, PARENT_CHUNK_CHARS, PARENT_OVERLAP_CHARS, parent_splitter
+                preceding = [h for pos, h in headings if pos <= start]
+                if preceding and not child_text.lstrip().startswith("#"):
+                    child_text = f"{preceding[-1]}\n{child_text}"
+
+                children.append(
+                    {
+                        "content": child_text,
+                        "page_number": parent_page,
+                        "token_count": DocumentProcessor.count_tokens(child_text),
+                    }
                 )
 
-            for parent_text in candidate_parents:
-                if not parent_text.strip():
-                    continue
-
-                children = []
-                for child_text in _split(
-                    parent_text, CHILD_CHUNK_CHARS, CHILD_OVERLAP_CHARS, child_splitter
-                ):
-                    if child_text.strip():
-                        children.append(
-                            {
-                                "content": child_text,
-                                "page_number": section_page,
-                                "token_count": DocumentProcessor.count_tokens(child_text),
-                            }
-                        )
-
-                if children:
-                    parents.append(
-                        {
-                            "content": parent_text,
-                            "page_number": section_page,
-                            "token_count": DocumentProcessor.count_tokens(parent_text),
-                            "children": children,
-                        }
-                    )
+            if children:
+                parents.append(
+                    {
+                        "content": parent_text,
+                        "page_number": parent_page,
+                        "token_count": DocumentProcessor.count_tokens(parent_text),
+                        "children": children,
+                    }
+                )
 
         total_children = sum(len(p["children"]) for p in parents)
         logger.info(

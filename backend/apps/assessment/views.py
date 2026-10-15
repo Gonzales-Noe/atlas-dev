@@ -32,7 +32,7 @@ def generate_assessment(request):
             "CLO 1: Design normalised relational schemas",
             "CLO 2: Write complex SQL queries"
         ],
-        "provider": "gemini",                    // optional
+        "provider": "groq",                      // optional
         "top_k": 5,                              // optional
         "search_query": "...",                   // optional override
         "extra_instructions": "..."              // optional
