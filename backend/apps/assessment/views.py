@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
 from apps.integrations.rag_service import semantic_search, semantic_search_with_summary
+from apps.integrations.trial import trial_generation_gate
 
 from .serializers import GenerateAssessmentSerializer
 
@@ -43,6 +44,10 @@ def generate_assessment(request):
         3. LLMService sends the prompt to the configured provider.
         4. Generated assessment (TOS + items + rubric) is returned in the response.
     """
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
+
     serializer = GenerateAssessmentSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(
@@ -64,7 +69,9 @@ def generate_assessment(request):
 
     try:
         # Step 1 — Semantic search with progressive summary
-        rag_result = semantic_search_with_summary(search_query, top_k=top_k)
+        rag_result = semantic_search_with_summary(
+            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        )
         chunks = rag_result["chunks"]
         logger.info(
             "Assessment generation for %r (%s, %d items): retrieved %d RAG chunk(s) "
@@ -90,11 +97,12 @@ def generate_assessment(request):
 
         # Step 3 — Call LLM
         llm = LLMService()
-        generated_text = llm.generate_response(
+        generated_text, provider_used = llm.generate_response_with_fallback(
             messages=[{"role": "user", "content": user_prompt}],
-            provider_choice=provider,
+            preferred_provider=provider,
             system=system_prompt,
             max_tokens=4000,
+            return_provider=True,
         )
 
         return Response(
@@ -104,7 +112,7 @@ def generate_assessment(request):
                 "assessment_type": assessment_type,
                 "num_items": num_items,
                 "clos_provided": clos,
-                "provider_used": provider or llm.default_provider,
+                "provider_used": provider_used,
                 "rag_chunks_used": len(chunks),
                 "generated_assessment": generated_text,
             },

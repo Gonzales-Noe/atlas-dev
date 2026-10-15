@@ -1,7 +1,6 @@
 // src/components/AdminSetupGate.jsx
 // Blocks an institution admin from reaching any other module until the
-// first-time setup wizard has been completed. The wizard itself is
-// non-dismissable, so the admin has to finish the academic structure first.
+// first-time setup wizard has been completed.
 
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Box } from '@mui/material'
@@ -9,17 +8,7 @@ import { Alert, Box } from '@mui/material'
 import { useAuth } from '../store/authStore'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
 import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
-
-const DONE_KEY = 'atlas_setup_completed'
-
-function flagDone(value) {
-  try {
-    if (value) localStorage.setItem(DONE_KEY, '1')
-    else localStorage.removeItem(DONE_KEY)
-  } catch {
-    // Storage unavailable — the server-side flag remains the source of truth.
-  }
-}
+import LoadingState from './LoadingState'
 
 function toMessage(err, fallback) {
   const data = err?.response?.data
@@ -30,29 +19,35 @@ function toMessage(err, fallback) {
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()
+  const [checking, setChecking] = useState(
+    () => user?.role === 'admin' && user?.setup_completed !== true,
+  )
   const [needsSetup, setNeedsSetup] = useState(false)
-  const [statusKnown, setStatusKnown] = useState(false)
+  const [statusKnown, setStatusKnown] = useState(
+    () => user?.role !== 'admin' || user?.setup_completed === true,
+  )
   const [error, setError] = useState('')
 
   const check = useCallback(async () => {
+    setChecking(true)
     setError('')
     try {
-      const status = await fetchSetupStatus()
+      const status = await fetchSetupStatus(false)
       const done = Boolean(status?.setup_completed)
       setNeedsSetup(!done)
       setStatusKnown(true)
-      flagDone(done)
     } catch (err) {
-      // Never trap the admin because the status call failed. Only block when the
-      // server has positively told us setup is incomplete.
       setStatusKnown(false)
       setNeedsSetup(false)
-      setError(toMessage(err, 'Could not verify setup status. Other modules stay available until this succeeds.'))
+      setError(toMessage(err, 'Could not verify setup status.'))
+    } finally {
+      setChecking(false)
     }
   }, [])
 
   useEffect(() => {
     if (user?.role !== 'admin') {
+      setChecking(false)
       setNeedsSetup(false)
       setStatusKnown(true)
       return
@@ -61,7 +56,6 @@ export default function AdminSetupGate({ children }) {
   }, [user, check])
 
   const handleFinished = useCallback(() => {
-    flagDone(true)
     setNeedsSetup(false)
     setStatusKnown(true)
     // Keep the cached user payload in sync so a page refresh skips the wizard.
@@ -78,22 +72,26 @@ export default function AdminSetupGate({ children }) {
 
   if (user?.role !== 'admin') return children
 
-  // No gate-level loader on purpose. AdminLayout is remounted by every admin
-  // page, so any loading state here flashed a full-screen backdrop on each
-  // sidebar click. The pages render straight away and show their own in-page
-  // loading state instead.
+  if (checking && !statusKnown) {
+    return <LoadingState fullScreen label="Checking your setup..." />
+  }
+
+  if (!statusKnown && error) {
+    return (
+      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, background: 'var(--bg-page)' }}>
+        <Alert
+          severity="error"
+          action={<button onClick={check} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
+          sx={{ maxWidth: 560 }}
+        >
+          {error} Admin modules remain locked until setup status can be verified.
+        </Alert>
+      </Box>
+    )
+  }
+
   return (
     <>
-      {!statusKnown && error && (
-        <Alert
-          severity="warning"
-          action={<button onClick={check} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
-          sx={{ mb: 2, mx: 2 }}
-        >
-          {error}
-        </Alert>
-      )}
-
       <Box
         aria-hidden={needsSetup}
         sx={{
@@ -103,7 +101,6 @@ export default function AdminSetupGate({ children }) {
       >
         {children}
       </Box>
-
       <AdminSetupWizard open={needsSetup} onFinished={handleFinished} />
     </>
   )

@@ -1,11 +1,10 @@
 // src/components/FacultyWorkspacePage.jsx
-// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#8B0000).
+// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#15803D).
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import AutoAlert from './AutoAlert'
-import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
@@ -26,6 +25,12 @@ import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
+import Table from '@mui/material/Table'
+import TableBody from '@mui/material/TableBody'
+import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
+import TableHead from '@mui/material/TableHead'
+import TableRow from '@mui/material/TableRow'
 import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
@@ -56,75 +61,87 @@ import SendIcon from '@mui/icons-material/Send'
 import CloseIcon from '@mui/icons-material/Close'
 import SaveIcon from '@mui/icons-material/Save'
 import EditIcon from '@mui/icons-material/Edit'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined'
+import ReplayIcon from '@mui/icons-material/Replay'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
-import { toInitials, extractApiError } from '../utils'
+import { extractApiError } from '../utils'
+import { notifyGenerationComplete } from '../utils/userPreferences'
 import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
-import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const MAROON = '#FF453A'
-const MAROON_LIGHT = 'rgba(192,57,43,0.16)'
+const MAROON = '#16A34A'
+const MAROON_LIGHT = 'rgba(22,163,74,0.16)'
 const BG = '#0F0F12'
 
 const WORKSPACE_TABS = [
-  { key: 'syllabus', label: 'Syllabus', Icon: MenuBookIcon },
-  { key: 'module', label: 'Modules', Icon: ViewModuleIcon },
+  { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
+  { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
-  { key: 'grading', label: 'Grading', Icon: GradeIcon },
-  { key: 'analytics', label: 'Analytics', Icon: AnalyticsIcon },
+  { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
+  { key: 'analytics',  label: 'Analytics',   Icon: AnalyticsIcon },
 ]
 
 const SYLLABUS_SECTIONS = [
-  { key: 'overview', label: 'Course Overview' },
-  { key: 'basic', label: 'Basic Info' },
-  { key: 'details', label: 'Course Details' },
-  { key: 'iloat', label: 'ILOs & Assessments' },
-  { key: 'iloatmatrix', label: 'ILO–AT Matrix' },
-  { key: 'fwmap', label: 'Framework Mapping' },
-  { key: 'ilofwmatrix', label: 'ILO–Framework Matrix' },
-  { key: 'schedule', label: 'Weekly Schedule' },
-  { key: 'tos', label: 'Table of Specifications' },
-  { key: 'grading', label: 'Grading' },
-  { key: 'policies', label: 'Policies' },
+  { key: 'overview',      label: 'Course Overview' },
+  { key: 'basic',         label: 'Basic Info' },
+  { key: 'details',       label: 'Course Details' },
+  { key: 'iloat',         label: 'ILOs & Assessments' },
+  { key: 'iloatmatrix',   label: 'ILO–AT Matrix' },
+  { key: 'fwmap',         label: 'Framework Mapping' },
+  { key: 'ilofwmatrix',   label: 'ILO–Framework Matrix' },
+  { key: 'schedule',      label: 'Weekly Schedule' },
+  { key: 'tos',           label: 'Table of Specifications' },
+  { key: 'grading',       label: 'Grading' },
+  { key: 'policies',      label: 'Policies' },
 ]
 
 const PROVIDERS = ['gemini', 'gpt', 'groq', 'anthropic', 'openrouter']
-const AI_PROVIDERS = ['gemini', 'anthropic', 'groq', 'gpt']
-const AI_EXCLUDED_SECTIONS = new Set(['overview', 'iloatmatrix', 'ilofwmatrix', 'tos', 'grading'])
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
   'assignment', 'project', 'activity', 'performance task',
 ]
 
-const DEFAULT_GRADING_ROWS = [
-  { rating: 'Excellent', grade: '1.00', range: '98 – 100' },
-  { rating: 'Superior', grade: '1.25', range: '94 – 97' },
-  { rating: 'Very Good', grade: '1.50', range: '90 – 93' },
-  { rating: 'Good', grade: '1.75', range: '88 – 89' },
-  { rating: 'Meritorious', grade: '2.00', range: '85 – 87' },
-  { rating: 'Very Satisfactory', grade: '2.25', range: '83 – 84' },
-  { rating: 'Satisfactory', grade: '2.50', range: '80 – 82' },
-  { rating: 'Fairly Satisfactory', grade: '2.75', range: '78 – 79' },
-  { rating: 'Passing', grade: '3.00', range: '75 – 77' },
-  { rating: 'Failure', grade: '5.00', range: 'Below 70' },
-  { rating: 'Incomplete', grade: 'INC', range: '\u2014' },
-]
-
-const EMPTY_TASK = { code: '', task: '', ird: '', category: '', weight: '', ilo_values: [], subs: [], c: '', p: '', a: '' }
-const EMPTY_ATTR = { code: '', title: '', description: '' }
-const EMPTY_POLICY = { title: '', content: '' }
+const EMPTY_TASK    = { code: '', task: '', ird: '', category: '', weight: '', ilo_values: [], subs: [], c: '', p: '', a: '' }
+const EMPTY_ATTR    = { code: '', title: '', description: '' }
+const EMPTY_POLICY  = { title: '', content: '' }
 const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', ilo_refs: [], so: '', delivery: '' }
 
-const SCHEDULE_WEEKS = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+function normalizeSectionToken(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
 
-const YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
+function syllabusEditorKey(section) {
+  const candidates = [section.key, section.label]
+  for (const candidate of candidates) {
+    const token = normalizeSectionToken(candidate)
+    const builtIn = SYLLABUS_SECTIONS.find(
+      item => normalizeSectionToken(item.key) === token || normalizeSectionToken(item.label) === token,
+    )
+    if (builtIn) return builtIn.key
+  }
+  const aliases = {
+    courseoverview: 'overview',
+    basicinfo: 'basic',
+    coursedetails: 'details',
+    iloassessments: 'iloat',
+    ilosassessments: 'iloat',
+    weeklyschedule: 'schedule',
+    tableofspecifications: 'tos',
+  }
+  for (const candidate of candidates) {
+    const editorKey = aliases[normalizeSectionToken(candidate)]
+    if (editorKey) return editorKey
+  }
+  return null
+}
 
 // Bloom’s Taxonomy verbs mapped to year level (lower → higher order thinking)
 const BLOOM_VERBS_BY_YEAR = {
@@ -172,10 +189,10 @@ const TABLE_TD = {
 
 // ── TOS keyword-alignment helpers (ported from PEA pipeline mapping.js) ───────
 const TOS_STOP_WORDS = new Set([
-  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'by', 'for', 'from', 'has', 'have',
-  'he', 'her', 'him', 'his', 'how', 'i', 'in', 'is', 'it', 'its', 'of', 'on', 'or', 'she',
-  'so', 'that', 'the', 'their', 'them', 'they', 'this', 'to', 'was', 'we', 'were',
-  'what', 'which', 'who', 'will', 'with', 'you', 'your',
+  'a','an','and','are','as','at','be','been','by','for','from','has','have',
+  'he','her','him','his','how','i','in','is','it','its','of','on','or','she',
+  'so','that','the','their','them','they','this','to','was','we','were',
+  'what','which','who','will','with','you','your',
 ])
 function tosTokenize(text) {
   return (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(t => t.length > 1 && !TOS_STOP_WORDS.has(t))
@@ -188,11 +205,10 @@ function tosJaccard(tokensA, tokensB) {
 }
 
 const EMPTY_SYLLABUS = {
-  // 1. Header & Institutional Info
-  university_name: 'Republic of the Philippines\nBatangas State University (The National Engineering University)\nBatStateU-Lipa Campus',
-  college: 'College of Informatics and Computing Sciences',
-  program: 'Bachelor of Science in Information Technology',
-  document_title: 'Course Information Syllabus (CIS)',
+  university_name: '',
+  college: '',
+  program: '',
+  document_title: '',
   // 2. University Direction
   vision: '', mission: '',
   // 3. Course Specifications
@@ -211,46 +227,33 @@ const EMPTY_SYLLABUS = {
   ilos: [''],
   ilo_bloom: [{ level: '', verb: '' }],
   assessment_tasks: [{ ...EMPTY_TASK, ilo_values: [''] }],
-  ats: [{ code: 'C1', label: 'Component 1', weight: 100, subs: [] }],
-  tos: [{ id: 'tos-1', examCode: 'ME', examLabel: 'Midterm Examination', semester: '', preparedBy: '', checkedBy: '', approvedBy: '', topics: [{ id: 'r-1', topic: '', ilos: [], hours_class: 0, hours_min: 0, weight: '', bloom_items: { remember: '', understand: '', apply: '', analyze: '', evaluate: '', create: '' }, bloom_pct: { remember: '', understand: '', apply: '', analyze: '', evaluate: '', create: '' }, total_points: '' }] }],
+  ats: [],
+  tos: [],
   // 7. References & Frameworks
   references: [''],
-  igas: [{ ...EMPTY_ATTR }],
+  igas:             [{ ...EMPTY_ATTR }],
   student_outcomes: [{ ...EMPTY_ATTR }],
-  cdio_skills: [{ ...EMPTY_ATTR }],
-  sdg_skills: [{ ...EMPTY_ATTR }],
+  cdio_skills:      [{ ...EMPTY_ATTR }],
+  sdg_skills:       [{ ...EMPTY_ATTR }],
   // 8. Course Policies
-  grading_rows: DEFAULT_GRADING_ROWS.map(r => ({ ...r })),
-  passing_grade: 75, use_plus_minus: false, remedial_enabled: true, round_grades: false,
-  policies: [{ title: 'Class Policies', content: '' }],
+  grading_rows:   [],
+  passing_grade: '', use_plus_minus: false, remedial_enabled: false, round_grades: false,
+  policies:       [],
   other_policies: '',
   // 9. TLA Activities
   tla_chapters: [{ ...EMPTY_CHAPTER }],
   // 10. Schedules & Mappings
-  schedule_methods: [{ name: 'Major Examinations', values: Array(16).fill('') }],
-  so_headers: [''],
-  so_cpa_rows: [{ so_vals: [''], c: '', p: '', a: '' }],
-  iga_headers: [''],
-  iga_rows: [{ vals: [''] }],
-  cdio_headers: [''],
-  sdg_headers: [''],
-  cdio_sdg_rows: [{ cdio_vals: [''], sdg_vals: [''] }],
-}
-
-// ── Sidebar toggle icons ─────────────────────────────────────────────────
-function PanelLeftIcon(props) {
-  return (
-    <SvgIcon {...props} viewBox="0 0 20 18">
-      {/* outer rounded rect */}
-      <rect x="1" y="1" width="18" height="16" rx="2.5" ry="2.5"
-        fill="none" stroke="currentColor" strokeWidth="1.5" />
-      {/* vertical divider */}
-      <line x1="7" y1="1" x2="7" y2="17" stroke="currentColor" strokeWidth="1.5" />
-      {/* left strip filled */}
-      <rect x="2" y="2" width="4.5" height="14" rx="1.5"
-        fill="currentColor" opacity="0.55" />
-    </SvgIcon>
-  )
+  schedule_methods:  [],
+  so_headers:        [''],
+  so_cpa_rows:       [{ so_vals: [''], c: '', p: '', a: '' }],
+  iga_headers:       [''],
+  iga_rows:          [{ vals: [''] }],
+  cdio_headers:      [''],
+  sdg_headers:       [''],
+  cdio_sdg_rows:     [{ cdio_vals: [''], sdg_vals: [''] }],
+  custom_sections:   {},
+  custom_subsections: {},
+  custom_tables: {},
 }
 
 function PanelRightIcon(props) {
@@ -309,7 +312,7 @@ function LField({ label, ...props }) {
 function GenButton({ children, ...props }) {
   return (
     <Button variant="contained" fullWidth {...props}
-      sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00' }, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
+      sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
       {children}
     </Button>
   )
@@ -341,7 +344,7 @@ function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s }
 
 function detectFileType(file) {
   const n = (file?.name || '').toLowerCase()
-  if (n.endsWith('.pdf')) return 'pdf'
+  if (n.endsWith('.pdf'))  return 'pdf'
   if (n.endsWith('.docx')) return 'docx'
   return ''
 }
@@ -459,12 +462,12 @@ function MultiSelectCell({ value, options, onChange }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '5px 12px', cursor: 'pointer', fontSize: '0.73rem',
-                  background: checked ? '#FFF5F5' : 'transparent',
-                  color: checked ? '#8B0000' : '#333',
+                  background: checked ? '#F0FDF4' : 'transparent',
+                  color: checked ? '#15803D' : '#333',
                 }}
               >
                 <input type="checkbox" checked={checked} readOnly
-                  style={{ accentColor: '#8B0000', flexShrink: 0, pointerEvents: 'none' }} />
+                  style={{ accentColor: '#15803D', flexShrink: 0, pointerEvents: 'none' }} />
                 <span style={{ fontWeight: checked ? 700 : 400 }}>{label}</span>
               </div>
             )
@@ -583,7 +586,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
   }
 
   return (
-    <div style={{ '--c-card': '#ffffff', '--c-border': 'rgba(0,0,0,0.09)', '--c-panel': '#F7F9FC', '--c-text': '#333333', '--c-muted': '#888888', '--c-muted2': '#666666', '--c-accent': '#8B0000', '--c-accent-br': 'rgba(139,0,0,0.3)', '--c-border2': 'rgba(0,0,0,0.15)' }}>
+    <div style={{ '--c-card': '#ffffff', '--c-border': 'rgba(0,0,0,0.09)', '--c-panel': '#F7F9FC', '--c-text': '#333333', '--c-muted': '#888888', '--c-muted2': '#666666', '--c-accent': '#15803D', '--c-accent-br': 'rgba(21,128,61,0.3)', '--c-border2': 'rgba(0,0,0,0.15)' }}>
       <div style={{ ...cardStyle, marginBottom: 14 }}>
         <div style={{ ...cardHeaderStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setAtsOpen(o => !o)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -632,49 +635,49 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
                       <span style={{ width: 28, flexShrink: 0 }} />
                     </div>
                   )}
-                  {at.subs.map((sub, si) => {
-                    return (
-                      <div key={sub.code} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: si < at.subs.length - 1 ? '1px solid var(--c-border)' : 'none', flexWrap: 'wrap' }}>
-                        <div style={{ flex: '1 1 200px', maxWidth: '75%', minWidth: 0, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                          <input value={sub.code} onChange={e => updSub(at.code, si, 'code', e.target.value)} style={{ ...inputStyle, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700, width: 52, flexShrink: 0, boxSizing: 'border-box' }} />
-                          <input value={sub.label} onChange={e => updSub(at.code, si, 'label', e.target.value)} style={{ ...inputStyle, fontSize: '0.8rem', flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }} />
-                        </div>
-                        <div style={{ flex: '2 1 200px', minWidth: 160 }}>
-                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
-                            {ilos.map(ilo => (
-                              <label key={ilo.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.72rem', color: 'var(--c-muted2)', cursor: 'pointer' }}>
-                                <input type="checkbox" checked={sub.ilos.includes(ilo.id)} onChange={e => togILO(at.code, si, ilo.id, e.target.checked)} style={{ width: 9, height: 9 }} />
-                                {ilo.id}
-                              </label>
-                            ))}
+                    {at.subs.map((sub, si) => {
+                      return (
+                        <div key={sub.code} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: si < at.subs.length - 1 ? '1px solid var(--c-border)' : 'none', flexWrap: 'wrap' }}>
+                          <div style={{ flex: '1 1 200px', maxWidth: '75%', minWidth: 0, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                            <input value={sub.code} onChange={e => updSub(at.code, si, 'code', e.target.value)} style={{ ...inputStyle, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700, width: 52, flexShrink: 0, boxSizing: 'border-box' }} />
+                            <input value={sub.label} onChange={e => updSub(at.code, si, 'label', e.target.value)} style={{ ...inputStyle, fontSize: '0.8rem', flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }} />
                           </div>
-                          {sub.ilos.map(iloId => {
-                            const rowScore = parseInt(sub.scores[iloId], 10) || 0
-                            const rowTotal = parseInt((sub.iloTotals || {})[iloId] ?? (sub.total || 0), 10) || 0
-                            const rowOk = rowScore === rowTotal
-                            return (
-                              <div key={iloId} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
-                                <span style={{ minWidth: 32, fontSize: '0.72rem', color: 'var(--c-muted2)', fontFamily: 'monospace' }}>{iloId}</span>
-                                <input type="text" inputMode="numeric" value={String(rowScore)} onChange={e => updScore(at.code, si, iloId, e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')}
-                                  style={{ width: 52, minWidth: 48, padding: '3px 6px', fontSize: '0.75rem', border: `1px solid ${rowOk ? '#22c55e' : 'var(--c-border2)'}`, borderRadius: 4, background: 'var(--c-card)', color: 'var(--c-text)', textAlign: 'center', boxSizing: 'border-box' }}
-                                />
-                                <span style={{ fontSize: '0.72rem', color: rowOk ? '#22c55e' : '#ef4444' }}>/</span>
-                                <input type="text" inputMode="numeric" value={String(rowTotal)} onChange={e => updIloTotal(at.code, si, iloId, e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')}
-                                  style={{ width: 52, minWidth: 48, padding: '3px 4px', fontSize: '0.75rem', border: `1px solid ${rowOk ? '#22c55e' : '#ef4444'}`, borderRadius: 4, background: 'var(--c-card)', color: rowOk ? '#22c55e' : '#ef4444', textAlign: 'center', boxSizing: 'border-box', fontWeight: 600 }}
-                                />
-                                <span style={{ fontSize: '0.72rem', color: rowOk ? '#22c55e' : '#ef4444' }}>{rowOk ? '✓' : '⚠'}</span>
-                              </div>
-                            )
-                          })}
+                          <div style={{ flex: '2 1 200px', minWidth: 160 }}>
+                            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+                              {ilos.map(ilo => (
+                                <label key={ilo.id} style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.72rem', color: 'var(--c-muted2)', cursor: 'pointer' }}>
+                                  <input type="checkbox" checked={sub.ilos.includes(ilo.id)} onChange={e => togILO(at.code, si, ilo.id, e.target.checked)} style={{ width: 9, height: 9 }} />
+                                  {ilo.id}
+                                </label>
+                              ))}
+                            </div>
+                            {sub.ilos.map(iloId => {
+                              const rowScore = parseInt(sub.scores[iloId], 10) || 0
+                              const rowTotal = parseInt((sub.iloTotals || {})[iloId] ?? (sub.total || 0), 10) || 0
+                              const rowOk = rowScore === rowTotal
+                              return (
+                                <div key={iloId} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2, flexWrap: 'wrap' }}>
+                                  <span style={{ minWidth: 32, fontSize: '0.72rem', color: 'var(--c-muted2)', fontFamily: 'monospace' }}>{iloId}</span>
+                                  <input type="text" inputMode="numeric" value={String(rowScore)} onChange={e => updScore(at.code, si, iloId, e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')}
+                                    style={{ width: 52, minWidth: 48, padding: '3px 6px', fontSize: '0.75rem', border: `1px solid ${rowOk ? '#22c55e' : 'var(--c-border2)'}`, borderRadius: 4, background: 'var(--c-card)', color: 'var(--c-text)', textAlign: 'center', boxSizing: 'border-box' }}
+                                  />
+                                  <span style={{ fontSize: '0.72rem', color: rowOk ? '#22c55e' : '#ef4444' }}>/</span>
+                                  <input type="text" inputMode="numeric" value={String(rowTotal)} onChange={e => updIloTotal(at.code, si, iloId, e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')}
+                                    style={{ width: 52, minWidth: 48, padding: '3px 4px', fontSize: '0.75rem', border: `1px solid ${rowOk ? '#22c55e' : '#ef4444'}`, borderRadius: 4, background: 'var(--c-card)', color: rowOk ? '#22c55e' : '#ef4444', textAlign: 'center', boxSizing: 'border-box', fontWeight: 600 }}
+                                  />
+                                  <span style={{ fontSize: '0.72rem', color: rowOk ? '#22c55e' : '#ef4444' }}>{rowOk ? '✓' : '⚠'}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 3, flex: '0 0 88px', width: 88, flexShrink: 0 }}>
+                            <input type="text" inputMode="numeric" value={String(parseInt(sub.weight, 10) || 0)} onChange={e => updSub(at.code, si, 'weight', e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')} style={{ ...inputStyle, width: 56, minWidth: 52, fontSize: '0.75rem', boxSizing: 'border-box', textAlign: 'center' }} />
+                            <span style={{ fontSize: '0.72rem', color: 'var(--c-muted)' }}>%</span>
+                          </div>
+                          <button type="button" style={deleteButtonStyle} onClick={() => delSub(at.code, si)}><Trash2 size={11} /></button>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flex: '0 0 88px', width: 88, flexShrink: 0 }}>
-                          <input type="text" inputMode="numeric" value={String(parseInt(sub.weight, 10) || 0)} onChange={e => updSub(at.code, si, 'weight', e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')} style={{ ...inputStyle, width: 56, minWidth: 52, fontSize: '0.75rem', boxSizing: 'border-box', textAlign: 'center' }} />
-                          <span style={{ fontSize: '0.72rem', color: 'var(--c-muted)' }}>%</span>
-                        </div>
-                        <button type="button" style={deleteButtonStyle} onClick={() => delSub(at.code, si)}><Trash2 size={11} /></button>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
                   <button type="button" style={{ ...addButtonStyle, marginTop: 6 }} onClick={() => addTask(at.code)}><Plus size={9} /> Add task</button>
                 </div>
               </div>
@@ -691,29 +694,44 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout } = useAuth()
-  const [anchorEl, setAnchorEl] = useState(null)
+  const { user, logout, updateProfile } = useAuth()
 
   const { courseId: courseIdParam } = useParams()
   const [searchParams] = useSearchParams()
   const courseId = courseIdParam || searchParams.get('course') || ''
+  const sidebarPreferenceKey = `atlas-dashboard-sidebar-collapsed:${user?.id ?? user?.email ?? 'faculty'}`
 
-  const [activeTab, setActiveTab] = useState(initialTab)
+  const [activeTab, setActiveTab]     = useState(initialTab)
   const [syllabusSub, setSyllabusSub] = useState('overview')
 
-  const [leftWidth, setLeftWidth] = useState(240)
+  const [leftWidth, setLeftWidth]   = useState(240)
   const [rightWidth, setRightWidth] = useState(380)
-  const [leftCollapsed, setLeftCollapsed] = useState(false)
+  const [leftCollapsed, setLeftCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem(sidebarPreferenceKey) === 'true'
+    } catch {
+      return false
+    }
+  })
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [dragging, setDragging] = useState(null)
+  const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
   const isMobile = useMediaQuery('(max-width: 768px)')
-  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
 
   function toggleLeftPanel() {
-    setLeftCollapsed(v => !v)
+    updateLeftSidebarPreference(!leftCollapsed)
     setDragging(null)
+  }
+
+  function updateLeftSidebarPreference(nextCollapsed) {
+    setLeftCollapsed(nextCollapsed)
+    try {
+      window.localStorage.setItem(sidebarPreferenceKey, String(nextCollapsed))
+    } catch {
+      // Keep the sidebar usable when browser storage is unavailable.
+    }
   }
 
   function toggleRightPanel() {
@@ -721,12 +739,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setDragging(null)
   }
 
-  const [resultText, setResultText] = useState('')
-  const [actionError, setActionError] = useState('')
+  const [resultText, setResultText]       = useState('')
+  const [actionError, setActionError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
   const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'groq', top_k: 5, extra_instructions: '' })
-  const [moduleParams, setModuleParams] = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'gemini', top_k: 5, extra_instructions: '' })
   const [assessmentParams, setAssessmentParams] = useState({
     faculty_topics: '',
     extra_instructions: '',
@@ -742,55 +760,57 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })
   const [assessmentBatchProgress, setAssessmentBatchProgress] = useState(null)
 
-  const [uploadForm, setUploadForm] = useState({ module_tag: '', term_tag: '' })
-  const [uploadFile, setUploadFile] = useState(null)
-  const [uploadError, setUploadError] = useState('')
-  const [uploadSuccess, setUploadSuccess] = useState('')
-  const [uploadStatus, setUploadStatus] = useState('')
+  const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
+  const [uploadFile, setUploadFile]         = useState(null)
+  const [uploadError, setUploadError]       = useState('')
+  const [uploadSuccess, setUploadSuccess]   = useState('')
+  const [uploadStatus, setUploadStatus]     = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [uploading, setUploading] = useState(false)
+  const [uploading, setUploading]           = useState(false)
 
   // ── Editable syllabus state ─────────────────────────────────────────────
   const [syllabusData, setSyllabusData] = useState(EMPTY_SYLLABUS)
-  const [syllabusId, setSyllabusId] = useState(null)
-  const [activeTosId, setActiveTosId] = useState(null)
-  const [tosListOpen, setTosListOpen] = useState(true)
+  const [syllabusId, setSyllabusId]     = useState(null)
+  const [activeTosId, setActiveTosId]   = useState(null)
+  const [tosListOpen, setTosListOpen]   = useState(true)
   const [tosDetailOpen, setTosDetailOpen] = useState(true)
-  const [isDirty, setIsDirty] = useState(false)
-  const [saveLoading, setSaveLoading] = useState(false)
-  const [saveError, setSaveError] = useState('')
-  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [isDirty, setIsDirty]           = useState(false)
+  const [saveLoading, setSaveLoading]   = useState(false)
+  const [saveError, setSaveError]       = useState('')
+  const [saveSuccess, setSaveSuccess]   = useState(false)
 
   // ── AI footer state ─────────────────────────────────────────────────────
   // aiField: null | { section, label, fieldType, field, arrField, arrIndex, arrObjKey }
-  const [aiField, setAiField] = useState(null)
-  const [aiProvider, setAiProvider] = useState('gemini')
+  const [aiField, setAiField]         = useState(null)
   const [aiGenerating, setAiGenerating] = useState(false)
-  const [aiError, setAiError] = useState('')
+  const [aiError, setAiError]         = useState('')
+  const [aiPipelineDrafts, setAiPipelineDrafts] = useState(null)
+  const [aiPipelineProgress, setAiPipelineProgress] = useState(null)
+  const [aiReviewOpen, setAiReviewOpen] = useState(false)
   // ILO assistant
   const [iloBloomVerb, setIloBloomVerb] = useState('')
   const [iloFocusText, setIloFocusText] = useState('')
 
   // ── Source panel state ───────────────────────────────────────────────────
   const [selectedDocIds, setSelectedDocIds] = useState(new Set())
-  const [renamingDocId, setRenamingDocId] = useState(null)
-  const [renameValue, setRenameValue] = useState('')
-  const [deletingDocId, setDeletingDocId] = useState(null)
+  const [renamingDocId, setRenamingDocId]   = useState(null)
+  const [renameValue, setRenameValue]       = useState('')
+  const [deletingDocId, setDeletingDocId]   = useState(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [deletingAssessmentId, setDeletingAssessmentId] = useState(null)
   const [confirmDeleteAssessmentId, setConfirmDeleteAssessmentId] = useState(null)
 
   // ── Module creation flow state ───────────────────────────────────────────
-  const [moduleCreating, setModuleCreating] = useState(false)
+  const [moduleCreating, setModuleCreating]         = useState(false)
   const [moduleFromSchedule, setModuleFromSchedule] = useState(false)
 
   // ── Module detail / viewer state ─────────────────────────────────────────
-  const [selectedModule, setSelectedModule] = useState(null) // { module_id, ... }
-  const [moduleContent, setModuleContent] = useState(null) // JSON content
+  const [selectedModule, setSelectedModule]         = useState(null) // { module_id, ... }
+  const [moduleContent, setModuleContent]           = useState(null) // JSON content
   const [moduleContentDirty, setModuleContentDirty] = useState(false)
-  const [moduleSaving, setModuleSaving] = useState(false)
-  const [moduleExporting, setModuleExporting] = useState(false)
-  const [expandedSubtopics, setExpandedSubtopics] = useState(new Set())
+  const [moduleSaving, setModuleSaving]             = useState(false)
+  const [moduleExporting, setModuleExporting]       = useState(false)
+  const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
   const [assessmentCreating, setAssessmentCreating] = useState(false)
   const [assessmentSessionId, setAssessmentSessionId] = useState(null)
@@ -830,15 +850,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [editingItemDraft, setEditingItemDraft] = useState(null)
   const [itemSaving, setItemSaving] = useState(false)
   // AI chatbox
-  const [chatOpen, setChatOpen] = useState(false)
+  const [chatOpen, setChatOpen]       = useState(false)
   const [chatMessages, setChatMessages] = useState([])
-  const [chatInput, setChatInput] = useState('')
+  const [chatInput, setChatInput]     = useState('')
   const [chatLoading, setChatLoading] = useState(false)
-  const [chatField, setChatField] = useState('')  // which section is focused
+  const [chatField, setChatField]     = useState('')  // which section is focused
 
   // ── Syllabus upload (parse) state ────────────────────────────────────────
-  const syllabusUploadRef = useRef(null)
-  const [syllabusUploading, setSyllabusUploading] = useState(false)
+  const syllabusUploadRef                   = useRef(null)
+  const [syllabusUploading, setSyllabusUploading]     = useState(false)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
   const [activeFwKey, setActiveFwKey] = useState('SO')
@@ -847,6 +867,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
   const [syllabusExporting, setSyllabusExporting] = useState(false)
   const [syllabusExportError, setSyllabusExportError] = useState('')
+  const [tosExporting, setTosExporting] = useState(false)
+  const [tosExportError, setTosExportError] = useState('')
 
   function setSyl(field, value) {
     setIsDirty(true)
@@ -883,10 +905,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const normTasks = (tasks) => (tasks || []).map(t => {
       if (Array.isArray(t.ilo_values)) return t
       const iloVals = Array.from({ length: iloCount }, (_, i) => t[`ilo${i + 1}`] || '')
-      return {
-        code: t.code || '', task: t.task || '', ird: t.ird || '', weight: t.weight || '',
-        ilo_values: iloVals, c: '', p: '', a: t.domain || ''
-      }
+      return { code: t.code || '', task: t.task || '', ird: t.ird || '', weight: t.weight || '',
+               ilo_values: iloVals, c: '', p: '', a: t.domain || '' }
     })
 
     // 2. tla_chapters: old {chapter,description} → new column model
@@ -914,22 +934,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
     // 5. CDIO/SDG mapping rows
     const cdioHeaders = raw.cdio_headers || ['']
-    const sdgHeaders = raw.sdg_headers || ['']
+    const sdgHeaders  = raw.sdg_headers  || ['']
     const normCdioSdg = Array.from({ length: iloCount }, (_, i) => {
       const ex = (raw.cdio_sdg_rows || [])[i] || {}
       return {
         cdio_vals: Array.from({ length: cdioHeaders.length }, (_, j) => (ex.cdio_vals || [])[j] || ''),
-        sdg_vals: Array.from({ length: sdgHeaders.length }, (_, j) => (ex.sdg_vals || [])[j] || ''),
+        sdg_vals:  Array.from({ length: sdgHeaders.length  }, (_, j) => (ex.sdg_vals  || [])[j] || ''),
       }
     })
 
     // 6. Assessment schedule methods
-    const normSchedule = (raw.schedule_methods || []).length
-      ? raw.schedule_methods.map(m => ({
-        name: m.name || '',
-        values: Array.from({ length: 16 }, (_, j) => (m.values || [])[j] || ''),
-      }))
-      : [{ name: 'Major Examinations', values: Array(16).fill('') }]
+    const normSchedule = (raw.schedule_methods || []).map(m => ({
+      name: m.name || '',
+      values: Array.from({ length: 16 }, (_, j) => (m.values || [])[j] || ''),
+    }))
 
     const normTasksResult = normTasks(raw.assessment_tasks || [])
     const normChaptersResult = normChapters(raw.tla_chapters || [])
@@ -946,7 +964,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       id: `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       topic: '', ilos: [], hours_class: 0, hours_min: 0, weight: '',
       bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
-      bloom_pct: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
+      bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
       total_points: '',
     })
     const normTopicRow = (r) => ({
@@ -954,26 +972,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       topic: r.topic || '',
       ilos: r.ilos || [],
       hours_class: r.hours_class ?? 0,
-      hours_min: r.hours_min ?? 0,
+      hours_min:   r.hours_min ?? 0,
       weight: r.weight || '',
       bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_items || {})[k] || (r.bloom_dist || {})[k] || '' }), {}),
-      bloom_pct: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_pct || {})[k] || '' }), {}),
+      bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_pct || {})[k] || '' }), {}),
       total_points: r.total_points || '',
     })
     const normTos = (() => {
       const raw_tos = raw.tos || []
-      if (!raw_tos.length) return [{ id: 'tos-1', examCode: 'ME', examLabel: 'Midterm Examination', semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, topics: [mkEmptyTopicRow()] }]
+      if (!raw_tos.length) return []
       // Migrate old flat format: [{topic, bloom_dist, ...}] → single exam wrapper
       if (!raw_tos[0].topics && !raw_tos[0].examLabel) {
         return [{ id: 'tos-migrated', examCode: 'ME', examLabel: 'Examination', semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, topics: raw_tos.map(normTopicRow) }]
       }
       return raw_tos.map(exam => ({
         id: exam.id || `tos-${Date.now()}`,
-        examCode: exam.examCode || '',
-        examLabel: exam.examLabel || '',
-        semester: exam.semester || '',
+        examCode:   exam.examCode   || '',
+        examLabel:  exam.examLabel  || '',
+        semester:   exam.semester   || '',
         preparedBy: exam.preparedBy || '',
-        checkedBy: exam.checkedBy || '',
+        checkedBy:  exam.checkedBy  || '',
         approvedBy: exam.approvedBy || '',
         totalTestItems: exam.totalTestItems || 0,
         topics: (exam.topics || []).length ? exam.topics.map(normTopicRow) : [mkEmptyTopicRow()],
@@ -990,11 +1008,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         : [{ ...EMPTY_TASK, ilo_values: Array(iloCount).fill('') }],
       tla_chapters: normChaptersResult.length ? normChaptersResult : [{ ...EMPTY_CHAPTER }],
       schedule_methods: normSchedule,
-      so_headers: soHeaders, so_cpa_rows: normSoCpa,
-      iga_headers: igaHeaders, iga_rows: normIga,
-      cdio_headers: cdioHeaders, sdg_headers: sdgHeaders,
+      so_headers:    soHeaders,    so_cpa_rows:   normSoCpa,
+      iga_headers:   igaHeaders,   iga_rows:      normIga,
+      cdio_headers:  cdioHeaders,  sdg_headers:   sdgHeaders,
       cdio_sdg_rows: normCdioSdg,
       ats: raw.ats || EMPTY_SYLLABUS.ats,
+      custom_sections: raw.custom_sections || {},
+      custom_subsections: raw.custom_subsections || {},
+      custom_tables: raw.custom_tables || {},
     }
   }
 
@@ -1002,10 +1023,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function addIlo() {
     setIsDirty(true); setSaveSuccess(false)
     setSyllabusData(s => {
-      const soLen = (s.so_headers || ['']).length
-      const igaLen = (s.iga_headers || ['']).length
+      const soLen   = (s.so_headers   || ['']).length
+      const igaLen  = (s.iga_headers  || ['']).length
       const cdioLen = (s.cdio_headers || ['']).length
-      const sdgLen = (s.sdg_headers || ['']).length
+      const sdgLen  = (s.sdg_headers  || ['']).length
       return {
         ...s,
         ilos: [...s.ilos, ''],
@@ -1013,8 +1034,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         assessment_tasks: s.assessment_tasks.map(t => ({
           ...t, ilo_values: [...(t.ilo_values || []), ''],
         })),
-        so_cpa_rows: [...(s.so_cpa_rows || []), { so_vals: Array(soLen).fill(''), c: '', p: '', a: '' }],
-        iga_rows: [...(s.iga_rows || []), { vals: Array(igaLen).fill('') }],
+        so_cpa_rows:   [...(s.so_cpa_rows   || []), { so_vals: Array(soLen).fill(''),   c: '', p: '', a: '' }],
+        iga_rows:      [...(s.iga_rows      || []), { vals: Array(igaLen).fill('') }],
         cdio_sdg_rows: [...(s.cdio_sdg_rows || []), { cdio_vals: Array(cdioLen).fill(''), sdg_vals: Array(sdgLen).fill('') }],
       }
     })
@@ -1031,8 +1052,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       assessment_tasks: s.assessment_tasks.map(t => ({
         ...t, ilo_values: (t.ilo_values || []).filter((_, j) => j !== i),
       })),
-      so_cpa_rows: (s.so_cpa_rows || []).filter((_, j) => j !== i),
-      iga_rows: (s.iga_rows || []).filter((_, j) => j !== i),
+      so_cpa_rows:   (s.so_cpa_rows   || []).filter((_, j) => j !== i),
+      iga_rows:      (s.iga_rows      || []).filter((_, j) => j !== i),
       cdio_sdg_rows: (s.cdio_sdg_rows || []).filter((_, j) => j !== i),
     }))
   }
@@ -1078,22 +1099,176 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }))
   }
 
-  // ── AI helper: read / write the selected field ──────────────────────────
-  function getAiCurrentValue() {
-    if (!aiField) return ''
-    const { fieldType, field, arrField, arrIndex, arrObjKey } = aiField
-    if (fieldType === 'simple') return syllabusData[field] || ''
-    if (fieldType === 'array') return syllabusData[arrField]?.[arrIndex] || ''
-    if (fieldType === 'arrayObj') return syllabusData[arrField]?.[arrIndex]?.[arrObjKey] || ''
-    return ''
+  function getAiFieldsForCurrentSection() {
+    const simpleFields = (section, fields) => fields.map(([field, label]) => ({
+      section,
+      field,
+      label,
+      fieldType: 'simple',
+    }))
+    if (!activeConfiguredSection) return []
+
+    const configuredTableFields = []
+    if (!activeConfiguredSection.is_static) {
+      if (activeConfiguredSection.table_enabled
+        && Array.isArray(activeConfiguredSection.table_columns)
+        && activeConfiguredSection.table_columns.length) {
+        configuredTableFields.push({
+          section: activeConfiguredSection.key,
+          label: `${activeConfiguredSection.label} table`,
+          fieldType: 'customTable',
+          tableKey: '__section__',
+          columns: activeConfiguredSection.table_columns,
+        })
+      }
+      for (const subsection of activeConfiguredSection.subsections || []) {
+        if (subsection.table_enabled
+          && Array.isArray(subsection.table_columns)
+          && subsection.table_columns.length) {
+          configuredTableFields.push({
+            section: activeConfiguredSection.key,
+            label: `${subsection.label || 'Subsection'} table`,
+            fieldType: 'customTable',
+            tableKey: subsection.key,
+            columns: subsection.table_columns,
+          })
+        }
+      }
+    }
+    const withConfiguredTables = fields => [...fields, ...configuredTableFields]
+
+    if (activeSyllabusSectionKey === 'basic') {
+      return withConfiguredTables(simpleFields('basic', [
+        ['vision', 'University Vision'],
+        ['mission', 'University Mission'],
+      ]))
+    }
+    if (activeSyllabusSectionKey === 'details') {
+      return withConfiguredTables(simpleFields('details', [
+        ['rationale', 'Course Rationale'],
+        ['description', 'Course Description'],
+        ['tlas', 'Teaching and Learning Strategies'],
+        ['technology_integration', 'Technology Integration'],
+      ]))
+    }
+    if (activeSyllabusSectionKey === 'iloat') {
+      return withConfiguredTables(syllabusData.ilos.map((_, index) => ({
+        section: 'iloat',
+        label: `Intended Learning Outcome ${index + 1}`,
+        fieldType: 'array',
+        arrField: 'ilos',
+        arrIndex: index,
+      })))
+    }
+    if (activeSyllabusSectionKey === 'fwmap') {
+      const frameworkFields = {
+        SO: ['student_outcomes', 'Student Outcome'],
+        IGA: ['igas', 'Institutional Graduate Attribute'],
+        CDIO: ['cdio_skills', 'CDIO Skill'],
+        SDG: ['sdg_skills', 'SDG Skill'],
+      }
+      const [arrField, label] = frameworkFields[activeFwKey] || frameworkFields.SO
+      return withConfiguredTables((syllabusData[arrField] || []).map((_, index) => ({
+        section: 'fwmap',
+        label: `${label} ${index + 1} Description`,
+        fieldType: 'arrayObj',
+        arrField,
+        arrIndex: index,
+        arrObjKey: 'description',
+      })))
+    }
+    if (activeSyllabusSectionKey === 'policies') {
+      const policies = syllabusData.policies?.length ? syllabusData.policies : [EMPTY_POLICY]
+      return withConfiguredTables(policies.map((policy, index) => ({
+        section: 'policies',
+        label: `${policy.title || `Policy ${index + 1}`} content`,
+        fieldType: 'arrayObj',
+        arrField: 'policies',
+        arrIndex: index,
+        arrObjKey: 'content',
+        createIfMissing: !syllabusData.policies?.length,
+      })))
+    }
+    if (activeSyllabusSectionKey === 'schedule') {
+      return withConfiguredTables((syllabusData.tla_chapters || []).flatMap((chapter, index) => (
+        ['topics', 'outcomes', 'delivery'].map(field => ({
+          section: 'schedule',
+          label: `Week ${chapter.weeks || index + 1}: ${field}`,
+          fieldType: 'arrayObj',
+          arrField: 'tla_chapters',
+          arrIndex: index,
+          arrObjKey: field,
+        }))
+      )))
+    }
+    if (!activeConfiguredSection.editorKey) {
+      return withConfiguredTables([
+        ...(activeConfiguredSection.subsections || [])
+          .filter(subsection => !subsection.table_enabled)
+          .map(subsection => ({
+            section: activeConfiguredSection.key,
+            label: subsection.label,
+            fieldType: 'customSubsection',
+            field: activeConfiguredSection.key,
+            subsectionKey: subsection.key,
+          })),
+      ])
+    }
+    return configuredTableFields
   }
 
-  function applyAiText(text) {
-    if (!aiField) return
-    const { fieldType, field, arrField, arrIndex, arrObjKey } = aiField
-    if (fieldType === 'simple') setSyl(field, text)
-    if (fieldType === 'array') setSylArr(arrField, arrIndex, text)
-    if (fieldType === 'arrayObj') setSylArrObj(arrField, arrIndex, arrObjKey, text)
+  function updateSyllabusWithAiText(current, field, text, tableRows = null) {
+    if (field.fieldType === 'customTable') {
+      return {
+        ...current,
+        custom_tables: {
+          ...(current.custom_tables || {}),
+          [field.section]: {
+            ...(current.custom_tables?.[field.section] || {}),
+            [field.tableKey]: tableRows,
+          },
+        },
+      }
+    }
+    if (field.fieldType === 'simple') {
+      return { ...current, [field.field]: text }
+    }
+    if (field.fieldType === 'array') {
+      return {
+        ...current,
+        [field.arrField]: (current[field.arrField] || []).map((value, index) => (
+          index === field.arrIndex ? text : value
+        )),
+      }
+    }
+    if (field.fieldType === 'arrayObj') {
+      const values = current[field.arrField] || []
+      if (field.createIfMissing && !values.length && field.arrIndex === 0) {
+        return {
+          ...current,
+          [field.arrField]: [{ ...EMPTY_POLICY, [field.arrObjKey]: text }],
+        }
+      }
+      return {
+        ...current,
+        [field.arrField]: values.map((item, index) => (
+          index === field.arrIndex ? { ...item, [field.arrObjKey]: text } : item
+        )),
+      }
+    }
+    if (field.fieldType === 'customSubsection') {
+      return {
+        ...current,
+        custom_subsections: {
+          ...(current.custom_subsections || {}),
+          [field.field]: {
+            ...(current.custom_subsections?.[field.field] || {}),
+            [field.subsectionKey]: text,
+          },
+        },
+      }
+    }
+    return current
   }
 
   async function handleDeleteDoc(recordsId) {
@@ -1114,41 +1289,131 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } catch (err) { setUploadError(extractApiError(err)) }
   }
 
-  async function handleAiGenerate(mode) {
-    if (!aiField || !course) return
-    setAiGenerating(true); setAiError('')
+  function parseGeneratedTableRows(responseText, columns) {
+    const cleanText = responseText
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim()
+    const rowsStart = cleanText.indexOf('[')
+    const rowsEnd = cleanText.lastIndexOf(']')
+    if (rowsStart < 0 || rowsEnd < rowsStart) {
+      throw new Error('The table draft was not in a readable format. Please try again.')
+    }
+
+    let parsedRows
     try {
-      const currentValue = getAiCurrentValue()
-      const isIlo = aiField.arrField === 'ilos'
-      let extraHint = ''
-      if (isIlo) {
-        if (iloBloomVerb) extraHint += `Use the Bloom's Taxonomy verb: "${iloBloomVerb}". `
-        if (iloFocusText.trim()) extraHint += `The ILO should focus on: ${iloFocusText.trim()}. `
+      parsedRows = JSON.parse(cleanText.slice(rowsStart, rowsEnd + 1))
+    } catch {
+      throw new Error('The table draft was not in a readable format. Please try again.')
+    }
+    if (!Array.isArray(parsedRows) || parsedRows.length !== 5) {
+      throw new Error('The table draft did not include five rows. Please try again.')
+    }
+
+    return parsedRows.map((row, rowIndex) => {
+      if (!Array.isArray(row) || row.length !== columns.length) {
+        throw new Error(`Row ${rowIndex + 1} did not match the table columns. Please try again.`)
       }
+      return row.map(cell => {
+        if (cell === null || cell === undefined || typeof cell === 'object') {
+          throw new Error('The table draft contains an invalid cell. Please try again.')
+        }
+        return String(cell).trim()
+      })
+    })
+  }
+
+  async function handleGenerateSection() {
+    const fields = getAiFieldsForCurrentSection()
+    if (!course || !fields.length) return
+    setAiGenerating(true)
+    setAiError('')
+    setAiPipelineDrafts(null)
+    setAiPipelineProgress({ completed: 0, total: fields.length, label: fields[0].label })
+    try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
-      const { data } = await api.post('/curriculum/generate-syllabus-field/', {
-        course_id: courseId,
-        section: aiField.section,
-        field_label: aiField.label,
-        existing_content: mode === 'continue' ? currentValue : '',
-        mode,
-        provider: aiProvider,
-        top_k: 5,
-        extra_instructions: extraHint || undefined,
-        selected_doc_ids: selectedIds,
-      }, { timeout: 120000 })
-      const generated = data.generated_text || ''
-      // 'continue' appends to existing; 'generate' replaces
-      if (mode === 'continue' && currentValue) {
-        applyAiText(currentValue + '\n' + generated)
-      } else {
-        applyAiText(generated)
+      const structureInstruction = 'Use a clear, well-organized structure with helpful headings or bullets and an appropriate amount of detail.'
+      const drafts = []
+      for (let index = 0; index < fields.length; index += 1) {
+        const field = fields[index]
+        setAiPipelineProgress({ completed: index, total: fields.length, label: field.label })
+        const extraHints = [structureInstruction]
+        if (field.fieldType === 'customTable') {
+          extraHints.push(
+            `Create exactly 5 useful data rows for this table. The column headings, in order, are ${JSON.stringify(field.columns)}. `
+            + `Return only a valid JSON array of 5 arrays. Each inner array must contain exactly ${field.columns.length} strings in the same column order. `
+            + 'Do not include headers, markdown, or commentary.',
+          )
+        }
+        if (field.arrField === 'ilos') {
+          if (iloBloomVerb) extraHints.push(`Use the Bloom's Taxonomy verb "${iloBloomVerb}".`)
+          if (iloFocusText.trim()) extraHints.push(`Focus the intended learning outcome on: ${iloFocusText.trim()}.`)
+        }
+        const { data } = await api.post('/curriculum/generate-syllabus-field/', {
+          course_id: courseId,
+          section: field.section,
+          field_label: field.label,
+          existing_content: '',
+          mode: 'generate',
+          top_k: 5,
+          extra_instructions: extraHints.join(' '),
+          selected_doc_ids: selectedIds,
+        }, { timeout: 120000 })
+        const generatedText = String(data.generated_text || '').trim()
+        if (!generatedText) {
+          throw new Error(`The AI did not return text for "${field.label}". Try generating the section again.`)
+        }
+        if (field.fieldType === 'customTable') {
+          drafts.push({ ...field, rows: parseGeneratedTableRows(generatedText, field.columns) })
+        } else {
+          drafts.push({ ...field, text: generatedText })
+        }
       }
+      setAiPipelineDrafts(drafts)
+      setAiPipelineProgress({ completed: fields.length, total: fields.length, label: '' })
+      setAiReviewOpen(true)
+      setAiField(null)
+      notifyGenerationComplete('Syllabus', `${fields.length} section${fields.length === 1 ? '' : 's'} generated`)
     } catch (err) {
       setAiError(extractApiError(err))
+      setAiPipelineProgress(null)
     } finally {
       setAiGenerating(false)
     }
+  }
+
+  function discardAiDrafts() {
+    setAiPipelineDrafts(null)
+    setAiPipelineProgress(null)
+    setAiError('')
+    setAiReviewOpen(false)
+  }
+
+  function acceptAiDraftsAndContinue() {
+    if (!aiPipelineDrafts?.length) return
+    setSyllabusData(current => aiPipelineDrafts.reduce(
+      (next, draft) => updateSyllabusWithAiText(next, draft, draft.text, draft.rows),
+      current,
+    ))
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setAiPipelineDrafts(null)
+    setAiPipelineProgress(null)
+    setAiError('')
+    setAiReviewOpen(false)
+    const currentIndex = configuredSections.findIndex(section => section.key === activeConfiguredSection?.key)
+    const nextSection = configuredSections[currentIndex + 1]
+    if (nextSection) {
+      setSyllabusSub(nextSection.key)
+    } else {
+      setActiveTab('module')
+    }
+  }
+
+  function regenerateAiDrafts() {
+    setAiReviewOpen(true)
+    handleGenerateSection()
   }
 
   async function handleSyllabusUpload(e) {
@@ -1236,6 +1501,60 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  // ── Table of Specifications download ──────────────────────────────────────
+  // Sends the live (unsaved) syllabus so the download always matches what the
+  // faculty member is looking at, falling back to the last saved copy server-side.
+  async function handleExportTos() {
+    if (!courseId) {
+      setTosExportError('Select a course first before downloading.')
+      return
+    }
+    setTosExporting(true)
+    setTosExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+
+      const response = await api.post('/curriculum/export-tos-docx/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+
+      const disposition = response.headers?.['content-disposition'] || ''
+      const match = disposition.match(/filename="?([^";]+)"?/i)
+      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+      const downloadName = match?.[1] || `${baseName}_table_of_specifications.docx`
+
+      const blobUrl = window.URL.createObjectURL(response.data)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.setAttribute('download', downloadName)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (err) {
+      // Error responses come back as a blob, so unwrap it before reading.
+      let message = 'Failed to download the Table of Specifications.'
+      const blobData = err?.response?.data
+      if (blobData instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await blobData.text())
+          message = parsed?.error || parsed?.detail || message
+        } catch (_) {
+          message = err?.message || message
+        }
+      } else {
+        message = extractApiError(err) || err?.message || message
+      }
+      setTosExportError(message)
+    } finally {
+      setTosExporting(false)
+    }
+  }
+
   // ── API ─────────────────────────────────────────────────────────────────
   const workspaceApi = useApi(
     courseId ? `/curriculum/faculty-course-workspace/${courseId}/` : null,
@@ -1247,9 +1566,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   )
   const course = workspaceApi.data?.course
   const customization = workspaceApi.data?.customization || {}
-  const configuredSections = customization.syllabus_sections?.length
-    ? customization.syllabus_sections.filter(section => section.enabled !== false)
-    : SYLLABUS_SECTIONS.map(section => ({ key: section.key, label: section.label, enabled: true }))
+  const configuredSections = (Array.isArray(customization.syllabus_sections)
+    ? customization.syllabus_sections
+    : []
+  )
+    .filter(section => section.enabled !== false && section.key?.trim() && section.label?.trim())
+    .map(section => ({ ...section, editorKey: syllabusEditorKey(section) }))
+  const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
+  const activeSyllabusSectionKey = activeConfiguredSection?.editorKey || activeConfiguredSection?.key || ''
+
+  useEffect(() => {
+    setSyllabusSub(current => (
+      configuredSections.some(section => section.key === current)
+        ? current
+        : configuredSections[0]?.key || ''
+    ))
+  }, [workspaceApi.data, courseId])
 
   // Pre-populate syllabus form: saved JSON first, then fall back to course fields
   useEffect(() => {
@@ -1273,68 +1605,69 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ? arr.map(g => ({ code: g.code || '', title: g.title || '', description: g.description || '' }))
       : [{ ...EMPTY_ATTR }]
     const courseIlos = (course.ilos || []).length ? course.ilos.map(String) : ['']
-    const iloCount = courseIlos.length
+    const iloCount   = courseIlos.length
     setSyllabusData(normalizeSyllabusData({
-      // Header defaults (kept from EMPTY_SYLLABUS)
-      university_name: EMPTY_SYLLABUS.university_name,
-      college: EMPTY_SYLLABUS.college,
-      program: EMPTY_SYLLABUS.program,
-      document_title: EMPTY_SYLLABUS.document_title,
+      university_name:  course.institution_name || '',
+      college:          course.college_name || '',
+      program:          course.program_name || '',
+      document_title:   '',
       // University Direction
-      vision: course.vision || '',
-      mission: course.mission || '',
+      vision:           course.vision             || '',
+      mission:          course.mission            || '',
       // Course Specifications
-      course_title: course.course_title || '',
-      course_code: course.course_code || '',
-      course_category: course.course_category || '',
-      prerequisites: course.prerequisites || '',
-      year_level: course.year_level || location.state?.year_level || '',
-      semester_year: course.semester_year || '',
-      credit_hours: toStr(course.credit_hours),
-      instructor_name: course.instructor_name || '',
-      contact_info: course.contact_info || '',
-      education: course.education || '',
-      reference_cmo: course.reference_cmo || '',
-      date_prepared: course.date_prepared || '',
-      revision_no: toStr(course.revision_no),
-      revision_date: course.revision_date || '',
-      period_of_study: course.period_of_study || '',
+      course_title:     course.course_title       || '',
+      course_code:      course.course_code        || '',
+      course_category:  course.course_category    || '',
+      prerequisites:    course.prerequisites      || '',
+      year_level:       course.year_level        || '',
+      semester_year:    course.semester_year      || '',
+      credit_hours:     toStr(course.credit_hours),
+      instructor_name:  course.instructor_name    || '',
+      instructor_email: course.instructor_email   || '',
+      contact_info:     course.contact_info       || '',
+      education:        course.education          || '',
+      reference_cmo:    course.reference_cmo      || '',
+      date_prepared:    course.date_prepared      || '',
+      revision_no:      toStr(course.revision_no),
+      revision_date:    course.revision_date      || '',
+      period_of_study:  course.period_of_study    || '',
       // Course Overview
-      description: course.description || '',
-      lecture_hours: toStr(course.lecture_hours),
-      lab_hours: toStr(course.lab_hours),
+      description:      course.description        || '',
+      lecture_hours:    toStr(course.lecture_hours),
+      lab_hours:        toStr(course.lab_hours),
       // Assessment & Strategies
       assessment_criteria: course.assessment_criteria || '',
-      tlas: course.tlas || '',
+      tlas:             course.tlas               || '',
       // Expected Outcomes
       ilos: courseIlos,
       assessment_tasks: (course.assessment_tasks || []).length
         ? course.assessment_tasks   // normalizeSyllabusData will convert old format
         : [{ ...EMPTY_TASK, ilo_values: Array(iloCount).fill('') }],
       // References & Frameworks
-      references: (course.references || []).length ? course.references.map(String) : [''],
-      igas: mapAttr(course.igas),
+      references:       (course.references || []).length ? course.references.map(String) : [''],
+      igas:             mapAttr(course.igas),
       student_outcomes: mapAttr(course.student_outcomes),
-      cdio_skills: mapAttr(course.cdio_skills),
-      sdg_skills: mapAttr(course.sdg_skills),
+      cdio_skills:      mapAttr(course.cdio_skills),
+      sdg_skills:       mapAttr(course.sdg_skills),
       // Course Policies
-      grading_rows: DEFAULT_GRADING_ROWS.map(r => ({ ...r })),
-      policies: (course.policies || []).length
+      grading_rows:     course.grading_rows || [],
+      policies:         (course.policies || []).length
         ? course.policies.map(p => ({ title: p.title || '', content: p.content || '' }))
-        : [{ title: 'Class Policies', content: '' }],
-      other_policies: course.other_policies || '',
+        : [],
+      other_policies:   course.other_policies     || '',
       // TLA Activities (normalizeSyllabusData migrates old {chapter,description} → new column model)
-      tla_chapters: (course.tla_chapters || []).length ? course.tla_chapters : [{ ...EMPTY_CHAPTER }],
+      tla_chapters:    (course.tla_chapters || []).length ? course.tla_chapters : [{ ...EMPTY_CHAPTER }],
       // Schedules & Mappings — pass raw; normalizeSyllabusData will initialise all structured fields
-      schedule_methods: course.schedule_methods || undefined,
-      so_headers: course.so_headers || undefined,
-      so_cpa_rows: course.so_cpa_rows || undefined,
-      iga_headers: course.iga_headers || undefined,
-      iga_rows: course.iga_rows || undefined,
-      cdio_headers: course.cdio_headers || undefined,
-      sdg_headers: course.sdg_headers || undefined,
-      cdio_sdg_rows: course.cdio_sdg_rows || undefined,
-      ats: course.ats || undefined,
+      schedule_methods:  course.schedule_methods  || undefined,
+      so_headers:        course.so_headers        || undefined,
+      so_cpa_rows:       course.so_cpa_rows       || undefined,
+      iga_headers:       course.iga_headers       || undefined,
+      iga_rows:          course.iga_rows          || undefined,
+      cdio_headers:      course.cdio_headers      || undefined,
+      sdg_headers:       course.sdg_headers       || undefined,
+      cdio_sdg_rows:     course.cdio_sdg_rows     || undefined,
+      ats:               course.ats               || undefined,
+      custom_sections:   {},
     }))
     setIsDirty(false)
   }, [workspaceApi.data])
@@ -1350,7 +1683,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   // ── Auto-sync Major Examination tasks → TOS when the TOS section opens ──
   useEffect(() => {
-    if (syllabusSub !== 'tos') return
+    if (activeSyllabusSectionKey !== 'tos') return
     const BLOOM_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
     setSyllabusData(s => {
       const majExam = (s.ats || []).find(a => a.label?.toLowerCase().includes('major exam'))
@@ -1406,7 +1739,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             hours_min: 0,
             weight: '',
             bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
-            bloom_pct: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
+            bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
             total_points: '',
           }],
         })
@@ -1416,11 +1749,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (!updated) return s
       return { ...s, tos: finalTos }
     })
-  }, [syllabusSub])
+  }, [activeSyllabusSectionKey])
 
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
     setSaveError('')
+    const missingRequiredSubsections = configuredSections.flatMap(section => {
+      if (section.is_static) return []
+      const answers = syllabusData.custom_subsections?.[section.key] || {}
+      return (Array.isArray(section.subsections) ? section.subsections : [])
+        .filter(subsection => {
+          if (!subsection.required) return false
+          if (!subsection.table_enabled) return !String(answers[subsection.key] || '').trim()
+          const columns = Array.isArray(subsection.table_columns) ? subsection.table_columns : []
+          const storedRows = syllabusData.custom_tables?.[section.key]?.[subsection.key]
+          const rows = Array.isArray(storedRows) ? storedRows : []
+          return !rows.some(row => columns.length > 0
+            && columns.every((_, columnIndex) => String(row[columnIndex] || '').trim()))
+        })
+        .map(subsection => `${section.label}: ${subsection.label}`)
+    })
+    if (missingRequiredSubsections.length) {
+      setSaveError(`Complete required fields: ${missingRequiredSubsections.join(', ')}.`)
+      return
+    }
     setSaveLoading(true)
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
@@ -1442,7 +1794,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const onMove = (e) => {
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
-      if (dragging === 'left') setLeftWidth(Math.max(160, Math.min(300, e.clientX - rect.left)))
+      if (dragging === 'left')  setLeftWidth(Math.max(160, Math.min(300, e.clientX - rect.left)))
       if (dragging === 'right') setRightWidth(Math.max(250, Math.min(480, rect.right - e.clientX)))
     }
     const onUp = () => setDragging(null)
@@ -1489,6 +1841,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
       setResultText(data.generated_syllabus || '')
       workspaceApi.execute()
+      notifyGenerationComplete('Syllabus', `${course.course_code} ${course.course_title}`)
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
   }
@@ -1522,6 +1875,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setChatMessages([])
         setModuleCreating(false)
         workspaceApi.execute()
+        notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
       }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
@@ -1638,6 +1992,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         }))
         setModuleContentDirty(true)
         setExpandedSubtopics(prev => { const next = new Set(prev); next.add(subtopicId); return next })
+        notifyGenerationComplete('Subtopic', subtopicTitle)
       }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setSubtopicGenerating(null) }
@@ -1652,7 +2007,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const currentContent = chatField === 'introduction' ? moduleContent?.introduction || ''
         : chatField === 'short_activity' ? JSON.stringify(moduleContent?.short_activity || {})
-          : (moduleContent?.learning_objectives || []).join('\n')
+        : (moduleContent?.learning_objectives || []).join('\n')
       const { data } = await api.post('/curriculum/module-ai-assist/', {
         module_id: selectedModule.module_id,
         field: chatField || 'general',
@@ -1933,6 +2288,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       setAssessmentCreating(false)
       workspaceApi.execute()
+      notifyGenerationComplete('Assessment', getSelectedExamDisplayName())
       if (latestAssessmentSummary?.assessment_id) {
         await handleOpenAssessment(latestAssessmentSummary)
       }
@@ -2349,7 +2705,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </LField>
 
             {assessmentBatchProgress && (
-              <Box sx={{ p: 1, border: '1px solid rgba(139,0,0,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
+              <Box sx={{ p: 1, border: '1px solid rgba(21,128,61,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
                 <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
                   {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. Still generating...
                 </Typography>
@@ -2632,7 +2988,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleUpload(e) {
     e.preventDefault()
     setUploadError(''); setUploadSuccess(''); setUploadStatus(''); setUploadProgress(0)
-    if (!courseId) { setUploadError('Please choose a course first.'); return }
+    if (!courseId)   { setUploadError('Please choose a course first.'); return }
     if (!uploadFile) { setUploadError('Please choose a PDF or DOCX file.'); return }
     const fileType = detectFileType(uploadFile)
     if (!fileType) { setUploadError('Unsupported file type. Please upload PDF or DOCX only.'); return }
@@ -2657,42 +3013,234 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } finally { setUploading(false) }
   }
 
+  function updateConfiguredTable(sectionKey, fieldKey, updateRows) {
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setSyllabusData(current => {
+      const tableRows = current.custom_tables?.[sectionKey]?.[fieldKey] || []
+      return {
+        ...current,
+        custom_tables: {
+          ...(current.custom_tables || {}),
+          [sectionKey]: {
+            ...(current.custom_tables?.[sectionKey] || {}),
+            [fieldKey]: updateRows(tableRows),
+          },
+        },
+      }
+    })
+  }
+
+  function renderConfiguredTable(sectionKey, fieldKey, title, columns, columnGroups = []) {
+    const storedRows = syllabusData.custom_tables?.[sectionKey]?.[fieldKey]
+    const tableRows = Array.isArray(storedRows) ? storedRows : []
+    const groupHeaders = []
+    for (let index = 0; index < columns.length;) {
+      const label = String(columnGroups[index] || '').trim()
+      let end = index + 1
+      if (label) {
+        while (end < columns.length && String(columnGroups[end] || '').trim() === label) end++
+      }
+      groupHeaders.push({ label, span: end - index })
+      index = end
+    }
+    const hasGroupHeaders = groupHeaders.some(group => group.label)
+    return (
+      <SectionCard title={title}>
+        <Stack spacing={1}>
+          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto' }}>
+            <Table size="small" aria-label={`${title} table`}>
+              <TableHead>
+                {hasGroupHeaders && (
+                  <TableRow>
+                    {groupHeaders.map((group, index) => (
+                      <TableCell
+                        key={index}
+                        colSpan={group.span}
+                        sx={{ fontWeight: 700, textAlign: 'center', whiteSpace: 'nowrap' }}
+                      >
+                        {group.label}
+                      </TableCell>
+                    ))}
+                    <TableCell aria-label="Row actions" />
+                  </TableRow>
+                )}
+                <TableRow>
+                  {columns.map((column, index) => (
+                    <TableCell key={index} sx={{ fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      {column}
+                    </TableCell>
+                  ))}
+                  <TableCell aria-label="Row actions" />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {!tableRows.length && (
+                  <TableRow>
+                    <TableCell colSpan={columns.length + 1} sx={{ color: 'text.secondary', textAlign: 'center' }}>
+                      No rows yet. Add a row to start.
+                    </TableCell>
+                  </TableRow>
+                )}
+                {tableRows.map((row, rowIndex) => (
+                  <TableRow key={rowIndex}>
+                    {columns.map((_, columnIndex) => (
+                      <TableCell key={columnIndex} sx={{ minWidth: 160 }}>
+                        <TextField
+                          size="small"
+                          fullWidth
+                          value={row[columnIndex] || ''}
+                          inputProps={{ 'aria-label': `${columns[columnIndex]}, row ${rowIndex + 1}` }}
+                          onChange={event => updateConfiguredTable(sectionKey, fieldKey, currentRows => {
+                            const nextRows = currentRows.map(cells => [...cells])
+                            nextRows[rowIndex][columnIndex] = event.target.value
+                            return nextRows
+                          })}
+                        />
+                      </TableCell>
+                    ))}
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        aria-label={`Remove row ${rowIndex + 1}`}
+                        onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => currentRows.filter((_, index) => index !== rowIndex))}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+          <Button
+            size="small"
+            startIcon={<AddIcon />}
+            onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => [
+              ...currentRows,
+              Array(columns.length).fill(''),
+            ])}
+            sx={{ alignSelf: 'flex-start', textTransform: 'none', color: MAROON }}
+          >
+            Add row
+          </Button>
+        </Stack>
+      </SectionCard>
+    )
+  }
+
+  function renderConfiguredSubsections() {
+    if (!activeConfiguredSection || activeConfiguredSection.is_static) return null
+    const subsections = Array.isArray(activeConfiguredSection.subsections)
+      ? activeConfiguredSection.subsections
+      : []
+
+    return (
+      <>
+        {activeConfiguredSection.table_enabled
+          && Array.isArray(activeConfiguredSection.table_columns)
+          && activeConfiguredSection.table_columns.length > 0
+          && renderConfiguredTable(
+            activeConfiguredSection.key,
+            '__section__',
+            `${activeConfiguredSection.label} table`,
+            activeConfiguredSection.table_columns,
+            activeConfiguredSection.table_column_groups,
+          )}
+        {subsections.map((subsection, index) => (
+          subsection.table_enabled
+            ? Array.isArray(subsection.table_columns) && subsection.table_columns.length > 0
+              && renderConfiguredTable(
+                activeConfiguredSection.key,
+                subsection.key,
+                subsection.label || `Subsection ${index + 1}`,
+                subsection.table_columns,
+                subsection.table_column_groups,
+              )
+            : <SectionCard key={subsection.key || index} title={subsection.label || `Subsection ${index + 1}`}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label={subsection.label || `Subsection ${index + 1}`}
+                  required={Boolean(subsection.required)}
+                  value={syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || ''}
+                  onChange={event => {
+                    setIsDirty(true)
+                    setSaveSuccess(false)
+                    setSyllabusData(current => ({
+                      ...current,
+                      custom_subsections: {
+                        ...(current.custom_subsections || {}),
+                        [activeConfiguredSection.key]: {
+                          ...(current.custom_subsections?.[activeConfiguredSection.key] || {}),
+                          [subsection.key]: event.target.value,
+                        },
+                      },
+                    }))
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#fff' } }}
+                />
+              </SectionCard>
+        ))}
+      </>
+    )
+  }
+
   // ── Syllabus section renderer (all editable) ─────────────────────────────
   function renderSyllabusSection() {
     if (!courseId) return null
     if (workspaceApi.loading && !workspaceApi.data) {
       return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: MAROON }} /></Box>
     }
-    if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => { }} />
+    if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
+    if (!activeConfiguredSection) {
+      return (
+        <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 3 }}>
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            Your institution has not configured any syllabus sections yet.
+          </Typography>
+        </Paper>
+      )
+    }
+    if (activeConfiguredSection.is_static) {
+      return (
+        <SectionCard title={activeConfiguredSection.label}>
+          <Typography variant="body2" sx={{ color: '#444', whiteSpace: 'pre-wrap' }}>
+            {activeConfiguredSection.static_content || ''}
+          </Typography>
+        </SectionCard>
+      )
+    }
 
     // ── 1. Course Overview ───────────────────────────────────────────────────
-    if (syllabusSub === 'overview') {
-      const iloCount = (syllabusData.ilos || []).length
-      const atCount = (syllabusData.assessment_tasks || []).length
-      const refCount = (syllabusData.references || []).length
-      const polCount = (syllabusData.policies || []).length
+    if (activeSyllabusSectionKey === 'overview') {
+      const iloCount  = (syllabusData.ilos || []).length
+      const atCount   = (syllabusData.assessment_tasks || []).length
+      const refCount  = (syllabusData.references || []).length
+      const polCount  = (syllabusData.policies || []).length
       const statCards = [
-        { label: 'ILOs', value: iloCount, color: MAROON },
-        { label: 'Assessment Tasks', value: atCount, color: '#1565c0' },
-        { label: 'References', value: refCount, color: '#2e7d32' },
-        { label: 'Policies', value: polCount, color: '#6a1b9a' },
+        { label: 'ILOs',             value: iloCount, color: MAROON },
+        { label: 'Assessment Tasks', value: atCount,  color: '#1565c0' },
+        { label: 'References',       value: refCount, color: '#2e7d32' },
+        { label: 'Policies',         value: polCount, color: '#6a1b9a' },
       ]
-      const soHeaders = syllabusData.so_headers || ['']
-      const igaHeaders = syllabusData.iga_headers || ['']
+      const soHeaders   = syllabusData.so_headers   || ['']
+      const igaHeaders  = syllabusData.iga_headers  || ['']
       const cdioHeaders = syllabusData.cdio_headers || ['']
-      const sdgHeaders = syllabusData.sdg_headers || ['']
+      const sdgHeaders  = syllabusData.sdg_headers  || ['']
       const groupColors = { SO: '#1565c0', IGA: MAROON, CDIO: '#2e7d32', SDG: '#6a1b9a' }
       const allFwCols = [
-        ...soHeaders.map((h, i) => ({ label: h || `SO${i + 1}`, source: 'so', ci: i, group: 'SO' })),
-        ...igaHeaders.map((h, i) => ({ label: h || `IGA${i + 1}`, source: 'iga', ci: i, group: 'IGA' })),
-        ...cdioHeaders.map((h, i) => ({ label: h || `CDIO${i + 1}`, source: 'cdio', ci: i, group: 'CDIO' })),
-        ...sdgHeaders.map((h, i) => ({ label: h || `SDG${i + 1}`, source: 'sdg', ci: i, group: 'SDG' })),
+        ...soHeaders.map((h, i)   => ({ label: h || `SO${i+1}`,   source: 'so',   ci: i, group: 'SO' })),
+        ...igaHeaders.map((h, i)  => ({ label: h || `IGA${i+1}`,  source: 'iga',  ci: i, group: 'IGA' })),
+        ...cdioHeaders.map((h, i) => ({ label: h || `CDIO${i+1}`, source: 'cdio', ci: i, group: 'CDIO' })),
+        ...sdgHeaders.map((h, i)  => ({ label: h || `SDG${i+1}`,  source: 'sdg',  ci: i, group: 'SDG' })),
       ]
       function getFwValOv(ri, source, ci) {
-        if (source === 'so') return ((syllabusData.so_cpa_rows || [])[ri]?.so_vals || [])[ci] || ''
-        if (source === 'iga') return ((syllabusData.iga_rows || [])[ri]?.vals || [])[ci] || ''
+        if (source === 'so')   return ((syllabusData.so_cpa_rows   || [])[ri]?.so_vals   || [])[ci] || ''
+        if (source === 'iga')  return ((syllabusData.iga_rows      || [])[ri]?.vals      || [])[ci] || ''
         if (source === 'cdio') return ((syllabusData.cdio_sdg_rows || [])[ri]?.cdio_vals || [])[ci] || ''
-        if (source === 'sdg') return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals || [])[ci] || ''
+        if (source === 'sdg')  return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals  || [])[ci] || ''
         return ''
       }
       return (
@@ -2749,16 +3297,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 2. Basic Info ────────────────────────────────────────────────────────
-    if (syllabusSub === 'basic') {
+    if (activeSyllabusSectionKey === 'basic') {
       return (
         <>
           <SectionCard title="Institution">
             <Box sx={{ display: 'grid', gap: 1.75 }}>
               <LField label="Institution Name"
                 value={syllabusData.university_name || ''} onChange={e => setSyl('university_name', e.target.value)} />
-              <LField label="Campus / Branch" value={syllabusData.program || ''} onChange={e => setSyl('program', e.target.value)} />
+              <LField label="Program" value={syllabusData.program || ''} onChange={e => setSyl('program', e.target.value)} />
               <LField label="College / Department" value={syllabusData.college || ''} onChange={e => setSyl('college', e.target.value)} />
-              <LField label="Address" value={syllabusData.document_title || ''} onChange={e => setSyl('document_title', e.target.value)} />
+              <LField label="Syllabus Title" value={syllabusData.document_title || ''} onChange={e => setSyl('document_title', e.target.value)} />
               <LField label="Contact" value={syllabusData.institution_contact || ''} onChange={e => setSyl('institution_contact', e.target.value)} />
             </Box>
           </SectionCard>
@@ -2776,20 +3324,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           <SectionCard title="Course Identification">
             <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1.75 }}>
-              <LField label="Course Title" value={syllabusData.course_title || ''} onChange={e => setSyl('course_title', e.target.value)} />
-              <LField label="Course Code" value={syllabusData.course_code || ''} onChange={e => setSyl('course_code', e.target.value)} />
-              <LField label="Category" value={syllabusData.course_category || ''} onChange={e => setSyl('course_category', e.target.value)} />
-              <LField label="Pre-requisite" value={syllabusData.prerequisites || ''} onChange={e => setSyl('prerequisites', e.target.value)} />
+              <LField label="Course Title"    value={syllabusData.course_title    || ''} onChange={e => setSyl('course_title',    e.target.value)} />
+              <LField label="Course Code"     value={syllabusData.course_code     || ''} onChange={e => setSyl('course_code',     e.target.value)} />
+              <LField label="Category"        value={syllabusData.course_category || ''} onChange={e => setSyl('course_category', e.target.value)} />
+              <LField label="Pre-requisite"   value={syllabusData.prerequisites   || ''} onChange={e => setSyl('prerequisites',   e.target.value)} />
               <LField select label="Year Level" value={syllabusData.year_level || ''} onChange={e => setSyl('year_level', e.target.value)}>
                 <MenuItem value="">— Not specified —</MenuItem>
-                {YEAR_LEVELS.map(y => <MenuItem key={y} value={y}>{y}</MenuItem>)}
+                {(course?.year_levels || []).map(year => (
+                  <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
+                ))}
               </LField>
-              <LField label="Credit Hours" value={syllabusData.credit_hours || ''} onChange={e => setSyl('credit_hours', e.target.value)} />
-              <LField label="Semester / Year" value={syllabusData.semester_year || ''} onChange={e => setSyl('semester_year', e.target.value)} />
-              <LField label="Reference CMO" value={syllabusData.reference_cmo || ''} onChange={e => setSyl('reference_cmo', e.target.value)} />
-              <LField label="Date Prepared" value={syllabusData.date_prepared || ''} onChange={e => setSyl('date_prepared', e.target.value)} />
-              <LField label="Revision No." value={syllabusData.revision_no || ''} onChange={e => setSyl('revision_no', e.target.value)} />
-              <LField label="Revision Date" value={syllabusData.revision_date || ''} onChange={e => setSyl('revision_date', e.target.value)} />
+              <LField label="Credit Hours"    value={syllabusData.credit_hours    || ''} onChange={e => setSyl('credit_hours',    e.target.value)} />
+              <LField label="Semester / Year" value={syllabusData.semester_year   || ''} onChange={e => setSyl('semester_year',   e.target.value)} />
+              <LField label="Reference CMO"   value={syllabusData.reference_cmo   || ''} onChange={e => setSyl('reference_cmo',   e.target.value)} />
+              <LField label="Date Prepared"   value={syllabusData.date_prepared   || ''} onChange={e => setSyl('date_prepared',   e.target.value)} />
+              <LField label="Revision No."    value={syllabusData.revision_no     || ''} onChange={e => setSyl('revision_no',     e.target.value)} />
+              <LField label="Revision Date"   value={syllabusData.revision_date   || ''} onChange={e => setSyl('revision_date',   e.target.value)} />
               <LField label="Period of Study" value={syllabusData.period_of_study || ''} onChange={e => setSyl('period_of_study', e.target.value)}
                 sx={{ gridColumn: 'span 2' }} />
             </Box>
@@ -2810,7 +3360,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 3. Course Details ────────────────────────────────────────────────────
-    if (syllabusSub === 'details') {
+    if (activeSyllabusSectionKey === 'details') {
       return (
         <>
           <SectionCard title="Rationale &amp; Description">
@@ -2831,7 +3381,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <LField label="Laboratory Hours" type="number"
                 value={syllabusData.lab_hours} onChange={e => setSyl('lab_hours', e.target.value)} />
               <LField label="Total Hours" type="number"
-                value={syllabusData.total_hours || (Number(syllabusData.lecture_hours || 0) + Number(syllabusData.lab_hours || 0) || '')}
+                value={syllabusData.total_hours || (Number(syllabusData.lecture_hours||0) + Number(syllabusData.lab_hours||0) || '')}
                 onChange={e => setSyl('total_hours', e.target.value)} />
             </Box>
             <LField label="Teaching &amp; learning strategies" multiline minRows={6}
@@ -2863,7 +3413,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 4. ILOs & Assessments ────────────────────────────────────────────────
-    if (syllabusSub === 'iloat') {
+    if (activeSyllabusSectionKey === 'iloat') {
       const iloCount = syllabusData.ilos.length
       return (
         <>
@@ -2898,7 +3448,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 5. ILO–AT Matrix ─────────────────────────────────────────────────────
-    if (syllabusSub === 'iloatmatrix') {
+    if (activeSyllabusSectionKey === 'iloatmatrix') {
       const iloCount = syllabusData.ilos.length
       const atsData = syllabusData.ats || []
       // Flatten sub-tasks with parent component info
@@ -2959,27 +3509,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 6. Framework Mapping ─────────────────────────────────────────────────
-    if (syllabusSub === 'fwmap') {
+    if (activeSyllabusSectionKey === 'fwmap') {
       const fwTabs = [
-        { key: 'SO', label: 'Student Outcomes', itemsField: 'student_outcomes', headersField: 'so_headers', rowsField: 'so_cpa_rows', rowValKey: 'so_vals', hasCPA: true },
-        { key: 'IGA', label: 'Institutional Graduate Attributes', itemsField: 'igas', headersField: 'iga_headers', rowsField: 'iga_rows', rowValKey: 'vals', hasCPA: false },
-        { key: 'CDIO', label: 'CDIO Framework Skills', itemsField: 'cdio_skills', headersField: 'cdio_headers', rowsField: 'cdio_sdg_rows', rowValKey: 'cdio_vals', hasCPA: false },
-        { key: 'SDG', label: 'SDG Skills', itemsField: 'sdg_skills', headersField: 'sdg_headers', rowsField: 'cdio_sdg_rows', rowValKey: 'sdg_vals', hasCPA: false },
+        { key: 'SO',   label: 'Student Outcomes',                  itemsField: 'student_outcomes', headersField: 'so_headers',   rowsField: 'so_cpa_rows',   rowValKey: 'so_vals',   hasCPA: true },
+        { key: 'IGA',  label: 'Institutional Graduate Attributes', itemsField: 'igas',             headersField: 'iga_headers',  rowsField: 'iga_rows',      rowValKey: 'vals',      hasCPA: false },
+        { key: 'CDIO', label: 'CDIO Framework Skills',             itemsField: 'cdio_skills',      headersField: 'cdio_headers', rowsField: 'cdio_sdg_rows', rowValKey: 'cdio_vals', hasCPA: false },
+        { key: 'SDG',  label: 'SDG Skills',                        itemsField: 'sdg_skills',       headersField: 'sdg_headers',  rowsField: 'cdio_sdg_rows', rowValKey: 'sdg_vals',  hasCPA: false },
       ]
       const activeFw = fwTabs.find(f => f.key === activeFwKey) || fwTabs[0]
       const getRowVal = (ri, ci) => {
-        if (activeFw.key === 'SO') return ((syllabusData.so_cpa_rows || [])[ri]?.so_vals || [])[ci] || ''
-        if (activeFw.key === 'IGA') return ((syllabusData.iga_rows || [])[ri]?.vals || [])[ci] || ''
+        if (activeFw.key === 'SO')   return ((syllabusData.so_cpa_rows   || [])[ri]?.so_vals   || [])[ci] || ''
+        if (activeFw.key === 'IGA')  return ((syllabusData.iga_rows      || [])[ri]?.vals      || [])[ci] || ''
         if (activeFw.key === 'CDIO') return ((syllabusData.cdio_sdg_rows || [])[ri]?.cdio_vals || [])[ci] || ''
-        if (activeFw.key === 'SDG') return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals || [])[ci] || ''
+        if (activeFw.key === 'SDG')  return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals  || [])[ci] || ''
         return ''
       }
       const setRowVal = (ri, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
-        if (activeFw.key === 'SO') setSyllabusData(s => ({ ...s, so_cpa_rows: s.so_cpa_rows.map((r, i) => { if (i !== ri) return r; const vals = [...(r.so_vals || [])]; vals[ci] = val; return { ...r, so_vals: vals } }) }))
-        if (activeFw.key === 'IGA') setSyllabusData(s => ({ ...s, iga_rows: s.iga_rows.map((r, i) => { if (i !== ri) return r; const vals = [...(r.vals || [])]; vals[ci] = val; return { ...r, vals } }) }))
+        if (activeFw.key === 'SO')   setSyllabusData(s => ({ ...s, so_cpa_rows:   s.so_cpa_rows.map((r, i)   => { if (i !== ri) return r; const vals = [...(r.so_vals   || [])]; vals[ci] = val; return { ...r, so_vals: vals } }) }))
+        if (activeFw.key === 'IGA')  setSyllabusData(s => ({ ...s, iga_rows:      s.iga_rows.map((r, i)      => { if (i !== ri) return r; const vals = [...(r.vals      || [])]; vals[ci] = val; return { ...r, vals } }) }))
         if (activeFw.key === 'CDIO') setSyllabusData(s => ({ ...s, cdio_sdg_rows: s.cdio_sdg_rows.map((r, i) => { if (i !== ri) return r; const vals = [...(r.cdio_vals || [])]; vals[ci] = val; return { ...r, cdio_vals: vals } }) }))
-        if (activeFw.key === 'SDG') setSyllabusData(s => ({ ...s, cdio_sdg_rows: s.cdio_sdg_rows.map((r, i) => { if (i !== ri) return r; const vals = [...(r.sdg_vals || [])]; vals[ci] = val; return { ...r, sdg_vals: vals } }) }))
+        if (activeFw.key === 'SDG')  setSyllabusData(s => ({ ...s, cdio_sdg_rows: s.cdio_sdg_rows.map((r, i) => { if (i !== ri) return r; const vals = [...(r.sdg_vals  || [])]; vals[ci] = val; return { ...r, sdg_vals: vals } }) }))
       }
       // Collect sub-task AT codes only for the dropdown
       const atCodes = (syllabusData.ats || []).flatMap(comp =>
@@ -3003,12 +3553,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {fwTabs.map(fw => (
               <Button key={fw.key} size="small" onClick={() => setActiveFwKey(fw.key)}
                 variant={fw.key === activeFwKey ? 'contained' : 'outlined'}
-                sx={{
-                  textTransform: 'none', fontSize: '0.75rem', py: 0.25, minWidth: 0,
+                sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, minWidth: 0,
                   ...(fw.key === activeFwKey
-                    ? { bgcolor: MAROON, '&:hover': { bgcolor: '#a00' } }
-                    : { borderColor: MAROON + '55', color: MAROON, '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT } })
-                }}>
+                    ? { bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' } }
+                    : { borderColor: MAROON + '55', color: MAROON, '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT } }) }}>
                 {fw.key}
               </Button>
             ))}
@@ -3102,23 +3650,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 7. ILO–Framework Matrix ──────────────────────────────────────────────
-    if (syllabusSub === 'ilofwmatrix') {
-      const soHeaders = syllabusData.so_headers || ['']
-      const igaHeaders = syllabusData.iga_headers || ['']
+    if (activeSyllabusSectionKey === 'ilofwmatrix') {
+      const soHeaders   = syllabusData.so_headers   || ['']
+      const igaHeaders  = syllabusData.iga_headers  || ['']
       const cdioHeaders = syllabusData.cdio_headers || ['']
-      const sdgHeaders = syllabusData.sdg_headers || ['']
+      const sdgHeaders  = syllabusData.sdg_headers  || ['']
       const groupColors = { SO: '#1565c0', IGA: MAROON, CDIO: '#2e7d32', SDG: '#6a1b9a' }
       const allFwRows = [
-        ...soHeaders.map((h, i) => ({ code: h || `SO${i + 1}`, outcome: `Student Outcome ${i + 1}`, source: 'so', ci: i, group: 'SO' })),
-        ...igaHeaders.map((h, i) => ({ code: h || `IGA${i + 1}`, outcome: `Institutional Graduate Attribute ${i + 1}`, source: 'iga', ci: i, group: 'IGA' })),
-        ...cdioHeaders.map((h, i) => ({ code: h || `CDIO${i + 1}`, outcome: `CDIO Skill ${i + 1}`, source: 'cdio', ci: i, group: 'CDIO' })),
-        ...sdgHeaders.map((h, i) => ({ code: h || `SDG${i + 1}`, outcome: `SDG Skill ${i + 1}`, source: 'sdg', ci: i, group: 'SDG' })),
+        ...soHeaders.map((h, i)   => ({ code: h || `SO${i+1}`,   outcome: `Student Outcome ${i+1}`,                  source: 'so',   ci: i, group: 'SO' })),
+        ...igaHeaders.map((h, i)  => ({ code: h || `IGA${i+1}`,  outcome: `Institutional Graduate Attribute ${i+1}`, source: 'iga',  ci: i, group: 'IGA' })),
+        ...cdioHeaders.map((h, i) => ({ code: h || `CDIO${i+1}`, outcome: `CDIO Skill ${i+1}`,                       source: 'cdio', ci: i, group: 'CDIO' })),
+        ...sdgHeaders.map((h, i)  => ({ code: h || `SDG${i+1}`,  outcome: `SDG Skill ${i+1}`,                        source: 'sdg',  ci: i, group: 'SDG' })),
       ]
       function getFwVal(source, ri, ci) {
-        if (source === 'so') return ((syllabusData.so_cpa_rows || [])[ri]?.so_vals || [])[ci] || ''
-        if (source === 'iga') return ((syllabusData.iga_rows || [])[ri]?.vals || [])[ci] || ''
+        if (source === 'so')   return ((syllabusData.so_cpa_rows   || [])[ri]?.so_vals   || [])[ci] || ''
+        if (source === 'iga')  return ((syllabusData.iga_rows      || [])[ri]?.vals      || [])[ci] || ''
         if (source === 'cdio') return ((syllabusData.cdio_sdg_rows || [])[ri]?.cdio_vals || [])[ci] || ''
-        if (source === 'sdg') return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals || [])[ci] || ''
+        if (source === 'sdg')  return ((syllabusData.cdio_sdg_rows || [])[ri]?.sdg_vals  || [])[ci] || ''
         return ''
       }
       return (
@@ -3165,7 +3713,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 8. Weekly Schedule ───────────────────────────────────────────────────
-    if (syllabusSub === 'schedule') {
+    if (activeSyllabusSectionKey === 'schedule') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
       const _allSubs = (syllabusData.ats || []).flatMap(at => at.subs || [])
       const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
@@ -3195,8 +3743,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     : null
                   const _existingAssessment = !_isLecture
                     ? (workspaceApi.data?.assessments || []).find(a =>
-                      a.title?.toLowerCase().includes((ch.outcomes || '').toLowerCase())
-                    )
+                        a.title?.toLowerCase().includes((ch.outcomes || '').toLowerCase())
+                      )
                     : null
                   const _btnLabel = _isLecture
                     ? (_existingMod ? 'View Module' : 'Generate Module')
@@ -3208,115 +3756,115 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     ? (_existingMod ? '#e3f2fd' : MAROON_LIGHT)
                     : (_existingAssessment ? '#e8f5e9' : '#fff3e0')
                   return (
-                    <tr key={i}>
-                      <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 32)}</td>
-                      <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
-                        <textarea
-                          value={ch.topics || ''}
-                          onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
-                          rows={2}
-                          className="subtle-scroll"
-                          style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflowY: 'auto', overflowX: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4 }}
-                        />
-                      </td>
-                      <td style={TABLE_TD}>
-                        <select
-                          value={ch.outcomes || ''}
-                          onChange={e => {
-                            const newOutcome = e.target.value
-                            const sub = _allSubs.find(s => s.code === newOutcome)
-                            const autoIlo = (sub?.ilos?.length) ? sub.ilos.join(', ') : undefined
-                            setIsDirty(true); setSaveSuccess(false)
-                            setSyllabusData(s => ({
-                              ...s,
-                              tla_chapters: s.tla_chapters.map((c, j) => {
-                                if (j !== i) return c
-                                const next = { ...c, outcomes: newOutcome }
-                                if (autoIlo !== undefined) next.ilo = autoIlo
-                                return next
-                              }),
-                            }))
-                          }}
-                          style={{ ...SELECT_STYLE, width: 200 }}
-                        >
-                          <option value="">—</option>
-                          <option value="Lecture/Discussion">Lecture/Discussion</option>
-                          {(syllabusData.ats || []).flatMap(comp =>
-                            (comp.subs || []).map(s => (
-                              <option key={s.code} value={s.code}>{s.code} – {s.label || s.code}</option>
-                            ))
-                          )}
-                        </select>
-                      </td>
-                      <td style={TABLE_TD}>
-                        <select
-                          value={ch.delivery || ''}
-                          onChange={e => setSylArrObj('tla_chapters', i, 'delivery', e.target.value)}
-                          style={{ ...SELECT_STYLE, width: 105 }}
-                        >
-                          <option value="">—</option>
-                          <option>F2F</option><option>Online</option><option>Hybrid</option><option>Exam</option><option>Lab</option>
-                        </select>
-                      </td>
-                      <td style={{ ...TABLE_TD, minWidth: 130 }}>
-                        {_isLecture ? (
-                          <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
-                        ) : _subTask ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                              {(_subTask.ilos || []).map(iloId => (
-                                <span key={iloId} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: MAROON_LIGHT, color: MAROON, whiteSpace: 'nowrap' }}>{iloId}</span>
-                              ))}
-                            </div>
-                            {(_subTask.ilos || []).length > 0 && (
-                              <span style={{ fontSize: '0.68rem', color: '#888' }}>
-                                {(_subTask.ilos || []).map(iloId => {
-                                  const pts = (_subTask.iloTotals || {})[iloId] ?? (_subTask.total || 0)
-                                  return `${iloId}:${pts}`
-                                }).join(' ')} pts
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
+                  <tr key={i}>
+                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 32)}</td>
+                    <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
+                      <textarea
+                        value={ch.topics || ''}
+                        onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
+                        rows={2}
+                        className="subtle-scroll"
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflowY: 'auto', overflowX: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4 }}
+                      />
+                    </td>
+                    <td style={TABLE_TD}>
+                      <select
+                        value={ch.outcomes || ''}
+                        onChange={e => {
+                          const newOutcome = e.target.value
+                          const sub = _allSubs.find(s => s.code === newOutcome)
+                          const autoIlo = (sub?.ilos?.length) ? sub.ilos.join(', ') : undefined
+                          setIsDirty(true); setSaveSuccess(false)
+                          setSyllabusData(s => ({
+                            ...s,
+                            tla_chapters: s.tla_chapters.map((c, j) => {
+                              if (j !== i) return c
+                              const next = { ...c, outcomes: newOutcome }
+                              if (autoIlo !== undefined) next.ilo = autoIlo
+                              return next
+                            }),
+                          }))
+                        }}
+                        style={{ ...SELECT_STYLE, width: 200 }}
+                      >
+                        <option value="">—</option>
+                        <option value="Lecture/Discussion">Lecture/Discussion</option>
+                        {(syllabusData.ats || []).flatMap(comp =>
+                          (comp.subs || []).map(s => (
+                            <option key={s.code} value={s.code}>{s.code} – {s.label || s.code}</option>
+                          ))
                         )}
-                      </td>
-                      <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
-                        <button
-                          type="button"
-                          title={_btnLabel}
-                          onClick={() => {
-                            if (_isLecture) {
-                              if (!_existingMod) {
-                                setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '' }))
-                                setModuleFromSchedule(true)
-                                setModuleCreating(true)
-                                setSelectedModule(null); setModuleContent(null); setChatOpen(false)
-                              } else {
-                                setModuleCreating(false)
-                                setModuleFromSchedule(false)
-                                setSelectedModule(null); setModuleContent(null); setChatOpen(false)
-                              }
-                              setResultText('')
-                              setActiveTab('module')
+                      </select>
+                    </td>
+                    <td style={TABLE_TD}>
+                      <select
+                        value={ch.delivery || ''}
+                        onChange={e => setSylArrObj('tla_chapters', i, 'delivery', e.target.value)}
+                        style={{ ...SELECT_STYLE, width: 105 }}
+                      >
+                        <option value="">—</option>
+                        <option>F2F</option><option>Online</option><option>Hybrid</option><option>Exam</option><option>Lab</option>
+                      </select>
+                    </td>
+                    <td style={{ ...TABLE_TD, minWidth: 130 }}>
+                      {_isLecture ? (
+                        <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
+                      ) : _subTask ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                            {(_subTask.ilos || []).map(iloId => (
+                              <span key={iloId} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: MAROON_LIGHT, color: MAROON, whiteSpace: 'nowrap' }}>{iloId}</span>
+                            ))}
+                          </div>
+                          {(_subTask.ilos || []).length > 0 && (
+                            <span style={{ fontSize: '0.68rem', color: '#888' }}>
+                              {(_subTask.ilos || []).map(iloId => {
+                                const pts = (_subTask.iloTotals || {})[iloId] ?? (_subTask.total || 0)
+                                return `${iloId}:${pts}`
+                              }).join(' ')} pts
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
+                      )}
+                    </td>
+                    <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
+                      <button
+                        type="button"
+                        title={_btnLabel}
+                        onClick={() => {
+                          if (_isLecture) {
+                            if (!_existingMod) {
+                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '' }))
+                              setModuleFromSchedule(true)
+                              setModuleCreating(true)
+                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             } else {
-                              setActiveTab('assessment')
+                              setModuleCreating(false)
+                              setModuleFromSchedule(false)
+                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             }
-                          }}
-                          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: `1.5px solid ${_btnColor}`, borderRadius: 6, background: 'transparent', color: _btnColor, cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                          onMouseEnter={e => { e.currentTarget.style.background = _btnHover }}
-                          onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                        >
-                          {_isLecture
-                            ? (_existingMod ? <BookOpen size={14} /> : <Zap size={14} />)
-                            : (_existingAssessment ? <ClipboardCheck size={14} /> : <ClipboardList size={14} />)
+                            setResultText('')
+                            setActiveTab('module')
+                          } else {
+                            setActiveTab('assessment')
                           }
-                        </button>
-                      </td>
-                      <td style={{ ...TABLE_TD, borderRight: 'none' }}>
-                        <RemoveBtn onClick={() => removeSylItem('tla_chapters', i)} disabled={chapters.length <= 1} />
-                      </td>
-                    </tr>
+                        }}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: `1.5px solid ${_btnColor}`, borderRadius: 6, background: 'transparent', color: _btnColor, cursor: 'pointer', padding: 0, flexShrink: 0 }}
+                        onMouseEnter={e => { e.currentTarget.style.background = _btnHover }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
+                      >
+                        {_isLecture
+                          ? (_existingMod ? <BookOpen size={14} /> : <Zap size={14} />)
+                          : (_existingAssessment ? <ClipboardCheck size={14} /> : <ClipboardList size={14} />)
+                        }
+                      </button>
+                    </td>
+                    <td style={{ ...TABLE_TD, borderRight: 'none' }}>
+                      <RemoveBtn onClick={() => removeSylItem('tla_chapters', i)} disabled={chapters.length <= 1} />
+                    </td>
+                  </tr>
                   )
                 })}
               </tbody>
@@ -3326,7 +3874,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       )
     }
 
-    if (syllabusSub === 'tos') {
+    if (activeSyllabusSectionKey === 'tos') {
       const BLOOM_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
       const tosExams = syllabusData.tos || []
       const effectiveTosId = (activeTosId && tosExams.some(t => t.id === activeTosId)) ? activeTosId : (tosExams[0]?.id || null)
@@ -3336,7 +3884,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         id: `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         topic: '', ilos: [], hours_class: 0, hours_min: 0, weight: '',
         bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
-        bloom_pct: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
+        bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: '' }), {}),
         total_points: '',
       })
 
@@ -3380,17 +3928,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setSyllabusData(s => ({ ...s, tos: s.tos.map(t => t.id !== examId ? t : { ...t, topics: t.topics.map(r => r.id !== rowId ? r : { ...r, ilos: checked ? [...(r.ilos || []), iloKey] : (r.ilos || []).filter(x => x !== iloKey) }) }) }))
       }
 
-      const totalHrs = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0) : 0
-      const totalMins = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0) : 0
+      const totalHrs       = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0) : 0
+      const totalMins      = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0) : 0
       const totalTestItems = activeTos ? (Number(activeTos.totalTestItems) || 0) : 0
       const computedWeight = (row) => totalHrs > 0 ? (Number(row.hours_class) || 0) / totalHrs * 100 : 0
-      const computedPts = (row) => Math.round(computedWeight(row) / 100 * totalTestItems)
+      const computedPts    = (row) => Math.round(computedWeight(row) / 100 * totalTestItems)
       const computedBItems = (row, k) => { const pts = computedPts(row); return pts > 0 ? Math.round((parseFloat((row.bloom_pct || {})[k]) || 0) / 100 * pts) : 0 }
 
       // ── ILO-Bloom alignment helpers ────────────────────────────────────────
       const BLOOM_LEVEL_NUM = { remember: 1, understand: 2, apply: 3, analyze: 4, evaluate: 5, create: 6 }
       // Weights from ceiling downward: ceiling gets most, lower levels get less
-      const BLOOM_SUGGEST_WEIGHTS = { 1: [100], 2: [70, 30], 3: [60, 30, 10], 4: [55, 25, 12, 8], 5: [50, 20, 15, 10, 5], 6: [45, 18, 15, 12, 6, 4] }
+      const BLOOM_SUGGEST_WEIGHTS = { 1:[100], 2:[70,30], 3:[60,30,10], 4:[55,25,12,8], 5:[50,20,15,10,5], 6:[45,18,15,12,6,4] }
 
       // Highest Bloom level (1-6) among the ILOs mapped to this row
       const rowIloCeiling = (row) => {
@@ -3404,11 +3952,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       // Background color for a bloom cell based on its relation to the ILO ceiling
       const bloomCellBg = (row, k) => {
         const ceiling = rowIloCeiling(row)
-        if (ceiling === 0) return 'rgba(139,0,0,0.03)'
+        if (ceiling === 0) return 'rgba(21,128,61,0.03)'
         const level = BLOOM_LEVEL_NUM[k]
         if (level > ceiling) return 'rgba(0,0,0,0.045)' // above ceiling — gray (out of scope)
         if (level === ceiling) return 'rgba(34,197,94,0.11)' // at ceiling — green (target)
-        return 'rgba(139,0,0,0.03)' // below ceiling — normal (prerequisite)
+        return 'rgba(21,128,61,0.03)' // below ceiling — normal (prerequisite)
       }
 
       // 'aligned' | 'mismatch' | 'over' | null
@@ -3421,7 +3969,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         if (hasAbove) return 'over'
         const topK = BLOOM_KEYS.reduce((best, k) =>
           (parseFloat((row.bloom_pct || {})[k] || 0) >= parseFloat((row.bloom_pct || {})[best] || 0)) ? k : best
-          , BLOOM_KEYS[0])
+        , BLOOM_KEYS[0])
         return BLOOM_KEYS.indexOf(topK) + 1 === ceiling ? 'aligned' : 'mismatch'
       }
 
@@ -3465,8 +4013,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       // unlinked   — ILOs detected but none selected
       // unverified — topic text too sparse (no ILOs detected at all)
       const keywordAlignStatus = (row) => {
-        const detected = autoDetectIlos(row)
-        const selected = row.ilos || []
+        const detected  = autoDetectIlos(row)
+        const selected  = row.ilos || []
         if (detected.length === 0) return 'unverified'
         if (selected.length === 0) return 'unlinked'
         const overlap = selected.some(k => detected.includes(k))
@@ -3485,11 +4033,34 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Table of Specifications
               </Typography>
               <Chip label={`${tosExams.length} exam${tosExams.length !== 1 ? 's' : ''}`} size="small"
-                sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(139,0,0,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
-              <Box onClick={e => e.stopPropagation()}>
+                sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(21,128,61,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
+              <Box onClick={e => e.stopPropagation()} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Tooltip title="Download every examination as a landscape DOCX">
+                  <span>
+                    <Button
+                      onClick={handleExportTos}
+                      disabled={tosExporting || tosExams.length === 0}
+                      startIcon={tosExporting ? <CircularProgress size={13} sx={{ color: MAROON }} /> : <DownloadIcon fontSize="small" />}
+                      size="small"
+                      sx={{
+                        textTransform: 'none', fontSize: '0.74rem', fontWeight: 600,
+                        color: MAROON, border: `1px solid ${MAROON}`, borderRadius: 1.5,
+                        minWidth: 0, px: 1.25, py: 0.4,
+                        '&:hover': { bgcolor: MAROON_LIGHT },
+                        '&.Mui-disabled': { color: 'var(--text-tertiary)', borderColor: 'var(--border-color)' },
+                      }}>
+                      {tosExporting ? 'Preparing…' : 'Download ToS'}
+                    </Button>
+                  </span>
+                </Tooltip>
                 <AddRowBtn label="Add TOS" onClick={addTosExam} />
               </Box>
             </Box>
+            {tosExportError && (
+              <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'rgba(231,76,60,0.06)', borderBottom: '1px solid rgba(0,0,0,0.07)' }}>
+                <Typography variant="caption" sx={{ color: '#dc2626', fontWeight: 600 }}>{tosExportError}</Typography>
+              </Box>
+            )}
             {tosListOpen && (
               <Box sx={{ px: 2.5, py: 1.5 }}>
                 {tosExams.length === 0 ? (
@@ -3559,8 +4130,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <th style={{ ...TABLE_TH, minWidth: 56, textAlign: 'center' }}>Min</th>
                             {BLOOM_KEYS.map(k => (
                               <React.Fragment key={k}>
-                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(139,0,0,0.05)' }}>Items</th>
-                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(139,0,0,0.05)' }}>%</th>
+                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(21,128,61,0.05)' }}>Items</th>
+                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(21,128,61,0.05)' }}>%</th>
                               </React.Fragment>
                             ))}
                           </tr>
@@ -3576,31 +4147,31 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   {syllabusData.ilos.map((_, j) => {
                                     const iloBloom = syllabusData.ilo_bloom[j]
                                     const iloLevel = iloBloom?.level ? iloBloom.level.charAt(0).toUpperCase() + iloBloom.level.slice(1).toLowerCase() : null
-                                    const iloVerb = iloBloom?.verb || null
+                                    const iloVerb  = iloBloom?.verb || null
                                     return (
                                       <label key={j} style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: '0.72rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-                                        title={iloLevel ? `ILO${j + 1} targets: ${iloLevel}${iloVerb ? ` (${iloVerb})` : ''}` : `ILO${j + 1}`}>
+                                        title={iloLevel ? `ILO${j+1} targets: ${iloLevel}${iloVerb ? ` (${iloVerb})` : ''}` : `ILO${j+1}`}>
                                         <input type="checkbox"
                                           checked={(row.ilos || []).includes(`ILO${j + 1}`)}
                                           onChange={e => togIlo(activeTos.id, row.id, `ILO${j + 1}`, e.target.checked)} />
                                         ILO{j + 1}
-                                        {iloLevel && <span style={{ fontSize: '0.6rem', color: MAROON, fontWeight: 700, marginLeft: 1 }}>{iloLevel.slice(0, 3)}</span>}
+                                        {iloLevel && <span style={{ fontSize: '0.6rem', color: MAROON, fontWeight: 700, marginLeft: 1 }}>{iloLevel.slice(0,3)}</span>}
                                       </label>
                                     )
                                   })}
                                 </div>
                                 {(() => {
                                   const ceiling = rowIloCeiling(row)
-                                  const align = checkAlignment(row)
+                                  const align   = checkAlignment(row)
                                   const ceilKey = ceiling > 0 ? BLOOM_KEYS[ceiling - 1] : null
                                   return ceiling > 0 ? (
                                     <div style={{ marginTop: 5, paddingTop: 4, borderTop: '1px dashed #e0e0e0', display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
                                       <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: 99, background: 'rgba(34,197,94,0.12)', color: '#16a34a', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                         🎯 {ceilKey.charAt(0).toUpperCase() + ceilKey.slice(1)}
                                       </span>
-                                      {align === 'aligned' && <span style={{ fontSize: '0.62rem', color: '#16a34a', fontWeight: 700 }}>✓ Aligned</span>}
+                                      {align === 'aligned'  && <span style={{ fontSize: '0.62rem', color: '#16a34a', fontWeight: 700 }}>✓ Aligned</span>}
                                       {align === 'mismatch' && <span style={{ fontSize: '0.62rem', color: '#dc2626', fontWeight: 700 }}>⚠ Mismatch</span>}
-                                      {align === 'over' && <span style={{ fontSize: '0.62rem', color: '#d97706', fontWeight: 700 }}>↑ Over</span>}
+                                      {align === 'over'     && <span style={{ fontSize: '0.62rem', color: '#d97706', fontWeight: 700 }}>↑ Over</span>}
                                       <button type="button"
                                         onClick={() => applyBloomSuggestion(activeTos.id, row.id, row)}
                                         style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: 99, border: `1px solid ${MAROON}`, background: MAROON_LIGHT, color: MAROON, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5 }}
@@ -3613,13 +4184,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 {/* ── Keyword (integrateTOS) alignment panel ── */}
                                 {(() => {
                                   const detected = autoDetectIlos(row)
-                                  const status = keywordAlignStatus(row)
+                                  const status   = keywordAlignStatus(row)
                                   const domBloom = dominantBloom(row)
                                   const statusCfg = {
-                                    confirmed: { color: '#16a34a', icon: '✓', label: 'Confirmed' },
-                                    mismatch: { color: '#dc2626', icon: '⚠', label: 'Mismatch' },
-                                    unlinked: { color: '#d97706', icon: '⊘', label: 'Unlinked' },
-                                    unverified: { color: '#9ca3af', icon: '○', label: 'Unverified' },
+                                    confirmed:  { color: '#16a34a', icon: '✓', label: 'Confirmed' },
+                                    mismatch:   { color: '#dc2626', icon: '⚠', label: 'Mismatch'  },
+                                    unlinked:   { color: '#d97706', icon: '⊘', label: 'Unlinked'  },
+                                    unverified: { color: '#9ca3af', icon: '○', label: 'Unverified'},
                                   }[status]
                                   return (
                                     <div style={{ marginTop: 5, paddingTop: 4, borderTop: '1px dashed #e0e0e0' }}>
@@ -3627,8 +4198,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                         <span style={{ fontSize: '0.58rem', color: '#888', fontWeight: 600, whiteSpace: 'nowrap' }}>🔍 Keyword:</span>
                                         {detected.length > 0
                                           ? detected.map(k => (
-                                            <span key={k} style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(59,130,246,0.10)', color: '#2563eb', fontWeight: 700 }}>{k}</span>
-                                          ))
+                                              <span key={k} style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(59,130,246,0.10)', color: '#2563eb', fontWeight: 700 }}>{k}</span>
+                                            ))
                                           : <span style={{ fontSize: '0.6rem', color: '#bbb' }}>—</span>
                                         }
                                       </div>
@@ -3637,7 +4208,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                           {statusCfg.icon} {statusCfg.label}
                                         </span>
                                         {domBloom && (
-                                          <span style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(139,0,0,0.07)', color: MAROON, fontWeight: 700 }}>
+                                          <span style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(21,128,61,0.07)', color: MAROON, fontWeight: 700 }}>
                                             {domBloom.charAt(0).toUpperCase() + domBloom.slice(1)}
                                           </span>
                                         )}
@@ -3654,9 +4225,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 </Typography>
                               </td>
                               {BLOOM_KEYS.map(k => {
-                                const bg = bloomCellBg(row, k)
+                                const bg      = bloomCellBg(row, k)
                                 const ceiling = rowIloCeiling(row)
-                                const level = BLOOM_LEVEL_NUM[k]
+                                const level   = BLOOM_LEVEL_NUM[k]
                                 const isAbove = ceiling > 0 && level > ceiling
                                 return (
                                   <React.Fragment key={k}>
@@ -3691,13 +4262,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>100%</td>
                             {BLOOM_KEYS.map(k => {
                               const sumItems = activeTos.topics.reduce((acc, r) => acc + computedBItems(r, k), 0)
-                              const sumPct = activeTos.topics.reduce((acc, r) => acc + (parseFloat((r.bloom_pct || {})[k]) || 0), 0)
+                              const sumPct   = activeTos.topics.reduce((acc, r) => acc + (parseFloat((r.bloom_pct || {})[k]) || 0), 0)
                               return (
                                 <React.Fragment key={k}>
-                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(139,0,0,0.04)' }}>
+                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
                                     {sumItems > 0 ? sumItems : ''}
                                   </td>
-                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(139,0,0,0.04)' }}>
+                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
                                     {sumPct > 0 ? `${sumPct.toFixed(1)}%` : ''}
                                   </td>
                                 </React.Fragment>
@@ -3727,9 +4298,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 10. Grading ──────────────────────────────────────────────────────────
-    if (syllabusSub === 'grading') {
+    if (activeSyllabusSectionKey === 'grading') {
       return (
-        <SectionCard title="Grade equivalence scale">
+        <SectionCard title="Grade equivalence scale"
+          action={<AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3 }}>
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -3741,19 +4313,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </tr>
                 </thead>
                 <tbody>
-                  {(syllabusData.grading_rows && syllabusData.grading_rows.length
-                    ? syllabusData.grading_rows
-                    : DEFAULT_GRADING_ROWS
-                  ).map((row, i) => (
+                  {(syllabusData.grading_rows || []).map((row, i) => (
                     <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#1A1A1F' : BG }}>
                       <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                        {inlineInput(row.grade, e => setSylArrObj('grading_rows', i, 'grade', e.target.value), 60)}
+                        {inlineInput(row.grade,  e => setSylArrObj('grading_rows', i, 'grade',  e.target.value), 60)}
                       </td>
                       <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
                         {inlineInput(row.rating, e => setSylArrObj('grading_rows', i, 'rating', e.target.value), 140)}
                       </td>
                       <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                        {inlineInput(row.range, e => setSylArrObj('grading_rows', i, 'range', e.target.value), 90)}
+                        {inlineInput(row.range,  e => setSylArrObj('grading_rows', i, 'range',  e.target.value), 90)}
                       </td>
                     </tr>
                   ))}
@@ -3765,8 +4334,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                   <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, fontSize: '0.82rem' }}>Passing grade:</Typography>
                   <TextField size="small" type="number"
-                    value={syllabusData.passing_grade ?? 75}
-                    onChange={e => setSyl('passing_grade', Number(e.target.value))}
+                    value={syllabusData.passing_grade ?? ''}
+                    onChange={e => setSyl('passing_grade', e.target.value === '' ? '' : Number(e.target.value))}
                     sx={{ width: 70, '& .MuiOutlinedInput-root': { fontSize: '0.82rem', '&:hover fieldset': { borderColor: MAROON }, '&.Mui-focused fieldset': { borderColor: MAROON } } }}
                     inputProps={{ style: { padding: '4px 8px' } }} />
                 </Box>
@@ -3776,9 +4345,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 {[
-                  { field: 'use_plus_minus', label: 'Use plus/minus grades' },
+                  { field: 'use_plus_minus',   label: 'Use plus/minus grades' },
                   { field: 'remedial_enabled', label: 'Enable remedial activities (70–74)' },
-                  { field: 'round_grades', label: 'Round final grades' },
+                  { field: 'round_grades',     label: 'Round final grades' },
                 ].map(({ field, label }) => (
                   <Box key={field} component="label" sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer', fontSize: '0.82rem', color: '#444' }}>
                     <input type="checkbox" checked={!!syllabusData[field]} onChange={e => setSyl(field, e.target.checked)} />
@@ -3793,7 +4362,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 11. Policies ─────────────────────────────────────────────────────────
-    if (syllabusSub === 'policies') {
+    if (activeSyllabusSectionKey === 'policies') {
       return (
         <SectionCard title="Course policies"
           action={<AddRowBtn label="Add policy" onClick={() => addSylItem('policies', EMPTY_POLICY)} />}>
@@ -3832,19 +4401,42 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Paper>
       )
     }
+    if (workspaceApi.loading && !workspaceApi.data) {
+      return (
+        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}>
+          <CircularProgress sx={{ color: MAROON }} />
+        </Box>
+      )
+    }
+    if (workspaceApi.error && !workspaceApi.data) {
+      return (
+        <Stack spacing={2} sx={{ p: 3 }}>
+          <AutoAlert
+            message={`Could not load this course workspace: ${workspaceApi.error}`}
+            onClose={() => {}}
+          />
+          <Button
+            variant="outlined"
+            onClick={() => navigate('/faculty/dashboard')}
+            sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
+          >
+            Back to courses
+          </Button>
+        </Stack>
+      )
+    }
     if (activeTab === 'analytics') {
       return <FacultyAnalyticsReports key={courseId} courseId={courseId} />
     }
     if (activeTab === 'syllabus') {
+      const aiSectionFields = getAiFieldsForCurrentSection()
       const showSaveFooter = isDirty
-      const showAiFooter = Boolean(aiField) && !AI_EXCLUDED_SECTIONS.has(syllabusSub)
-      const isIloField = aiField?.arrField === 'ilos'
-      const aiFooterHeight = showAiFooter ? (isIloField ? 96 : 60) : 0
-      const totalFooterPb = (showSaveFooter ? 72 : 0) + aiFooterHeight
+      const aiFooterHeight = activeSyllabusSectionKey === 'iloat' ? 136 : 96
+      const totalFooterPb  = (showSaveFooter ? 72 : 0) + aiFooterHeight
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
-          <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
+                <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
             {customization.header_image_url ? (
               <Box sx={{ mb: 2, textAlign: 'center' }}><Box component="img" src={customization.header_image_url} alt="University header" sx={{ maxWidth: '100%', maxHeight: 140, objectFit: 'contain' }} /></Box>
             ) : customization.header_text && (
@@ -3948,6 +4540,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Tabs>
             </Box>
             {renderSyllabusSection()}
+            {renderConfiguredSubsections()}
             {customization.footer_image_url ? (
               <Box sx={{ mt: 2, textAlign: 'center' }}><Box component="img" src={customization.footer_image_url} alt="University footer" sx={{ maxWidth: '100%', maxHeight: 100, objectFit: 'contain' }} /></Box>
             ) : customization.footer_text && (
@@ -3957,11 +4550,45 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Box>
 
+          {aiPipelineDrafts && (
+            <Paper
+              variant="outlined"
+              sx={{
+                mx: 1,
+                mb: 1,
+                p: 1.5,
+                maxHeight: 190,
+                overflowY: 'auto',
+                bgcolor: '#111318',
+                borderColor: 'rgba(134,239,172,0.35)',
+              }}
+            >
+              <Typography variant="subtitle2" sx={{ color: '#86EFAC', fontWeight: 700, mb: 1 }}>
+                Review generated suggestions ({aiPipelineDrafts.length})
+              </Typography>
+              <Stack spacing={1.25}>
+                {aiPipelineDrafts.map((draft, index) => (
+                  <Box key={`${draft.fieldType}-${draft.field || draft.arrField}-${draft.arrIndex ?? draft.subsectionKey ?? index}`}>
+                    <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700 }}>
+                      {draft.label}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      sx={{ color: 'rgba(255,255,255,0.78)', whiteSpace: 'pre-wrap', mt: 0.25 }}
+                    >
+                      {draft.text || 'The AI returned an empty suggestion for this field.'}
+                    </Typography>
+                  </Box>
+                ))}
+              </Stack>
+            </Paper>
+          )}
+
           {/* Sticky save footer — appears when any field has been edited */}
           {showSaveFooter && (
             <Box sx={{
-              position: 'sticky', bottom: showAiFooter ? `${aiFooterHeight}px` : 0,
-              bgcolor: '#16161E', borderTop: '1.5px solid rgba(255,69,58,0.35)',
+              position: 'sticky', bottom: `${aiFooterHeight}px`,
+              bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
               boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
@@ -3969,14 +4596,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             }}>
               {saveError
                 ? <>
-                  <Typography variant="caption" sx={{ color: '#c62828', flex: 1 }}>{saveError}</Typography>
-                  <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#c62828', p: 0.25 }}>
-                    <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
-                  </IconButton>
-                </>
+                    <Typography variant="caption" sx={{ color: '#c62828', flex: 1 }}>{saveError}</Typography>
+                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#c62828', p: 0.25 }}>
+                      <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
+                    </IconButton>
+                  </>
                 : <Typography variant="caption" sx={{ color: '#666', flex: 1 }}>
-                  You have unsaved changes in this syllabus.
-                </Typography>
+                    You have unsaved changes in this syllabus.
+                  </Typography>
               }
               <Button variant="outlined" size="small" disabled={saveLoading}
                 onClick={() => { setIsDirty(false); setSaveSuccess(false); workspaceApi.execute() }}
@@ -3984,121 +4611,286 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Discard
               </Button>
               <Button variant="contained" size="small" disabled={saveLoading} onClick={handleSaveSyllabus}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5, minWidth: 100 }}>
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5, minWidth: 100 }}>
                 {saveLoading ? 'Saving...' : 'Save Syllabus'}
               </Button>
             </Box>
           )}
 
-          {/* AI generation footer — appears when a field is focused in an eligible section */}
-          {showAiFooter && (
-            <Box sx={{
-              position: 'sticky', bottom: 0,
-              bgcolor: '#1C1C1E',
-              borderTop: `2px solid ${MAROON}`,
-              boxShadow: '0 -4px 20px rgba(0,0,0,0.18)',
-              px: 2, py: 1,
-              display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap',
-              zIndex: 20,
-              minHeight: 60,
-            }}>
-              <AutoAwesomeIcon sx={{ color: MAROON, fontSize: '1.1rem', flexShrink: 0 }} />
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <Typography variant="caption" sx={{ color: '#aaa', display: 'block', lineHeight: 1, mb: 0.15 }}>AI Assist</Typography>
-                <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
-                  {aiField.label}
-                </Typography>
-              </Box>
-              {aiError && (
-                <Typography variant="caption" sx={{ color: '#ef9a9a', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{aiError}</Typography>
-              )}
-              {/* ILO Bloom Verb assistant — visible only when an ILO field is active */}
-              {aiField?.arrField === 'ilos' && (
-                <>
-                  <select
-                    value={iloBloomVerb}
-                    onChange={e => setIloBloomVerb(e.target.value)}
-                    style={{
-                      background: '#2a2a2a', color: '#fff',
-                      border: '1px solid #555', borderRadius: 4,
-                      fontSize: '0.75rem', padding: '4px 8px', height: 30,
-                      minWidth: 150, flexShrink: 0, cursor: 'pointer',
+          {/* The AI pipeline stays visible in every syllabus section. */}
+          <Box sx={{
+            position: 'sticky',
+            bottom: 0,
+            bgcolor: '#15181A',
+            borderTop: '2px solid rgba(134,239,172,0.65)',
+            boxShadow: '0 -4px 20px rgba(0,0,0,0.28)',
+            px: 2,
+            py: 1,
+            zIndex: 20,
+          }}>
+            <Stack spacing={0.75}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />
+                <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
+                  <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                    Writing assistant
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                    {aiGenerating
+                      ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                      : aiPipelineDrafts
+                        ? 'Your drafts are ready. Review them before adding them to your syllabus.'
+                        : aiSectionFields.length
+                          ? `Create ${aiSectionFields.length === 1 ? 'a draft' : `drafts for ${aiSectionFields.length} items`} in ${activeConfiguredSection?.label || 'this section'}. You can review ${aiSectionFields.length === 1 ? 'it' : 'them'} before adding ${aiSectionFields.length === 1 ? 'it' : 'them'}.`
+                          : 'Drafting is not available for this section yet.'}
+                  </Typography>
+                </Box>
+
+                {!aiPipelineDrafts && (
+                  <Button
+                    size="small"
+                    variant="contained"
+                    disabled={aiGenerating || !aiSectionFields.length}
+                    startIcon={aiGenerating ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
+                    onClick={handleGenerateSection}
+                    sx={{
+                      bgcolor: '#16A34A',
+                      '&:hover': { bgcolor: '#15803D' },
+                      '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
+                      textTransform: 'none',
+                      fontWeight: 800,
+                      minHeight: 34,
                     }}
                   >
-                    <option value="">— Bloom verb —</option>
-                    {getBloomVerbsForYear(syllabusData.year_level).map(({ level, verbs }) => (
-                      <optgroup key={level} label={level}>
-                        {verbs.map(v => <option key={v} value={v}>{v}</option>)}
-                      </optgroup>
-                    ))}
-                  </select>
+                    {aiGenerating ? 'Writing…' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                  </Button>
+                )}
+
+                {aiPipelineDrafts && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setAiReviewOpen(true)}
+                    sx={{
+                      color: '#BBF7D0',
+                      borderColor: 'rgba(134,239,172,0.5)',
+                      textTransform: 'none',
+                      fontWeight: 700,
+                      '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(134,239,172,0.08)' },
+                    }}
+                  >
+                    Review drafts
+                  </Button>
+                )}
+              </Box>
+
+              {aiGenerating && aiPipelineProgress && (
+                <LinearProgress
+                  variant="determinate"
+                  value={(aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100}
+                  sx={{
+                    height: 4,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                  }}
+                />
+              )}
+              {aiError && (
+                <Typography role="alert" variant="caption" sx={{ color: '#FCA5A5' }}>
+                  {aiError}
+                </Typography>
+              )}
+              {!aiPipelineDrafts && activeSyllabusSectionKey === 'iloat' && (
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Select
+                    size="small"
+                    displayEmpty
+                    value={iloBloomVerb}
+                    onChange={event => setIloBloomVerb(event.target.value)}
+                    disabled={aiGenerating}
+                    sx={{ bgcolor: '#252A2B', color: '#fff', minWidth: 175, height: 32 }}
+                  >
+                    <MenuItem value="">Bloom verb (optional)</MenuItem>
+                    {getBloomVerbsForYear(syllabusData.year_level).flatMap(({ level, verbs }) => [
+                      ...verbs.map(verb => <MenuItem key={verb} value={verb}>{level}: {verb}</MenuItem>),
+                    ])}
+                  </Select>
                   <TextField
                     size="small"
-                    multiline
-                    minRows={1}
-                    placeholder="ILO focus (optional) — describe what this ILO should cover…"
                     value={iloFocusText}
-                    onChange={e => setIloFocusText(e.target.value)}
+                    onChange={event => setIloFocusText(event.target.value)}
+                    disabled={aiGenerating}
+                    placeholder="Focus for generated learning outcomes (optional)"
                     sx={{
-                      flex: '1 1 180px', minWidth: 160, maxWidth: 320,
-                      '& .MuiOutlinedInput-root': {
-                        color: '#fff', fontSize: '0.75rem', background: '#2a2a2a',
-                        '& fieldset': { borderColor: '#555' },
-                        '&:hover fieldset': { borderColor: '#888' },
-                        '&.Mui-focused fieldset': { borderColor: MAROON },
-                      },
-                      '& .MuiInputBase-input': { py: 0.5, px: 1 },
-                      '& textarea': { resize: 'vertical', minHeight: '1.4em' },
+                      flex: 1,
+                      '& .MuiOutlinedInput-root': { color: '#fff', bgcolor: '#252A2B' },
                     }}
                   />
-                </>
+                </Stack>
               )}
-              <Select
-                size="small"
-                value={aiProvider}
-                onChange={e => setAiProvider(e.target.value)}
-                sx={{
-                  bgcolor: '#333', color: '#fff', fontSize: '0.75rem', height: 30,
-                  minWidth: 110, flexShrink: 0,
-                  '& .MuiOutlinedInput-notchedOutline': { borderColor: '#555' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#888' },
-                  '& .MuiSvgIcon-root': { color: '#aaa' },
-                  '& .MuiSelect-select': { py: 0.5 },
-                }}
-                MenuProps={{ PaperProps: { sx: { bgcolor: '#2a2a2a', color: '#fff' } } }}
-              >
-                {AI_PROVIDERS.map(p => (
-                  <MenuItem key={p} value={p} sx={{ fontSize: '0.75rem', '&:hover': { bgcolor: '#444' } }}>
-                    {cap(p)}
-                  </MenuItem>
-                ))}
-              </Select>
-              {getAiCurrentValue() && (
-                <Button
-                  size="small"
-                  variant="outlined"
-                  disabled={aiGenerating}
-                  onClick={() => handleAiGenerate('continue')}
-                  sx={{ textTransform: 'none', color: '#ddd', borderColor: '#555', fontSize: '0.75rem', py: 0.25, px: 1.25, flexShrink: 0, '&:hover': { borderColor: '#aaa', bgcolor: '#333' } }}
-                >
-                  Continue
-                </Button>
+            </Stack>
+          </Box>
+
+          <Dialog
+            open={aiReviewOpen}
+            onClose={() => { if (!aiGenerating) setAiReviewOpen(false) }}
+            fullWidth
+            maxWidth="md"
+            aria-labelledby="ai-draft-review-title"
+            PaperProps={{
+              sx: {
+                bgcolor: '#15181A',
+                color: '#F9FAFB',
+                border: '1px solid rgba(134,239,172,0.35)',
+                borderRadius: 2,
+              },
+            }}
+          >
+            <DialogTitle id="ai-draft-review-title" sx={{ pb: 0.75, fontWeight: 800 }}>
+              {aiGenerating ? 'Creating your drafts' : 'Review your drafts'}
+            </DialogTitle>
+            <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.12)' }}>
+              <DialogContentText sx={{ color: '#D1D5DB', mb: 2 }}>
+                {aiGenerating
+                  ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                  : 'Check the suggestions below. You can add them to your syllabus, remove them, or try again.'}
+              </DialogContentText>
+              {aiGenerating ? (
+                <LinearProgress
+                  variant={aiPipelineProgress?.total ? 'determinate' : 'indeterminate'}
+                  value={aiPipelineProgress?.total
+                    ? (aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100
+                    : undefined}
+                  sx={{
+                    height: 5,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                  }}
+                />
+              ) : (
+                <Stack spacing={1.5}>
+                  {(aiPipelineDrafts || []).map((draft, index) => (
+                    <Paper
+                      key={`${draft.section}-${draft.label}-${index}`}
+                      variant="outlined"
+                      sx={{
+                        p: 1.75,
+                        bgcolor: '#202426',
+                        color: '#F9FAFB',
+                        borderColor: 'rgba(255,255,255,0.14)',
+                        borderRadius: 1.5,
+                      }}
+                    >
+                      <Typography variant="subtitle2" sx={{ color: '#BBF7D0', fontWeight: 800, mb: 0.75 }}>
+                        {draft.label}
+                      </Typography>
+                      {draft.fieldType === 'customTable' ? (
+                        <TableContainer sx={{ maxHeight: 360, overflowX: 'auto' }}>
+                          <Table size="small" aria-label={`${draft.label} generated preview`}>
+                            <TableHead>
+                              <TableRow>
+                                {draft.columns.map((column, columnIndex) => (
+                                  <TableCell
+                                    key={columnIndex}
+                                    sx={{ color: '#BBF7D0', fontWeight: 800, borderColor: 'rgba(255,255,255,0.16)' }}
+                                  >
+                                    {column}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {draft.rows.map((row, rowIndex) => (
+                                <TableRow key={rowIndex}>
+                                  {row.map((cell, columnIndex) => (
+                                    <TableCell
+                                      key={columnIndex}
+                                      sx={{
+                                        color: '#E5E7EB',
+                                        borderColor: 'rgba(255,255,255,0.12)',
+                                        verticalAlign: 'top',
+                                      }}
+                                    >
+                                      {cell}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          sx={{ color: '#E5E7EB', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.65 }}
+                        >
+                          {draft.text}
+                        </Typography>
+                      )}
+                    </Paper>
+                  ))}
+                </Stack>
               )}
-              <Button
-                size="small"
-                variant="contained"
-                disabled={aiGenerating}
-                onClick={() => handleAiGenerate('generate')}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#a00' }, textTransform: 'none', fontSize: '0.75rem', py: 0.3, px: 1.5, fontWeight: 700, flexShrink: 0 }}
-              >
-                {aiGenerating ? 'Generating…' : 'Generate'}
-              </Button>
-              <IconButton size="small" onClick={() => setAiField(null)}
-                sx={{ color: '#666', '&:hover': { color: '#fff' }, p: 0.5, flexShrink: 0 }}>
-                <span style={{ fontSize: '0.85rem', lineHeight: 1 }}>✕</span>
-              </IconButton>
-            </Box>
-          )}
+              {!aiGenerating && (aiPipelineDrafts || []).some(draft => (
+                draft.fieldType === 'customTable'
+                && (syllabusData.custom_tables?.[draft.section]?.[draft.tableKey] || []).length > 0
+              )) && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  Adding the table drafts will replace the existing rows in those tables.
+                </Alert>
+              )}
+              {aiError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  {aiError}
+                </Alert>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 2.5, py: 1.5, justifyContent: 'space-between' }}>
+              <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
+                Nothing is added until you choose the check mark.
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Tooltip title="Add these drafts to your syllabus and continue">
+                  <span>
+                    <IconButton
+                      aria-label="Add drafts to syllabus and continue"
+                      disabled={aiGenerating || !aiPipelineDrafts?.length}
+                      onClick={acceptAiDraftsAndContinue}
+                      sx={{ color: '#86EFAC', bgcolor: 'rgba(22,163,74,0.16)', '&:hover': { bgcolor: 'rgba(22,163,74,0.3)' } }}
+                    >
+                      <CheckCircleOutlineIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Remove these drafts">
+                  <span>
+                    <IconButton
+                      aria-label="Remove generated drafts"
+                      disabled={aiGenerating || !aiPipelineDrafts?.length}
+                      onClick={discardAiDrafts}
+                      sx={{ color: '#FCA5A5', bgcolor: 'rgba(239,68,68,0.12)', '&:hover': { bgcolor: 'rgba(239,68,68,0.24)' } }}
+                    >
+                      <CloseIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Try again">
+                  <span>
+                    <IconButton
+                      aria-label="Create drafts again"
+                      disabled={aiGenerating || !aiSectionFields.length}
+                      onClick={regenerateAiDrafts}
+                      sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}
+                    >
+                      <ReplayIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Box>
+            </DialogActions>
+          </Dialog>
 
           {/* Saved confirmation — auto-dismissed after 3 s */}
           {saveSuccess && !isDirty && (
@@ -4118,7 +4910,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (workspaceApi.loading && !workspaceApi.data) {
       return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: MAROON }} /></Box>
     }
-    if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => { }} />
+    if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
 
     if (activeTab === 'module') {
       // Lecture/Discussion topics from weekly schedule for dropdowns
@@ -4180,11 +4972,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Button size="small" startIcon={<SaveIcon sx={{ fontSize: '0.85rem !important' }} />}
                     disabled={!moduleContentDirty || moduleSaving}
                     onClick={handleSaveModuleContent}
-                    sx={{
-                      bgcolor: moduleContentDirty ? MAROON : '#ccc', color: '#fff', borderRadius: 1.5,
-                      textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
-                      '&:hover': { bgcolor: '#6a0000' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' }
-                    }}>
+                    sx={{ bgcolor: moduleContentDirty ? MAROON : '#ccc', color: '#fff', borderRadius: 1.5,
+                          textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
+                          '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                     {moduleSaving ? 'Saving…' : 'Save'}
                   </Button>
                 </Box>
@@ -4239,25 +5029,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     const isExpanded = expandedSubtopics.has(st.id)
                     const isGen = subtopicGenerating === st.id
                     return (
-                      <Box key={st.id} sx={{ border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1.5, overflow: 'hidden' }}>
+                      <Box key={st.id} sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, overflow: 'hidden', bgcolor: '#16161E' }}>
                         {/* Subtopic header */}
-                        <Box sx={{
-                          display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.9,
-                          bgcolor: isExpanded ? MAROON_LIGHT : '#fafafa', cursor: 'pointer'
-                        }}
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.9,
+                                   bgcolor: isExpanded ? 'rgba(22,163,74,0.14)' : 'rgba(255,255,255,0.04)', cursor: 'pointer',
+                                   '&:hover': { bgcolor: isExpanded ? 'rgba(22,163,74,0.18)' : 'rgba(255,255,255,0.07)' } }}
                           onClick={() => setExpandedSubtopics(prev => {
                             const next = new Set(prev)
                             isExpanded ? next.delete(st.id) : next.add(st.id)
                             return next
                           })}>
-                          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600, color: '#333', fontSize: '0.84rem' }}>
+                          <Typography variant="body2" sx={{ flex: 1, fontWeight: 600, color: '#F0F0F2', fontSize: '0.84rem' }}>
                             {st.title || '(Untitled)'}
                           </Typography>
                           <Tooltip title="Generate content from sources">
                             <span>
                               <IconButton size="small" disabled={isGen}
                                 onClick={e => { e.stopPropagation(); handleGenerateSubtopicContent(st.id, st.title) }}
-                                sx={{ color: MAROON, '&:hover': { bgcolor: MAROON_LIGHT } }}>
+                                sx={{ color: '#86EFAC', '&:hover': { bgcolor: 'rgba(22,163,74,0.16)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' } }}>
                                 {isGen
                                   ? <CircularProgress size={14} sx={{ color: MAROON }} />
                                   : <AutoAwesomeIcon sx={{ fontSize: '1rem' }} />}
@@ -4265,18 +5054,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             </span>
                           </Tooltip>
                           {isExpanded
-                            ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: '#666' }} />
-                            : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: '#666' }} />}
+                            ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.68)' }} />
+                            : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.68)' }} />}
                         </Box>
                         {/* Subtopic content */}
                         {isExpanded && (
-                          <Box sx={{ px: 1.5, py: 1, bgcolor: '#1A1A1F' }}>
+                          <Box sx={{ px: 1.5, py: 1, bgcolor: '#111318' }}>
                             <TextField multiline minRows={5} fullWidth
                               value={st.content || ''}
                               onChange={e => updateSubtopicField(st.id, 'content', e.target.value)}
                               onClick={() => setChatField(`subtopic:${st.id}`)}
                               placeholder="Subtopic content will appear here after generation or manual editing…"
-                              sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.83rem' } }} />
+                              sx={{
+                                '& .MuiOutlinedInput-root': {
+                                  fontSize: '0.83rem', color: '#F0F0F2', bgcolor: '#15181A',
+                                  '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
+                                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
+                                  '&.Mui-focused fieldset': { borderColor: MAROON },
+                                },
+                                '& .MuiInputBase-input': { color: '#F0F0F2' },
+                                '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.45)', opacity: 1 },
+                              }} />
                           </Box>
                         )}
                       </Box>
@@ -4310,10 +5108,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 border: `1.5px solid ${MAROON}33`, display: 'flex', flexDirection: 'column', maxHeight: 480,
               }}>
                 {/* Chat header */}
-                <Box sx={{
-                  px: 2, py: 1.25, bgcolor: MAROON, borderRadius: '8px 8px 0 0',
-                  display: 'flex', alignItems: 'center', gap: 1
-                }}>
+                <Box sx={{ px: 2, py: 1.25, bgcolor: MAROON, borderRadius: '8px 8px 0 0',
+                           display: 'flex', alignItems: 'center', gap: 1 }}>
                   <AutoAwesomeIcon sx={{ color: '#fff', fontSize: '1rem' }} />
                   <Typography variant="subtitle2" sx={{ color: '#fff', flex: 1, fontWeight: 700, fontSize: '0.84rem' }}>
                     AI Module Assistant
@@ -4360,10 +5156,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     sx={{ '& .MuiOutlinedInput-root': { fontSize: '0.8rem', borderRadius: 1.5 } }} />
                   <IconButton size="small" disabled={!chatInput.trim() || chatLoading}
                     onClick={handleChatSend}
-                    sx={{
-                      bgcolor: MAROON, color: '#fff', borderRadius: 1.5, alignSelf: 'flex-end',
-                      '&:hover': { bgcolor: '#6a0000' }, '&:disabled': { bgcolor: '#ddd' }
-                    }}>
+                    sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, alignSelf: 'flex-end',
+                          '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ddd' } }}>
                     <SendIcon sx={{ fontSize: '1rem' }} />
                   </IconButton>
                 </Box>
@@ -4391,10 +5185,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   setResultText('')
                   setModuleCreating(true)
                 }}
-                sx={{
-                  bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                  px: 1.5, py: 0.4, '&:hover': { bgcolor: '#6a0000' }
-                }}>
+                sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                     px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' } }}>
                 Create Module
               </Button>
             </Box>
@@ -4411,12 +5203,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {modules.map(m => (
                   <Box key={m.module_id}
                     onClick={() => handleOpenModule(m)}
-                    sx={{
-                      display: 'flex', gap: 1, alignItems: 'center', px: 1.75, py: 1.1,
-                      bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)',
-                      cursor: 'pointer',
-                      '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(192,57,43,0.20)' }
-                    }}>
+                      sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.75, py: 1.1,
+                        bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)',
+                          cursor: 'pointer',
+                        '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(22,163,74,0.20)' } }}>
                     <Chip label={'Wk ' + m.week_number} size="small"
                       sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
                     <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600 }}>{m.module_title}</Typography>
@@ -4745,7 +5535,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               startIcon={<SaveIcon sx={{ fontSize: '0.8rem !important' }} />}
                               disabled={itemSaving}
                               onClick={handleSaveItemEdit}
-                              sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, fontSize: '0.72rem', px: 1.2, minWidth: 0 }}
+                              sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, fontSize: '0.72rem', px: 1.2, minWidth: 0 }}
                             >
                               {itemSaving ? 'Saving…' : 'Save'}
                             </Button>
@@ -4892,7 +5682,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   fontSize: '0.78rem',
                   px: 1.5,
                   py: 0.4,
-                  '&:hover': { bgcolor: '#6a0000' },
+                  '&:hover': { bgcolor: '#14532D' },
                 }}>
                 Create Assessment
               </Button>
@@ -4921,7 +5711,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       borderRadius: 1.5,
                       border: '1px solid rgba(255,255,255,0.09)',
                       cursor: 'pointer',
-                      '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(192,57,43,0.20)' },
+                      '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(22,163,74,0.20)' },
                     }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => handleOpenAssessment(a)}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
@@ -4974,7 +5764,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Tooltip title="Back to assessments list">
               <IconButton size="small"
                 onClick={() => { setAssessmentCreating(false) }}
-
+                
                 sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
                 <ArrowBackIcon fontSize="small" />
               </IconButton>
@@ -5164,32 +5954,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         </Stack>
 
+        )
+      }
+
+      return (
+        <BubbleSheetPanel 
+          courseId={courseId} 
+          assessments={workspaceApi.data?.assessments || []}
+          actionSheetMode={actionSheetMode}
+          onActionSheetChange={setActionSheetMode}
+          onModifyTemplate={handleModifyBubbleSheet}
+        />
       )
     }
-
-    return (
-      <BubbleSheetPanel
-        courseId={courseId}
-        assessments={workspaceApi.data?.assessments || []}
-        actionSheetMode={actionSheetMode}
-        onActionSheetChange={setActionSheetMode}
-        onModifyTemplate={handleModifyBubbleSheet}
-      />
-    )
-  }
 
   function renderUploadPanel() {
     const docs = docsApi.data?.documents || docsApi.data?.results || []
     return (
-      <>
+    <>
 
-        <Box component="form" onSubmit={handleUpload}>
+          <Box component="form" onSubmit={handleUpload}>
           <Stack spacing={1.5}>
             <Button variant="outlined" component="label" disabled={uploading} fullWidth
-              sx={{
-                borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5,
-                '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON }
-              }}>
+              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5,
+                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
               Choose File
               <input hidden type="file"
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -5200,16 +5988,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Typography>
             <TextField size="small" label="Module Tag (optional)" value={uploadForm.module_tag}
               onChange={e => setUploadForm(p => ({ ...p, module_tag: e.target.value }))}
-              sx={{
-                '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
-                '& .MuiInputLabel-root.Mui-focused': { color: MAROON }
-              }} />
+              sx={{ '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
+                   '& .MuiInputLabel-root.Mui-focused': { color: MAROON } }} />
             <TextField size="small" label="Term Tag (optional)" value={uploadForm.term_tag}
               onChange={e => setUploadForm(p => ({ ...p, term_tag: e.target.value }))}
-              sx={{
-                '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
-                '& .MuiInputLabel-root.Mui-focused': { color: MAROON }
-              }} />
+              sx={{ '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
+                   '& .MuiInputLabel-root.Mui-focused': { color: MAROON } }} />
             <GenButton type="submit" disabled={uploading || !uploadFile}>
               {uploading ? 'Uploading...' : 'Upload to Knowledge Base'}
             </GenButton>
@@ -5241,12 +6025,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 const isDeleting = deletingDocId === docId
                 return (
                   <Box key={docId}
-                    sx={{
-                      display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5,
-                      bgcolor: isChecked ? MAROON_LIGHT : BG, borderRadius: 1.5,
-                      border: `1px solid ${isChecked ? MAROON + '44' : 'rgba(0,0,0,0.07)'}`,
-                      transition: 'all 0.15s'
-                    }}>
+                    sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.5,
+                          bgcolor: isChecked ? MAROON_LIGHT : BG, borderRadius: 1.5,
+                          border: `1px solid ${isChecked ? MAROON + '44' : 'rgba(0,0,0,0.07)'}`,
+                          transition: 'all 0.15s' }}>
                     <Checkbox
                       size="small"
                       checked={isChecked}
@@ -5262,26 +6044,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     />
                     <InsertDriveFileIcon sx={{ fontSize: 14, color: MAROON, flexShrink: 0 }} />
                     <Typography variant="caption"
-                      sx={{
-                        color: '#444', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontSize: '0.72rem'
-                      }}>
+                      sx={{ color: '#444', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            fontSize: '0.72rem' }}>
                       {doc.storage_path || doc.file_name || 'Unnamed file'}
                     </Typography>
                     <Chip label={doc.rag_status || 'OK'} size="small"
-                      sx={{
-                        height: 16, fontSize: '0.58rem', flexShrink: 0,
-                        bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : '#FFF3E0',
-                        color: doc.rag_status === 'COMPLETED' ? '#2E7D32' : '#E65100'
-                      }} />
+                      sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
+                           bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : '#FFF3E0',
+                           color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : '#E65100' }} />
                     <Tooltip title="Delete source and its vectors">
                       <IconButton size="small"
                         disabled={isDeleting}
                         onClick={() => setConfirmDeleteId(docId)}
-                        sx={{
-                          p: 0.25, color: '#ccc', flexShrink: 0,
-                          '&:hover': { color: '#c62828', bgcolor: '#ffebee' }
-                        }}>
+                        sx={{ p: 0.25, color: '#ccc', flexShrink: 0,
+                             '&:hover': { color: '#c62828', bgcolor: '#ffebee' } }}>
                         {isDeleting
                           ? <CircularProgress size={12} sx={{ color: '#c62828' }} />
                           : <DeleteIcon sx={{ fontSize: 14 }} />}
@@ -5347,10 +6123,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               Upload a DOCX or XLSX template with {'{{fieldName}}'} placeholders. Leave empty for default format.
             </Typography>
             <Button variant="outlined" component="label" fullWidth
-              sx={{
-                borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5, fontSize: '0.8rem',
-                '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON }
-              }}>
+              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5, fontSize: '0.8rem',
+                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
               {syllabusTemplateFile ? '✓ Template Loaded' : 'Choose Template'}
               <input hidden type="file"
                 accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -5384,11 +6158,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {/* Top bar */}
       <Box component="header"
         sx={{
-          display: 'flex', alignItems: 'center', gap: 1.5,
-          px: 2, py: 0.75, bgcolor: 'rgba(8,8,10,0.92)',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 8px 24px rgba(0,0,0,0.25)',
-          flexShrink: 0, minHeight: 48,
+          display: 'flex', alignItems: 'center', gap: 2,
+          px: 3, height: 60, minHeight: 60,
+          ml: isMobile ? 0 : `${leftCollapsed ? 64 : leftWidth}px`,
+          width: isMobile ? '100%' : `calc(100% - ${leftCollapsed ? 64 : leftWidth}px)`,
+          bgcolor: 'rgba(8,8,10,0.85)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
+          flexShrink: 0,
+          transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
         {isMobile && (
           <Tooltip title="Navigation">
@@ -5398,25 +6176,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Tooltip>
         )}
         <Tooltip title="Back to courses">
-          <IconButton onClick={() => navigate('/faculty/dashboard')} size="small" sx={{ color: 'rgba(255,255,255,0.55)' }}>
-            <ArrowBackIcon fontSize="small" />
-          </IconButton>
+          <Button onClick={() => navigate('/faculty/dashboard')} startIcon={<ArrowBackIcon fontSize="small" />} sx={{
+            height: 36, px: 1.5, borderRadius: 2,
+            color: 'rgba(255,255,255,0.75)',
+            bgcolor: 'rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            textTransform: 'none', fontSize: '0.82rem', fontWeight: 600,
+            whiteSpace: 'nowrap',
+            transition: 'color 200ms, background-color 200ms',
+            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.18)' },
+          }}>
+            Back to Courses
+          </Button>
         </Tooltip>
-        <Box sx={{ width: 1, height: 18, bgcolor: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-        <AtlasLogo size={24} />
-        {course ? (
-          <>
-            <Typography variant="caption"
-              sx={{ color: '#FF6B6B', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>
-              {syllabusData.course_code || course.course_code}
-            </Typography>
-            <Typography variant="body2" sx={{ color: '#F0F0F2', fontWeight: 600 }} noWrap>
-              {syllabusData.course_title || course.course_title}
-            </Typography>
-          </>
-        ) : courseId ? (
-          <CircularProgress size={14} sx={{ color: MAROON }} />
-        ) : null}
         <Box sx={{ flex: 1 }} />
         {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Tooltip title="Knowledge Base">
@@ -5425,23 +6197,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </IconButton>
           </Tooltip>
         )}
-        <Chip label="FACULTY" size="small"
-          sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, fontSize: '0.62rem', letterSpacing: '0.07em', mr: 1 }} />
-        <Tooltip title={user?.email || ''}>
-          <IconButton onClick={e => setAnchorEl(e.currentTarget)} size="small">
-            <Avatar sx={{ width: 30, height: 30, bgcolor: '#8B0000', fontSize: 11, fontWeight: 700 }}>
-              {toInitials(user?.name || user?.email || 'U')}
-            </Avatar>
-          </IconButton>
-        </Tooltip>
-        <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
-          <MenuItem disabled>
-            <Typography variant="caption" sx={{ color: '#888' }}>{user?.email}</Typography>
-          </MenuItem>
-          <MenuItem onClick={() => { logout(); navigate('/signin') }}>
-            <LogoutIcon fontSize="small" sx={{ mr: 1, color: MAROON }} /> Sign Out
-          </MenuItem>
-        </Menu>
       </Box>
 
       {/* Mobile nav Drawer */}
@@ -5478,8 +6233,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           startIcon={<LogoutIcon sx={{ fontSize: '1.05rem !important' }} />}
           sx={{
             justifyContent: 'flex-start', px: 1.5, py: 0.9, borderRadius: 0,
-            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#C0392B',
-            '&:hover': { bgcolor: 'rgba(192,57,43,0.08)' },
+            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#16A34A',
+            '&:hover': { bgcolor: 'rgba(22,163,74,0.08)' },
           }}>
           Sign Out
         </Button>
@@ -5498,14 +6253,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       {/* Three-panel area */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', userSelect: dragging ? 'none' : 'auto', bgcolor: '#0F0F12' }}>
 
+        {!isMobile && <Box sx={{ width: leftCollapsed ? 64 : leftWidth, flexShrink: 0 }} />}
+
         {/* LEFT — nav (desktop) or compact rail when collapsed */}
         {!isMobile && !leftCollapsed && (
-          <Box sx={{ width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)' }}>
+          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
             <Box sx={{ height: 60, px: 2, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
               <AtlasLogo size={26} />
-              <Tooltip title="Collapse panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#fff' } }}>
-                  <PanelLeftIcon fontSize="small" />
+              <Tooltip title="Collapse sidebar">
+                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+                  <PanelLeftClose size={22} strokeWidth={2.75} />
                 </IconButton>
               </Tooltip>
             </Box>
@@ -5526,11 +6283,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       borderRadius: 1.5, textTransform: 'none', fontSize: '0.875rem',
                       fontWeight: on ? 700 : 400,
                       color: on ? '#F0F0F2' : 'rgba(255,255,255,0.5)',
-                      background: on ? 'linear-gradient(135deg, rgba(139,0,0,0.35), rgba(192,57,43,0.20))' : 'transparent',
-                      border: on ? '1px solid rgba(192,57,43,0.35)' : '1px solid transparent',
-                      boxShadow: on ? '0 4px 16px rgba(139,0,0,0.2)' : 'none',
+                      background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
+                      border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
+                      boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
                       minWidth: 0,
-                      '&:hover': { bgcolor: on ? 'rgba(139,0,0,0.35)' : 'rgba(255,255,255,0.06)', color: '#F0F0F2' },
+                      '&:hover': { bgcolor: on ? 'rgba(21,128,61,0.35)' : 'rgba(255,255,255,0.06)', color: '#F0F0F2' },
                     }}>
                     {label}
                   </Button>
@@ -5540,39 +6297,53 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <SidebarUserMenu
               user={user}
               metaLabel="Faculty"
+              sidebarCollapsed={leftCollapsed}
+              onSidebarCollapsedChange={updateLeftSidebarPreference}
+              onUpdateProfile={updateProfile}
               onSignOut={() => { logout(); navigate('/signin') }}
             />
           </Box>
         )}
 
         {!isMobile && leftCollapsed && (
-          <Box sx={{ width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', justifyContent: 'center', py: 1 }}>
-            <Box sx={{ width: 44, borderRadius: 3, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75, py: 1 }}>
+          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
+            <Box sx={{ height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
               <Tooltip title="Expand panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ color: '#666' }}>
-                  <PanelLeftIcon fontSize="small" />
+                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
+                  <PanelLeftOpen size={22} strokeWidth={2.75} />
                 </IconButton>
               </Tooltip>
-              <Divider flexItem sx={{ mx: 0.5 }} />
+            </Box>
+            <Stack component="nav" sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1, gap: 0.25 }}>
               {WORKSPACE_TABS.map(({ key, label, Icon }) => {
                 const on = activeTab === key
                 return (
                   <Tooltip key={key} title={label} placement="right">
-                    <IconButton size="small" onClick={() => { setActiveTab(key); setLeftCollapsed(false) }}
-                      sx={{ color: on ? '#FF6B6B' : 'rgba(255,255,255,0.5)', bgcolor: on ? MAROON_LIGHT : 'transparent', '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#FF6B6B' } }}>
-                      <Icon sx={{ fontSize: '1rem' }} />
+                    <IconButton size="small" onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
+                      sx={{
+                        width: 'calc(100% - 16px)', height: 44, mx: 1, borderRadius: 1.5,
+                        color: on ? '#86EFAC' : 'rgba(255,255,255,0.45)',
+                        background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
+                        border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
+                        boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
+                        '&:hover': { background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'rgba(255,255,255,0.06)', color: '#86EFAC' },
+                      }}>
+                      <Icon sx={{ fontSize: 20 }} />
                     </IconButton>
                   </Tooltip>
                 )
               })}
-              <Box sx={{ mt: 'auto', width: '100%' }}>
-                <SidebarUserMenu
-                  collapsed
-                  user={user}
-                  metaLabel="Faculty"
-                  onSignOut={() => { logout(); navigate('/signin') }}
-                />
-              </Box>
+            </Stack>
+            <Box sx={{ mt: 'auto', width: '100%' }}>
+              <SidebarUserMenu
+                collapsed
+                user={user}
+                metaLabel="Faculty"
+                sidebarCollapsed={leftCollapsed}
+                onSidebarCollapsedChange={updateLeftSidebarPreference}
+                onUpdateProfile={updateProfile}
+                onSignOut={() => { logout(); navigate('/signin') }}
+              />
             </Box>
           </Box>
         )}
@@ -5580,11 +6351,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* Drag — left (desktop only when expanded) */}
         {!isMobile && !leftCollapsed && (
           <Box onMouseDown={() => setDragging('left')}
-            sx={{
-              width: 4, flexShrink: 0, cursor: 'col-resize',
-              bgcolor: dragging === 'left' ? MAROON + '44' : 'transparent',
-              '&:hover': { bgcolor: 'rgba(139,0,0,0.14)' }, transition: 'background-color 0.15s'
-            }} />
+            sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
+                  bgcolor: dragging === 'left' ? MAROON + '44' : 'transparent',
+                  '&:hover': { bgcolor: 'rgba(21,128,61,0.14)' }, transition: 'background-color 0.15s' }} />
         )}
 
         {/* MIDDLE */}
@@ -5601,11 +6370,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* Drag — right (desktop only when expanded) */}
         {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
           <Box onMouseDown={() => setDragging('right')}
-            sx={{
-              width: 4, flexShrink: 0, cursor: 'col-resize',
-              bgcolor: dragging === 'right' ? MAROON + '44' : 'transparent',
-              '&:hover': { bgcolor: 'rgba(139,0,0,0.14)' }, transition: 'background-color 0.15s'
-            }} />
+            sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
+                  bgcolor: dragging === 'right' ? MAROON + '44' : 'transparent',
+                  '&:hover': { bgcolor: 'rgba(21,128,61,0.14)' }, transition: 'background-color 0.15s' }} />
         )}
 
         {/* RIGHT — sources panel (desktop) or compact rail when collapsed */}
@@ -5645,7 +6412,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Tooltip>
               <Tooltip title="View uploaded source" placement="left">
                 <IconButton size="small" onClick={() => setRightCollapsed(false)}
-                  sx={{ color: '#D32F2F', '&:hover': { bgcolor: '#FFF1F1' } }}>
+                  sx={{ color: '#22C55E', '&:hover': { bgcolor: '#F0FDF4' } }}>
                   <PictureAsPdfIcon sx={{ fontSize: '1.15rem' }} />
                 </IconButton>
               </Tooltip>
@@ -5657,135 +6424,134 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           </Box>
         )}
-        <Dialog open={answerSheetDialogOpen} onClose={() => setAnswerSheetDialogOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Answer Sheet Configuration</DialogTitle>
-          <DialogContent dividers>
-            <Stack spacing={1.5} sx={{ pt: 1 }}>
-              <TextField
-                size="small"
-                label="Template name"
-                value={answerSheetForm.name}
-                onChange={e => setAnswerSheetForm(p => ({ ...p, name: e.target.value }))}
-                fullWidth
-              />
-              <TextField
-                size="small"
-                label="Total items (from assessment)"
-                value={Number(assessmentDetail?.target_total_items || 0)}
-                disabled
-                fullWidth
-              />
-              <Stack direction="row" spacing={1.25}>
-                <TextField
-                  size="small"
-                  select
-                  fullWidth
-                  label="Choices per item"
-                  value={answerSheetForm.num_choices}
-                  onChange={e => setAnswerSheetForm(p => ({ ...p, num_choices: Number(e.target.value) }))}
-                >
-                  {[2, 3, 4, 5].map(n => (
-                    <MenuItem key={n} value={n}>{n}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField
-                  size="small"
-                  type="number"
-                  fullWidth
-                  label="Student ID Columns"
-                  value={answerSheetForm.num_id_columns}
-                  onChange={e => setAnswerSheetForm(p => ({ ...p, num_id_columns: Number(e.target.value) }))}
-                  inputProps={{ min: 4, max: 15 }}
-                  helperText="Allowed range: 4 to 15"
-                />
-              </Stack>
+      <Dialog open={answerSheetDialogOpen} onClose={() => setAnswerSheetDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Answer Sheet Configuration</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={1.5} sx={{ pt: 1 }}>
+            <TextField
+              size="small"
+              label="Template name"
+              value={answerSheetForm.name}
+              onChange={e => setAnswerSheetForm(p => ({ ...p, name: e.target.value }))}
+              fullWidth
+            />
+            <TextField
+              size="small"
+              label="Total items (from assessment)"
+              value={Number(assessmentDetail?.target_total_items || 0)}
+              disabled
+              fullWidth
+            />
+            <Stack direction="row" spacing={1.25}>
               <TextField
                 size="small"
                 select
                 fullWidth
-                label="Essay section"
-                value={answerSheetForm.has_essay ? '1' : '0'}
-                onChange={e => setAnswerSheetForm(p => ({ ...p, has_essay: e.target.value === '1' }))}
+                label="Choices per item"
+                value={answerSheetForm.num_choices}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, num_choices: Number(e.target.value) }))}
               >
-                <MenuItem value="0">No essay section</MenuItem>
-                <MenuItem value="1">Include essay section</MenuItem>
+                {[2, 3, 4, 5].map(n => (
+                  <MenuItem key={n} value={n}>{n}</MenuItem>
+                ))}
               </TextField>
-              {answerSheetForm.has_essay && (
-                <TextField
-                  size="small"
-                  type="number"
-                  fullWidth
-                  label="Essay lines"
-                  value={answerSheetForm.essay_lines}
-                  onChange={e => setAnswerSheetForm(p => ({ ...p, essay_lines: Number(e.target.value) }))}
-                  inputProps={{ min: 2, max: 50 }}
-                />
-              )}
+              <TextField
+                size="small"
+                type="number"
+                fullWidth
+                label="Student ID Columns"
+                value={answerSheetForm.num_id_columns}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, num_id_columns: Number(e.target.value) }))}
+                inputProps={{ min: 4, max: 15 }}
+                helperText="Allowed range: 4 to 15"
+              />
             </Stack>
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setAnswerSheetDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={handleSaveAnswerSheet}
-              disabled={answerSheetSaving}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none' }}
+            <TextField
+              size="small"
+              select
+              fullWidth
+              label="Essay section"
+              value={answerSheetForm.has_essay ? '1' : '0'}
+              onChange={e => setAnswerSheetForm(p => ({ ...p, has_essay: e.target.value === '1' }))}
             >
-              {answerSheetSaving ? 'Saving…' : 'Save Answer Sheet'}
-            </Button>
-          </DialogActions>
-        </Dialog>
+              <MenuItem value="0">No essay section</MenuItem>
+              <MenuItem value="1">Include essay section</MenuItem>
+            </TextField>
+            {answerSheetForm.has_essay && (
+              <TextField
+                size="small"
+                type="number"
+                fullWidth
+                label="Essay lines"
+                value={answerSheetForm.essay_lines}
+                onChange={e => setAnswerSheetForm(p => ({ ...p, essay_lines: Number(e.target.value) }))}
+                inputProps={{ min: 2, max: 50 }}
+              />
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAnswerSheetDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveAnswerSheet}
+            disabled={answerSheetSaving}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none' }}
+          >
+            {answerSheetSaving ? 'Saving…' : 'Save Answer Sheet'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-        {/* ── Bubble Sheet PDF Preview ── */}
-        <Dialog open={bubbleSheetPreviewOpen} onClose={() => {
-          if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
-          setBubbleSheetPreviewOpen(false)
-        }} maxWidth="lg" fullWidth>
-          <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
-            {bubbleSheetPreviewTitle}
-          </DialogTitle>
-          <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden' }}>
-            <object
-              data={bubbleSheetPreviewUrl}
-              type="application/pdf"
-              style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-            >
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography sx={{ fontSize: '0.85rem', color: '#666', mb: 1.5 }}>
-                  Your browser cannot display the PDF inline.
-                </Typography>
-                <Button variant="outlined" startIcon={<DownloadIcon />}
-                  onClick={() => {
-                    const link = document.createElement('a')
-                    link.href = bubbleSheetPreviewUrl
-                    link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
-                    link.click()
-                  }}
-                  sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                  Download PDF instead
-                </Button>
-              </Box>
-            </object>
-          </DialogContent>
-          <DialogActions sx={{ px: 3, py: 1.5 }}>
-            <Button onClick={() => {
-              if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
-              setBubbleSheetPreviewOpen(false)
-            }} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
-            <Button variant="contained" startIcon={<DownloadIcon />}
-              onClick={() => {
-                const link = document.createElement('a')
-                link.href = bubbleSheetPreviewUrl
-                link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
-                link.click()
-              }}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6a0000' }, textTransform: 'none', fontSize: '0.82rem' }}>
-              Download PDF
-            </Button>
-          </DialogActions>
-        </Dialog>
-      </Box>
+      {/* ── Bubble Sheet PDF Preview ── */}
+      <Dialog open={bubbleSheetPreviewOpen} onClose={() => {
+        if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
+        setBubbleSheetPreviewOpen(false)
+      }} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON, py: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+          <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
+          {bubbleSheetPreviewTitle}
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden' }}>
+          <object
+            data={bubbleSheetPreviewUrl}
+            type="application/pdf"
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          >
+            <Box sx={{ p: 3, textAlign: 'center' }}>
+              <Typography sx={{ fontSize: '0.85rem', color: '#666', mb: 1.5 }}>
+                Your browser cannot display the PDF inline.
+              </Typography>
+              <Button variant="outlined" startIcon={<DownloadIcon />}
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = bubbleSheetPreviewUrl
+                  link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
+                  link.click()
+                }}
+                sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
+                Download PDF instead
+              </Button>
+            </Box>
+          </object>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button onClick={() => {
+            if (bubbleSheetPreviewUrl) URL.revokeObjectURL(bubbleSheetPreviewUrl)
+            setBubbleSheetPreviewOpen(false)
+          }} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
+          <Button variant="contained" startIcon={<DownloadIcon />}
+            onClick={() => {
+              const link = document.createElement('a')
+              link.href = bubbleSheetPreviewUrl
+              link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
+              link.click()
+            }}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
+            Download PDF
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
-  )
-}
+  </Box>
+)}
