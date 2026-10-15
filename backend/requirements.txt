@@ -17,13 +17,13 @@ redis==5.0.8                    # Python Redis client
 django-redis==5.4.0             # Django Redis cache backend
 
 # ── LLM & AI ────────────────────────────────────────────────
-anthropic==0.30.0               # Anthropic Claude SDK
 openai>=1.0.0                   # OpenAI SDK (OpenAI/OpenRouter compatible)
 requests>=2.31.0                # HTTP client for Ollama/OpenRouter API calls
 groq>=0.9.0                     # Groq Python SDK
 # ── Document Processing ────────────────────────────────────
 python-docx==0.8.11             # DOCX file parsing
 pymupdf>=1.24.0                 # PyMuPDF – header-aware PDF structural extraction
+liteparse>=2.16.0               # PDFium PDF → Markdown (tables + headings) for RAG chunking
 pypdf==4.0.0                    # PDF parsing (fallback)
 PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)

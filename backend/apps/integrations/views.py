@@ -6,8 +6,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from . import rag_service
-from .anthropic_service import AnthropicService
+from . import indexing, rag_service
 from .document_processor import DocumentProcessor
 from .llm_service import LLMService
 from .models import (
@@ -17,18 +16,15 @@ from .models import (
     CourseFile,
     CourseLoad,
     GlobalDocument,
-    GlobalDocumentChunk,
     ParentChunk,
+    RagStatusEnum,
     UserRole,
 )
 from .serializers import (
-    AnthropicTestSerializer,
     CourseRagUploadSerializer,
     FileUploadSerializer,
     SemanticSearchSerializer,
 )
-from .trial import trial_generation_gate
-
 logger = logging.getLogger(__name__)
 
 
@@ -85,17 +81,6 @@ def _forbidden_faculty_only_response():
     )
 
 
-def _to_1536_dim(vector):
-    """Pad or trim vectors so they fit ChildChunk.vector(1536)."""
-    if vector is None:
-        return None
-    if len(vector) == 1536:
-        return vector
-    if len(vector) > 1536:
-        return vector[:1536]
-    return vector + [0.0] * (1536 - len(vector))
-
-
 def _get_faculty_course_or_403(request, course_id):
     course = Course.objects.filter(course_id=course_id).first()
     if not course:
@@ -142,86 +127,35 @@ def _handle_global_rag_upload(request):
         )
 
     try:
-        hierarchical = DocumentProcessor.process_file_hierarchical(
-            file_obj, file_type, file_obj.name
-        )
-        parents_data = hierarchical.get("parents", [])
+        # The upload's temp file is closed when the request ends, so the
+        # background job gets the bytes instead of the file object.
+        file_obj.seek(0)
+        file_bytes = file_obj.read()
+        file_name = file_obj.name
 
-        if not parents_data:
-            return Response(
-                {"success": False, "error": "No text extracted from file."},
-                status=status.HTTP_400_BAD_REQUEST,
+        document = GlobalDocument.objects.create(
+            institution=request.user.institution,
+            title=file_name[:255],
+            discipline=discipline,
+            program=program,
+            doc_type=doc_type,
+            status=GlobalDocument.IndexStatus.PROCESSING,
+        )
+        transaction.on_commit(
+            lambda: indexing.enqueue_global_document(
+                document.document_id, file_bytes, file_type, file_name
             )
-
-        # Batch embedding keeps upload latency manageable for large handbooks.
-        child_records: list = []
-        all_child_texts: list = []
-        for p_idx, parent_data in enumerate(parents_data):
-            for child_data in parent_data.get("children", []):
-                child_records.append((p_idx, child_data))
-                all_child_texts.append(child_data["content"])
-
-        logger.info(
-            "[ATLAS RAG] Batch-embedding %d child chunks…", len(all_child_texts)
         )
-        all_embeddings = rag_service.embed_documents_batch(all_child_texts)
-        logger.info("[ATLAS RAG] Embedding complete.")
-
-        with transaction.atomic():
-            document = GlobalDocument.objects.create(
-                institution=request.user.institution,
-                title=file_obj.name[:255],
-                discipline=discipline,
-                program=program,
-                doc_type=doc_type,
-            )
-
-            parent_chunk_map: dict = {}
-            for p_idx, parent_data in enumerate(parents_data):
-                parent_chunk = GlobalDocumentChunk.objects.create(
-                    document=document,
-                    chunk_role="PARENT",
-                    page_number=parent_data.get("page_number"),
-                    text_content=parent_data["content"],
-                    token_count=parent_data.get("token_count"),
-                    embedding_vector=None,
-                )
-                parent_chunk_map[p_idx] = parent_chunk
-
-            child_bulk: list = []
-            for i, (p_idx, child_data) in enumerate(child_records):
-                child_bulk.append(
-                    GlobalDocumentChunk(
-                        document=document,
-                        parent=parent_chunk_map[p_idx],
-                        chunk_role="CHILD",
-                        page_number=child_data.get("page_number"),
-                        text_content=child_data["content"],
-                        token_count=child_data.get("token_count"),
-                        embedding_vector=all_embeddings[i],
-                    )
-                )
-
-            GlobalDocumentChunk.objects.bulk_create(child_bulk)
-            total_children = len(child_bulk)
-
-        message = (
-            f"[ATLAS RAG] Indexed {len(parents_data)} parents and "
-            f"{total_children} children from {file_obj.name}."
-        )
-        logger.info(message)
 
         return Response(
             {
                 "success": True,
                 "document_id": str(document.document_id),
-                "file_name": file_obj.name,
-                "total_parents": len(parents_data),
-                "total_children": total_children,
-                "status": "indexed",
-                "message": message,
+                "file_name": file_name,
+                "status": document.status,
+                "message": "Upload received. The document is being indexed in the background.",
             },
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_202_ACCEPTED,
         )
 
     except Exception as exc:
@@ -232,110 +166,19 @@ def _handle_global_rag_upload(request):
         )
 
 
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def claude_api_test(request):
-    """
-    Test endpoint for Anthropic Claude API.
-    
-    Endpoint: POST /api/integrations/claude-test/
-    
-    Expected Request Body:
-    {
-        "user_message": "What is OBE?",
-        "model": "claude-3-5-sonnet-20241022",  # Optional
-        "max_tokens": 1024,  # Optional
-        "system_prompt": ""  # Optional
-    }
-    
-    Returns:
-        200 OK: {
-            "success": true,
-            "model": "claude-3-5-sonnet-20241022",
-            "content": [{"type": "text", "text": "..."}],
-            "usage": {"input_tokens": X, "output_tokens": Y}
-        }
-        
-        400 Bad Request: Validation errors
-        401 Unauthorized: Missing/invalid JWT token
-        500 Internal Server Error: API error
-    """
-    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
-    if trial_response:
-        return trial_response
-
-    try:
-        # Validate request
-        serializer = AnthropicTestSerializer(data=request.data)
-        if not serializer.is_valid():
-            logger.warning(f"Validation error: {serializer.errors}")
-            return Response(
-                {
-                    "success": False,
-                    "errors": serializer.errors
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Extract validated data
-        user_message = serializer.validated_data.get('user_message')
-        model = serializer.validated_data.get('model')
-        max_tokens = serializer.validated_data.get('max_tokens')
-        system_prompt = serializer.validated_data.get('system_prompt') or None
-        
-        # Initialize Anthropic service
-        claude_service = AnthropicService()
-        
-        if not claude_service.is_configured():
-            logger.error("Anthropic API not configured")
-            return Response(
-                {
-                    "success": False,
-                    "error": "Anthropic API is not configured. "
-                             "Set ANTHROPIC_API_KEY environment variable."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-        response = claude_service.send_message(
-            messages=[{"role": "user", "content": user_message}],
-            model=model,
-            max_tokens=max_tokens,
-            system=system_prompt,
-        )
-
-        logger.info(f"Claude API test successful for user {request.user.username}")
-
-        return Response(response, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        logger.error(f"Error in Claude API test: {str(e)}")
-        return Response(
-            {
-                "success": False,
-                "error": f"Failed to call Claude API: {str(e)}"
-            },
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def llm_provider_status(request):
     """Return configuration status for supported LLM providers."""
     llm = LLMService()
-    providers = {
-        'ollama': bool(llm.is_ollama_available()),
-        'openrouter': bool(llm.openrouter_configured),
-        'gemini': bool(llm.openrouter_configured),
-        'gpt': bool(llm.openrouter_configured),
-        'groq': bool(llm.groq_configured),
-        'anthropic': bool(llm.anthropic_service.is_configured()),
-    }
+    providers = {name: info['configured'] for name, info in llm.provider_status().items()}
+    providers['ollama'] = bool(llm.is_ollama_available())
     return Response(
         {
             'success': True,
             'providers': providers,
+            'details': llm.provider_status(),
+            'chain': llm.chain,
             'default_provider': llm.default_provider,
         },
         status=status.HTTP_200_OK,
@@ -359,12 +202,10 @@ def upload_rag_document(request):
 
     Pipeline:
         1. Validate file.
-        2. Two-pass hierarchical chunking (Parent ≈1200 tokens, Child ≈200 tokens).
-        3. Save GlobalDocument record with metadata.
-        4. Save PARENT GlobalDocumentChunks (no embedding — context only).
-        5. Embed each CHILD chunk with BGE-Base-v1.5 (768-dim) and bulk-save.
-
-    Returns 201 on success with parent/child counts.
+        2. Save a GlobalDocument with status PROCESSING and return 202.
+        3. In the background (indexing.py): hierarchical chunking, embed
+           CHILD chunks with BGE-Base-v1.5 (768-dim), save parent/child
+           chunks, then set status READY (or FAILED with error_message).
     """
     if not _is_admin_user(request):
         return _forbidden_admin_only_response()
@@ -419,71 +260,33 @@ def upload_course_rag_document(request):
         return Response({'success': False, 'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        hierarchical = DocumentProcessor.process_file_hierarchical(
-            file_obj, file_type, file_obj.name
+        file_obj.seek(0)
+        file_bytes = file_obj.read()
+        file_name = file_obj.name
+
+        course_file = CourseFile.objects.create(
+            uploader=request.user,
+            course=course,
+            storage_path=file_name,
+            rag_status=RagStatusEnum.PROCESSING,
         )
-        parents_data = hierarchical.get('parents', [])
-        if not parents_data:
-            return Response(
-                {'success': False, 'error': 'No readable text was found in the uploaded file.'},
-                status=status.HTTP_400_BAD_REQUEST,
+        transaction.on_commit(
+            lambda: indexing.enqueue_course_file(
+                course_file.records_id, file_bytes, file_type, file_name, module_tag, term_tag,
             )
-
-        child_records = []
-        all_child_texts = []
-        for p_idx, parent_data in enumerate(parents_data):
-            for child_data in parent_data.get('children', []):
-                child_records.append((p_idx, child_data))
-                all_child_texts.append(child_data['content'])
-
-        all_embeddings = rag_service.embed_documents_batch(all_child_texts)
-
-        with transaction.atomic():
-            course_file = CourseFile.objects.create(
-                uploader=request.user,
-                course=course,
-                storage_path=file_obj.name,
-                rag_status='PROCESSING',
-            )
-
-            parent_rows = {}
-            for p_idx, parent_data in enumerate(parents_data):
-                parent_rows[p_idx] = ParentChunk.objects.create(
-                    records=course_file,
-                    uploader=request.user,
-                    module_tag=module_tag,
-                    term_tag=term_tag,
-                    parent_content=parent_data['content'],
-                )
-
-            child_bulk = []
-            for idx, (p_idx, child_data) in enumerate(child_records):
-                child_bulk.append(
-                    ChildChunk(
-                        parent=parent_rows[p_idx],
-                        uploader=request.user,
-                        overlap_text=child_data['content'],
-                        embedding_vector=_to_1536_dim(all_embeddings[idx]),
-                    )
-                )
-
-            if child_bulk:
-                ChildChunk.objects.bulk_create(child_bulk)
-
-            course_file.rag_status = 'COMPLETED'
-            course_file.save(update_fields=['rag_status'])
+        )
 
         return Response(
             {
                 'success': True,
+                'records_id': str(course_file.records_id),
                 'course_id': str(course.course_id),
                 'course_code': course.course_code,
-                'file_name': file_obj.name,
-                'parents_saved': len(parents_data),
-                'children_saved': len(child_records),
-                'message': 'Upload complete. This document is now available for your course generation tools.',
+                'file_name': file_name,
+                'rag_status': course_file.rag_status,
+                'message': 'Upload received. The file is being indexed in the background.',
             },
-            status=status.HTTP_201_CREATED,
+            status=status.HTTP_202_ACCEPTED,
         )
     except Exception as exc:
         logger.exception('Error uploading course RAG document')
@@ -539,6 +342,10 @@ def list_course_rag_documents(request):
     files = CourseFile.objects.filter(course=course, uploader=request.user).order_by('-records_id')
     payload = []
     for record in files:
+        if indexing.is_stale_course_file(record):
+            record.rag_status = RagStatusEnum.FAILED
+            record.error_message = indexing.STALE_PROCESSING_MESSAGE
+            record.save(update_fields=['rag_status', 'error_message'])
         parent_count = ParentChunk.objects.filter(records=record).count()
         child_count = ChildChunk.objects.filter(parent__records=record).count()
         payload.append(
@@ -546,6 +353,7 @@ def list_course_rag_documents(request):
                 'records_id': str(record.records_id),
                 'storage_path': record.storage_path,
                 'rag_status': record.rag_status,
+                'error_message': record.error_message,
                 'parent_chunks': parent_count,
                 'child_chunks': child_count,
             }
@@ -594,6 +402,10 @@ def list_rag_documents(request):
         payload = []
 
         for doc in documents:
+            if indexing.is_stale_processing(doc):
+                doc.status = GlobalDocument.IndexStatus.FAILED
+                doc.error_message = indexing.STALE_PROCESSING_MESSAGE
+                doc.save(update_fields=["status", "error_message"])
             payload.append(
                 {
                     "document_id": str(doc.document_id),
@@ -604,6 +416,8 @@ def list_rag_documents(request):
                     "doc_type": doc.doc_type,
                     "doc_type_label": _normalize_doc_type_label(doc.doc_type),
                     "created_at": doc.created_at,
+                    "status": doc.status,
+                    "error_message": doc.error_message,
                     "total_chunks": doc.globaldocumentchunk_set.count(),
                 }
             )

@@ -7,7 +7,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from django.db import connection
-from apps.integrations.anthropic_service import AnthropicService
+from apps.integrations.llm_service import LLMService
 from apps.integrations.models import CourseLoad, Ilo, UserProfile, UserRole
 
 logger = logging.getLogger(__name__)
@@ -185,7 +185,7 @@ class PrescriptiveAnalyticsService:
     """Service for computing score metrics and requesting generative prescriptive recommendations."""
 
     def __init__(self):
-        self.anthropic_service = AnthropicService()
+        self.llm = LLMService()
 
     def compute_column_means(self, raw_data):
         """
@@ -223,15 +223,12 @@ class PrescriptiveAnalyticsService:
 
     def generate_recommendations(self, means_data, ilo_mapping):
         """
-        Generates prescriptive recommendations using LLM from Anthropic.
+        Generates prescriptive recommendations with an open-source LLM (Groq / OpenRouter).
 
         Args:
             means_data: Dict with 'headers' and computed 'means'
             ilo_mapping: Dict mapping column indices (strings) to ILO descriptions
         """
-        if not self.anthropic_service.is_configured():
-            raise ValueError("Anthropic service is not configured.")
-
         prompt_details = []
         headers = means_data.get('headers', [])
         means = means_data.get('means', {})
@@ -250,7 +247,6 @@ class PrescriptiveAnalyticsService:
         if not prompt_details:
             return "No valid numerical data or matching ILO mappings found to generate recommendations."
 
-        # Prompt for Anthropic Claude
         prompt_text = (
             "You are an expert prescriptive analytics engine for university faculty. "
             "Based on the average student performance in specific assessments mapped to Intended Learning Outcomes (ILOs), "
@@ -263,21 +259,11 @@ class PrescriptiveAnalyticsService:
 
         messages = [{"role": "user", "content": prompt_text}]
 
-        response = self.anthropic_service.send_message(
+        return self.llm.generate_response_with_fallback(
             messages=messages,
-            system="Provide concise, educational prescriptive recommendations."
+            system="Provide concise, educational prescriptive recommendations.",
+            max_tokens=1024,
         )
-
-        if response.get('success'):
-            content = response.get('content', [])
-            if content:
-                # Extract text from the first content block that has text
-                for block in content:
-                    if block.get('type') == 'text' and block.get('text'):
-                        return block['text']
-            return "Unable to parse recommendations from LLM."
-        else:
-            raise Exception("Failed to generate recommendations via LLM.")
 
 
 class GoogleSheetsService:

@@ -86,31 +86,6 @@ class CourseRagUploadSerializer(serializers.Serializer):
     term_tag = serializers.CharField(max_length=255, required=False, allow_blank=True, default='')
 
 
-class AnthropicTestSerializer(serializers.Serializer):
-    """Serializer for Anthropic API test requests."""
-    
-    user_message = serializers.CharField(
-        required=True,
-        help_text="Message to send to Claude API"
-    )
-    model = serializers.CharField(
-        required=False,
-        default="claude-haiku-4-5-20251001",
-        help_text="Claude model to use"
-    )
-    max_tokens = serializers.IntegerField(
-        required=False,
-        default=1024,
-        min_value=1,
-        max_value=4096
-    )
-    system_prompt = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="Optional system prompt"
-    )
-
-
 class SemanticSearchSerializer(serializers.Serializer):
     """Serializer for semantic search requests."""
 
