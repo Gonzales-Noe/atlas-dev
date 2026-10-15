@@ -109,9 +109,61 @@ def _get_reranker():
 
 # ── Public embedding helpers ─────────────────────────────────────────────────
 
+HOSTED_EMBEDDING_PROVIDERS = ("cloudflare", "huggingface")
+
+
+def embedding_providers() -> list:
+    """
+    EMBEDDING_PROVIDER: 'local' (sentence-transformers), or one or more hosted
+    providers serving the same BGE model, tried in order, e.g. 'cloudflare,huggingface'.
+    """
+    raw = os.environ.get("EMBEDDING_PROVIDER", "local")
+    return [p.strip().lower() for p in raw.split(",") if p.strip()] or ["local"]
+
+
 def embedding_provider() -> str:
-    """'local' (sentence-transformers) or 'huggingface' (hosted HF Inference API)."""
-    return os.environ.get("EMBEDDING_PROVIDER", "local").strip().lower()
+    return embedding_providers()[0]
+
+
+_CF_BATCH_SIZE = 100
+_CF_MODELS = {"BAAI/bge-base-en-v1.5": "@cf/baai/bge-base-en-v1.5"}
+
+
+def _cloudflare_encode(texts: list) -> list:
+    """Embed texts with BGE on Cloudflare Workers AI (free daily allowance)."""
+    import requests
+
+    account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "").strip()
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "").strip()
+    if not account_id or not token:
+        raise ValueError(
+            "Cloudflare embeddings require CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN "
+            "(an API token with Workers AI permission)."
+        )
+    model_name = os.environ.get("LOCAL_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+    cf_model = os.environ.get("CLOUDFLARE_EMBEDDING_MODEL") or _CF_MODELS.get(model_name)
+    if not cf_model:
+        raise ValueError(f"No Cloudflare equivalent configured for embedding model {model_name}.")
+    url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{cf_model}"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    vectors: list = []
+    for start in range(0, len(texts), _CF_BATCH_SIZE):
+        batch = texts[start:start + _CF_BATCH_SIZE]
+        for attempt in range(1, _HF_MAX_ATTEMPTS + 1):
+            response = requests.post(url, headers=headers, json={"text": batch}, timeout=120)
+            if response.status_code in (429, 503) and attempt < _HF_MAX_ATTEMPTS:
+                time.sleep(2 ** attempt)
+                continue
+            if response.status_code != 200:
+                raise ValueError(
+                    f"Cloudflare embedding request failed "
+                    f"({response.status_code}): {response.text[:300]}"
+                )
+            break
+        vectors.extend(response.json()["result"]["data"])
+
+    return [_l2_normalize(v) for v in vectors]
 
 
 _HF_BATCH_SIZE = 32
@@ -168,9 +220,24 @@ def _l2_normalize(vector: list) -> list:
     return [x / norm for x in vector]
 
 
+_HOSTED_ENCODERS = {"cloudflare": _cloudflare_encode, "huggingface": _hf_encode}
+
+
 def _encode(texts: list) -> list:
-    if embedding_provider() == "huggingface":
-        return _hf_encode(texts)
+    providers = embedding_providers()
+    if providers[0] != "local":
+        failures = []
+        for provider in providers:
+            encoder = _HOSTED_ENCODERS.get(provider)
+            if encoder is None:
+                failures.append(f"unknown embedding provider '{provider}'")
+                continue
+            try:
+                return encoder(texts)
+            except ValueError as exc:
+                logger.warning("Embedding provider %s failed: %s", provider, exc)
+                failures.append(str(exc))
+        raise ValueError("; ".join(failures))
     embedder = _get_embedder()
     vectors = embedder.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=False)
     return [v.tolist() for v in vectors]

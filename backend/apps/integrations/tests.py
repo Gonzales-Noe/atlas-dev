@@ -303,6 +303,47 @@ class HuggingFaceEmbeddingTests(SimpleTestCase):
                 rag_service.embed_documents_batch(['x'])
 
 
+@patch.dict(os.environ, {
+    'EMBEDDING_PROVIDER': 'cloudflare,huggingface',
+    'CLOUDFLARE_ACCOUNT_ID': 'acct',
+    'CLOUDFLARE_API_TOKEN': 'cf_test',
+    'HF_TOKEN': 'hf_test',
+})
+class CloudflareEmbeddingTests(SimpleTestCase):
+    @patch('requests.post')
+    def test_uses_same_bge_model_on_cloudflare(self, post):
+        post.side_effect = lambda url, **kw: _hf_response(
+            200, {'result': {'data': [[3.0, 4.0]] * len(kw['json']['text'])}},
+        )
+
+        vectors = rag_service.embed_documents_batch([f'chunk {i}' for i in range(150)])
+
+        self.assertEqual(len(vectors), 150)
+        self.assertEqual(post.call_count, 2)
+        self.assertAlmostEqual(vectors[0][1], 0.8)
+        self.assertTrue(post.call_args.args[0].endswith('/accounts/acct/ai/run/@cf/baai/bge-base-en-v1.5'))
+
+    @patch('requests.post')
+    def test_falls_back_to_next_provider(self, post):
+        post.side_effect = [
+            _hf_response(401, text='Authentication error'),
+            _hf_response(200, [[1.0, 0.0]]),
+        ]
+
+        self.assertEqual(rag_service.embed_documents_batch(['x']), [[1.0, 0.0]])
+        self.assertIn('huggingface', post.call_args.args[0])
+
+    @patch('requests.post')
+    def test_reports_every_failure(self, post):
+        post.side_effect = [
+            _hf_response(401, text='Authentication error'),
+            _hf_response(402, text='You have no remaining credits'),
+        ]
+
+        with self.assertRaisesRegex(ValueError, 'Cloudflare.*401.*Hugging Face.*402'):
+            rag_service.embed_documents_batch(['x'])
+
+
 SAMPLE_SYLLABUS_MD = """
 # STATE UNIVERSITY
 
