@@ -83,11 +83,11 @@ const PLANS = [
   {
     name: 'Starter',
     price: '₱2,499',
-    period: '/month',
+    period: '/30 days',
     tagline: 'For small departments getting started',
-    color: 'rgba(139,0,0,0.25)',
-    border: 'rgba(200,60,60,0.4)',
-    glow: 'rgba(139,0,0,0.15)',
+    color: 'rgba(21,128,61,0.25)',
+    border: 'rgba(22,163,74,0.4)',
+    glow: 'rgba(21,128,61,0.15)',
     features: [
       'Up to 10 faculty accounts',
       'Unlimited course creation',
@@ -102,11 +102,11 @@ const PLANS = [
   {
     name: 'Professional',
     price: '₱6,999',
-    period: '/month',
+    period: '/30 days',
     tagline: 'For growing institutions',
-    color: 'rgba(180,20,20,0.35)',
-    border: 'rgba(255,80,80,0.6)',
-    glow: 'rgba(200,0,0,0.25)',
+    color: 'rgba(21,128,61,0.35)',
+    border: 'rgba(134,239,172,0.6)',
+    glow: 'rgba(22,163,74,0.25)',
     features: [
       'Up to 50 faculty accounts',
       'Everything in Starter',
@@ -120,23 +120,21 @@ const PLANS = [
     popular: true,
   },
   {
-    name: 'Enterprise',
-    price: 'Custom',
-    period: '',
-    tagline: 'For large universities',
-    color: 'rgba(100,0,0,0.2)',
-    border: 'rgba(255,120,120,0.3)',
-    glow: 'rgba(139,0,0,0.1)',
+    name: 'Free Trial',
+    price: 'Free',
+    period: '/7 days',
+    tagline: 'Try ATLAS with no credit card required',
+    color: 'rgba(20,83,45,0.2)',
+    border: 'rgba(134,239,172,0.3)',
+    glow: 'rgba(21,128,61,0.1)',
     features: [
-      'Unlimited faculty accounts',
-      'Everything in Professional',
-      'Dedicated onboarding',
-      'API access',
-      'SLA guarantee',
-      'On-premise option',
-      'Custom integrations',
+      'Up to 2 faculty accounts',
+      '5 syllabus generations per faculty',
+      'Syllabus module only',
+      'No AI generation in other modules',
+      'Upgrade manually whenever you are ready',
     ],
-    cta: 'Contact Sales',
+    cta: 'Start Free Trial',
     popular: false,
   },
 ]
@@ -146,37 +144,37 @@ const FEATURES = [
     icon: '🎓',
     title: 'Set Up Your Course',
     desc: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course.',
-    accent: 'rgba(139,0,0,0.3)',
+    accent: 'rgba(21,128,61,0.3)',
   },
   {
     icon: '📋',
     title: 'Generate Your Syllabus & Modules',
     desc: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials, not generic templates.',
-    accent: 'rgba(180,20,20,0.3)',
+    accent: 'rgba(21,128,61,0.3)',
   },
   {
     icon: '✅',
     title: 'Build Your Assessments',
     desc: "Generate ILO-mapped exams in multiple formats. Every item is tagged by Bloom's Taxonomy level and comes with an automated answer key or essay rubric.",
-    accent: 'rgba(100,0,0,0.3)',
+    accent: 'rgba(20,83,45,0.3)',
   },
   {
     icon: '📊',
     title: 'Performance Analytics',
     desc: 'Use the built-in ATLAS gradebook. The system computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
-    accent: 'rgba(160,10,10,0.3)',
+    accent: 'rgba(22,163,74,0.3)',
   },
   {
     icon: '🏫',
     title: 'Admin Dashboard',
     desc: 'Provision faculty accounts, monitor institutional performance, and generate compliance reports — all from a unified dashboard built for academic leaders.',
-    accent: 'rgba(120,0,0,0.3)',
+    accent: 'rgba(21,128,61,0.3)',
   },
   {
     icon: '⚡',
     title: 'Instant Deployment',
     desc: 'No complex setup. Approved institutions receive credentials within 2–3 business days and can deploy faculty accounts on the same day.',
-    accent: 'rgba(200,40,40,0.3)',
+    accent: 'rgba(134,239,172,0.3)',
   },
 ]
 
@@ -221,25 +219,26 @@ export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
+  const pageRef = useRef(null)
   const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
   const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', message: '' })
   const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
 
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 40)
-      const sections = ['home', 'features', 'testimonials', 'team', 'pricing', 'contact']
-      for (const id of sections.reverse()) {
+      const scrollTop = pageRef.current?.scrollTop ?? window.scrollY
+      setScrolled(scrollTop > 40)
+      const sections = NAV_LINKS.map(({ href }) => href.slice(1))
+      const activeId = sections.reverse().find((id) => {
         const el = document.getElementById(id)
-        if (el && window.scrollY >= el.offsetTop - 120) {
-          setActiveSection(id)
-          break
-        }
-      }
+        return el && el.getBoundingClientRect().top <= 120
+      }) || 'home'
+      setActiveSection(activeId)
     }
-    window.addEventListener('scroll', handleScroll, { passive: true })
+    const scrollContainer = pageRef.current
+    scrollContainer?.addEventListener('scroll', handleScroll, { passive: true })
     handleScroll()
-    return () => window.removeEventListener('scroll', handleScroll)
+    return () => scrollContainer?.removeEventListener('scroll', handleScroll)
   }, [])
 
   useEffect(() => {
@@ -312,7 +311,7 @@ export default function LandingPage() {
   const [pricingRef, pricingInView] = useInView()
 
   return (
-    <div style={{
+    <div ref={pageRef} style={{
       minHeight: '100vh',
       background: '#0A0A0B',
       color: '#F0F0F0',
@@ -329,7 +328,7 @@ export default function LandingPage() {
         html { scroll-behavior: smooth; }
 
         .atlas-btn-primary {
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -341,8 +340,8 @@ export default function LandingPage() {
         }
         .atlas-btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 32px rgba(139,0,0,0.5);
-          background: linear-gradient(135deg, #A00000, #E04428);
+          box-shadow: 0 8px 32px rgba(21,128,61,0.5);
+          background: linear-gradient(135deg, #14532D, #16A34A);
         }
         .atlas-btn-outline {
           background: transparent;
@@ -376,7 +375,7 @@ export default function LandingPage() {
           color: #fff;
         }
         .nav-link.active {
-          border-bottom: 2px solid #C0392B;
+          border-bottom: 2px solid #16A34A;
         }
 
         .feature-card {
@@ -395,12 +394,12 @@ export default function LandingPage() {
           border-radius: 20px;
           opacity: 0;
           transition: opacity 0.35s ease;
-          background: linear-gradient(135deg, rgba(139,0,0,0.12), transparent);
+          background: linear-gradient(135deg, rgba(21,128,61,0.12), transparent);
         }
         .feature-card:hover {
-          border-color: rgba(192,57,43,0.4);
+          border-color: rgba(22,163,74,0.4);
           transform: translateY(-4px);
-          box-shadow: 0 20px 60px rgba(139,0,0,0.15);
+          box-shadow: 0 20px 60px rgba(21,128,61,0.15);
         }
         .feature-card:hover::before {
           opacity: 1;
@@ -414,8 +413,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .testimonial-card:hover {
-          border-color: rgba(192,57,43,0.35);
-          background: rgba(139,0,0,0.08);
+          border-color: rgba(22,163,74,0.35);
+          background: rgba(21,128,61,0.08);
           transform: translateY(-3px);
         }
 
@@ -430,7 +429,7 @@ export default function LandingPage() {
           transform: translateY(-6px);
         }
         .pricing-card.popular {
-          background: rgba(139,0,0,0.15);
+          background: rgba(21,128,61,0.15);
         }
 
         .team-card {
@@ -442,8 +441,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .team-card:hover {
-          border-color: rgba(192,57,43,0.4);
-          background: rgba(139,0,0,0.08);
+          border-color: rgba(22,163,74,0.4);
+          background: rgba(21,128,61,0.08);
           transform: translateY(-4px);
         }
 
@@ -464,7 +463,7 @@ export default function LandingPage() {
         .fade-up:nth-child(6) { transition-delay: 0.5s; }
 
         .glow-text {
-          background: linear-gradient(135deg, #FF6B6B, #FF4444, #CC0000);
+          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -479,8 +478,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .stat-card:hover {
-          border-color: rgba(192,57,43,0.4);
-          background: rgba(139,0,0,0.08);
+          border-color: rgba(22,163,74,0.4);
+          background: rgba(21,128,61,0.08);
         }
 
         .check-icon::before {
@@ -488,13 +487,13 @@ export default function LandingPage() {
           display: inline-block;
           width: 20px;
           height: 20px;
-          background: rgba(192,57,43,0.2);
-          border: 1px solid rgba(192,57,43,0.4);
+          background: rgba(22,163,74,0.2);
+          border: 1px solid rgba(22,163,74,0.4);
           border-radius: 50%;
           font-size: 11px;
           line-height: 20px;
           text-align: center;
-          color: #FF6B6B;
+          color: #86EFAC;
           margin-right: 10px;
           flex-shrink: 0;
         }
@@ -572,20 +571,20 @@ export default function LandingPage() {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          background: rgba(192,57,43,0.15);
-          border: 1px solid rgba(192,57,43,0.35);
+          background: rgba(22,163,74,0.15);
+          border: 1px solid rgba(22,163,74,0.35);
           border-radius: 100px;
           padding: 6px 16px;
           font-size: 0.78rem;
           font-weight: 600;
-          color: #FF8080;
+          color: #86EFAC;
           letter-spacing: 0.05em;
           margin-bottom: 1.5rem;
           animation: badge-pulse 2.5s ease-in-out infinite;
         }
         @keyframes badge-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(192,57,43,0.25); }
-          50% { box-shadow: 0 0 0 8px rgba(192,57,43,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.25); }
+          50% { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
         }
 
         .hero-cta-group {
@@ -618,7 +617,7 @@ export default function LandingPage() {
           top: -12px;
           left: 50%;
           transform: translateX(-50%);
-          background: linear-gradient(135deg, #8B0000, #C0392B);
+          background: linear-gradient(135deg, #15803D, #16A34A);
           color: white;
           font-size: 0.72rem;
           font-weight: 700;
@@ -643,7 +642,7 @@ export default function LandingPage() {
           resize: none;
         }
         .contact-input:focus {
-          border-color: rgba(192,57,43,0.6);
+          border-color: rgba(22,163,74,0.6);
         }
         .contact-input::placeholder {
           color: rgba(255,255,255,0.3);
@@ -652,7 +651,7 @@ export default function LandingPage() {
         .divider {
           width: 60px;
           height: 3px;
-          background: linear-gradient(90deg, #8B0000, #C0392B);
+          background: linear-gradient(90deg, #15803D, #16A34A);
           border-radius: 3px;
           margin: 1rem auto 0;
         }
@@ -668,13 +667,13 @@ export default function LandingPage() {
           padding: 2px; /* Border thickness */
           background: linear-gradient(
             90deg,
-            rgba(255, 107, 107, 0) 0%,
-            rgba(255, 107, 107, 0.8) 12.5%,
-            rgba(139, 0, 0, 0.8) 25%,
-            rgba(255, 107, 107, 0) 50%,
-            rgba(255, 107, 107, 0.8) 62.5%,
-            rgba(139, 0, 0, 0.8) 75%,
-            rgba(255, 107, 107, 0) 100%
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.8) 12.5%,
+            rgba(21, 128, 61, 0.8) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.8) 62.5%,
+            rgba(21, 128, 61, 0.8) 75%,
+            rgba(134, 239, 172, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -699,13 +698,13 @@ export default function LandingPage() {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(255, 107, 107, 0) 0%,
-            rgba(255, 107, 107, 0.5) 12.5%,
-            rgba(139, 0, 0, 0.5) 25%,
-            rgba(255, 107, 107, 0) 50%,
-            rgba(255, 107, 107, 0.5) 62.5%,
-            rgba(139, 0, 0, 0.5) 75%,
-            rgba(255, 107, 107, 0) 100%
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -728,9 +727,7 @@ export default function LandingPage() {
         top: 0, left: 0, right: 0,
         zIndex: 1000,
         transition: 'all 0.35s ease',
-        background: scrolled ? 'rgba(10,10,11,0.92)' : 'transparent',
-        borderBottom: scrolled ? '1px solid rgba(255,255,255,0.08)' : 'none',
-        backdropFilter: scrolled ? 'blur(20px)' : 'none',
+       
       }}>
         <div style={{
           maxWidth: 1200,
@@ -743,7 +740,7 @@ export default function LandingPage() {
         }}>
           {/* Logo */}
           <button onClick={() => scrollTo('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain', filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+            <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, objectFit: 'contain' }} />
           </button>
 
           {/* Desktop Nav */}
@@ -802,7 +799,7 @@ export default function LandingPage() {
       {/* Mobile Menu */}
       <div className={`mobile-menu ${mobileOpen ? 'open' : ''}`}>
         {NAV_LINKS.map(({ label, href }) => (
-          <button key={label} className="nav-link" style={{ fontSize: '1rem', padding: '0.5rem 0' }} onClick={() => scrollTo(href.replace('#', ''))}>
+          <button key={label} className={`nav-link ${activeSection === href.replace('#', '') ? 'active' : ''}`} style={{ fontSize: '1rem', padding: '0.5rem 0' }} onClick={() => scrollTo(href.replace('#', ''))}>
             {label}
           </button>
         ))}
@@ -820,9 +817,9 @@ export default function LandingPage() {
       <section id="home" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', paddingTop: 72 }}>
 
         {/* Background orbs */}
-        <Orb style={{ width: 600, height: 600, background: 'rgba(139,0,0,0.18)', top: -100, left: -150 }} />
-        <Orb style={{ width: 500, height: 500, background: 'rgba(180,20,20,0.12)', bottom: -100, right: -100 }} />
-        <Orb style={{ width: 300, height: 300, background: 'rgba(100,0,0,0.2)', top: '40%', left: '60%' }} />
+        <Orb style={{ width: 600, height: 600, background: 'rgba(21,128,61,0.18)', top: -100, left: -150 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.12)', bottom: -100, right: -100 }} />
+        <Orb style={{ width: 300, height: 300, background: 'rgba(20,83,45,0.2)', top: '40%', left: '60%' }} />
 
         {/* Grid overlay */}
         <div style={{
@@ -835,7 +832,7 @@ export default function LandingPage() {
         <div className="hero-container" style={{ position: 'relative', zIndex: 1, padding: '2rem', maxWidth: 1200, margin: '0 auto', marginTop: '-4rem' }}>
           <div className="hero-text-content">
             <div className="hero-badge" style={{ margin: '0 0 1.5rem' }}>
-              <span style={{ width: 6, height: 6, background: '#FF6B6B', borderRadius: '50%', display: 'inline-block' }} />
+              <span style={{ width: 6, height: 6, background: '#86EFAC', borderRadius: '50%', display: 'inline-block' }} />
               NOW AVAILABLE FOR PHILIPPINE HIGHER EDUCATION
             </div>
 
@@ -894,7 +891,7 @@ export default function LandingPage() {
                   alignItems: 'center',
                   gap: 6,
                 }}>
-                  <span style={{ color: '#FF6B6B' }}>{icon}</span>
+                  <span style={{ color: '#86EFAC' }}>{icon}</span>
                   {label}
                 </div>
               ))}
@@ -907,10 +904,10 @@ export default function LandingPage() {
               alt="ATLAS Platform Character"
               style={{
                 width: '100%',
-                maxWidth: 580,
+                maxWidth: 360,
                 display: 'block',
-                filter: 'drop-shadow(0 20px 40px rgba(139,0,0,0.25))',
-                transform: 'translateX(60px)'
+                filter: 'drop-shadow(0 20px 40px rgba(21,128,61,0.25))',
+                transform: 'translateX(0)'
               }}
             />
           </div>
@@ -923,7 +920,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────────── */}
-      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(139,0,0,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(21,128,61,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
             {[
@@ -933,7 +930,7 @@ export default function LandingPage() {
               { value: 3, suffix: ' days', label: 'From signup to live' },
             ].map(({ value, suffix, label, prefix }, i) => (
               <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: '#FF6B6B', lineHeight: 1 }}>
+                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: '#86EFAC', lineHeight: 1 }}>
                   {prefix || ''}{statsInView && <AnimatedNumber target={value} suffix={suffix} />}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{label}</div>
@@ -945,11 +942,11 @@ export default function LandingPage() {
 
       {/* ── FEATURES ────────────────────────────────────────────────────────── */}
       <section id="features" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.1)', top: '10%', right: -150 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.1)', top: '10%', right: -150 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
+            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
               Everything Your Course Needs <br />
               <span className="glow-text">to Teach Smarter</span>
@@ -967,7 +964,7 @@ export default function LandingPage() {
                 <div style={{
                   width: 52, height: 52,
                   background: f.accent,
-                  border: '1px solid rgba(192,57,43,0.25)',
+                  border: '1px solid rgba(22,163,74,0.25)',
                   borderRadius: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: '1.5rem',
@@ -987,7 +984,7 @@ export default function LandingPage() {
       <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
+            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               What Educators Are Saying
             </h2>
@@ -1001,7 +998,7 @@ export default function LandingPage() {
           >
             {TESTIMONIALS.map((t, i) => (
               <div key={i} className={`testimonial-card fade-up neon-border-glow ${testimonialsInView ? 'visible' : ''}`}>
-                <div style={{ color: '#FF4444', fontSize: '1rem', marginBottom: '1rem', letterSpacing: 2 }}>
+                <div style={{ color: '#BBF7D0', fontSize: '1rem', marginBottom: '1rem', letterSpacing: 2 }}>
                   {'★'.repeat(t.stars)}
                 </div>
                 <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
@@ -1010,10 +1007,10 @@ export default function LandingPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%',
-                    background: 'rgba(192,57,43,0.25)',
-                    border: '1px solid rgba(192,57,43,0.4)',
+                    background: 'rgba(22,163,74,0.25)',
+                    border: '1px solid rgba(22,163,74,0.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.9rem', color: '#FF8080', fontWeight: 700,
+                    fontSize: '0.9rem', color: '#86EFAC', fontWeight: 700,
                   }}>
                     {t.author[0]}
                   </div>
@@ -1030,11 +1027,11 @@ export default function LandingPage() {
 
       {/* ── PRICING ─────────────────────────────────────────────────────────── */}
       <section id="pricing" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 600, height: 600, background: 'rgba(139,0,0,0.12)', bottom: -200, left: -150 }} />
+        <Orb style={{ width: 600, height: 600, background: 'rgba(21,128,61,0.12)', bottom: -200, left: -150 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PRICING</p>
+            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PRICING</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               Simple, Institutional Pricing
             </h2>
@@ -1063,7 +1060,7 @@ export default function LandingPage() {
                 {plan.popular && <div className="popular-badge">✦ MOST POPULAR</div>}
 
                 <div style={{ marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#FF8080', margin: '0 0 0.4rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#86EFAC', margin: '0 0 0.4rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                     {plan.name}
                   </h3>
                   <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', margin: '0 0 1.2rem' }}>{plan.tagline}</p>
@@ -1085,8 +1082,10 @@ export default function LandingPage() {
                 <button
                   className={plan.popular ? 'atlas-btn-primary' : 'atlas-btn-outline'}
                   onClick={() => {
-                    if (plan.price === 'Custom') return scrollTo('contact')
-                    localStorage.setItem('atlas_selected_plan', plan.name)
+                    localStorage.setItem(
+                      'atlas_selected_plan',
+                      plan.name === 'Free Trial' ? 'Starter' : plan.name
+                    )
                     setAuthModal('signup')
                   }}
                   style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700 }}
@@ -1107,7 +1106,7 @@ export default function LandingPage() {
       <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
+            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               Built by Students.<br />Made for Teachers.
             </h2>
@@ -1124,8 +1123,8 @@ export default function LandingPage() {
                 <div style={{
                   width: '100%', height: 280,
                   borderRadius: 16,
-                  background: 'rgba(192,57,43,0.1)',
-                  border: '1px solid rgba(192,57,43,0.2)',
+                  background: 'rgba(22,163,74,0.1)',
+                  border: '1px solid rgba(22,163,74,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 1.5rem',
                   overflow: 'hidden',
@@ -1133,7 +1132,7 @@ export default function LandingPage() {
                   <img src={member.image} alt={member.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
                 <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
-                <p style={{ color: '#FF6B6B', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
+                <p style={{ color: '#86EFAC', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
               </div>
             ))}
           </div>
@@ -1142,12 +1141,12 @@ export default function LandingPage() {
 
       {/* ── CONTACT / CTA ───────────────────────────────────────────────────── */}
       <section id="contact" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 500, height: 500, background: 'rgba(139,0,0,0.15)', top: -100, right: -100 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -100, right: -100 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
             <div>
-              <p style={{ color: '#FF6B6B', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
+              <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
               <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
                 Ready to Transform<br />
                 <span className="glow-text">Your Institution?</span>
@@ -1166,8 +1165,8 @@ export default function LandingPage() {
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{
                       width: 40, height: 40, borderRadius: 10,
-                      background: 'rgba(192,57,43,0.15)',
-                      border: '1px solid rgba(192,57,43,0.3)',
+                      background: 'rgba(22,163,74,0.15)',
+                      border: '1px solid rgba(22,163,74,0.3)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '1.1rem', flexShrink: 0,
                     }}>
@@ -1194,8 +1193,8 @@ export default function LandingPage() {
                     padding: '0.7rem 0.9rem',
                     borderRadius: 10,
                     fontSize: '0.82rem',
-                    border: contactStatus.type === 'success' ? '1px solid rgba(88, 204, 135, 0.5)' : '1px solid rgba(255, 107, 107, 0.5)',
-                    background: contactStatus.type === 'success' ? 'rgba(88, 204, 135, 0.12)' : 'rgba(255, 107, 107, 0.09)',
+                    border: contactStatus.type === 'success' ? '1px solid rgba(88, 204, 135, 0.5)' : '1px solid rgba(134, 239, 172, 0.5)',
+                    background: contactStatus.type === 'success' ? 'rgba(88, 204, 135, 0.12)' : 'rgba(134, 239, 172, 0.09)',
                     color: contactStatus.type === 'success' ? '#c9f7d6' : '#ffd1d1',
                   }}>
                     {contactStatus.message}
@@ -1218,7 +1217,7 @@ export default function LandingPage() {
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <img src={atlasLogo} alt="ATLAS" style={{ height: 24, filter: 'brightness(0) saturate(100%) invert(26%) sepia(51%) saturate(2796%) hue-rotate(345deg) brightness(92%) contrast(92%)' }} />
+            <img src={atlasLogo} alt="ATLAS" style={{ height: 24 }} />
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
