@@ -28,7 +28,11 @@ export default function useApi(url, { method = 'GET', immediate = true, deps = [
   }, [url, method])
 
   useEffect(() => {
-    if (immediate && method === 'GET') execute()
+    if (immediate && method === 'GET') {
+      execute().catch(() => {
+        // execute records the error in hook state; this effect has no caller to handle its rejection.
+      })
+    }
   }, [url, ...deps])
 
   return { data, loading, error, execute, setData }

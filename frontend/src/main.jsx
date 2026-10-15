@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './store/authStore.jsx'
+import { applyStoredThemePreference } from './utils/userPreferences.js'
+
+applyStoredThemePreference()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -20,8 +20,6 @@ import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import { PageHeader, GlassCard, StatCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
-const DOC_TYPES = ['CHED_Handbook', 'Syllabus', 'Assessment', 'Policy', 'Reference', 'Files']
-
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
   '& .MuiInputLabel-root': { fontSize: '0.875rem' },
@@ -43,8 +41,29 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+function normalizeDocTypeLabel(value) {
+  const raw = (value || '').toString().trim()
+  if (!raw) return 'Uncategorized'
+
+  const mapping = {
+    CHED_Handbook: 'CHED Handbook',
+    CHED_Handbook_for_OBE: 'CHED Handbook for OBE',
+    CHED_Handbook_on_Topology: 'CHED Handbook on Topology',
+    Handbook_on_Typology: 'Handbook on Typology',
+    OBE_Handbook_on_Typology: 'OBE Handbook on Typology',
+    Institution_Knowledge_Base: 'Institution Knowledge Base',
+    Syllabus: 'Syllabus',
+    Assessment: 'Assessment',
+    Policy: 'Policy',
+    Reference: 'Reference',
+    Files: 'Files',
+  }
+
+  return mapping[raw] || raw.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase())
+}
+
 const CAT_STYLE = {
-  CHED_Handbook: { bg: 'rgba(192,57,43,0.14)', border: 'rgba(192,57,43,0.35)', color: '#FF6B6B' },
+  CHED_Handbook: { bg: 'rgba(22,163,74,0.14)', border: 'rgba(22,163,74,0.35)', color: '#86EFAC' },
   Syllabus:      { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
   Assessment:    { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
   Policy:        { bg: 'rgba(168,85,247,0.12)', border: 'rgba(168,85,247,0.3)', color: '#C084FC' },
@@ -53,16 +72,18 @@ const CAT_STYLE = {
 }
 
 function CategoryBadge({ cat }) {
-  const c = CAT_STYLE[cat] || { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
+  const label = normalizeDocTypeLabel(cat)
+  const c = CAT_STYLE[cat] || CAT_STYLE[label] || { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 7, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, color: c.color, letterSpacing: '0.04em', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}>
-      {cat || 'Uncategorized'}
+      {label}
     </span>
   )
 }
 
 export default function AdminKnowledgeBase() {
   const [documents, setDocuments]     = useState([])
+  const [documentsLoaded, setDocumentsLoaded] = useState(false)
   const [loading, setLoading]         = useState(true)
   const [searchTerm, setSearchTerm]   = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
@@ -75,10 +96,8 @@ export default function AdminKnowledgeBase() {
   const [file, setFile]               = useState(null)
   const [discipline, setDiscipline]   = useState('')
   const [program, setProgram]         = useState('')
-  const [docType, setDocType]         = useState('CHED_Handbook')
+  const [docType, setDocType]         = useState('')
   const [submitting, setSubmitting]   = useState(false)
-  const [progress, setProgress]       = useState(0)
-  const [statusMessage, setStatusMessage] = useState('')
   const [dragOver, setDragOver]       = useState(false)
   const fileInputRef = useRef(null)
 
@@ -90,6 +109,7 @@ export default function AdminKnowledgeBase() {
     try {
       const { data } = await api.get('/integrations/rag-documents/')
       setDocuments(data.documents || [])
+      setDocumentsLoaded(true)
     } catch (err) {
       setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to load knowledge documents.')
     } finally {
@@ -97,28 +117,18 @@ export default function AdminKnowledgeBase() {
     }
   }
 
-  // Simulated progress while the server embeds/parses the document.
-  useEffect(() => {
-    if (!submitting) return undefined
-    const timer = setInterval(() => {
-      setProgress(current => {
-        if (current < 80) return Math.min(80, current + 4)
-        if (current < 95) return Math.min(95, current + 0.35)
-        return current
-      })
-    }, 120)
-    return () => clearInterval(timer)
-  }, [submitting])
-
-  const categories = ['All', ...DOC_TYPES]
+  const categories = ['All', ...new Set(documents.map(doc => normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)).filter(Boolean))]
 
   const filtered = documents.filter(doc => {
     const q = searchTerm.toLowerCase()
+    const docTypeLabel = normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)
     const matchSearch = !q
       || (doc.title || '').toLowerCase().includes(q)
       || (doc.discipline || '').toLowerCase().includes(q)
       || (doc.program || '').toLowerCase().includes(q)
-    const matchCat = activeCategory === 'All' || doc.doc_type === activeCategory
+      || docTypeLabel.toLowerCase().includes(q)
+      || (doc.description || '').toLowerCase().includes(q)
+    const matchCat = activeCategory === 'All' || docTypeLabel === activeCategory
     return matchSearch && matchCat
   })
 
@@ -139,9 +149,7 @@ export default function AdminKnowledgeBase() {
     setFile(null)
     setDiscipline('')
     setProgram('')
-    setDocType('CHED_Handbook')
-    setProgress(0)
-    setStatusMessage('')
+    setDocType('')
     setDragOver(false)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
@@ -173,21 +181,15 @@ export default function AdminKnowledgeBase() {
     formData.append('doc_type', docType.trim())
 
     setSubmitting(true)
-    setProgress(0)
-    setStatusMessage('Uploading your file…')
     try {
       await api.post('/integrations/upload-global-rag-document/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 1200000,
       })
-      setProgress(100)
-      setStatusMessage('Done. Your document is now available in the knowledge base.')
       setNotice('Document uploaded and indexed successfully.')
       handleModalClose()
       await loadDocuments()
     } catch (err) {
-      setProgress(0)
-      setStatusMessage('')
       setError(err.response?.data?.error || err.response?.data?.detail || 'Failed to upload document.')
     } finally {
       setSubmitting(false)
@@ -195,25 +197,20 @@ export default function AdminKnowledgeBase() {
   }
 
   const totalChunks = documents.reduce((sum, d) => sum + (d.total_chunks || 0), 0)
-  const usedCategories = new Set(documents.map(d => d.doc_type).filter(Boolean)).size
-  const usedDisciplines = new Set(documents.map(d => d.discipline).filter(Boolean)).size
-
   return (
     <AdminLayout>
       <PageHeader
         title="Knowledge Base"
-        subtitle="Upload CHED handbooks and institution-wide references for RAG retrieval"
+        subtitle="Manage institution documents used for knowledge retrieval"
         action={<PrimaryBtn onClick={() => setCreateOpen(true)}><AddIcon fontSize="small" /> Upload File</PrimaryBtn>}
       />
 
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px,1fr))', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Documents" value={documents.length} icon="📚" accent="#FF6B6B" />
-        <StatCard title="Indexed Chunks"  value={totalChunks}       icon="🧩" accent="#FFB74D" />
-        <StatCard title="Categories"      value={usedCategories}    icon="🗂️" accent="#5EDA7E" />
-        <StatCard title="Disciplines"     value={usedDisciplines}   icon="🎓" accent="#60AAFF" />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 14, marginBottom: 20 }}>
+        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon="📚" accent="#86EFAC" />
+        <StatCard title="Indexed Chunks"  value={documentsLoaded ? totalChunks : '—'}       icon="🧩" accent="#FFB74D" />
       </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
@@ -224,8 +221,8 @@ export default function AdminKnowledgeBase() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-                background: activeCategory === cat ? 'linear-gradient(135deg,#8B0000,#C0392B)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${activeCategory === cat ? 'rgba(192,57,43,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                background: activeCategory === cat ? 'linear-gradient(135deg,#15803D,#16A34A)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${activeCategory === cat ? 'rgba(22,163,74,0.5)' : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: 8, padding: '5px 13px',
                 color: activeCategory === cat ? '#fff' : 'rgba(255,255,255,0.5)',
                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -248,7 +245,9 @@ export default function AdminKnowledgeBase() {
         {loading ? (
           <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>Loading documents…</div></GlassCard>
         ) : filtered.length === 0 ? (
-          <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>No documents found.</div></GlassCard>
+          <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>
+            {!documentsLoaded ? 'Documents could not be loaded.' : documents.length ? 'No documents match your search.' : 'No documents have been uploaded for this institution.'}
+          </div></GlassCard>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>
             {filtered.map(doc => (
@@ -265,7 +264,7 @@ export default function AdminKnowledgeBase() {
           {selected && (
             <Stack spacing={2}>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <CategoryBadge cat={selected.doc_type} />
+                <CategoryBadge cat={selected.doc_type_label || selected.doc_type} />
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{selected.discipline || 'No discipline'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.program || 'No program'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.total_chunks || 0} chunks</span>
@@ -348,25 +347,19 @@ export default function AdminKnowledgeBase() {
               <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', padding: '0 8px' }}>DOCUMENT DETAILS</span>
             </Divider>
 
-            <TextField label="Discipline" value={discipline} onChange={e => setDiscipline(e.target.value)} fullWidth size="small" placeholder="e.g. Education" sx={inputSx} />
-            <TextField label="Program" value={program} onChange={e => setProgram(e.target.value)} fullWidth size="small" placeholder="e.g. General" sx={inputSx} />
-            <TextField select label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}
-              SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}>
-              {DOC_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
-            </TextField>
+            <TextField label="Discipline" value={discipline} onChange={e => setDiscipline(e.target.value)} fullWidth size="small" placeholder="Optional discipline" sx={inputSx} />
+            <TextField label="Program" value={program} onChange={e => setProgram(e.target.value)} fullWidth size="small" placeholder="Optional program" sx={inputSx} />
+            <TextField label="Document Type" value={docType} onChange={e => setDocType(e.target.value)}
+              fullWidth size="small" sx={inputSx} />
 
-            {(submitting || progress > 0) && (
+            {submitting && (
               <div>
-                <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>{statusMessage || 'Progress'}</span>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 700 }}>{Math.round(progress)}%</span>
-                </Stack>
                 <LinearProgress
-                  variant="determinate" value={progress}
+                  variant="indeterminate"
                   sx={{
                     height: 10, borderRadius: 999,
                     backgroundColor: 'rgba(255,255,255,0.08)',
-                    '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(135deg,#8B0000,#C0392B)' },
+                    '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(135deg,#15803D,#16A34A)' },
                   }}
                 />
               </div>
@@ -401,7 +394,7 @@ function DocumentCard({ doc, onView }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-        <CategoryBadge cat={doc.doc_type} />
+        <CategoryBadge cat={doc.doc_type_label || doc.doc_type} />
         <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{doc.total_chunks || 0} chunks</span>
       </div>
       <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>

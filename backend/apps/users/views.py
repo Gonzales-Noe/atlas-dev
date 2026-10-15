@@ -1,12 +1,20 @@
+import base64
+import hashlib
+import hmac
+import json
+import logging
+import re
 import secrets
 import uuid
+from datetime import timedelta
+
+import requests
 
 from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core import signing
 from django.core.cache import cache
 from django.db import transaction
-import uuid
 
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
@@ -17,7 +25,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations.models import Assessment, College, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.document_processor import DocumentProcessor
+from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.trial import (
+    PAID_PLAN_DAYS,
+    TRIAL_FACULTY_LIMIT,
+    TRIAL_SYLLABUS_GENERATION_LIMIT,
+    institution_access_is_active,
+    trial_is_active,
+)
 
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
@@ -28,6 +44,7 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     PasswordResetVerifySerializer,
+    ProfileSettingsUpdateSerializer,
     RegisterSerializer,
     StudentDetailsUpdateSerializer,
     UserAccountSerializer,
@@ -37,6 +54,8 @@ from .serializers import (
     normalize_role,
     tokens_for_profile,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _is_uuid(value) -> bool:
@@ -161,10 +180,20 @@ class MeView(APIView):
 
     def patch(self, request):
         user = request.user
-        serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
+        profile_fields = {'full_name', 'picture_url', 'current_password', 'new_password'}
+        if profile_fields.intersection(request.data):
+            serializer = ProfileSettingsUpdateSerializer(
+                user,
+                data=request.data,
+                partial=True,
+                context={'request': request},
+            )
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
 
-        if 'courses_enrolled' in serializer.validated_data:
+        if 'courses_enrolled' in request.data:
+            serializer = StudentDetailsUpdateSerializer(data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
             student_data, _ = StudentData.objects.get_or_create(user=user)
             student_data.courses_enrolled = serializer.validated_data['courses_enrolled']
             student_data.save()
@@ -188,6 +217,235 @@ class RegisterView(APIView):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class BillingCheckoutView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    PLAN_PRICES = {
+        'Starter': 249900,
+        'Professional': 699900,
+    }
+    PAID_PLANS = frozenset(PLAN_PRICES)
+
+    def _get_selected_plan(self, request):
+        value = str(request.data.get('selected_plan') or request.user.institution.selected_plan or '').strip()
+        if value not in self.PAID_PLANS:
+            raise ValueError('Please select a plan before continuing.')
+        return value
+
+    def _build_checkout_payload(self, request, plan_name, amount):
+        success_url = settings.PAYMONGO_SUCCESS_URL
+        cancel_url = settings.PAYMONGO_CANCEL_URL
+        if success_url and '://' in success_url:
+            success_url = success_url
+        if cancel_url and '://' in cancel_url:
+            cancel_url = cancel_url
+
+        return {
+            'data': {
+                'attributes': {
+                    'payment_method_types': ['card'],
+                    'line_items': [{
+                        'amount': int(amount),
+                        'currency': 'PHP',
+                        'quantity': 1,
+                        'name': f'ATLAS {plan_name} Plan',
+                    }],
+                    'success_url': success_url,
+                    'cancel_url': cancel_url,
+                    'customer_email': request.user.email,
+                    'description': f'ATLAS institutional subscription for {request.user.institution.name if request.user.institution else "institution"}',
+                }
+            }
+        }
+
+    def post(self, request):
+        if normalize_role(request.user.role) not in {'admin'}:
+            return Response({'detail': 'Only institution admins can start billing.'}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            plan_name = self._get_selected_plan(request)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        institution = getattr(request.user, 'institution', None)
+        if not institution:
+            return Response({'detail': 'Institution not found for this account.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not settings.PAYMONGO_SECRET_KEY:
+            return Response({'detail': 'PayMongo is not configured on this server.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        amount = self.PLAN_PRICES.get(plan_name)
+        if amount is None:
+            return Response({'detail': 'Unsupported plan selected.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = self._build_checkout_payload(request, plan_name, amount)
+        try:
+            response = requests.post(
+                f'{settings.PAYMONGO_API_BASE}/v1/checkout_sessions',
+                json=payload,
+                auth=(settings.PAYMONGO_SECRET_KEY, ''),
+                timeout=30,
+            )
+            if response.status_code >= 400:
+                logger.error('PayMongo checkout failed: %s %s', response.status_code, response.text)
+                try:
+                    data = response.json()
+                    detail = data.get('errors') or data.get('detail') or 'Unable to create checkout session.'
+                except ValueError:
+                    detail = response.text or 'Unable to create checkout session.'
+                return Response({'detail': detail}, status=response.status_code)
+        except requests.RequestException as exc:
+            logger.exception('PayMongo request error during checkout.')
+            return Response({'detail': f'Unable to reach PayMongo: {exc}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        try:
+            data = response.json()
+        except ValueError:
+            return Response({'detail': 'PayMongo returned an invalid response.'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        session_data = data.get('data', {})
+        session_attributes = session_data.get('attributes', {}) if isinstance(session_data, dict) else {}
+        checkout_id = session_data.get('id', '')
+        checkout_url = session_attributes.get('checkout_url', '')
+
+        institution.selected_plan = plan_name
+        institution.payment_status = 'pending'
+        is_trial_active = trial_is_active(institution)
+        if not is_trial_active:
+            institution.application_status = 'approved_pending_payment'
+            institution.is_active = False
+        institution.paymongo_checkout_session_id = checkout_id
+        institution.paymongo_checkout_url = checkout_url or ''
+        institution.paymongo_reference_number = session_attributes.get('reference_number') or ''
+        update_fields = [
+            'selected_plan',
+            'payment_status',
+            'paymongo_checkout_session_id',
+            'paymongo_checkout_url',
+            'paymongo_reference_number',
+        ]
+        if not is_trial_active:
+            update_fields.extend(['application_status', 'is_active'])
+        institution.save(update_fields=update_fields)
+
+        return Response({
+            'checkout_url': checkout_url,
+            'checkout_session_id': checkout_id,
+            'status': 'pending_payment',
+            'plan': plan_name,
+        })
+
+
+class BillingStatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        institution = getattr(request.user, 'institution', None)
+        if not institution:
+            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({
+            'application_status': institution.application_status,
+            'payment_status': institution.payment_status,
+            'subscription_status': institution.subscription_status,
+            'selected_plan': institution.selected_plan or institution.plan_tier,
+            'is_active': institution.is_active,
+            'access_active': institution_access_is_active(institution),
+            'trial_active': trial_is_active(institution),
+            'trial_expired': (
+                institution.subscription_status == 'trialing'
+                and not trial_is_active(institution)
+            ),
+            'trial_started_at': institution.trial_started_at,
+            'trial_ends_at': institution.trial_ends_at,
+            'subscription_ends_at': institution.subscription_ends_at,
+            'faculty_count': UserProfile.objects.filter(
+                institution=institution,
+                role=UserRole.FACULTY,
+                is_active=True,
+            ).count(),
+            'faculty_limit': TRIAL_FACULTY_LIMIT,
+            'generation_used': getattr(request.user, 'trial_generation_count', 0),
+            'generation_limit': TRIAL_SYLLABUS_GENERATION_LIMIT,
+            'role': normalize_role(request.user.role),
+            'checkout_session_id': institution.paymongo_checkout_session_id,
+            'checkout_url': institution.paymongo_checkout_url,
+        })
+
+
+class BillingWebhookView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        secret = settings.PAYMONGO_WEBHOOK_SECRET
+        if not secret:
+            return Response({'detail': 'Webhook secret is not configured.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        signature = request.META.get('HTTP_X_PAYMONGO_SIGNATURE') or request.META.get('HTTP_X_PAYMONGO_WEBHOOK_SIGNATURE')
+        if not signature:
+            return Response({'detail': 'Missing PayMongo signature.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        raw_body = request.body
+        expected_signature = hmac.new(secret.encode('utf-8'), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_signature, signature):
+            logger.warning('PayMongo webhook signature mismatch for institution billing webhook.')
+            return Response({'detail': 'Invalid signature.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        try:
+            payload = json.loads(raw_body.decode('utf-8'))
+        except (TypeError, ValueError):
+            return Response({'detail': 'Invalid payload.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        event = payload.get('data', {}) if isinstance(payload, dict) else {}
+        resource_type = event.get('type') if isinstance(event, dict) else None
+        resource_attributes = event.get('attributes', {}) if isinstance(event, dict) else {}
+        resource_id = event.get('id') if isinstance(event, dict) else None
+        if resource_type != 'checkout_session':
+            return Response({'received': True, 'ignored': True})
+
+        checkout_status = str(resource_attributes.get('status', '')).lower()
+        if checkout_status not in {'paid', 'complete', 'completed'}:
+            return Response({'received': True, 'status': checkout_status or 'unknown'})
+
+        institution = Institution.objects.filter(paymongo_checkout_session_id=resource_id).first()
+        if not institution:
+            institution = Institution.objects.filter(paymongo_reference_number=resource_attributes.get('reference_number', '')).first()
+
+        if institution is None:
+            logger.warning('PayMongo webhook received for unknown checkout_session_id=%s', resource_id)
+            return Response({'received': True, 'status': 'ignored_unknown_session'})
+
+        event_id = event.get('id')
+        if event_id and institution.paymongo_last_event_id == event_id:
+            return Response({'received': True, 'status': 'already_processed'})
+
+        now = timezone.now()
+        current_period_end = institution.subscription_ends_at
+        period_start = current_period_end if current_period_end and current_period_end > now else now
+        institution.payment_status = 'paid'
+        institution.application_status = 'active'
+        institution.subscription_status = 'active'
+        institution.is_active = True
+        institution.paid_at = now
+        institution.reviewed_at = now
+        institution.subscription_ends_at = period_start + timedelta(days=PAID_PLAN_DAYS)
+        if event_id:
+            institution.paymongo_last_event_id = event_id
+        institution.save(update_fields=[
+            'payment_status',
+            'application_status',
+            'subscription_status',
+            'is_active',
+            'paid_at',
+            'reviewed_at',
+            'subscription_ends_at',
+            'paymongo_last_event_id',
+        ])
+        logger.info('Activated institution %s after PayMongo checkout payment.', institution.institution_id)
+        return Response({'received': True, 'status': 'paid'})
 
 
 class FacultyCreateView(APIView):
@@ -524,19 +782,54 @@ class InstitutionManagementView(APIView):
         institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name'])
         return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
+    def delete(self, request, institution_id):
+        """Superadmin hard-delete: removes the institution, all member
+        accounts, and all academic data under it."""
+        from .deletion import AccountDeletionError, delete_institution
+
+        denied = self._require_superadmin(request)
+        if denied:
+            return denied
+
+        institution = Institution.objects.filter(institution_id=institution_id).first()
+        if not institution:
+            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            result = delete_institution(institution)
+        except AccountDeletionError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(result, status=status.HTTP_200_OK)
+
 
 class AccountDetailView(APIView):
-    def patch(self, request, user_id):
+    def _require_manager(self, request):
         role = normalize_role(request.user.role)
         if role not in {'admin', 'superadmin'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        return None
 
-        target = UserProfile.objects.select_related('institution', 'college').filter(user_id=user_id).first()
+    def _check_object_institution(self, request, target):
+        """Tenant admins may only touch users of their own institution."""
+        if normalize_role(request.user.role) == 'superadmin':
+            return None
+        if not target.institution_id or target.institution_id != request.user.institution_id:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return None
+
+    def patch(self, request, user_id):
+        denied = self._require_manager(request)
+        if denied:
+            return denied
+
+        target = UserProfile.objects.select_related('institution').filter(user_id=user_id).first()
         if not target:
             return Response({'detail': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-        if role == 'admin' and target.institution_id != getattr(request.user, 'institution_id', None):
-            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        denied = self._check_object_institution(request, target)
+        if denied:
+            return denied
+        role = normalize_role(request.user.role)
 
         if 'role' in request.data:
             role_value = _to_database_role(request.data['role'])
@@ -557,18 +850,41 @@ class AccountDetailView(APIView):
         if 'email' in request.data:
             target.email = request.data['email'].strip().lower()
 
-        if 'college_id' in request.data:
-            college_id = request.data['college_id']
-            if college_id:
-                college = College.objects.filter(college_id=college_id, institution=target.institution).first()
-                if not college:
-                    return Response({'detail': 'College not found in your institution.'}, status=status.HTTP_400_BAD_REQUEST)
-                target.college = college
-            else:
-                target.college = None
-
         target.save()
         return Response(UserAccountSerializer(target).data)
+
+    def delete(self, request, user_id):
+        """Delete one account. Deleting the last admin of an institution
+        removes the whole institution and all of its data, so a re-used
+        email starts from a clean first-time setup."""
+        from .deletion import AccountDeletionError, delete_user_account
+
+        denied = self._require_manager(request)
+        if denied:
+            return denied
+
+        target = UserProfile.objects.select_related('institution').filter(user_id=user_id).first()
+        if not target:
+            return Response({'detail': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        denied = self._check_object_institution(request, target)
+        if denied:
+            return denied
+
+        role = normalize_role(request.user.role)
+        if role == 'admin' and normalize_role(target.role) == 'superadmin':
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        if target.pk == request.user.pk:
+            return Response(
+                {'detail': 'You cannot delete your own account while signed in.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = delete_user_account(target)
+        except AccountDeletionError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class FacultyAssignmentsView(APIView):
@@ -584,14 +900,14 @@ class FacultyAssignmentsView(APIView):
             return denied
 
         role = normalize_role(request.user.role)
-        faculty_queryset = UserProfile.objects.select_related('institution', 'college').filter(role=UserRole.FACULTY)
+        faculty_queryset = UserProfile.objects.select_related('institution').filter(role=UserRole.FACULTY)
         if role == 'admin':
             faculty_queryset = faculty_queryset.filter(institution=request.user.institution)
 
         assignments = CourseLoad.objects.select_related('course', 'faculty', 'section').filter(
             faculty__in=faculty_queryset,
         ).order_by('faculty__email', 'course__course_code')
-        sections = Section.objects.select_related('program').order_by('code')
+        sections = Section.objects.order_by('code')
         if role == 'admin':
             sections = sections.filter(
                 Q(institution=request.user.institution)
@@ -599,46 +915,19 @@ class FacultyAssignmentsView(APIView):
                 | Q(institution__isnull=True, program__isnull=True)
             )
 
-        # Get colleges for the institution
-        college_queryset = College.objects.none()
-        if role == 'admin' and request.user.institution_id:
-            college_queryset = College.objects.filter(institution=request.user.institution, is_active=True).order_by('name')
-        elif role == 'superadmin':
-            college_queryset = College.objects.filter(is_active=True).order_by('institution__name', 'name')
-
         course_queryset = Course.objects.order_by('course_code')
         if role == 'admin' and request.user.institution_id:
             course_queryset = course_queryset.filter(institution=request.user.institution)
 
-        # Optional college filtering for courses
-        college_id = request.query_params.get('college_id')
-        if college_id:
-            course_queryset = course_queryset.filter(program__college_id=college_id)
-
-        course_queryset = course_queryset.select_related('program', 'program__college', 'section')
+        course_queryset = course_queryset.select_related('section')
         return Response({
             'faculty': [UserAccountSerializer(profile).data for profile in faculty_queryset.order_by('email')],
-            'colleges': [
-                {
-                    'college_id': str(college.college_id),
-                    'code': college.code,
-                    'name': college.name,
-                    'institution_name': college.institution.name if college.institution_id else '',
-                }
-                for college in college_queryset
-            ],
             'courses': [
                 {
                     'course_id': str(course.course_id),
                     'course_code': course.course_code,
                     'course_title': course.course_title,
-                    'program_name': course.program.name if course.program_id else '',
-                    'college_name': course.program.college.name if course.program_id and course.program.college_id else '',
-                    'college_code': course.program.college.code if course.program_id and course.program.college_id else '',
-                    'section': (
-                        f'{course.program.code} {course.section.code}'
-                        if course.program_id and course.section_id else ''
-                    ),
+                    'section': course.section.code if course.section_id else '',
                     'category': course.category,
                 }
                 for course in course_queryset
@@ -660,7 +949,7 @@ class FacultyAssignmentsView(APIView):
                     'section_id': str(s.section_id),
                     'section_name': s.section_name,
                     'code': s.code,
-                    'display_name': f'{s.program.code} {s.code}' if s.program_id else s.code,
+                    'display_name': s.code,
                 }
                 for s in sections
             ],
@@ -781,17 +1070,24 @@ class InstitutionCustomizationView(APIView):
         return normalize_role(request.user.role) in {'admin', 'superadmin'}
 
     def get(self, request):
-        if not self._admin(request):
+        if not self._admin(request) and normalize_role(request.user.role) != 'faculty':
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         institution = request.user.institution
         if not institution:
-            return Response({'header_text': '', 'footer_text': '', 'syllabus_sections': [], 'field_labels': {}})
+            return Response({
+                'header_text': '',
+                'footer_text': '',
+                'syllabus_template_name': '',
+                'syllabus_sections': [],
+                'field_labels': {},
+            })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,
             'header_text': customization.header_text,
             'footer_text': customization.footer_text,
+            'syllabus_template_name': customization.syllabus_template_name,
             'syllabus_sections': customization.syllabus_sections,
             'field_labels': customization.field_labels,
         })
@@ -802,11 +1098,98 @@ class InstitutionCustomizationView(APIView):
         if not request.user.institution:
             return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
-        for field in ('header_image_url', 'footer_image_url', 'header_text', 'footer_text', 'syllabus_sections', 'field_labels'):
+        for field in (
+            'header_image_url',
+            'footer_image_url',
+            'header_text',
+            'footer_text',
+            'syllabus_template_name',
+            'syllabus_sections',
+            'field_labels',
+        ):
             if field in request.data:
                 setattr(customization, field, request.data[field])
         customization.save()
         return self.get(request)
+
+
+class SyllabusTemplateAnalyzeView(APIView):
+    """Extract likely section headings from a PDF or DOCX syllabus template."""
+
+    def post(self, request):
+        if normalize_role(request.user.role) != 'admin':
+            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response({'detail': 'Choose a PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_type = uploaded_file.name.rsplit('.', 1)[-1].lower()
+        is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
+        if not is_valid:
+            return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            pages = DocumentProcessor.extract_text(uploaded_file, file_type)
+        except Exception:
+            logger.exception('Could not extract text from syllabus template %s', uploaded_file.name)
+            return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            uploaded_file.seek(0)
+            customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
+            customization.syllabus_template.save(uploaded_file.name, uploaded_file, save=False)
+            customization.syllabus_template_name = uploaded_file.name[:255]
+            customization.save(update_fields=['syllabus_template', 'syllabus_template_name', 'updated_at'])
+        except Exception:
+            logger.exception('Could not store syllabus template %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Template analysis succeeded, but the file could not be stored. Try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        sections = []
+        seen = set()
+        for page_text, _page_number in pages:
+            for line in page_text.splitlines():
+                original = line.strip()
+                match = re.match(r'^(?:(\d+(?:\.\d+)*|[IVXLC]+)[.)]?\s+|[•*\-]\s*)?(.+?)\s*$', original, re.IGNORECASE)
+                if not match:
+                    continue
+                label = match.group(2).strip().rstrip(':;.')
+                words = label.split()
+                if (
+                    not 1 <= len(words) <= 12
+                    or len(label) > 100
+                    or label.casefold() in {'syllabus', 'course syllabus', 'table of contents'}
+                    or label.casefold() in seen
+                ):
+                    continue
+                is_heading = bool(match.group(1)) or original.endswith(':') or label.isupper()
+                is_heading = is_heading or all(word[:1].isupper() for word in words if word[:1].isalpha())
+                if not is_heading:
+                    continue
+                seen.add(label.casefold())
+                key = re.sub(r'[^a-z0-9]+', '-', label.casefold()).strip('-')
+                sections.append({
+                    'key': key or f'section-{len(sections) + 1}',
+                    'label': label,
+                    'enabled': True,
+                    'is_static': False,
+                    'static_content': '',
+                })
+
+        if not sections:
+            return Response({
+                'detail': 'No section headings were detected. Add the syllabus sections manually.',
+                'sections': [],
+                'template_name': uploaded_file.name,
+            })
+
+        return Response({
+            'sections': sections,
+            'template_name': uploaded_file.name,
+        })
 
 
 class EnrollCourseView(APIView):
