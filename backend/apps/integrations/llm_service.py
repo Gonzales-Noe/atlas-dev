@@ -237,7 +237,8 @@ class LLMService:
             return False
 
         try:
-            url = f"{self.ollama_base_url.rstrip('/')}/api/models"
+            # Native Ollama API: GET /api/tags lists installed models.
+            url = f"{self.ollama_base_url.rstrip('/')}/api/tags"
             response = requests.get(url, timeout=5)
             return response.ok
         except requests.exceptions.RequestException as exc:
@@ -245,10 +246,8 @@ class LLMService:
             return False
 
     def is_ollama_available(self):
-        if self._ollama_available is not None:
-            return self._ollama_available
-        self._ollama_available = self.ollama_configured and self._check_ollama_availability()
-        return self._ollama_available
+        # Re-check each time so starting Ollama after Django still works.
+        return self.ollama_configured and self._check_ollama_availability()
 
     def get_provider_and_model(self, provider_choice=None):
         choice = normalize_provider(provider_choice) or self.default_provider
@@ -329,38 +328,49 @@ class LLMService:
         return content
 
     def _ollama_completion(self, model, payload_messages, max_tokens):
+        # Native Ollama chat API: POST /api/chat with stream=false.
         try:
             response = requests.post(
-                f"{self.ollama_base_url.rstrip('/')}/api/chat?model={model}",
+                f"{self.ollama_base_url.rstrip('/')}/api/chat",
                 headers={"Content-Type": "application/json"},
-                json={"messages": payload_messages, "max_tokens": max_tokens},
-                timeout=90,
+                json={
+                    "model": model,
+                    "messages": payload_messages,
+                    "stream": False,
+                    "options": {"num_predict": max_tokens},
+                },
+                timeout=180,
             )
             response.raise_for_status()
         except requests.exceptions.ConnectionError as exc:
             logger.error("Ollama connection failed: %s", exc)
-            raise ValueError(
+            raise ProviderError(
+                'ollama',
                 f"Failed to connect to Ollama at {self.ollama_base_url}. "
-                "Ensure the Ollama server is running and reachable."
-            )
+                "Ensure the Ollama server is running and reachable.",
+                kind='unavailable',
+            ) from exc
         except requests.exceptions.RequestException as exc:
             logger.error("Ollama request failed: %s", exc)
-            raise ValueError(
-                f"Ollama request failed: {exc}. "
-                "Check Ollama logs and connection settings."
-            )
+            status = getattr(getattr(exc, 'response', None), 'status_code', None)
+            raise ProviderError(
+                'ollama',
+                f"Ollama request failed: {exc}",
+                kind=_classify_http_error(status or 500, str(exc)),
+                status_code=status,
+            ) from exc
         data = response.json()
-        if isinstance(data, dict) and 'choices' in data and len(data['choices']) > 0:
+        if isinstance(data, dict) and isinstance(data.get('message'), dict):
+            content = data['message'].get('content') or ''
+            if content.strip():
+                return content
+        if isinstance(data, dict) and 'choices' in data and data['choices']:
             choice = data['choices'][0]
-            if isinstance(choice, dict):
-                if 'message' in choice and isinstance(choice['message'], dict):
-                    return choice['message'].get('content', '')
-                if 'text' in choice:
-                    return choice.get('text', '')
-            return str(choice)
-        if isinstance(data, dict) and data.get('result'):
-            return data['result']
-        return response.text
+            if isinstance(choice, dict) and isinstance(choice.get('message'), dict):
+                content = choice['message'].get('content') or ''
+                if content.strip():
+                    return content
+        raise ProviderError('ollama', f'unexpected response: {str(data)[:300]}')
 
     def generate_response(self, messages, provider_choice=None, system=None, max_tokens=1024):
         """
@@ -397,6 +407,9 @@ class LLMService:
         """
         primary_provider = normalize_provider(preferred_provider) or self.default_provider
         providers_to_try = list(dict.fromkeys([primary_provider, *self.chain]))
+        # Local Ollama is last-resort fallback when free online providers fail.
+        if self.ollama_configured and 'ollama' not in providers_to_try:
+            providers_to_try.append('ollama')
         prompt_tokens = estimate_tokens(system, *(m.get('content', '') for m in messages))
         failures = []
 
@@ -410,6 +423,10 @@ class LLMService:
                     continue
                 if self._completion_budget(provider_choice, prompt_tokens, max_tokens) is None:
                     failures.append(f'{provider_choice}: prompt too large for its free tier')
+                    continue
+            elif provider_choice == 'ollama':
+                if not self.is_ollama_available():
+                    failures.append('ollama: server not reachable')
                     continue
             try:
                 result = self.generate_response(
