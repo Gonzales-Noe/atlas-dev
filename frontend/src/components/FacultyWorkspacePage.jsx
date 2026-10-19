@@ -103,7 +103,7 @@ const SYLLABUS_SECTIONS = [
   { key: 'policies',      label: 'Policies' },
 ]
 
-const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
 const PROVIDER_LABELS = {
   auto: 'Auto (best available free model)',
   groq: 'Groq — GPT-OSS 120B',
@@ -113,6 +113,7 @@ const PROVIDER_LABELS = {
   cloudflare: 'Cloudflare — GPT-OSS 120B',
   openrouter: 'OpenRouter — free models',
   huggingface: 'Hugging Face — GPT-OSS 120B',
+  ollama: 'Ollama (VPS local)',
 }
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',

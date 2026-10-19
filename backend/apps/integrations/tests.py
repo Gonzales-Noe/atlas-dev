@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.integrations import indexing, llm_service, rag_service, syllabus_structure
+from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
 from apps.integrations.models import GlobalDocument
@@ -456,3 +456,73 @@ class SyllabusStructureTests(SimpleTestCase):
 
         self.assertEqual(source, 'outline')
         self.assertEqual(sections[0]['label'], 'Course Specifications')
+
+
+class PiiMaskingTests(SimpleTestCase):
+    def test_masks_email_and_ph_mobile(self):
+        raw = (
+            "Contact the instructor at juan.cruz@batstate-u.edu.ph "
+            "or mobile 09171234567 / +63 917 123 4567."
+        )
+        result = pii_masking.mask_pii(raw)
+        self.assertNotIn('juan.cruz@batstate-u.edu.ph', result.text)
+        self.assertNotIn('09171234567', result.text)
+        self.assertNotIn('917 123 4567', result.text)
+        self.assertIn(pii_masking.EMAIL_PLACEHOLDER, result.text)
+        self.assertIn(pii_masking.PHONE_PLACEHOLDER, result.text)
+        pii_masking.assert_no_high_confidence_pii(result.text)
+
+    def test_masks_signature_block_but_keeps_course_body(self):
+        raw = (
+            "## Course Description\n"
+            "This course covers Newton's laws of motion and Rizal's novels.\n\n"
+            "Prepared by:\n"
+            "Prof. Juan Dela Cruz\n"
+            "Faculty, College of Engineering\n"
+            "_______________________________\n"
+        )
+        result = pii_masking.mask_and_verify(raw, context='test')
+        self.assertIn("Newton's laws of motion", result)
+        self.assertIn("Rizal's novels", result)
+        self.assertNotIn('Juan Dela Cruz', result)
+        self.assertIn(pii_masking.SIGNATURE_PLACEHOLDER, result)
+
+    def test_masks_labeled_instructor_name_only(self):
+        raw = (
+            "Instructor: Maria Santos\n"
+            "Week 3 Topic: Darwin and natural selection\n"
+            "Reference: works of Einstein on relativity\n"
+        )
+        result = pii_masking.mask_pii(raw, mask_names=True)
+        self.assertIn(pii_masking.NAME_PLACEHOLDER, result.text)
+        self.assertNotIn('Maria Santos', result.text)
+        self.assertIn('Darwin and natural selection', result.text)
+        self.assertIn('Einstein on relativity', result.text)
+
+    def test_pre_embed_check_rejects_unmasked_email(self):
+        with self.assertRaises(ValueError) as ctx:
+            pii_masking.assert_no_high_confidence_pii(
+                'Still has secret@example.com in text',
+                context='chunk',
+            )
+        self.assertIn('email', str(ctx.exception))
+
+    def test_chunk_and_embed_scans_before_embedding(self):
+        parents = {
+            'parents': [{
+                'content': 'ILO: apply Ohm\'s law. Contact x@y.com',
+                'children': [{'content': 'Call 09181234567 for consultation.'}],
+            }],
+        }
+        with patch.object(
+            indexing.DocumentProcessor, 'process_file_hierarchical', return_value=parents,
+        ), patch.object(
+            indexing.rag_service, 'embed_documents_batch', return_value=[[0.1, 0.2]],
+        ) as embed:
+            _parents, child_records, _ = indexing._chunk_and_embed(b'x', 'pdf', 'demo.pdf')
+
+        embedded_text = child_records[0][1]['content']
+        self.assertNotIn('09181234567', embedded_text)
+        self.assertIn(pii_masking.PHONE_PLACEHOLDER, embedded_text)
+        embed.assert_called_once()
+        self.assertNotIn('09181234567', embed.call_args.args[0][0])

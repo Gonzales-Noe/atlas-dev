@@ -92,10 +92,14 @@ class DocumentProcessor:
         Normalize raw extracted text before chunking.
 
         Cleans whitespace, control characters, and purely decorative lines
-        while preserving all content words and academic terminology.
+        while preserving academic terminology. Then masks PII (emails, PH
+        mobiles, signature blocks, labeled personal names) so redacted text
+        is what gets chunked, embedded, and later sent to LLMs.
         Does NOT remove stop words from stored text — stop-word filtering
         is applied only at BM25 retrieval time (via _tokenize_for_bm25).
         """
+        from .pii_masking import mask_and_verify
+
         # Unify line endings
         text = re.sub(r'\r\n|\r', '\n', text)
         # Collapse 3+ blank lines to two (preserve paragraph breaks)
@@ -114,7 +118,9 @@ class DocumentProcessor:
         ]
         # Drop standalone page number lines (e.g., "Page 5", "PAGE 12", "5")
         lines = [ln for ln in lines if not re.fullmatch(r'\s*(page\s+\d+|\d+)\s*', ln, re.IGNORECASE)]
-        return '\n'.join(lines).strip()
+        cleaned = '\n'.join(lines).strip()
+        # Mask PII before any chunking / embedding / LLM context.
+        return mask_and_verify(cleaned, context="preprocess")
     
     # Approximate token counter used for chunk sizing
     ENCODER = tiktoken.get_encoding("cl100k_base") if TIKTOKEN_AVAILABLE else None

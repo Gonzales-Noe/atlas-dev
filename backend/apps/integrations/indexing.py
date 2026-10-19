@@ -54,6 +54,8 @@ def is_stale_course_file(course_file) -> bool:
 
 def _chunk_and_embed(file_bytes, file_type, file_name):
     """Return (parents_data, child_records, embeddings) for a file."""
+    from .pii_masking import assert_no_high_confidence_pii, mask_and_verify
+
     hierarchical = DocumentProcessor.process_file_hierarchical(
         BytesIO(file_bytes), file_type, file_name
     )
@@ -61,13 +63,38 @@ def _chunk_and_embed(file_bytes, file_type, file_name):
     if not parents_data:
         raise ValueError("No text could be extracted from the file.")
 
+    # Defense in depth: re-verify parent/child text before embedding.
+    # Vectors cannot be inspected for PII; we gate the text that becomes vectors
+    # (and is later retrieved into LLM prompts).
+    for p_idx, parent_data in enumerate(parents_data):
+        parent_text = parent_data.get("content") or parent_data.get("parent_content") or ""
+        if parent_text:
+            parent_data["content"] = mask_and_verify(
+                parent_text, context=f"{file_name}:parent[{p_idx}]"
+            )
+        for c_idx, child_data in enumerate(parent_data.get("children", [])):
+            child_text = child_data.get("content") or ""
+            if not child_text:
+                continue
+            redacted = mask_and_verify(
+                child_text, context=f"{file_name}:child[{p_idx}.{c_idx}]"
+            )
+            child_data["content"] = redacted
+            assert_no_high_confidence_pii(
+                redacted, context=f"pre-embed:{file_name}:child[{p_idx}.{c_idx}]"
+            )
+
     child_records: list = []
     for p_idx, parent_data in enumerate(parents_data):
         for child_data in parent_data.get("children", []):
             child_records.append((p_idx, child_data))
 
-    logger.info("[ATLAS RAG] Batch-embedding %d child chunks…", len(child_records))
-    embeddings = rag_service.embed_documents_batch([c["content"] for _, c in child_records])
+    texts_to_embed = [c["content"] for _, c in child_records]
+    for i, text in enumerate(texts_to_embed):
+        assert_no_high_confidence_pii(text, context=f"embedding-batch[{i}]")
+
+    logger.info("[ATLAS RAG] Batch-embedding %d PII-scrubbed child chunks…", len(child_records))
+    embeddings = rag_service.embed_documents_batch(texts_to_embed)
     return parents_data, child_records, embeddings
 
 
