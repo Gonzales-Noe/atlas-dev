@@ -82,7 +82,7 @@ const SYLLABUS_SECTIONS = [
   { key: 'schedules',       label: 'Schedules & Mappings' },
 ]
 
-const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
 const AI_PROVIDERS = PROVIDERS
 const AI_EXCLUDED_SECTIONS = new Set(['header', 'specs', 'schedules'])
 const ASSESSMENT_TYPES = [

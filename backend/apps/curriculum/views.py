@@ -3364,9 +3364,12 @@ def generate_syllabus_field(request):
 
 
 def _extract_text_from_file(file_obj, filename: str) -> str:
-    """Extract raw text from .txt / .docx / .pdf / .xlsx files."""
+    """Extract raw text from .txt / .docx / .pdf / .xlsx files, then mask PII."""
+    from apps.integrations.pii_masking import mask_and_verify
+
     if filename.endswith(".txt"):
-        return file_obj.read().decode("utf-8", errors="replace")
+        raw = file_obj.read().decode("utf-8", errors="replace")
+        return mask_and_verify(raw, context=f"curriculum:{filename}")
 
     if filename.endswith(".docx"):
         from docx import Document as DocxDocument  # python-docx
@@ -3380,13 +3383,13 @@ def _extract_text_from_file(file_obj, filename: str) -> str:
                 cells = [c.text.strip() for c in row.cells if c.text.strip()]
                 if cells:
                     parts.append("\t".join(cells))
-        return "\n".join(parts)
+        return mask_and_verify("\n".join(parts), context=f"curriculum:{filename}")
 
     if filename.endswith(".pdf"):
         from pypdf import PdfReader
         reader = PdfReader(file_obj)
         pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n".join(pages)
+        return mask_and_verify("\n".join(pages), context=f"curriculum:{filename}")
 
     if filename.endswith(".xlsx"):
         try:
@@ -3418,7 +3421,7 @@ def _extract_text_from_file(file_obj, filename: str) -> str:
                 if any(t for t in row_texts):
                     lines.append("\t".join(row_texts))
             sheets_text.append("\n".join(lines))
-        return "\n\n".join(sheets_text)
+        return mask_and_verify("\n\n".join(sheets_text), context=f"curriculum:{filename}")
 
     raise ValueError(f"Unsupported file type: {filename}")
 

@@ -595,7 +595,9 @@ def markdown_from_upload(file_obj, file_type):
         if hasattr(file_obj, 'seek'):
             file_obj.seek(0)
         pages = DocumentProcessor.extract_text(file_obj, file_type)
-    return '\n\n'.join(text for text, _page in pages)
+    from .pii_masking import mask_and_verify
+    raw = '\n\n'.join(text for text, _page in pages)
+    return mask_and_verify(raw, context='syllabus_template')
 
 
 def extract_syllabus_structure(markdown, refine=True, llm=None):
