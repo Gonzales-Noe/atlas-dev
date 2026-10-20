@@ -847,6 +847,9 @@ class AccountDetailView(APIView):
         if 'is_active' in request.data:
             target.is_active = bool(request.data['is_active'])
 
+        if 'full_name' in request.data:
+            target.full_name = str(request.data['full_name'] or '').strip()
+
         if 'email' in request.data:
             target.email = request.data['email'].strip().lower()
 
