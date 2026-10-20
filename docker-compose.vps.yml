@@ -41,6 +41,8 @@ services:
       - ./backend/.env
     environment:
       DEBUG: "False"
+      ENVIRONMENT: production
+      DJANGO_SETTINGS_MODULE: atlas.settings.prod
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       OLLAMA_BASE_URL: http://ollama:11434
@@ -49,6 +51,9 @@ services:
       LOCAL_EMBEDDING_MODEL: BAAI/bge-base-en-v1.5
       DEFAULT_LLM_PROVIDER: groq
       WEB_CONCURRENCY: "2"
+      PORT: "8000"
+      # HTTP on VPS until Let's Encrypt is set up (avoids SSL redirect loops on :80)
+      SECURE_SSL_REDIRECT: "false"
     depends_on:
       - redis
       - ollama
