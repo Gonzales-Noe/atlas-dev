@@ -38,10 +38,10 @@ function NavItem({ item, collapsed }) {
         borderRadius: 12,
         margin: '2px 8px',
         background: isActive
-          ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))'
+          ? 'var(--shell-nav-active-bg)'
           : 'transparent',
         border: isActive
-          ? '1px solid rgba(22,163,74,0.35)'
+          ? '1px solid var(--shell-nav-active-border)'
           : '1px solid transparent',
         boxShadow: isActive ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
         transition: 'all 200ms cubic-bezier(0.4,0,0.2,1)',
@@ -51,8 +51,8 @@ function NavItem({ item, collapsed }) {
       }}
         onMouseEnter={e => {
           if (!isActive) {
-            e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+            e.currentTarget.style.background = 'var(--shell-hover-bg)'
+            e.currentTarget.style.borderColor = 'var(--shell-hover-border)'
           }
         }}
         onMouseLeave={e => {
@@ -81,7 +81,7 @@ function NavItem({ item, collapsed }) {
           width: 22,
           height: 22,
           flexShrink: 0,
-          color: isActive ? '#86EFAC' : 'rgba(255,255,255,0.45)',
+          color: isActive ? 'var(--active-color)' : 'var(--shell-icon)',
           transition: 'color 200ms',
         }}>
           {React.cloneElement(item.icon, { style: { fontSize: 20 } })}
@@ -92,7 +92,7 @@ function NavItem({ item, collapsed }) {
           <span style={{
             fontSize: '0.875rem',
             fontWeight: isActive ? 700 : 500,
-            color: isActive ? '#F0F0F2' : 'rgba(255,255,255,0.55)',
+            color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
             fontFamily: 'var(--font-sans)',
             whiteSpace: 'nowrap',
             transition: 'color 200ms',
@@ -203,8 +203,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         zIndex: 999,
         display: 'flex',
         flexDirection: 'column',
-        background: 'rgba(10,10,14,0.92)',
-        borderRight: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--shell-bg)',
+        borderRight: '1px solid var(--shell-border)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
         transition: 'width 280ms cubic-bezier(0.4,0,0.2,1), left 280ms cubic-bezier(0.4,0,0.2,1)',
@@ -218,7 +218,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           alignItems: 'center',
           justifyContent: collapsed && !isMobile ? 'center' : 'space-between',
           padding: collapsed && !isMobile ? '0 16px' : '0 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid var(--shell-divider)',
           flexShrink: 0,
         }}>
           {(!collapsed || isMobile) && (
@@ -230,14 +230,14 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
             title={isMobile ? 'Close sidebar' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-label={isMobile ? 'Close sidebar' : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             style={{
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer',
-              color: 'rgba(255,255,255,0.75)', padding: 4, borderRadius: 8,
+              background: 'var(--shell-btn-bg)', border: '1px solid var(--shell-btn-border)', cursor: 'pointer',
+              color: 'var(--shell-icon-strong)', padding: 4, borderRadius: 8,
               width: 36, height: 36,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               transition: 'color 200ms, background 200ms, border-color 200ms',
             }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.12)' }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)'; e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--text-primary)'; e.currentTarget.style.background = 'var(--shell-btn-hover-bg)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--shell-icon-strong)'; e.currentTarget.style.background = 'var(--shell-btn-bg)' }}
           >
             {collapsed && !isMobile
               ? <PanelLeftOpen size={22} strokeWidth={2.75} />
@@ -255,7 +255,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
               borderRadius: 8, padding: '4px 10px',
             }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.accent, boxShadow: `0 0 6px ${meta.accent}`, flexShrink: 0 }} />
-              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: meta.accent, letterSpacing: '0.06em' }}>
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: `var(--shell-badge-text, ${meta.accent})`, letterSpacing: '0.06em' }}>
                 {meta.label.toUpperCase()}
               </span>
             </div>
@@ -290,8 +290,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         right: 0,
         height: 60,
         zIndex: 100,
-        background: 'rgba(8,8,10,0.85)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--shell-topbar-bg)',
+        borderBottom: '1px solid var(--shell-border)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
         display: 'flex',
@@ -305,7 +305,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           <button
             onClick={() => setMobileOpen(true)}
             style={{
-              background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+              background: 'var(--shell-btn-bg)', border: '1px solid var(--shell-btn-border)',
               borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer',
               width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
