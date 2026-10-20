@@ -32,15 +32,38 @@ dist/
 .vscode/
 *.DS_Store
 
+# Local dumps / scratch / tooling (do not commit)
 TODO.md
 backup.sql
-.blackboxcli/
-ASSESSMENT QR (3).png
-BLACKBOX.md
 full_backup.sql
 schema.sql
 supabase_schema.sql
 atlas_dev.sql
 atlas_dev_utf8.sql
+.blackbox/
+.blackboxcli/
+ASSESSMENT QR (3).png
+BLACKBOX.md
+append_guide.py
+_testj_AdminLayout.jsx
+_err.txt
+ATLAS_PLATFORM_GUIDE.md
+diff_stat.txt
+fe.html
+fe.js
+git_out.txt
+headers.txt
+HOSTINGER_VPS_DEPLOY.md
+HOSTINGER_VS_RENDER_LOCAL_EMBEDDINGS.md
+idev_admin_files.txt
+MOBILE_SCANNER_GUIDE.md
+OLLAMA_SETUP.md
+response.txt
+testj_admin_files.txt
+YLP_CAPSULE_PROPOSAL_ATLAS.md
+
 # OMR scan uploads
 backend/media/bubble_sheets/scans/
+
+# Syllabus template uploads (local media; do not commit)
+backend/media/syllabus_templates/
