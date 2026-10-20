@@ -95,6 +95,17 @@ export async function deleteSection(sectionId) {
   await api.delete(`${BASE}/sections/${sectionId}/`)
 }
 
+export async function fetchCourseRequests(status = '') {
+  const params = status ? { status } : {}
+  const { data } = await api.get(`${BASE}/course-requests/`, { params })
+  return data?.requests || []
+}
+
+export async function reviewCourseRequest(requestId, payload) {
+  const { data } = await api.post(`${BASE}/course-requests/${requestId}/review/`, payload)
+  return data
+}
+
 export async function createCourse(payload) {
   const { data } = await api.post(`${BASE}/courses/`, payload)
   return data

@@ -11,4 +11,6 @@ urlpatterns = [
     path('sections/<uuid:section_id>/', views.SectionDetailView.as_view(), name='academic_section_detail'),
     path('courses/', views.CourseListCreateView.as_view(), name='academic_course_list'),
     path('courses/<uuid:course_id>/', views.CourseDetailView.as_view(), name='academic_course_detail'),
+    path('course-requests/', views.CourseRequestListView.as_view(), name='academic_course_request_list'),
+    path('course-requests/<uuid:request_id>/review/', views.CourseRequestReviewView.as_view(), name='academic_course_request_review'),
 ]
