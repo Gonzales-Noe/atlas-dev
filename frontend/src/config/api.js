@@ -1,7 +1,8 @@
 // src/config/api.js
 // Central Axios instance — all API calls go through here.
 // Local: Vite proxy forwards /api/* → Django (localhost:8000).
-// Render: set VITE_API_URL=https://your-backend.onrender.com/api at build time.
+// VPS (Hostinger): prefer VITE_API_URL=/api (same origin via nginx).
+// Avoid baking a Render URL into production builds.
 
 import axios from 'axios'
 
