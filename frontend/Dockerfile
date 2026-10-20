@@ -4,11 +4,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
-# Prefer same-origin /api behind nginx (Hostinger). Avoid baking Render URLs.
+# Set at build time, e.g. https://your.domain/api or http://IP/api
 ARG VITE_API_URL=/api
-ARG VITE_GOOGLE_CLIENT_ID=140618226788-lt31psljafm1en4n3aajo054thn5kfin.apps.googleusercontent.com
 ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN npm run build
 
 FROM nginx:alpine
