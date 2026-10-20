@@ -15,12 +15,16 @@ from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
     Assessment,
     AssessmentItem,
+    AuditLog,
     Course,
     CourseFile,
     CourseLoad,
+    CourseRequest,
+    CourseRequestStatus,
     InstitutionCustomization,
     Module,
     ParentChunk,
+    Section,
     StudentData,
     Syllabus,
     UserRole,
@@ -3174,10 +3178,76 @@ def export_assessment_docx(request):
         )
 
 
+def _serialize_course_request(item):
+    return {
+        "request_id": str(item.request_id),
+        "course_code": item.course_code,
+        "course_title": item.course_title,
+        "description": item.description,
+        "category": item.category,
+        "units": str(item.units) if item.units is not None else None,
+        "section": str(item.section_id) if item.section_id else None,
+        "section_code": item.section.code if item.section_id and item.section else None,
+        "justification": item.justification,
+        "status": item.status,
+        "admin_note": item.admin_note,
+        "requested_by_name": getattr(item.requested_by, "full_name", "") or "",
+        "requested_by_email": getattr(item.requested_by, "email", "") or "",
+        "reviewed_by_name": getattr(item.reviewed_by, "full_name", "") if item.reviewed_by_id else None,
+        "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None,
+        "created_course_id": str(item.created_course_id) if item.created_course_id else None,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def _course_request_section(request, section_id):
+    from django.db.models import Q
+
+    if not section_id:
+        return None, None
+    section = Section.objects.filter(section_id=section_id).filter(
+        Q(institution_id=request.user.institution_id)
+        | Q(program__institution_id=request.user.institution_id)
+        | Q(institution__isnull=True, program__isnull=True),
+    ).first()
+    if not section:
+        return None, Response(
+            {"success": False, "detail": "The selected section was not found."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return section, None
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def course_requests_mine(request):
+    """Return the requesting faculty member's own course requests (newest first)."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    queryset = (
+        CourseRequest.objects.filter(
+            institution_id=request.user.institution_id,
+            requested_by=request.user,
+        )
+        .select_related("section", "requested_by", "reviewed_by", "created_course")
+        .order_by("-created_at")
+    )
+    return Response(
+        {"success": True, "requests": [_serialize_course_request(item) for item in queryset]},
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_course(request):
-    """Create a new course and auto-assign it to the requesting faculty user."""
+    """File a new-course request for admin review (faculty cannot self-publish)."""
     if not _is_faculty_user(request):
         return _faculty_only_response()
     if not request.user.institution_id:
@@ -3186,10 +3256,17 @@ def create_course(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    course_code = (request.data.get("course_code") or "").strip()
+    course_code = (request.data.get("course_code") or "").strip().upper()
     course_title = (request.data.get("course_title") or "").strip()
     description = (request.data.get("description") or "").strip()
+    category = (request.data.get("category") or "professional").strip().lower() or "professional"
+    units_raw = request.data.get("units")
+    section_key = request.data.get("section") or request.data.get("section_id") or None
+    justification = (request.data.get("justification") or "").strip()
 
+    valid_categories = {choice for choice, _ in CourseRequest._meta.get_field("category").choices}
+    if category not in valid_categories:
+        category = "professional"
     if not course_code:
         return Response(
             {"success": False, "detail": "course_code is required."},
@@ -3201,8 +3278,38 @@ def create_course(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if len(course_code) > 100:
+        return Response(
+            {"success": False, "detail": "Course code must be 100 characters or fewer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if len(course_title) > 255:
+        return Response(
+            {"success": False, "detail": "Course title must be 255 characters or fewer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    units = None
+    if units_raw not in (None, ""):
+        try:
+            units = float(units_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {"success": False, "detail": "Units must be a number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if units < 0 or units > 30:
+            return Response(
+                {"success": False, "detail": "Units must be between 0 and 30."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    section, section_error = _course_request_section(request, section_key)
+    if section_error:
+        return section_error
+
     if Course.objects.filter(
-        course_code=course_code,
+        course_code__iexact=course_code,
         institution_id=request.user.institution_id,
     ).exists():
         return Response(
@@ -3210,29 +3317,55 @@ def create_course(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    course = Course.objects.create(
+    if CourseRequest.objects.filter(
+        course_code__iexact=course_code,
         institution_id=request.user.institution_id,
+        status=CourseRequestStatus.PENDING,
+    ).exists():
+        return Response(
+            {
+                "success": False,
+                "detail": f"A request for '{course_code}' is already waiting for admin review.",
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    course_request = CourseRequest.objects.create(
+        institution_id=request.user.institution_id,
+        requested_by=request.user,
         course_code=course_code,
         course_title=course_title,
         description=description or None,
+        category=category,
+        units=units,
+        section=section,
+        justification=justification or None,
     )
-    CourseLoad.objects.create(course=course, faculty=request.user)
+    try:
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="course_request_submitted",
+            resource_type="course_request",
+            resource_id=course_request.request_id,
+            details={
+                "course_code": course_code,
+                "course_title": course_title,
+                "institution_id": str(request.user.institution_id),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to log course request submission")
 
     logger.info(
-        "Faculty %s created course %s (%s)", request.user.email, course_code, course.course_id
+        "Faculty %s requested course %s (%s)",
+        request.user.email, course_code, course_request.request_id,
     )
 
     return Response(
         {
             "success": True,
-            "course": {
-                "course_id": str(course.course_id),
-                "course_code": course.course_code,
-                "course_title": course.course_title,
-                "description": course.description,
-                "syllabus_count": 0,
-                "assessment_count": 0,
-            },
+            "detail": "Request sent. Your admin will review it before the course appears in your workspace.",
+            "request": _serialize_course_request(course_request),
         },
         status=status.HTTP_201_CREATED,
     )

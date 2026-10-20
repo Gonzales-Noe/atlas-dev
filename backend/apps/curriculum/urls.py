@@ -16,6 +16,7 @@ urlpatterns = [
     path("generate-subtopic-content/", views.generate_subtopic_content, name="generate_subtopic_content"),
     path("module-ai-assist/", views.module_ai_assist, name="module_ai_assist"),
     path("courses/", views.create_course, name="create_course"),
+    path("course-requests/mine/", views.course_requests_mine, name="course_requests_mine"),
     path("generate-syllabus-field/", views.generate_syllabus_field, name="generate_syllabus_field"),
     path("parse-syllabus-upload/", views.parse_syllabus_upload, name="parse_syllabus_upload"),
     path("segment-syllabus-upload/", views.segment_syllabus_upload, name="segment_syllabus_upload"),
