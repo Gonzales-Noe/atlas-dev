@@ -52,8 +52,7 @@ services:
       DEFAULT_LLM_PROVIDER: groq
       WEB_CONCURRENCY: "2"
       PORT: "8000"
-      # HTTP on VPS until Let's Encrypt is set up (avoids SSL redirect loops on :80)
-      SECURE_SSL_REDIRECT: "false"
+      SECURE_SSL_REDIRECT: "true"
     depends_on:
       - redis
       - ollama
