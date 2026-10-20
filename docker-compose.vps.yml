@@ -4,8 +4,10 @@
 #
 # Usage:
 #   cp backend/.env.example backend/.env   # fill secrets on the server
+#   echo 'VITE_API_URL=http://YOUR_IP/api' > .env
 #   docker compose -f docker-compose.vps.yml up -d --build
 #   docker exec -it atlas_ollama ollama pull llama3.2:3b
+#   docker exec -it atlas_backend python manage.py migrate
 
 services:
   redis:
