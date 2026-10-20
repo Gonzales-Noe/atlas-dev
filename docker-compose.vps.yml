@@ -4,13 +4,10 @@
 #
 # Usage:
 #   cp backend/.env.example backend/.env   # fill secrets on the server
-#   echo 'VITE_API_URL=/api' > .env
+#   echo 'VITE_API_URL=http://YOUR_IP/api' > .env
 #   docker compose -f docker-compose.vps.yml up -d --build
 #   docker exec -it atlas_ollama ollama pull llama3.2:3b
 #   docker exec -it atlas_backend python manage.py migrate
-#
-# Google Sign-In: add https://atlas-ph.tech to Google Cloud OAuth
-# "Authorized JavaScript origins" (see HOSTINGER_VPS_DEPLOY.md).
 
 services:
   redis:
@@ -68,9 +65,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Same-origin /api via nginx — do not use Render URLs here
-        VITE_API_URL: ${VITE_API_URL:-/api}
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-140618226788-lt31psljafm1en4n3aajo054thn5kfin.apps.googleusercontent.com}
+        VITE_API_URL: ${VITE_API_URL}
     container_name: atlas_frontend
     depends_on:
       - backend
