@@ -11,6 +11,8 @@ export const ROUTES = {
   PRICING:        '/pricing',
   CONTACT:        '/contact',
   BILLING:        '/billing/onboarding',
+  LEGAL_TERMS:   '/legal/terms',
+  LEGAL_PRIVACY: '/legal/privacy',
 
   // Faculty
   FACULTY: {
