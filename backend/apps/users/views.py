@@ -775,11 +775,23 @@ class InstitutionManagementView(APIView):
             institution.name = str(request.data['name']).strip()[:255]
         if 'payment_status' in request.data and request.data['payment_status'] in {'unpaid', 'pending', 'paid'}:
             institution.payment_status = request.data['payment_status']
+            # When a plan is selected and marked paid, activate the subscription so
+            # users under this institution can access the dashboard based on the plan.
+            if (
+                request.data['payment_status'] == 'paid'
+                and 'selected_plan' in request.data
+                and str(request.data['selected_plan']).strip()
+            ):
+                institution.subscription_status = 'active'
+                institution.subscription_ends_at = timezone.now() + timedelta(days=PAID_PLAN_DAYS)
         if 'is_active' in request.data:
             institution.is_active = bool(request.data['is_active'])
             institution.application_status = 'active' if institution.is_active else 'rejected'
+            if not institution.is_active:
+                # Deactivating the account revokes dashboard access.
+                institution.subscription_status = 'canceled'
 
-        institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name'])
+        institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name', 'subscription_ends_at'])
         return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
     def delete(self, request, institution_id):
