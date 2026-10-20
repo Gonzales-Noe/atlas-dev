@@ -1,6 +1,6 @@
-// src/components/FacultyWorkspacePage.jsx
-// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#15803D).
-// Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
+// DEPRECATED — kept for reference only. The live faculty workspace is
+// src/components/FacultyWorkspacePage.jsx (pipeline stepper + header UI).
+// This older 3-panel copy is not imported by App.jsx or any route.
 
 import { useEffect, useRef, useState } from 'react'
 // import Alert from '@mui/material/Alert'
