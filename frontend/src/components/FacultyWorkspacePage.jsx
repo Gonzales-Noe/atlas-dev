@@ -69,12 +69,14 @@ import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
 import { notifyGenerationComplete } from '../utils/userPreferences'
-import SidebarUserMenu from './SidebarUserMenu'
-import AtlasLogo from './AtlasLogo'
+import WorkspacePipelineStepper from './WorkspacePipelineStepper'
+import WorkspacePageHeader from './WorkspacePageHeader'
+import useWorkspaceProgress from '../hooks/useWorkspaceProgress'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
-import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -710,40 +712,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const { courseId: courseIdParam } = useParams()
   const [searchParams] = useSearchParams()
   const courseId = courseIdParam || searchParams.get('course') || ''
-  const sidebarPreferenceKey = `atlas-dashboard-sidebar-collapsed:${user?.id ?? user?.email ?? 'faculty'}`
 
   const [activeTab, setActiveTab]     = useState(initialTab)
   const [syllabusSub, setSyllabusSub] = useState('overview')
 
-  const [leftWidth, setLeftWidth]   = useState(240)
+  function selectWorkspaceTab(key) {
+    setActiveTab(key)
+    setMobileNavOpen(false)
+    if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) }
+  }
+
   const [rightWidth, setRightWidth] = useState(380)
-  const [leftCollapsed, setLeftCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(sidebarPreferenceKey) === 'true'
-    } catch {
-      return false
-    }
-  })
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
-
-  function toggleLeftPanel() {
-    updateLeftSidebarPreference(!leftCollapsed)
-    setDragging(null)
-  }
-
-  function updateLeftSidebarPreference(nextCollapsed) {
-    setLeftCollapsed(nextCollapsed)
-    try {
-      window.localStorage.setItem(sidebarPreferenceKey, String(nextCollapsed))
-    } catch {
-      // Keep the sidebar usable when browser storage is unavailable.
-    }
-  }
 
   function toggleRightPanel() {
     setRightCollapsed(v => !v)
@@ -1583,6 +1568,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
   const customization = workspaceApi.data?.customization || {}
+
+  // ── ATLAS pipeline progress (Step 11: Faculty Review & Approval) ──
+  // Tracks per-module completion: auto-detected from workspace data +
+  // manual faculty approval via the header "Mark as Done" check.
+  const workspaceProgress = useWorkspaceProgress(courseId, workspaceApi.data)
+  const { isStepDone, markStepDone } = workspaceProgress
   const configuredSections = (Array.isArray(customization.syllabus_sections)
     ? customization.syllabus_sections
     : []
@@ -1798,6 +1789,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
       setSaveSuccess(true)
+      markStepDone('syllabus', true)
     } catch (err) {
       setSaveError(extractApiError(err))
     } finally {
@@ -1811,7 +1803,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const onMove = (e) => {
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
-      if (dragging === 'left')  setLeftWidth(Math.max(160, Math.min(300, e.clientX - rect.left)))
       if (dragging === 'right') setRightWidth(Math.max(250, Math.min(480, rect.right - e.clientX)))
     }
     const onUp = () => setDragging(null)
@@ -1822,7 +1813,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   useEffect(() => {
     if (!isMobile) return
-    setLeftCollapsed(false)
     setRightCollapsed(false)
     setDragging(null)
   }, [isMobile])
@@ -1928,6 +1918,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       await api.put(`/curriculum/module/${selectedModule.module_id}/save/`, { module_content: moduleContent })
       setModuleContentDirty(false)
       workspaceApi.execute()
+      markStepDone('module', true)
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setModuleSaving(false) }
   }
@@ -2305,6 +2296,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       setAssessmentCreating(false)
       workspaceApi.execute()
+      markStepDone('assessment', true)
       notifyGenerationComplete('Assessment', getSelectedExamDisplayName())
       if (latestAssessmentSummary?.assessment_id) {
         await handleOpenAssessment(latestAssessmentSummary)
@@ -6174,75 +6166,77 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       className="faculty-workspace"
       sx={{ height: '100vh', bgcolor: BG, color: '#F0F0F2', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* Top bar */}
+      {/* ── ATLAS pipeline header: enriched top bar + progress stepper ── */}
+      {/* Step 11 (Faculty Review & Approval) lives in WorkspacePageHeader's check. */}
       <Box component="header"
         sx={{
-          display: 'flex', alignItems: 'center', gap: 2,
-          px: 3, height: 60, minHeight: 60,
-          ml: isMobile ? 0 : `${leftCollapsed ? 64 : leftWidth}px`,
-          width: isMobile ? '100%' : `calc(100% - ${leftCollapsed ? 64 : leftWidth}px)`,
-          bgcolor: 'rgba(8,8,10,0.85)',
+          px: { xs: 1.5, md: 3 }, pt: 1.5, pb: 1.25, flexShrink: 0,
+          bgcolor: 'rgba(8,8,10,0.9)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          flexShrink: 0,
-          transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
+        <WorkspacePageHeader
+          course={course}
+          activeLabel={(WORKSPACE_TABS.find((t) => t.key === activeTab) || {}).label || activeTab}
+          done={Boolean(isStepDone && isStepDone(activeTab))}
+          doneCount={workspaceProgress.doneCount}
+          totalSteps={workspaceProgress.totalSteps}
+          actionLoading={actionLoading}
+          onBack={() => navigate('/faculty/dashboard')}
+          onToggleDone={() => markStepDone(activeTab, !isStepDone(activeTab))}
+        />
+        <Box sx={{ mt: 1.25 }}>
+          <WorkspacePipelineStepper
+            activeTab={activeTab}
+            isStepDone={isStepDone}
+            onSelect={selectWorkspaceTab}
+            doneCount={workspaceProgress.doneCount}
+            totalSteps={workspaceProgress.totalSteps}
+          />
+        </Box>
         {isMobile && (
-          <Tooltip title="Navigation">
-            <IconButton onClick={() => setMobileNavOpen(true)} size="small" sx={{ color: '#666' }}>
-              <MenuIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
-        <Tooltip title="Back to courses">
-          <Button onClick={() => navigate('/faculty/dashboard')} startIcon={<ArrowBackIcon fontSize="small" />} sx={{
-            height: 36, px: 1.5, borderRadius: 2,
-            color: 'rgba(255,255,255,0.75)',
-            bgcolor: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            textTransform: 'none', fontSize: '0.82rem', fontWeight: 600,
-            whiteSpace: 'nowrap',
-            transition: 'color 200ms, background-color 200ms',
-            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.18)' },
-          }}>
-            Back to Courses
-          </Button>
-        </Tooltip>
-        <Box sx={{ flex: 1 }} />
-        {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
-          <Tooltip title="Knowledge Base">
-            <IconButton onClick={() => setMobileUploadOpen(true)} size="small" sx={{ color: MAROON, mr: 0.5 }}>
-              <CloudUploadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+            <Button size="small" startIcon={<MenuIcon fontSize="small" />} onClick={() => setMobileNavOpen(true)}
+              sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.75)', borderColor: 'rgba(255,255,255,0.15)' }} variant="outlined">
+              Modules
+            </Button>
+            {activeTab !== 'analytics' && activeTab !== 'grading' && (
+              <Button size="small" startIcon={<CloudUploadIcon fontSize="small" />} onClick={() => setMobileUploadOpen(true)}
+                sx={{ textTransform: 'none', color: '#86EFAC', borderColor: 'rgba(22,163,74,0.4)' }} variant="outlined">
+                Sources
+              </Button>
+            )}
+          </Box>
         )}
       </Box>
 
-      {/* Mobile nav Drawer */}
+      {/* Mobile nav Drawer — pipeline steps with completion checks */}
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
-        PaperProps={{ sx: { width: 220, display: 'flex', flexDirection: 'column' } }}>
-        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+        PaperProps={{ sx: { width: 260, display: 'flex', flexDirection: 'column', bgcolor: '#101014' } }}>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <Typography variant="caption"
-            sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
-            Workspace
+            sx={{ color: '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
+            Course Workflow - {workspaceProgress.doneCount}/{workspaceProgress.totalSteps} done
           </Typography>
         </Box>
         <Stack sx={{ p: 1, gap: 0.25, flex: 1 }}>
           {WORKSPACE_TABS.map(({ key, label, Icon }) => {
             const on = activeTab === key
+            const stepDone = Boolean(isStepDone && isStepDone(key))
             return (
-              <Button key={key} onClick={() => { setActiveTab(key); setMobileNavOpen(false); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
+              <Button key={key} onClick={() => selectWorkspaceTab(key)}
                 startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
+                endIcon={stepDone ? <CheckCircleIcon sx={{ fontSize: '1rem !important', color: '#4ADE80' }} /> : null}
                 sx={{
                   justifyContent: 'flex-start', px: 1.5, py: 0.9,
                   borderRadius: 1.5, textTransform: 'none', fontSize: '0.85rem',
-                  fontWeight: on ? 700 : 400, color: on ? MAROON : '#555',
-                  bgcolor: on ? MAROON_LIGHT : 'transparent',
-                  borderLeft: on ? '3px solid ' + MAROON : '3px solid transparent',
+                  fontWeight: on ? 700 : 400, color: on ? '#86EFAC' : 'rgba(255,255,255,0.65)',
+                  bgcolor: on ? 'rgba(22,163,74,0.16)' : 'transparent',
+                  borderLeft: on ? '3px solid #16A34A' : '3px solid transparent',
                   minWidth: 0,
-                  '&:hover': { bgcolor: on ? MAROON_LIGHT : BG, color: on ? MAROON : '#1A1A1A' },
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#fff' },
                 }}>
-                {label}
+                {label}{stepDone ? ' - Done' : ''}
               </Button>
             )
           })}
@@ -6269,111 +6263,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Box>
       </Drawer>
 
-      {/* Three-panel area */}
+      {/* Main content area — modules render below the top pipeline stepper */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', userSelect: dragging ? 'none' : 'auto', bgcolor: '#0F0F12' }}>
 
-        {!isMobile && <Box sx={{ width: leftCollapsed ? 64 : leftWidth, flexShrink: 0 }} />}
+        {/* MIDDLE — main module content below the top pipeline stepper */}
 
-        {/* LEFT — nav (desktop) or compact rail when collapsed */}
-        {!isMobile && !leftCollapsed && (
-          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
-            <Box sx={{ height: 60, px: 2, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <AtlasLogo size={26} />
-              <Tooltip title="Collapse sidebar">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
-                  <PanelLeftClose size={22} strokeWidth={2.75} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
-              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, bgcolor: 'rgba(48,209,88,0.10)', border: '1px solid rgba(48,209,88,0.25)', borderRadius: 1, px: 1.25, py: 0.5 }}>
-                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#30D158', boxShadow: '0 0 6px #30D158' }} />
-                <Typography sx={{ color: '#30D158', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em' }}>FACULTY</Typography>
-              </Box>
-            </Box>
-            <Stack sx={{ p: 1, gap: 0.25, flex: 1, overflowY: 'auto' }}>
-              {WORKSPACE_TABS.map(({ key, label, Icon }) => {
-                const on = activeTab === key
-                return (
-                  <Button key={key} onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
-                    startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
-                    sx={{
-                      justifyContent: 'flex-start', px: 1.5, py: 1,
-                      borderRadius: 1.5, textTransform: 'none', fontSize: '0.875rem',
-                      fontWeight: on ? 700 : 400,
-                      color: on ? '#F0F0F2' : 'rgba(255,255,255,0.5)',
-                      background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
-                      border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
-                      boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
-                      minWidth: 0,
-                      '&:hover': { bgcolor: on ? 'rgba(21,128,61,0.35)' : 'rgba(255,255,255,0.06)', color: '#F0F0F2' },
-                    }}>
-                    {label}
-                  </Button>
-                )
-              })}
-            </Stack>
-            <SidebarUserMenu
-              user={user}
-              metaLabel="Faculty"
-              sidebarCollapsed={leftCollapsed}
-              onSidebarCollapsedChange={updateLeftSidebarPreference}
-              onUpdateProfile={updateProfile}
-              onSignOut={() => { logout(); navigate('/signin') }}
-            />
-          </Box>
-        )}
-
-        {!isMobile && leftCollapsed && (
-          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
-            <Box sx={{ height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-              <Tooltip title="Expand panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
-                  <PanelLeftOpen size={22} strokeWidth={2.75} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Stack component="nav" sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1, gap: 0.25 }}>
-              {WORKSPACE_TABS.map(({ key, label, Icon }) => {
-                const on = activeTab === key
-                return (
-                  <Tooltip key={key} title={label} placement="right">
-                    <IconButton size="small" onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
-                      sx={{
-                        width: 'calc(100% - 16px)', height: 44, mx: 1, borderRadius: 1.5,
-                        color: on ? '#86EFAC' : 'rgba(255,255,255,0.45)',
-                        background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
-                        border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
-                        boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
-                        '&:hover': { background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'rgba(255,255,255,0.06)', color: '#86EFAC' },
-                      }}>
-                      <Icon sx={{ fontSize: 20 }} />
-                    </IconButton>
-                  </Tooltip>
-                )
-              })}
-            </Stack>
-            <Box sx={{ mt: 'auto', width: '100%' }}>
-              <SidebarUserMenu
-                collapsed
-                user={user}
-                metaLabel="Faculty"
-                sidebarCollapsed={leftCollapsed}
-                onSidebarCollapsedChange={updateLeftSidebarPreference}
-                onUpdateProfile={updateProfile}
-                onSignOut={() => { logout(); navigate('/signin') }}
-              />
-            </Box>
-          </Box>
-        )}
-
-        {/* Drag — left (desktop only when expanded) */}
-        {!isMobile && !leftCollapsed && (
-          <Box onMouseDown={() => setDragging('left')}
-            sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
-                  bgcolor: dragging === 'left' ? MAROON + '44' : 'transparent',
-                  '&:hover': { bgcolor: 'rgba(21,128,61,0.14)' }, transition: 'background-color 0.15s' }} />
-        )}
+        {/* Main module content renders below the top pipeline stepper */}
 
         {/* MIDDLE */}
         <Box sx={{
