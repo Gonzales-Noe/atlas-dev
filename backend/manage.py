@@ -4,10 +4,18 @@ import sys
 from dotenv import load_dotenv
 
 if __name__ == "__main__":
-    # Load .env file
+    # Load .env file (does not override vars already set by Docker/Compose)
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
-    
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "atlas.settings.dev")
+
+    # Prefer production when ENVIRONMENT/DEBUG say so (VPS/Docker).
+    # Avoids loading debug_toolbar from atlas.settings.dev on the server.
+    if not os.environ.get("DJANGO_SETTINGS_MODULE"):
+        env_name = (os.environ.get("ENVIRONMENT") or "").strip().lower()
+        debug = (os.environ.get("DEBUG") or "true").strip().lower()
+        if env_name == "production" or debug in ("0", "false", "no"):
+            os.environ["DJANGO_SETTINGS_MODULE"] = "atlas.settings.prod"
+        else:
+            os.environ["DJANGO_SETTINGS_MODULE"] = "atlas.settings.dev"
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
