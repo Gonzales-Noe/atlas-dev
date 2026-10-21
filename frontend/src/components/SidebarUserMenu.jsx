@@ -6,8 +6,10 @@
 // workspace renders it identically. Do not restyle one copy — change this file
 // and both sidebars follow.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff, KeyRound, LogOut, Settings, UserRound } from 'lucide-react'
+import InstallAppButton from './InstallAppButton'
+import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
 import Alert from '@mui/material/Alert'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -80,8 +82,22 @@ export default function SidebarUserMenu({
   const [generationNotificationsEnabled, setGenerationNotificationsEnabledState] = useState(getGenerationNotificationsEnabled)
   const [notificationPreferenceMessage, setNotificationPreferenceMessage] = useState('')
   const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState(false)
+  const [canInstallApp, setCanInstallApp] = useState(false)
+  const [appInstalled, setAppInstalled] = useState(() => isStandaloneDisplay())
   // Collapsed sidebars show only the avatar, so it centres and tightens up.
   const tight = collapsed && !isMobile
+
+  useEffect(() => {
+    if (isStandaloneDisplay()) {
+      setAppInstalled(true)
+      setCanInstallApp(false)
+      return undefined
+    }
+    return subscribeInstallPrompt((prompt) => {
+      setCanInstallApp(Boolean(prompt))
+      setAppInstalled(false)
+    })
+  }, [])
 
   async function handleProfileSave(event) {
     event.preventDefault()
@@ -565,6 +581,35 @@ export default function SidebarUserMenu({
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block', mt: 0.5 }}>
                 Remember the sidebar width for this account across dashboard pages.
               </Typography>
+              {!appInstalled && (
+                <>
+                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mt: 1.5 }} />
+                  <div style={{ padding: '14px 0 4px' }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 1 }}>
+                      DEVICE
+                    </Typography>
+                    {canInstallApp ? (
+                      <InstallAppButton
+                        fullWidth
+                        label="Install ATLAS on this device"
+                        style={{
+                          padding: '0.65rem 1rem',
+                          fontSize: '0.85rem',
+                          borderRadius: 10,
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          color: '#F0F0F2',
+                          fontWeight: 600,
+                        }}
+                      />
+                    ) : (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block' }}>
+                        On Chrome/Edge, an Install button appears when ATLAS is installable. On iPhone/iPad, use Share → Add to Home Screen.
+                      </Typography>
+                    )}
+                  </div>
+                </>
+              )}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
               <Button onClick={() => setActiveModal(null)} sx={{ color: '#86EFAC', textTransform: 'none' }}>Done</Button>
