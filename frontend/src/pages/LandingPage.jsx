@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import SignInPage from './auth/signInPage'
 import SignUpPage from './auth/signUpPage'
 import PasswordResetPage from './auth/passwordReset'
+import InstallAppButton from '../components/InstallAppButton'
 
 // ── Scroll-triggered animation hook ─────────────────────────────────────────
 function useInView(threshold = 0.15) {
@@ -758,6 +759,7 @@ export default function LandingPage() {
 
           {/* Auth Buttons */}
           <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <InstallAppButton style={{ padding: '0.55rem 1.1rem', fontSize: '0.85rem' }} />
             {isAuthenticated ? (
               <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
                 Dashboard
@@ -803,13 +805,16 @@ export default function LandingPage() {
             {label}
           </button>
         ))}
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-          <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-            SIGN IN
-          </button>
-          <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-            SIGN UP
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <InstallAppButton fullWidth style={{ padding: '0.7rem', fontSize: '0.9rem' }} />
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+              SIGN IN
+            </button>
+            <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+              SIGN UP
+            </button>
+          </div>
         </div>
       </div>
 
