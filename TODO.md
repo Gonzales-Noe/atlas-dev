@@ -1,0 +1,3 @@
+- [x] Create `frontend/src/components/AtlasLogo.jsx` component for missing import
+- [x] Verify component exports default and uses `/ATLAS-Logo.svg`
+- [ ] Run frontend build check to confirm import resolution
