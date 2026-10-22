@@ -1,9 +1,0 @@
-frontend/src/features/Superadmin/AccountManagement.jsx
-frontend/src/features/Superadmin/AuditLogs.jsx
-frontend/src/features/Superadmin/Dashboard.jsx
-frontend/src/features/Superadmin/SuperAdminLayout.jsx
-frontend/src/features/Superadmin/SystemManagement.jsx
-frontend/src/features/roles/Admin/AccountManagement.jsx
-frontend/src/features/roles/Admin/AdminLayout.jsx
-frontend/src/features/roles/Admin/AuditLogs.jsx
-frontend/src/features/roles/Admin/Dashboard.jsx
