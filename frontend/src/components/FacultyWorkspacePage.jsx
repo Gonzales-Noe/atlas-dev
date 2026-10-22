@@ -1946,7 +1946,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // Toggle a syllabus chapter in/out of the manual topic selection for modules
-  function toggleSyllabusSection(index: number) {
+  function toggleSyllabusSection(index) {
     setSelectedSyllabusSections(prev => {
       const next = new Set(prev)
       if (next.has(index)) next.delete(index)

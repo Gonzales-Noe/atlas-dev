@@ -477,6 +477,32 @@ class StudentDetailsUpdateSerializer(serializers.Serializer):
     courses_enrolled = serializers.JSONField(required=False)
 
 
+class ContactFormSerializer(serializers.Serializer):
+    """Validates the public contact form submitted from the landing page."""
+    name = serializers.CharField(max_length=255)
+    email = serializers.EmailField()
+    institution = serializers.CharField(max_length=255)
+    message = serializers.CharField()
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Name is required.')
+        return value
+
+    def validate_institution(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Institution is required.')
+        return value
+
+    def validate_message(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError('Message is required.')
+        return value
+
+
 class ProfileSettingsUpdateSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=255, required=False, allow_blank=False)
     picture_url = serializers.URLField(max_length=500, required=False, allow_blank=True, allow_null=True)
