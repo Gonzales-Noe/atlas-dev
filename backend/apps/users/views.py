@@ -18,6 +18,7 @@ from django.db import transaction
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
 from django.utils import timezone
+from django.core.mail import send_mail
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
