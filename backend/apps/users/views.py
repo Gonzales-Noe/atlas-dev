@@ -38,6 +38,7 @@ from apps.integrations.trial import (
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
+    ContactFormSerializer,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
     FacultyCreateSerializer,
@@ -481,24 +482,18 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data['email']
 
         profile = UserProfile.objects.filter(email__iexact=email, is_active=True).first()
+        otp = None
         if profile:
             otp = _generate_otp()
             cache.set(_otp_cache_key(email), otp, timeout=600)
-            try:
-                send_mail(
-                    subject='ATLAS password reset code',
-                    message=(
-                        f'Your ATLAS password reset code is {otp}.\n\n'
-                        'This code expires in 10 minutes.'
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-            except Exception:
-                pass
-        else:
-            otp = None
+            # Send the branded OTP email through the shared email service so the
+            # structure, logo and footer stay consistent with the rest of ATLAS.
+            from .email_service import send_password_reset_otp
+            send_password_reset_otp(
+                email=email,
+                otp=otp,
+                user_name=profile.name or '',
+            )
 
         response_payload = {'detail': 'If the account exists, a reset code has been generated.'}
         if settings.DEBUG and otp is not None:
@@ -1249,3 +1244,56 @@ class UnenrollCourseView(APIView):
             'detail': 'Unenrolled successfully.',
             'courses_enrolled': updated_courses,
         })
+
+
+class ContactFormView(APIView):
+    """Public endpoint for the landing-page contact form.
+
+    Validates the submission, emails a branded notification to the ATLAS
+    support team, and sends a branded confirmation back to the user. The
+    endpoint is intentionally unauthenticated — anyone can reach out.
+    """
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from django.utils import timezone as tz
+        from .email_service import send_contact_confirmation, send_contact_notification
+
+        serializer = ContactFormSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        submitted_at = tz.now().strftime('%B %d, %Y at %I:%M %p UTC')
+
+        # Notify the ATLAS team (best-effort; never fail the submission).
+        try:
+            send_contact_notification(
+                name=data['name'],
+                email=data['email'],
+                institution=data['institution'],
+                message=data['message'],
+                submitted_at=submitted_at,
+            )
+        except Exception:
+            logger.exception('Failed to send contact notification for %s', data['email'])
+
+        # Send a confirmation back to the user (best-effort).
+        try:
+            send_contact_confirmation(name=data['name'], email=data['email'])
+        except Exception:
+            logger.exception('Failed to send contact confirmation to %s', data['email'])
+
+        return Response(
+            {
+                'detail': 'Message received. Our team will get back to you within 24 hours.',
+                'contact': {
+                    'name': data['name'],
+                    'email': data['email'],
+                    'institution': data['institution'],
+                    'submitted_at': submitted_at,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )
