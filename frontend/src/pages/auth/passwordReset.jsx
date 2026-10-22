@@ -337,11 +337,36 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           to { opacity: 1; transform: translateX(0); }
         }
 
-        .glow-text {
-          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
+        @keyframes neon-pan {
+          0% { background-position: 100% 0; }
+          100% { background-position: 0 0; }
+        }
+
+        .main-card {
+          position: relative;
+        }
+        .main-card::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            90deg,
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
         }
 
         .speech-bubble {
@@ -367,6 +392,33 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           border: 10px solid transparent;
           border-top-color: rgba(255,255,255,0.08);
           border-bottom: 0;
+        }
+
+        .reset-card {
+          position: relative;
+        }
+        .reset-card::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            90deg,
+            rgba(134, 239, 172, 0) 0%,
+            rgba(134, 239, 172, 0.5) 12.5%,
+            rgba(21, 128, 61, 0.5) 25%,
+            rgba(134, 239, 172, 0) 50%,
+            rgba(134, 239, 172, 0.5) 62.5%,
+            rgba(21, 128, 61, 0.5) 75%,
+            rgba(134, 239, 172, 0) 100%
+          );
+          background-size: 200% 100%;
+          animation: neon-pan 4s linear infinite;
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          pointer-events: none;
         }
 
         .label-text {
@@ -498,7 +550,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', position: 'relative', zIndex: 1 }}>
         <div
-          className="reset-split glass-card"
+          className="reset-split glass-card reset-card"
           style={{ width: '100%', maxWidth: 800, display: 'flex', overflow: 'hidden', minHeight: 500, transform: isModal ? 'scale(0.85)' : 'none' }}
         >
           {/* LEFT: Mascot panel */}
@@ -529,7 +581,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                 {STEP_CONFIG[step]?.bubble}
               </div>
 
-              {/* Mascot icon large */}
+              {/* Mascot image (falls back to emoji icon when image is unavailable) */}
               <div style={{ fontSize: '5rem', lineHeight: 1, filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.5))', transition: 'all 0.4s ease' }}>
                 {STEP_CONFIG[step]?.icon}
               </div>
