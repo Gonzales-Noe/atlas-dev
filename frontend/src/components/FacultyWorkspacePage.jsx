@@ -2625,7 +2625,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function openAssessmentGenDialog(mode, prefillTopic) {
     const blueprint = getAssessmentBlueprint()
     setAssessmentGenMode(mode)
-    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Quiz')
+    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Assessment')
     setAssessmentGenItemCount(Math.max(1, Number(blueprint.totalItems || 50)))
     if (mode === 'single' && prefillTopic) {
       setAssessmentGenSelectedTopics([prefillTopic])
@@ -2638,25 +2638,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleAssessmentGenSubmit() {
     if (!course) return
     const blueprint = getAssessmentBlueprint()
-    if (!blueprint.hasMajorExam) {
-      setActionError('No major examination found in TOS. Add a major exam (Prelims, Midterm, Semi-Finals, or Finals) to the syllabus TOS first.')
+    if (!blueprint.hasMajorExam && assessmentGenSelectedTopics.length === 0) {
+      setActionError('Select at least one topic/week for the assessment.')
       return
     }
     setActionLoading(true)
     setActionError('')
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
-      // Major examinations only: the backend follows the TOS topics and item counts.
+       // One request builds the whole assessment. With a TOS major exam the
+      // backend follows its topics and item counts; without one it uses the
+      // selected module topics and the requested item count.
       const { data } = await api.post('/curriculum/generate-assessment/', {
         course_id: course.course_id,
-        assessment_type: 'Major Examination',
+        assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
         provider: 'auto',
         extra_instructions: '',
         selected_doc_ids: selectedIds,
         source_exam_code: blueprint.examCode,
         source_exam_label: assessmentGenTitle || blueprint.assessmentName,
-        faculty_topics: [],
-        total_items: blueprint.totalItems || 50,
+        faculty_topics: assessmentGenSelectedTopics,
+        total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
       }, { timeout: 300000 })
       if (!data?.success) throw new Error(data?.detail || 'Generation failed.')
       const newId = data?.assessment?.assessment_id
