@@ -16,7 +16,7 @@ Generation pipeline:
 
 # Maximum tokens of RAG context to inject into a prompt.
 # Keeps total prompt within typical 8 K-context LLM windows.
-_CONTEXT_TOKEN_BUDGET: int = 2_000
+_CONTEXT_TOKEN_BUDGET: int = 1_000
 
 # How deeply a module should be structured. Chosen by the faculty in the
 # "Generate module" dialog and translated into prompt instructions.

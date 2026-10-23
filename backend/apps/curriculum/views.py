@@ -2821,16 +2821,20 @@ Requirements:
             system=system_prompt,
             max_tokens=4000,
         )
-        generated_payload, parse_error = _parse_assessment_json(raw_text)
+    except ValueError as e:
+        logger.error("Assessment generation failed: %s", e)
+        return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-        if not generated_payload:
-            llm_json_retry_used = True
-            logger.warning(
-                'Assessment LLM initial response was not valid JSON; retrying once with strict JSON-only repair prompt. error=%s',
-                parse_error,
-            )
+    generated_payload, parse_error = _parse_assessment_json(raw_text)
 
-            repair_prompt = f"""Your previous response was not valid JSON.
+    if not generated_payload:
+        llm_json_retry_used = True
+        logger.warning(
+            'Assessment LLM initial response was not valid JSON; retrying once with strict JSON-only repair prompt. error=%s',
+            parse_error,
+        )
+
+        repair_prompt = f"""Your previous response was not valid JSON.
 
 Return ONLY valid JSON, with no markdown fences and no extra commentary.
 Keep the exact same top-level shape and semantics requested earlier.
@@ -2872,23 +2876,23 @@ Previous invalid response:
 {raw_text}
 """
 
-            repaired_text = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': repair_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=4000,
+        repaired_text = llm.generate_response_with_fallback(
+            messages=[{'role': 'user', 'content': repair_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=4000,
+        )
+        generated_payload, retry_error = _parse_assessment_json(repaired_text)
+        if generated_payload:
+            llm_json_retry_success = True
+        else:
+            logger.warning(
+                'Assessment LLM retry also returned invalid JSON; attempting per-section MCQ generation. error=%s',
+                retry_error,
             )
-            generated_payload, retry_error = _parse_assessment_json(repaired_text)
-            if generated_payload:
-                llm_json_retry_success = True
-            else:
-                logger.warning(
-                    'Assessment LLM retry also returned invalid JSON; attempting per-section MCQ generation. error=%s',
-                    retry_error,
-                )
-                section_retry_used = True
-                generated_payload = _generate_sections_individually()
-                section_retry_success = True
+            section_retry_used = True
+            generated_payload = _generate_sections_individually()
+            section_retry_success = True
     except Exception:
         logger.exception('Assessment LLM generation failed before valid MCQ payload was produced')
 
