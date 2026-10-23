@@ -5,6 +5,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import AutoAlert from './AutoAlert'
+import MarkdownText, { MarkdownInline } from './MarkdownText'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
@@ -62,6 +63,7 @@ import CloseIcon from '@mui/icons-material/Close'
 import SaveIcon from '@mui/icons-material/Save'
 import EditIcon from '@mui/icons-material/Edit'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined'
+import LockIcon from '@mui/icons-material/Lock'
 import ReplayIcon from '@mui/icons-material/Replay'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
@@ -119,6 +121,14 @@ const PROVIDER_LABELS = {
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
   'assignment', 'project', 'activity', 'performance task',
+]
+
+// How deeply the AI should structure a generated module.
+const STRUCTURING_LEVELS = [
+  { value: 'standard',  label: 'Standard',      description: '3–5 subtopics — balanced depth for a class session' },
+  { value: 'detailed',  label: 'Detailed',      description: '4–6 subtopics — deep coverage, full lecture or lab series' },
+  { value: 'concise',   label: 'Concise',       description: '2–3 subtopics — a quick refresher or orientation' },
+  { value: 'activity',  label: 'Activity-led',  description: 'The class activity drives it; subtopics support it' },
 ]
 
 const EMPTY_TASK    = { code: '', task: '', ird: '', category: '', weight: '', ilo_values: [], subs: [], c: '', p: '', a: '' }
@@ -720,13 +730,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function selectWorkspaceTab(key) {
     setActiveTab(key)
     setMobileNavOpen(false)
-    if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) }
+    if (key !== 'module') { setSelectedModule(null); setModuleContent(null); setChatOpen(false) }
   }
 
   const [rightWidth, setRightWidth] = useState(380)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
+  // Tracks which course the syllabus form was seeded for — a workspace refresh
+  // must not overwrite unsaved syllabus edits.
+  const seededCourseRef = useRef(null)
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
@@ -741,7 +754,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionLoading, setActionLoading] = useState(false)
 
   const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'auto', top_k: 5, extra_instructions: '' })
-  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'auto', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, topic_id: '', structuring_level: 'standard', provider: 'auto', top_k: 5, extra_instructions: '' })
   const [assessmentParams, setAssessmentParams] = useState({
     faculty_topics: '',
     extra_instructions: '',
@@ -798,14 +811,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [confirmDeleteAssessmentId, setConfirmDeleteAssessmentId] = useState(null)
 
   // ── Module creation flow state ───────────────────────────────────────────
-  const [moduleCreating, setModuleCreating]         = useState(false)
-  const [moduleFromSchedule, setModuleFromSchedule] = useState(false)
   const [moduleGeneratingAll, setModuleGeneratingAll] = useState(false)
   const [moduleGeneratingTopic, setModuleGeneratingTopic] = useState(new Set())
   const [deletedModuleIds, setDeletedModuleIds] = useState(new Set())
 
-  // ── Manual syllabus section selection for Module topics ─────────────────
-  const [selectedSyllabusSections, setSelectedSyllabusSections] = useState(new Set()) // Set of chapter indices
+  // ── Syllabus section / subsection the Module topics are read from ────────
+  const [moduleTopicSectionKey, setModuleTopicSectionKey]       = useState('')
+  const [moduleTopicSubsectionKey, setModuleTopicSubsectionKey] = useState('')
+  const [moduleTopicConfirmed, setModuleTopicConfirmed]         = useState(false)
+  const [topicSourceDialogOpen, setTopicSourceDialogOpen]       = useState(false)
+  const [topicSourceSaving, setTopicSourceSaving]               = useState(false)
+  const [topicSourceError, setTopicSourceError]                 = useState('')
+  const [topicSourceNoticeOpen, setTopicSourceNoticeOpen]       = useState(false)
+  const [generateDialogOpen, setGenerateDialogOpen]             = useState(false)
+  const [generateDialogMode, setGenerateDialogMode]             = useState('single') // 'single' | 'all'
+  const [pendingGenerate, setPendingGenerate]                   = useState(null)
 
   // ── Module detail / viewer state ─────────────────────────────────────────
   const [selectedModule, setSelectedModule]         = useState(null) // { module_id, ... }
@@ -817,6 +837,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
   const [assessmentCreating, setAssessmentCreating] = useState(false)
   const [assessmentSessionId, setAssessmentSessionId] = useState(null)
+  // Assessment generation popup (Create Assessment = multi-topic scope, Generate Assessment = single topic)
+  const [assessmentGenDialogOpen, setAssessmentGenDialogOpen] = useState(false)
+  const [assessmentGenMode, setAssessmentGenMode] = useState('single') // 'single' | 'multi'
+  const [assessmentGenTitle, setAssessmentGenTitle] = useState('Major Examination')
+  const [assessmentGenSelectedTopics, setAssessmentGenSelectedTopics] = useState([])
+  const [assessmentGenItemCount, setAssessmentGenItemCount] = useState(50)
   const [assessmentToolsTab, setAssessmentToolsTab] = useState('builder')
   const [manualAssessmentItem, setManualAssessmentItem] = useState({
     question_text: '',
@@ -1608,12 +1634,89 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ))
   }, [workspaceApi.data, courseId])
 
-  // Pre-populate syllabus form: saved JSON first, then fall back to course fields
+  // The module topic source is locked per course the first time the faculty
+  // confirms it — pull it back from the course record on every load.
+  useEffect(() => {
+    const courseData = workspaceApi.data?.course
+    if (!courseData) return
+    if (courseData.module_topic_confirmed_at) {
+      setModuleTopicConfirmed(true)
+      setModuleTopicSectionKey(courseData.module_topic_section_key || '')
+      setModuleTopicSubsectionKey(courseData.module_topic_subsection_key || '')
+    } else {
+      setModuleTopicConfirmed(false)
+    }
+  }, [workspaceApi.data?.course])
+
+  // Before the faculty confirms a source, pre-select the section that already
+  // holds topics so the dialog opens on a sensible default.
+  useEffect(() => {
+    if (moduleTopicConfirmed) return
+    setModuleTopicSectionKey(current => (
+      configuredSections.some(section => section.key === current)
+        ? current
+        : findDefaultTopicSection()
+    ))
+  }, [workspaceApi.data, courseId])
+
+  // Keep the chosen subsection valid for the chosen section.
+  useEffect(() => {
+    const section = configuredSections.find(item => item.key === moduleTopicSectionKey)
+    const subsections = section?.subsections || []
+    setModuleTopicSubsectionKey(current => (
+      current && subsections.some(sub => sub.key === current) ? current : ''
+    ))
+  }, [configuredSections, moduleTopicSectionKey])
+
+  // The topic source must be chosen before any module can be generated.
+  useEffect(() => {
+    if (activeTab !== 'module') return
+    const courseData = workspaceApi.data?.course
+    if (!courseData) return
+    if (courseData.module_topic_confirmed_at) {
+      setTopicSourceDialogOpen(false)
+      return
+    }
+    setTopicSourceDialogOpen(true)
+  }, [activeTab, workspaceApi.data?.course])
+
+  // A topic queued from the Syllabus tab opens the generate dialog once the
+  // topic source is locked in (after the "selection confirmed" notice).
+  useEffect(() => {
+    if (activeTab !== 'module' || !pendingGenerate) return
+    if (!moduleTopicConfirmed) return
+    if (topicSourceNoticeOpen) return
+    setModuleParams(p => ({
+      ...p,
+      module_title: pendingGenerate.topic,
+      week_number: pendingGenerate.week,
+      topic_id: pendingGenerate.topic_id || '',
+    }))
+    setPendingGenerate(null)
+    setGenerateDialogMode('single')
+    setGenerateDialogOpen(true)
+  }, [activeTab, pendingGenerate, moduleTopicConfirmed, topicSourceNoticeOpen])
+
+  // Pre-populate syllabus form: saved JSON first, then fall back to course fields.
+  // Seeded ONCE per course — a workspace refresh (after generating a module,
+  // confirming the topic source, saving, …) must never discard unsaved edits.
   useEffect(() => {
     const apiData = workspaceApi.data
     if (!apiData) return
     const course = apiData.course
     setSyllabusId(apiData.syllabus?.syllabus_id || null)
+
+    const seededFor = seededCourseRef.current
+    if (seededFor === courseId) return            // same course — just a refresh
+    const switchingCourse = Boolean(seededFor && seededFor !== courseId)
+    if (switchingCourse) {
+      setIsDirty(false)
+      setSaveSuccess(false)
+    } else if (isDirty) {
+      seededCourseRef.current = courseId          // keep the faculty's unsaved work
+      return
+    }
+    seededCourseRef.current = courseId
 
     const saved = apiData.syllabus?.syllabus_content
     if (saved && typeof saved === 'object') {
@@ -1871,21 +1974,236 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     finally { setActionLoading(false) }
   }
 
+  // ── Module topic sources ──────────────────────────────────────────────────
+  // Topics that need a module live inside the Syllabus tab. Depending on the
+  // section they are stored as a table, as free text, or (Weekly Schedule) as
+  // TLA chapter rows. The Module tab picks the section + subsection to read.
+  function findColumnIndex(columns, hints) {
+    for (const hint of hints) {
+      const index = columns.findIndex(col => String(col || '').toLowerCase().includes(hint))
+      if (index >= 0) return index
+    }
+    return -1
+  }
+
+  function topicsFromTableRows(rows, columns) {
+    const topicCol = findColumnIndex(
+      columns,
+      ['topic', 'activity', 'subject', 'lesson', 'module', 'title', 'content', 'description'],
+    )
+    const weekCol = findColumnIndex(columns, ['week', 'chapter', 'session', 'meeting'])
+    const topics = []
+    ;(rows || []).forEach((row, index) => {
+      const cells = Array.isArray(row) ? row.map(cell => String(cell ?? '').trim()) : []
+      const raw = topicCol >= 0 ? cells[topicCol] : (cells.find(Boolean) || '')
+      const topic = String(raw || '').trim()
+      if (!topic) return
+      const weekMatch = weekCol >= 0 ? String(cells[weekCol] || '').match(/\d+/) : null
+      topics.push({
+        id: `table-${index}`,
+        week: weekMatch ? parseInt(weekMatch[0], 10) : index + 1,
+        topic,
+        context: cells.filter(Boolean).join(' · '),
+      })
+    })
+    return topics
+  }
+
+  function topicsFromText(text) {
+    const topics = []
+    String(text || '').split(/\r?\n/).forEach((line, index) => {
+      const cleaned = line.replace(/^\s*(?:[-*•–—]|\d+[.)])\s*/, '').trim()
+      if (!cleaned) return
+      const weekMatch = cleaned.match(/week\s*(\d+)/i)
+      topics.push({
+        id: `text-${index}`,
+        week: weekMatch ? parseInt(weekMatch[1], 10) : index + 1,
+        topic: cleaned,
+        context: '',
+      })
+    })
+    return topics
+  }
+
+  function collectScheduleTopics() {
+    const scheduleTopics = []
+    ;(syllabusData.tla_chapters || []).forEach((ch, index) => {
+      const topic = String(ch.topics || '').trim()
+      if (!topic) return
+      // Rows tied to an assessment task belong to the Assessments tab.
+      if (ch.outcomes && ch.outcomes !== 'Lecture/Discussion') return
+      scheduleTopics.push({
+        id: `schedule-${index}`,
+        week: parseInt(ch.chapter, 10) || index + 1,
+        topic,
+        context: [ch.outcomes, ch.delivery, ch.ilo]
+          .map(value => String(value || '').trim())
+          .filter(Boolean)
+          .join(' · '),
+      })
+    })
+    return scheduleTopics
+  }
+
+  // Which section should the topic source start on? The first one that already
+  // holds topics, so the selection dialog never opens on an empty section.
+  function findDefaultTopicSection() {
+    const withTopics = configuredSections.find(section => {
+      if (section.editorKey === 'schedule') {
+        return (syllabusData.tla_chapters || []).some(ch => String(ch.topics || '').trim())
+      }
+      if (section.table_enabled) {
+        return (syllabusData.custom_tables?.[section.key]?.['__section__'] || []).length > 0
+      }
+      return (section.subsections || []).some(sub => (
+        (syllabusData.custom_tables?.[section.key]?.[sub.key] || []).length > 0
+      ))
+    })
+    if (withTopics) return withTopics.key
+    return configuredSections.find(section => section.editorKey === 'schedule')?.key
+      || configuredSections.find(section => section.table_enabled)?.key
+      || configuredSections.find(section => (section.subsections || []).length > 0)?.key
+      || configuredSections[0]?.key
+      || ''
+  }
+
+  function collectModuleTopics(sectionKey = moduleTopicSectionKey, subsectionKey = moduleTopicSubsectionKey) {
+    const section = configuredSections.find(item => item.key === sectionKey)
+    if (!section) return []
+    const subsection = subsectionKey
+      ? (section.subsections || []).find(sub => sub.key === subsectionKey)
+      : null
+
+    // The section's own table (custom_tables[section]['__section__']) holds the
+    // topics whenever the section is table-driven.
+    const sectionTableRows = section.table_enabled
+      ? (syllabusData.custom_tables?.[section.key]?.['__section__'] || [])
+      : []
+    const sectionTableTopics = topicsFromTableRows(sectionTableRows, section.table_columns || [])
+
+    // A specific subsection was picked → read that one.
+    if (subsection) {
+      const subRows = syllabusData.custom_tables?.[section.key]?.[subsection.key] || []
+      const subTableTopics = topicsFromTableRows(subRows, subsection.table_columns || [])
+      if (subTableTopics.length) return subTableTopics
+      // The subsection has no table of its own — the section's table still
+      // holds the topics, so keep recognising it.
+      if (sectionTableTopics.length) return sectionTableTopics
+      return topicsFromText(syllabusData.custom_subsections?.[section.key]?.[subsection.key] || '')
+    }
+
+    // Whole section — the Weekly Schedule keeps its topics in the chapter rows.
+    if (section.editorKey === 'schedule') {
+      const scheduleTopics = collectScheduleTopics()
+      if (scheduleTopics.length) return scheduleTopics
+    }
+
+    // Whole section — its own table first, then every subsection table.
+    if (sectionTableTopics.length) return sectionTableTopics
+    const targets = []
+    ;(section.subsections || [])
+      .filter(sub => sub.table_enabled && (sub.table_columns || []).length)
+      .forEach(sub => targets.push({ key: sub.key, columns: sub.table_columns || [] }))
+    const fromTables = targets.flatMap(target => topicsFromTableRows(
+      syllabusData.custom_tables?.[section.key]?.[target.key] || [],
+      target.columns,
+    ))
+    if (fromTables.length) return fromTables
+
+    // Whole section — free text.
+    const texts = []
+    if (syllabusData.custom_sections?.[section.key]) {
+      texts.push(syllabusData.custom_sections[section.key])
+    }
+    ;(section.subsections || []).forEach(sub => {
+      const text = syllabusData.custom_subsections?.[section.key]?.[sub.key]
+      if (text) texts.push(text)
+    })
+    return texts.flatMap(text => topicsFromText(text))
+  }
+
+  function activeTopicSource() {
+    const section = configuredSections.find(item => item.key === moduleTopicSectionKey)
+    const subsection = (section?.subsections || []).find(sub => sub.key === moduleTopicSubsectionKey)
+    return {
+      section_key: moduleTopicSectionKey,
+      section_label: section?.label || '',
+      subsection_key: moduleTopicSubsectionKey,
+      subsection_label: subsection?.label || '',
+    }
+  }
+
+  // ── Topic source (locked once confirmed) ─────────────────────────────────
+  async function handleConfirmTopicSource() {
+    if (!courseId) return
+    if (!moduleTopicSectionKey) {
+      setTopicSourceError('Choose the syllabus section that holds the topics for your modules.')
+      return
+    }
+    setTopicSourceSaving(true)
+    setTopicSourceError('')
+    try {
+      const { data } = await api.patch(`/curriculum/course/${courseId}/module-topic/`, {
+        section_key: moduleTopicSectionKey,
+        subsection_key: moduleTopicSubsectionKey,
+      })
+      setModuleTopicConfirmed(true)
+      setModuleTopicSectionKey(data.module_topic_section_key || moduleTopicSectionKey)
+      setModuleTopicSubsectionKey(data.module_topic_subsection_key || '')
+      setTopicSourceDialogOpen(false)
+      setTopicSourceNoticeOpen(true)
+      workspaceApi.execute()
+    } catch (err) {
+      setTopicSourceError(extractApiError(err))
+    } finally {
+      setTopicSourceSaving(false)
+    }
+  }
+
+  // ── Generate dialog ──────────────────────────────────────────────────────
+  function openGenerateDialog(mode, topic) {
+    if (!moduleTopicConfirmed) {
+      setTopicSourceError('')
+      setTopicSourceDialogOpen(true)
+      return
+    }
+    setGenerateDialogMode(mode)
+    setModuleParams(p => ({
+      ...p,
+      module_title: mode === 'single' && topic ? topic.topic : '',
+      week_number: mode === 'single' && topic ? topic.week : '',
+      topic_id: mode === 'single' && topic ? topic.id : '',
+    }))
+    setGenerateDialogOpen(true)
+  }
+
   async function handleGenerateModule() {
     if (!course) return
     setActionError(''); setActionLoading(true); setResultText('')
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+      const topics = collectModuleTopics()
+      const topic = topics.find(
+        item => item.id === moduleParams.topic_id || item.topic === moduleParams.module_title,
+      ) || collectScheduleTopics().find(item => item.topic === moduleParams.module_title)
+      const source = activeTopicSource()
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
         module_title: moduleParams.module_title,
         week_number: Number(moduleParams.week_number) || 1,
+        section_key: source.section_key,
+        section_label: source.section_label,
+        subsection_key: source.subsection_key,
+        subsection_label: source.subsection_label,
+        topic: topic?.topic || moduleParams.module_title,
+        syllabus_context: topic?.context || '',
+        structuring_level: moduleParams.structuring_level || 'standard',
         provider: moduleParams.provider,
         top_k: Number(moduleParams.top_k),
         extra_instructions: moduleParams.extra_instructions,
         selected_doc_ids: selectedIds,
-      })
+      }, { timeout: 300000 })
       if (data.success && data.module_content) {
         // Open module viewer with the generated content
         setSelectedModule({
@@ -1898,7 +2216,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setModuleContentDirty(false)
         setExpandedSubtopics(new Set())
         setChatMessages([])
-        setModuleCreating(false)
+        setGenerateDialogOpen(false)
         workspaceApi.execute()
         notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
       }
@@ -1908,30 +2226,48 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   async function handleGenerateAllModules() {
     if (!course) return
+    const topics = collectModuleTopics()
+    if (!topics.length) {
+      setActionError('No topics found in the selected syllabus section. Add topics there first, or pick another section.')
+      return
+    }
     setModuleGeneratingAll(true)
     setActionError('')
     try {
-      const topicsWithoutModules = (syllabusData.tla_chapters || [])
-        .filter(ch => (!ch.outcomes || ch.outcomes === 'Lecture/Discussion') && ch.topics && ch.topics.trim())
-        .filter(ch => {
-          const week = parseInt(ch.chapter, 10) || 0
-          return !deletedModuleIds.has(String(week)) && !workspaceApi.data?.modules?.find(m => m.week_number === week)
-        })
-      for (const ch of topicsWithoutModules) {
-        const week = parseInt(ch.chapter, 10) || 0
+      const source = activeTopicSource()
+      const existingModules = workspaceApi.data?.modules || []
+      const topicsWithoutModules = topics.filter(topic => {
+        const existing = existingModules.find(mod => mod.week_number === topic.week)
+        // Skip weeks that already have a module, unless the faculty deleted it.
+        if (!existing) return true
+        return deletedModuleIds.has(String(existing.module_id))
+      })
+      if (!topicsWithoutModules.length) {
+        setActionError('Every topic in this section already has a module.')
+        return
+      }
+      for (const topic of topicsWithoutModules) {
+        const week = topic.week
         setModuleGeneratingTopic(prev => new Set(prev).add(week))
         try {
           const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
           await api.post('/curriculum/generate-module/', {
             course_id: course.course_id,
             course_name: course.course_title,
-            module_title: ch.topics.trim(),
+            module_title: topic.topic,
             week_number: week,
+            section_key: source.section_key,
+            section_label: source.section_label,
+            subsection_key: source.subsection_key,
+            subsection_label: source.subsection_label,
+            topic: topic.topic,
+            syllabus_context: topic.context || '',
+            structuring_level: moduleParams.structuring_level || 'standard',
             provider: moduleParams.provider || 'auto',
             top_k: Number(moduleParams.top_k) || 5,
             extra_instructions: moduleParams.extra_instructions || '',
             selected_doc_ids: selectedIds,
-          })
+          }, { timeout: 300000 })
         } catch (err) {
           setActionError(extractApiError(err))
         } finally {
@@ -1939,20 +2275,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         }
       }
       workspaceApi.execute()
+      setGenerateDialogOpen(false)
       notifyGenerationComplete('Modules', `${topicsWithoutModules.length} module${topicsWithoutModules.length === 1 ? '' : 's'} generated`)
     } finally {
       setModuleGeneratingAll(false)
     }
-  }
-
-  // Toggle a syllabus chapter in/out of the manual topic selection for modules
-  function toggleSyllabusSection(index) {
-    setSelectedSyllabusSections(prev => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
   }
 
   async function handleOpenModule(mod) {
@@ -2264,6 +2591,88 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return total ? `${base} (${total} items)` : base
   }
 
+  // Topics of the generated modules — the assessment source when the syllabus
+  // has no TOS major exam.
+  function assessmentModuleTopics() {
+    const seen = new Set()
+    return (workspaceApi.data?.modules || [])
+      .filter(mod => !deletedModuleIds.has(String(mod.module_id)))
+      .map(mod => ({ topic: String(mod.module_title || '').trim(), week: mod.week_number || null }))
+      .filter(item => item.topic && !seen.has(item.topic) && seen.add(item.topic))
+  }
+
+  // Available week/topic topics: the selected TOS major exam's rows, or the
+  // module topics when there is no TOS.
+  function assessmentGenAvailableTopics() {
+    const blueprint = getAssessmentBlueprint()
+    if (!blueprint.hasMajorExam) return assessmentModuleTopics()
+    const topics = (blueprint.selectedExam?.topics || [])
+      .map(t => String(t?.topic || '').trim())
+      .filter(Boolean)
+    return [...new Set(topics)].map(topic => ({ topic, week: null }))
+  }
+
+  function toggleAssessmentGenTopic(topic) {
+    if (assessmentGenMode === 'single') {
+      setAssessmentGenSelectedTopics([topic])
+      return
+    }
+    setAssessmentGenSelectedTopics(prev =>
+      prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
+    )
+  }
+
+  function openAssessmentGenDialog(mode, prefillTopic) {
+    const blueprint = getAssessmentBlueprint()
+    setAssessmentGenMode(mode)
+    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Quiz')
+    setAssessmentGenItemCount(Math.max(1, Number(blueprint.totalItems || 50)))
+    if (mode === 'single' && prefillTopic) {
+      setAssessmentGenSelectedTopics([prefillTopic])
+    } else {
+      setAssessmentGenSelectedTopics([])
+    }
+    setAssessmentGenDialogOpen(true)
+  }
+
+  async function handleAssessmentGenSubmit() {
+    if (!course) return
+    const blueprint = getAssessmentBlueprint()
+    if (!blueprint.hasMajorExam) {
+      setActionError('No major examination found in TOS. Add a major exam (Prelims, Midterm, Semi-Finals, or Finals) to the syllabus TOS first.')
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    try {
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+      // Major examinations only: the backend follows the TOS topics and item counts.
+      const { data } = await api.post('/curriculum/generate-assessment/', {
+        course_id: course.course_id,
+        assessment_type: 'Major Examination',
+        provider: 'auto',
+        extra_instructions: '',
+        selected_doc_ids: selectedIds,
+        source_exam_code: blueprint.examCode,
+        source_exam_label: assessmentGenTitle || blueprint.assessmentName,
+        faculty_topics: [],
+        total_items: blueprint.totalItems || 50,
+      }, { timeout: 300000 })
+      if (!data?.success) throw new Error(data?.detail || 'Generation failed.')
+      const newId = data?.assessment?.assessment_id
+      if (newId) setAssessmentSessionId(newId)
+      setAssessmentGenDialogOpen(false)
+      workspaceApi.execute()
+      markStepDone('assessment', true)
+      notifyGenerationComplete('Assessment', assessmentGenTitle || 'Assessment')
+      if (newId) await handleOpenAssessment(data.assessment)
+    } catch (err) {
+      setActionError(extractApiError(err) || err?.message || 'Assessment generation failed.')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   async function handleGenerateAssessment() {
     if (!course) return
 
@@ -2324,7 +2733,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           relation_instruction: assessmentParams.relation_instruction,
           overwrite_item: Boolean(assessmentParams.overwrite_item)
             || (blueprint.totalItems > 0 && Number(assessmentDetail?.total_items || 0) >= blueprint.totalItems),
-        })
+        }, { timeout: 300000 })
 
         if (!data?.success) {
           throw new Error(data?.detail || 'Generation failed during batch loop.')
@@ -2556,7 +2965,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         target_item_number: itemNumber,
         overwrite_item: true,
         regenerate_choices_only: true,
-      })
+      }, { timeout: 300000 })
       if (data?.success) {
         workspaceApi.execute()
         if (data?.assessment?.assessment_id) {
@@ -2622,7 +3031,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         },
       }
 
-      const { data } = await api.post('/curriculum/generate-assessment/', payload)
+      const { data } = await api.post('/curriculum/generate-assessment/', payload, { timeout: 300000 })
       if (data?.success) {
         const newAssessmentId = data?.assessment?.assessment_id || assessmentId
         if (newAssessmentId) setAssessmentSessionId(newAssessmentId)
@@ -3918,13 +4327,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         onClick={() => {
                           if (_isLecture) {
                             if (!_existingMod) {
-                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '' }))
-                              setModuleFromSchedule(true)
-                              setModuleCreating(true)
+                              // Queue the topic — the Module tab opens the generate dialog for it.
+                              setPendingGenerate({
+                                topic: ch.topics || '',
+                                week: _weekNum || 1,
+                                topic_id: `schedule-${i}`,
+                              })
+                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '', topic_id: `schedule-${i}` }))
                               setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             } else {
-                              setModuleCreating(false)
-                              setModuleFromSchedule(false)
                               setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             }
                             setResultText('')
@@ -4654,12 +5065,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700 }}>
                       {draft.label}
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: 'rgba(255,255,255,0.78)', whiteSpace: 'pre-wrap', mt: 0.25 }}
-                    >
-                      {draft.text || 'The AI returned an empty suggestion for this field.'}
-                    </Typography>
+                    <MarkdownText
+                      text={draft.text || 'The AI returned an empty suggestion for this field.'}
+                      sx={{ color: 'rgba(255,255,255,0.78)', mt: 0.25 }}
+                    />
                   </Box>
                 ))}
               </Stack>
@@ -4895,7 +5304,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                         verticalAlign: 'top',
                                       }}
                                     >
-                                      {cell}
+                                      <MarkdownInline text={cell} />
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -4904,12 +5313,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           </Table>
                         </TableContainer>
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: '#E5E7EB', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.65 }}
-                        >
-                          {draft.text}
-                        </Typography>
+                        <MarkdownText
+                          text={draft.text}
+                          sx={{ color: '#E5E7EB' }}
+                        />
                       )}
                     </Paper>
                   ))}
@@ -4995,10 +5402,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
 
     if (activeTab === 'module') {
-      // All topics from weekly schedule for dropdowns (any chapter with a topic)
-      const lectureWeeks = (syllabusData.tla_chapters || [])
-        .filter((ch, idx) => ch.topics && ch.topics.trim() && (selectedSyllabusSections.size === 0 || selectedSyllabusSections.has(idx)))
-        .map(ch => ({ week: parseInt(ch.chapter, 10) || ch.chapter, topic: ch.topics.trim() }))
+      // Topics available for module generation, read from the selected
+      // syllabus section / subsection.
+      const moduleTopics = collectModuleTopics()
+      const lectureWeeks = moduleTopics.map(topic => ({
+        id: topic.id,
+        week: topic.week,
+        topic: topic.topic,
+        context: topic.context,
+      }))
+      const topicSection = configuredSections.find(section => section.key === moduleTopicSectionKey)
+      const topicSubsections = Array.isArray(topicSection?.subsections) ? topicSection.subsections : []
 
       // ── DETAIL view ────────────────────────────────────────────────────
       if (selectedModule && moduleContent) {
@@ -5051,9 +5465,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {moduleExporting ? 'Exporting…' : 'Export DOCX'}
                   </Button>
                   <Button size="small" startIcon={<SaveIcon sx={{ fontSize: '0.85rem !important' }} />}
-                    disabled={!moduleContentDirty || moduleSaving}
+                    disabled={!moduleContent || moduleSaving}
                     onClick={handleSaveModuleContent}
-                    sx={{ bgcolor: moduleContentDirty ? MAROON : '#ccc', color: '#fff', borderRadius: 1.5,
+                    sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5,
                           textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
                           '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                     {moduleSaving ? 'Saving…' : 'Save'}
@@ -5065,7 +5479,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         faculty_topics: mc.module_title || selectedModule.module_title,
                         extra_instructions: `Generate assessment items based on Module "${mc.module_title || selectedModule.module_title}" (Week ${selectedModule.week_number}). Cover the subtopics and learning objectives defined in the module.`,
                       }))
-                      setActiveTab('assessment')
+                      selectWorkspaceTab('assessment')
+                      openAssessmentGenDialog('single', String(selectedModule.module_title || '').trim())
                     }}
                     sx={{ bgcolor: '#1565c0', color: '#fff', borderRadius: 1.5,
                           textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
@@ -5232,7 +5647,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                       px: 1.5, py: 0.75, fontSize: '0.8rem', lineHeight: 1.5,
                     }}>
-                      {msg.content}
+                      <MarkdownInline text={msg.content} />
                     </Box>
                   ))}
                   {chatLoading && (
@@ -5263,262 +5678,359 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       // ── LIST view ──────────────────────────────────────────────────────
-      if (!moduleCreating) {
-        const modules = workspaceApi.data?.modules || []
-        const lectureTopics = (syllabusData.tla_chapters || [])
-          .filter((ch, idx) => ch.topics && ch.topics.trim() && (selectedSyllabusSections.size === 0 || selectedSyllabusSections.has(idx)))
-          .map((ch, idx) => ({
-            week: parseInt(ch.chapter, 10) || idx + 1,
-            topic: ch.topics.trim(),
-            index: idx,
-          }))
+      const modules = workspaceApi.data?.modules || []
+      const lectureTopics = moduleTopics
+      const topicSourceLabel = [
+        topicSection?.label,
+        (topicSubsections.find(sub => sub.key === moduleTopicSubsectionKey)?.label) || '',
+      ].filter(Boolean).join(' › ')
 
-        return (
-          <Stack spacing={2}>
-            <AutoAlert message={actionError} onClose={() => setActionError('')} />
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap' }}>
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
+          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 1.75 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Modules
               </Typography>
-              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                <Button size="small" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={moduleGeneratingAll}
-                  onClick={handleGenerateAllModules}
-                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' } }}>
-                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
-                </Button>
-                <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                  onClick={() => {
-                    setModuleFromSchedule(false)
-                    setModuleParams(p => ({ ...p, module_title: '', week_number: '' }))
-                    setResultText('')
-                    setModuleCreating(true)
-                  }}
-                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' } }}>
+              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                <Button size="small" variant="outlined" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!moduleTopicConfirmed}
+                  onClick={() => openGenerateDialog('single', null)}
+                  sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.45, '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
                   Create Module
                 </Button>
-                {/* Manual syllabus section selector for module topics */}
-                <Select
-                  multiple
-                  value={Array.from(selectedSyllabusSections)}
-                  onChange={e => {
-                    const vals = Array.isArray(e.target.value) ? e.target.value : []
-                    setSelectedSyllabusSections(new Set(vals.map(Number)))
-                  }}
-                  displayEmpty
-                  renderValue={selected => {
-                    const total = (syllabusData.tla_chapters || []).filter((_, i) => selectedSyllabusSections.has(i)).length
-                    return selected.length === 0
-                      ? 'Select syllabus sections…'
-                      : `${total} section${total !== 1 ? 's' : ''} selected`
-                  }}
-                  sx={{ fontSize: '0.78rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, background: '#1A1A1F', color: '#F0F0F2', px: 1, py: 0.5, minWidth: 180 }}
-                >
-                  <MenuItem value="">{selectedSyllabusSections.size > 0 ? 'Clear selection' : 'Select all sections'}</MenuItem>
-                  {(syllabusData.tla_chapters || []).map((ch, i) => (
-                    <MenuItem key={i} value={String(i)}>
-                      <Checkbox
-                        checked={selectedSyllabusSections.has(i)}
-                        onClick={() => toggleSyllabusSection(i)}
-                        sx={{ mr: 1, color: selectedSyllabusSections.has(i) ? MAROON : '#666' }}
-                      />
-                      Wk {ch.chapter || i + 1} — {ch.topics ? (ch.topics.trim().length > 40 ? ch.topics.trim().slice(0, 37) + '…' : ch.topics.trim()) : '(no topic)'}
-                    </MenuItem>
-                  ))}
-                </Select>
+                <Button size="small" variant="contained" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={moduleGeneratingAll || !moduleTopics.length || !moduleTopicConfirmed}
+                  onClick={() => openGenerateDialog('all', null)}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.75, py: 0.45, '&:hover': { bgcolor: '#14532D' },
+                       '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
+                </Button>
               </Box>
             </Box>
-            {lectureTopics.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
-                <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No syllabus topics found.</Typography>
-                <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Add lecture topics in the Weekly Schedule section first, then generate modules from here.
-                </Typography>
-              </Box>
-            ) : (
-              <Stack spacing={1}>
-                {lectureTopics.map(topic => {
-                  const existingMod = modules.find(m => m.week_number === topic.week && !deletedModuleIds.has(String(m.module_id)))
-                  const isGenerating = moduleGeneratingTopic.has(topic.week)
-                  return (
-                    <Box key={`topic-${topic.week}-${topic.index}`}
-                      sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.5, py: 1,
-                        bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)' }}>
-                      <Chip label={'Wk ' + topic.week} size="small"
-                        sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
-                      <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600, minWidth: 0 }}>
-                        {topic.topic}
-                      </Typography>
-                      <Chip label={existingMod ? 'Module Ready' : 'No Module'} size="small"
-                        sx={{ height: 18, fontSize: '0.65rem', color: existingMod ? '#2e7d32' : '#F0F0F2',
-                          bgcolor: existingMod ? 'rgba(46,125,50,0.12)' : 'rgba(255,255,255,0.08)',
-                          border: '1px solid rgba(255,255,255,0.12)' }} />
-                      {!existingMod ? (
-                        <Tooltip title={`Generate AI module for Week ${topic.week}`}>
-                          <IconButton size="small" disabled={isGenerating}
+
+            {/* Topic source — locked once the faculty confirms it */}
+            <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center',
+                       mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+              {moduleTopicConfirmed ? (
+                <>
+                  <LockIcon sx={{ fontSize: '1rem', color: MAROON }} />
+                  <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
+                  <Chip size="small" label={topicSourceLabel || 'Syllabus'}
+                    sx={{ height: 24, fontSize: '0.74rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
+                          border: '1px solid', borderColor: MAROON_LIGHT }} />
+                  <Tooltip title="This choice is locked and cannot be changed for this course.">
+                    <Typography variant="caption" sx={{ color: '#999' }}>Locked</Typography>
+                  </Tooltip>
+                </>
+              ) : (
+                <Button size="small" variant="contained" startIcon={<AssignmentIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  onClick={() => setTopicSourceDialogOpen(true)}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.45, '&:hover': { bgcolor: '#14532D' } }}>
+                  Choose syllabus section
+                </Button>
+              )}
+              <Chip size="small"
+                label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
+                sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
+                      bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
+                      color: moduleTopics.length ? MAROON : '#888',
+                      border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
+              <Typography variant="caption" sx={{ color: '#888', flex: 1, minWidth: 220 }}>
+                Modules are generated from the topics found in the selected syllabus section.
+              </Typography>
+            </Box>
+          </Paper>
+          {lectureTopics.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 6 }}>
+              <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
+              <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No topics found in this section.</Typography>
+              <Typography variant="caption" sx={{ color: '#ccc' }}>
+                Add topics to “{topicSection?.label || 'the selected section'}” in the Syllabus tab
+                {topicSubsections.length ? ' (or pick another subsection)' : ''}, then generate modules from here.
+              </Typography>
+            </Box>
+          ) : (
+            <Stack spacing={1}>
+              {lectureTopics.map(topic => {
+                const existingMod = modules.find(m => !deletedModuleIds.has(String(m.module_id)) && m.week_number === topic.week)
+                  || modules.find(m => !deletedModuleIds.has(String(m.module_id)) && String(m.module_title || '').trim() === topic.topic)
+                const isGenerating = moduleGeneratingTopic.has(topic.week)
+                return (
+                  <Box key={`topic-${topic.id}`}
+                    sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.5, py: 1,
+                      bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)' }}>
+                    <Chip label={'Wk ' + topic.week} size="small"
+                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
+                    <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600, minWidth: 0 }}>
+                      {topic.topic}
+                    </Typography>
+                    <Chip label={existingMod ? 'Module Ready' : 'No Module'} size="small"
+                      sx={{ height: 18, fontSize: '0.65rem', color: existingMod ? '#2e7d32' : '#F0F0F2',
+                        bgcolor: existingMod ? 'rgba(46,125,50,0.12)' : 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.12)' }} />
+                    {!existingMod ? (
+                      <Tooltip title={`Generate AI module for Week ${topic.week}`}>
+                        <IconButton size="small" disabled={isGenerating || !moduleTopicConfirmed}
+                          onClick={() => openGenerateDialog('single', topic)}
+                          sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}>
+                          {isGenerating ? <CircularProgress size={14} /> : <Zap sx={{ fontSize: '1rem' }} />}
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <>
+                        <Tooltip title="Open module">
+                          <IconButton size="small"
                             onClick={() => {
-                              setModuleFromSchedule(true)
-                              setModuleParams(p => ({
-                                ...p,
-                                module_title: topic.topic,
-                                week_number: topic.week,
-                              }))
-                              setModuleCreating(true)
+                              setSelectedModule(null)
+                              setModuleContent(null)
+                              setChatOpen(false)
+                              setActiveTab('module')
+                              handleOpenModule(existingMod)
                             }}
-                            sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}>
-                            {isGenerating ? <CircularProgress size={14} /> : <Zap sx={{ fontSize: '1rem' }} />}
+                            sx={{ color: '#1565c0', '&:hover': { bgcolor: 'rgba(21,101,192,0.12)' } }}>
+                            <BookOpen sx={{ fontSize: '1rem' }} />
                           </IconButton>
                         </Tooltip>
-                      ) : (
-                        <>
-                          <Tooltip title="Open module">
-                            <IconButton size="small"
-                              onClick={() => {
-                                setModuleCreating(false)
-                                setModuleFromSchedule(false)
-                                setSelectedModule(null)
-                                setModuleContent(null)
-                                setChatOpen(false)
-                                setActiveTab('module')
-                                handleOpenModule(existingMod)
-                              }}
-                              sx={{ color: '#1565c0', '&:hover': { bgcolor: 'rgba(21,101,192,0.12)' } }}>
-                              <BookOpen sx={{ fontSize: '1rem' }} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Edit module">
-                            <IconButton size="small"
-                              onClick={() => {
-                                setModuleFromSchedule(false)
-                                setModuleParams(p => ({
-                                  ...p,
-                                  module_title: existingMod.module_title,
-                                  week_number: existingMod.week_number,
-                                }))
-                                setResultText('')
-                                setModuleCreating(true)
-                              }}
-                              sx={{ color: '#F0F0F2', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
-                              <EditIcon sx={{ fontSize: '1rem' }} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete module">
-                            <IconButton size="small"
-                              onClick={() => {
-                                setDeletedModuleIds(prev => new Set(prev).add(String(existingMod.module_id)))
-                              }}
-                              sx={{ color: '#FCA5A5', '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' } }}>
-                              <Trash2 sx={{ fontSize: '1rem' }} />
-                            </IconButton>
-                          </Tooltip>
-                        </>
-                      )}
-                    </Box>
-                  )
-                })}
-              </Stack>
-            )}
-          </Stack>
-        )
-      }
+                        <Tooltip title="Edit module">
+                          <IconButton size="small"
+                            onClick={() => {
+                              setModuleParams(p => ({
+                                ...p,
+                                module_title: existingMod.module_title,
+                                week_number: existingMod.week_number,
+                              }))
+                              setResultText('')
+                              setSelectedModule(null)
+                              setModuleContent(null)
+                              handleOpenModule(existingMod)
+                            }}
+                            sx={{ color: '#F0F0F2', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
+                            <EditIcon sx={{ fontSize: '1rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete module">
+                          <IconButton size="small"
+                            onClick={() => {
+                              setDeletedModuleIds(prev => new Set(prev).add(String(existingMod.module_id)))
+                            }}
+                            sx={{ color: '#FCA5A5', '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' } }}>
+                            <Trash2 sx={{ fontSize: '1rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
+                  </Box>
+                )
+              })}
+            </Stack>
+          )}
 
-      // ── CREATE view ────────────────────────────────────────────────────
-      return (
-        <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          {/* Back + header */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Tooltip title="Back to modules list">
-              <IconButton size="small"
-                onClick={() => { setModuleCreating(false); setModuleFromSchedule(false); setResultText('') }}
-                sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
-                <ArrowBackIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Typography variant="subtitle2"
-              sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-              Create Module
-            </Typography>
-          </Box>
+          {/* ── Topic source dialog — shown once, before the first generation ── */}
+          <Dialog open={topicSourceDialogOpen}
+            onClose={() => {}}
+            disableEscapeKeyDown
+            maxWidth="xs" fullWidth
+            PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+              Where do your module topics live?
+            </DialogTitle>
+              <DialogContent>
+                <Stack spacing={2} sx={{ mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ color: '#555' }}>
+                    Choose the syllabus section that holds the topics you need modules for. Add a
+                    subsection to narrow it down to the exact part that holds them.
+                  </Typography>
+                  {configuredSections.length === 0 ? (
+                    <Alert severity="warning" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                      Your institution has no syllabus sections configured yet. Add one in the Syllabus tab first.
+                    </Alert>
+                  ) : (
+                    <>
+                      <LField select label="Syllabus section" value={moduleTopicSectionKey}
+                        onChange={e => {
+                          setModuleTopicSectionKey(e.target.value)
+                          setModuleTopicSubsectionKey('')
+                          setTopicSourceError('')
+                        }}
+                        sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                        {configuredSections.map(section => (
+                          <MenuItem key={section.key} value={section.key}>{section.label}</MenuItem>
+                        ))}
+                      </LField>
+                      <LField select label="Subsection" value={moduleTopicSubsectionKey}
+                        onChange={e => setModuleTopicSubsectionKey(e.target.value)}
+                        disabled={!topicSubsections.length}
+                        helperText={topicSubsections.length
+                          ? 'Keep “Whole section” to use every topic in the section.'
+                          : 'This section has no subsections.'}
+                        sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                        <MenuItem value=""><em>Whole section</em></MenuItem>
+                        {topicSubsections.map(sub => (
+                          <MenuItem key={sub.key} value={sub.key}>{sub.label || sub.key}</MenuItem>
+                        ))}
+                      </LField>
+                    </>
+                  )}
+                  {topicSourceError && (
+                    <Typography variant="caption" sx={{ color: 'error.main' }}>{topicSourceError}</Typography>
+                  )}
+                  <Alert severity="info" sx={{ fontSize: '0.78rem', alignItems: 'center' }}>
+                    Module generation stays locked until you confirm a section.
+                  </Alert>
+                </Stack>
+              </DialogContent>
+              <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                <Button onClick={() => { setTopicSourceDialogOpen(false); setActiveTab('syllabus') }}
+                  sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                  Open Syllabus tab
+                </Button>
+                <Button variant="contained" onClick={handleConfirmTopicSource}
+                  disabled={topicSourceSaving || !moduleTopicSectionKey}
+                  startIcon={topicSourceSaving
+                    ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                    : <LockIcon sx={{ fontSize: '1rem !important' }} />}
+                  sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                  {topicSourceSaving ? 'Confirming…' : 'Confirm selection'}
+                </Button>
+              </DialogActions>
+          </Dialog>
 
-          {/* Module Generator > Module Builder */}
-          <SectionCard title="Module Generator">
-            <SectionCard title="Module Builder">
-              <Stack spacing={1.75}>
-                {/* Module Topic */}
-                {moduleFromSchedule ? (
-                  <LField label="Module Topic" value={moduleParams.module_title}
-                    InputProps={{ readOnly: true }}
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
+          {/* ── Selection confirmed notice ── */}
+          <Dialog open={topicSourceNoticeOpen} onClose={() => setTopicSourceNoticeOpen(false)}
+            maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, fontSize: '1rem' }}>
+              <CheckCircleOutlineIcon sx={{ color: '#2e7d32' }} />
+              Selection confirmed
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText sx={{ fontSize: '0.9rem' }}>
+                Your module topics will come from{' '}
+                <strong>{topicSourceLabel || 'the selected section'}</strong>. This choice is now locked
+                and <strong>cannot be changed</strong> for this course — every module you generate will
+                be based on these same topics.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button variant="contained" onClick={() => setTopicSourceNoticeOpen(false)}
+                sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                Got it
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* ── Generate module dialog ── */}
+          <Dialog open={generateDialogOpen}
+            onClose={() => { if (!actionLoading && !moduleGeneratingAll) setGenerateDialogOpen(false) }}
+            maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+              {generateDialogMode === 'all' ? 'Generate all modules' : 'Generate module'}
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 0.5 }}>
+                {generateDialogMode === 'all' ? (
+                  <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                    One module will be generated for each of the {moduleTopics.length} topics in{' '}
+                    {topicSourceLabel || 'the selected section'}.
+                  </Alert>
                 ) : (
                   <LField select label="Module Topic" value={moduleParams.module_title}
                     onChange={e => {
                       const sel = lectureWeeks.find(lw => lw.topic === e.target.value)
-                      setModuleParams(p => ({ ...p, module_title: e.target.value, week_number: sel ? sel.week : p.week_number }))
-                    }}>
-                    <MenuItem value=""><em>— Select a Lecture/Discussion topic —</em></MenuItem>
-                    {lectureWeeks.map((lw, i) => (
-                      <MenuItem key={i} value={lw.topic}>
-                        Wk {lw.week} — {lw.topic.length > 60 ? lw.topic.slice(0, 57) + '…' : lw.topic}
+                      setModuleParams(p => ({
+                        ...p,
+                        module_title: e.target.value,
+                        week_number: sel ? sel.week : p.week_number,
+                        topic_id: sel ? sel.id : '',
+                      }))
+                    }}
+                    helperText={lectureWeeks.length
+                      ? `${lectureWeeks.length} topic${lectureWeeks.length === 1 ? '' : 's'} in ${topicSourceLabel || 'the selected section'}`
+                      : 'No topics found in the selected syllabus section.'}
+                    sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                    <MenuItem value=""><em>— Select a topic —</em></MenuItem>
+                    {lectureWeeks.map(lw => (
+                      <MenuItem key={lw.id} value={lw.topic}>
+                        Wk {lw.week} — {lw.topic.length > 60 ? `${lw.topic.slice(0, 57)}…` : lw.topic}
                       </MenuItem>
                     ))}
                   </LField>
                 )}
 
-                {/* Week Number */}
-                {moduleFromSchedule ? (
-                  <LField label="Week Number" value={moduleParams.week_number}
-                    InputProps={{ readOnly: true }}
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
-                ) : (
+                {generateDialogMode === 'single' && (
                   <LField select label="Week Number" value={moduleParams.week_number}
                     onChange={e => {
                       const sel = lectureWeeks.find(lw => String(lw.week) === String(e.target.value))
-                      setModuleParams(p => ({ ...p, week_number: e.target.value, module_title: sel ? sel.topic : p.module_title }))
-                    }}>
+                      setModuleParams(p => ({
+                        ...p,
+                        week_number: e.target.value,
+                        module_title: sel ? sel.topic : p.module_title,
+                        topic_id: sel ? sel.id : '',
+                      }))
+                    }}
+                    sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
                     <MenuItem value=""><em>— Select week —</em></MenuItem>
-                    {lectureWeeks.map((lw, i) => (
-                      <MenuItem key={i} value={lw.week}>
+                    {lectureWeeks.map(lw => (
+                      <MenuItem key={lw.id} value={lw.week}>
                         Week {lw.week}{lw.topic ? ` — ${lw.topic.slice(0, 40)}` : ''}
                       </MenuItem>
                     ))}
                   </LField>
                 )}
 
-                {/* Extra Instructions / Scope */}
-                <LField label="Extra Instructions / Scope" multiline minRows={3}
-                  value={moduleParams.extra_instructions}
-                  onChange={e => setModuleParams(p => ({ ...p, extra_instructions: e.target.value }))}
-                  placeholder="Describe subtopics, scope, or specific content the module should focus on…" />
-
-                {/* top-k */}
-                <LField type="number" label="Knowledge References (top-k)" value={moduleParams.top_k}
-                  onChange={e => setModuleParams(p => ({ ...p, top_k: e.target.value }))} />
-
-                {/* Provider */}
-                <LField select label="Model Provider" value={moduleParams.provider}
-                  onChange={e => setModuleParams(p => ({ ...p, provider: e.target.value }))}>
-                  {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
+                <LField select label="Structuring Level" value={moduleParams.structuring_level}
+                  onChange={e => setModuleParams(p => ({ ...p, structuring_level: e.target.value }))}
+                  helperText="Tells the AI how deeply to structure the module."
+                  sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                  {STRUCTURING_LEVELS.map(level => (
+                    <MenuItem key={level.value} value={level.value}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{level.label}</Typography>
+                        <Typography variant="caption" sx={{ color: '#777' }}>{level.description}</Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
                 </LField>
 
-                <GenButton onClick={handleGenerateModule} disabled={actionLoading || !moduleParams.module_title.toString().trim()}>
-                  {actionLoading ? 'Generating…' : 'Generate Module'}
-                </GenButton>
-                {actionLoading && (
-                  <Box sx={{ textAlign: 'center', py: 1.5 }}>
+                {actionError && <AutoAlert message={actionError} onClose={() => setActionError('')} />}
+
+                {(actionLoading || moduleGeneratingAll) && (
+                  <Box sx={{ textAlign: 'center', py: 1 }}>
                     <CircularProgress size={22} sx={{ color: MAROON }} />
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
-                      Running RAG pipeline and generating structured module…
+                      {moduleGeneratingAll
+                        ? 'Building your modules — this usually takes less than a minute.'
+                        : 'Building your module — this usually takes less than a minute.'}
                     </Typography>
                   </Box>
                 )}
               </Stack>
-            </SectionCard>
-          </SectionCard>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+              <Button onClick={() => setGenerateDialogOpen(false)} disabled={actionLoading || moduleGeneratingAll}
+                sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                Cancel
+              </Button>
+              <Button variant="contained"
+                onClick={generateDialogMode === 'all' ? handleGenerateAllModules : handleGenerateModule}
+                disabled={actionLoading || moduleGeneratingAll
+                  || (generateDialogMode === 'single' && !moduleParams.module_title.toString().trim())}
+                startIcon={actionLoading || moduleGeneratingAll
+                  ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                  : <Zap sx={{ fontSize: '1rem !important' }} />}
+                sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                {actionLoading || moduleGeneratingAll ? 'Generating…' : 'Generate'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Stack>
       )
     }
@@ -5527,6 +6039,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const majorExams = getMajorTosExams()
       const blueprint = getAssessmentBlueprint()
       const assessments = workspaceApi.data?.assessments || []
+      const assessmentGenTopics = assessmentGenAvailableTopics()
+      const canGenerateAssessment = majorExams.length > 0 || assessmentGenTopics.length > 0
 
       if (selectedAssessment && assessmentDetail) {
         return (
@@ -5853,54 +6367,119 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )
       }
 
-      if (!assessmentCreating) {
-        return (
-          <Stack spacing={2}>
-            <AutoAlert message={actionError} onClose={() => setActionError('')} />
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Assessments
               </Typography>
-              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                onClick={() => {
-                  setAssessmentCreating(true)
-                  setAssessmentSessionId(null)
-                  setSelectedAssessment(null)
-                  setAssessmentDetail(null)
-                  if (majorExams.length > 0) {
-                    setAssessmentParams(p => ({
-                      ...p,
-                      source_exam_code: p.source_exam_code || majorExams[0].examCode || '',
-                      source_exam_label: p.source_exam_label || majorExams[0].examLabel || '',
-                      item_by_item: true,
-                      target_item_number: 1,
-                      related_item_number: '',
-                      relation_instruction: '',
-                      overwrite_item: true,
-                    }))
-                  }
-                }}
-                sx={{
-                  bgcolor: MAROON,
-                  color: '#fff',
-                  borderRadius: 1.5,
-                  textTransform: 'none',
-                  fontSize: '0.78rem',
-                  px: 1.5,
-                  py: 0.4,
-                  '&:hover': { bgcolor: '#14532D' },
-                }}>
-                Create Assessment
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!canGenerateAssessment || actionLoading}
+                  onClick={() => openAssessmentGenDialog('multi')}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  Create Assessment
+                </Button>
+                <Button size="small" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!canGenerateAssessment || actionLoading}
+                  onClick={() => openAssessmentGenDialog('single')}
+                  sx={{ bgcolor: '#1565c0', color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#0d47a1' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  Generate Assessment
+                </Button>
+              </Box>
             </Box>
+
+            {!canGenerateAssessment && (
+              <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                Generate at least one module, or add a major exam (e.g., Midterm/Final) to the syllabus TOS,
+                to create an assessment.
+              </Alert>
+            )}
+
+            {/* ── Assessment generation dialog ── */}
+            <Dialog open={assessmentGenDialogOpen}
+              onClose={() => { if (!actionLoading) setAssessmentGenDialogOpen(false) }}
+              maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+              <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+                {assessmentGenMode === 'multi' ? 'Create assessment' : 'Generate assessment'}
+              </DialogTitle>
+              <DialogContent>
+                <Stack spacing={2} sx={{ mt: 0.5 }}>
+                  <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                    {majorExams.length
+                      ? `Items follow the TOS for ${blueprint.assessmentName}${blueprint.totalItems ? ` (${blueprint.totalItems} items)` : ''}.`
+                      : 'No TOS major exam in the syllabus — items are built from your module topics and spread across Remember, Understand, Apply and Analyze.'}
+                  </Alert>
+                  <LField label="Assessment Title" value={assessmentGenTitle}
+                    onChange={e => setAssessmentGenTitle(e.target.value)} />
+                  {!majorExams.length && (
+                    <LField label="Number of Items" type="number" value={assessmentGenItemCount}
+                      onChange={e => setAssessmentGenItemCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                      inputProps={{ min: 1, max: 100 }} />
+                  )}
+                  <Box>
+                    <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                      {assessmentGenMode === 'multi' ? 'Topics to cover' : 'Topic'}
+                    </Typography>
+                    {assessmentGenTopics.length === 0 ? (
+                      <Typography variant="caption" sx={{ color: '#aaa' }}>No topics available.</Typography>
+                    ) : (
+                      <Stack spacing={0.25} sx={{ maxHeight: 260, overflowY: 'auto' }}>
+                        {assessmentGenTopics.map(({ topic, week }) => (
+                          <Box key={topic} onClick={() => !majorExams.length && toggleAssessmentGenTopic(topic)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, borderRadius: 1,
+                                  cursor: majorExams.length ? 'default' : 'pointer',
+                                  '&:hover': { bgcolor: majorExams.length ? 'transparent' : 'rgba(255,255,255,0.04)' } }}>
+                            <Checkbox size="small" disabled={Boolean(majorExams.length)}
+                              checked={Boolean(majorExams.length) || assessmentGenSelectedTopics.includes(topic)}
+                              sx={{ p: 0.5, '&.Mui-checked': { color: MAROON } }} />
+                            <Typography variant="body2" sx={{ fontSize: '0.84rem' }}>
+                              {week ? `Wk ${week} — ` : ''}{topic}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                  {actionLoading && (
+                    <Box sx={{ textAlign: 'center', py: 1 }}>
+                      <CircularProgress size={22} sx={{ color: MAROON }} />
+                      <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
+                        Building your assessment — this can take a minute.
+                      </Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </DialogContent>
+              <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                <Button onClick={() => setAssessmentGenDialogOpen(false)} disabled={actionLoading}
+                  sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                  Cancel
+                </Button>
+                <Button variant="contained" onClick={handleAssessmentGenSubmit}
+                  disabled={actionLoading || (!majorExams.length && assessmentGenSelectedTopics.length === 0)}
+                  startIcon={actionLoading
+                    ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                    : <Zap sx={{ fontSize: '1rem !important' }} />}
+                  sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                  {actionLoading ? 'Generating…' : 'Generate'}
+                </Button>
+              </DialogActions>
+            </Dialog>
 
             {assessments.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 6 }}>
                 <AssignmentIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
                 <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No assessments yet.</Typography>
                 <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Click Create Assessment to build items from your syllabus TOS and score distribution.
+                  {majorExams.length
+                    ? 'Click Create Assessment to build items from your syllabus TOS and score distribution.'
+                    : 'Click Create Assessment to build items from your module topics.'}
                 </Typography>
               </Box>
             ) : (
@@ -5962,7 +6541,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Stack>
         )
-      }
+
 
       return (
         <Stack spacing={2}>
@@ -6165,7 +6744,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       return (
-        <BubbleSheetPanel 
+        <BubbleSheetPanel
           courseId={courseId} 
           assessments={workspaceApi.data?.assessments || []}
           actionSheetMode={actionSheetMode}
@@ -6666,4 +7245,4 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       </Dialog>
     </Box>
   </Box>
-)}
+  )}

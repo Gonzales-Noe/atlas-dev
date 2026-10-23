@@ -6,6 +6,11 @@ urlpatterns = [
     path("faculty-course-workspace/<uuid:course_id>/", views.faculty_course_workspace, name="faculty_course_workspace"),
     path("course-students/<uuid:course_id>/", views.course_students, name="course_students"),
     path("syllabus-content/<uuid:course_id>/", views.save_syllabus_content, name="save_syllabus_content"),
+    path(
+        "course/<uuid:course_id>/module-topic/",
+        views.save_course_module_topic,
+        name="save_course_module_topic",
+    ),
     path("generate-syllabus/", views.generate_syllabus, name="generate_syllabus"),
     path("generate-module/", views.generate_module, name="generate_module"),
     path("generate-assessment/", views.generate_assessment, name="generate_assessment"),
