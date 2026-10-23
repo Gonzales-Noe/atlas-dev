@@ -74,9 +74,13 @@ PROVIDER_SPECS = {
         base_url='https://openrouter.ai/api/v1',
         key_envs=('OPENROUTER_API_KEY',),
         model_env='OPENROUTER_MODEL',
-        default_model='nvidia/nemotron-3-super-120b-a12b:free',
+        default_model='nvidia/nemotron-3-ultra-550b-a55b:free',
         fallback_models_env='OPENROUTER_FALLBACK_MODELS',
-        default_fallback_models=('google/gemma-4-31b-it:free', 'qwen/qwen3.8-27b:free'),
+        default_fallback_models=(
+            'nvidia/nemotron-3.5-lightning:free',
+            'google/gemma-4-31b-it:free',
+            'google/gemma-4-26b-a4b-it:free',
+        ),
     ),
     'huggingface': ProviderSpec(
         label='Hugging Face',
@@ -282,20 +286,40 @@ class LLMService:
             return None
         return min(max_tokens, room)
 
-    def _chat_completion(self, provider, model, payload_messages, max_tokens):
+    def _candidate_models(self, provider, model):
+        """The configured model followed by the provider's fallback models."""
         spec = PROVIDER_SPECS[provider]
+        if not spec.fallback_models_env:
+            return [model]
+        fallbacks = os.environ.get(spec.fallback_models_env)
+        fallback_models = (
+            [m.strip() for m in fallbacks.split(',') if m.strip()]
+            if fallbacks is not None else list(spec.default_fallback_models)
+        )
+        return list(dict.fromkeys([model, *fallback_models]))
+
+    def _chat_completion_any_model(self, provider, model, payload_messages, max_tokens):
+        """
+        Try each candidate model in turn. Free OpenRouter models disappear
+        (404) or get rate limited upstream (429) independently of each other,
+        and OpenRouter's own `models` fallback does not cover every such error.
+        """
+        last_error = None
+        for candidate in self._candidate_models(provider, model):
+            try:
+                return self._chat_completion(provider, candidate, payload_messages, max_tokens)
+            except ProviderError as exc:
+                if exc.kind in ('auth', 'quota'):
+                    raise
+                logger.warning("LLM provider '%s' model '%s' failed: %s", provider, candidate, exc)
+                last_error = exc
+        raise last_error
+
+    def _chat_completion(self, provider, model, payload_messages, max_tokens):
         body = {'model': model, 'messages': payload_messages, 'max_tokens': max_tokens}
         if 'gpt-oss' in model:
             # Reasoning tokens count toward max_tokens; keep them small.
             body['reasoning_effort'] = 'low'
-        if provider == 'openrouter':
-            fallbacks = os.environ.get(spec.fallback_models_env)
-            fallback_models = (
-                [m.strip() for m in fallbacks.split(',') if m.strip()]
-                if fallbacks is not None else list(spec.default_fallback_models)
-            )
-            if fallback_models:
-                body['models'] = [model] + [m for m in fallback_models if m != model]
 
         try:
             response = requests.post(
@@ -391,7 +415,7 @@ class LLMService:
                 kind='too_large',
             )
         try:
-            return self._chat_completion(provider, model, payload_messages, budget)
+            return self._chat_completion_any_model(provider, model, payload_messages, budget)
         except ProviderError as exc:
             if exc.kind in COOLDOWN_SECONDS:
                 _start_cooldown(provider, exc.retry_after or COOLDOWN_SECONDS[exc.kind], exc)
