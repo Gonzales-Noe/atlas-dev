@@ -243,6 +243,11 @@ class Course(models.Model):
     units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
+    # Syllabus section (and optional subsection) the Module tab reads its
+    # topics from. Locked once `module_topic_confirmed_at` is set.
+    module_topic_section_key = models.CharField(max_length=120, blank=True, default='')
+    module_topic_subsection_key = models.CharField(max_length=120, blank=True, default='')
+    module_topic_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'course'

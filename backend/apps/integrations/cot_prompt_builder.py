@@ -18,6 +18,39 @@ Generation pipeline:
 # Keeps total prompt within typical 8 K-context LLM windows.
 _CONTEXT_TOKEN_BUDGET: int = 2_000
 
+# How deeply a module should be structured. Chosen by the faculty in the
+# "Generate module" dialog and translated into prompt instructions.
+MODULE_STRUCTURING_LEVELS: dict = {
+    "standard": {
+        "label": "Standard",
+        "subtopics": "3-5",
+        "paragraphs": "3-4",
+        "min_items": 3,
+        "hint": "Balanced depth for a regular class session — cover the core ideas without padding.",
+    },
+    "detailed": {
+        "label": "Detailed",
+        "subtopics": "4-6",
+        "paragraphs": "5-6",
+        "min_items": 4,
+        "hint": "Deep coverage for a full lecture or lab series — explain the concepts thoroughly.",
+    },
+    "concise": {
+        "label": "Concise",
+        "subtopics": "2-3",
+        "paragraphs": "2",
+        "min_items": 2,
+        "hint": "A quick refresher or orientation — hit the essentials only.",
+    },
+    "activity": {
+        "label": "Activity-led",
+        "subtopics": "3-4",
+        "paragraphs": "2-3",
+        "min_items": 3,
+        "hint": "The short activity drives the session — the subtopics support it.",
+    },
+}
+
 
 def _count_tokens(text: str) -> int:
     """Fast token estimate: 1 token ≈ 4 characters (no external dependency)."""
@@ -296,6 +329,10 @@ OUTPUT — Return the module plan using exactly this structure:
         ilos: list = None,
         course_description: str = "",
         week_topic: str = "",
+        section_label: str = "",
+        subsection_label: str = "",
+        section_context: str = "",
+        structuring_level: str = "standard",
     ) -> tuple:
         """
         Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
@@ -304,6 +341,10 @@ OUTPUT — Return the module plan using exactly this structure:
             ilos:               List of ILO/CLO strings from the course syllabus.
             course_description: The course description text.
             week_topic:         The topic for this specific week from the syllabus schedule.
+            section_label:      Syllabus section the topic was taken from.
+            subsection_label:   Subsection of that section the topic was taken from.
+            section_context:    Raw syllabus text of the selected section/subsection.
+            structuring_level: How deep the module should be (standard/detailed/concise/activity).
 
         JSON schema returned by the LLM:
         {
@@ -331,6 +372,10 @@ OUTPUT — Return the module plan using exactly this structure:
         """
         context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
+        level = MODULE_STRUCTURING_LEVELS.get(
+            (structuring_level or "standard").strip().lower(),
+            MODULE_STRUCTURING_LEVELS["standard"],
+        )
 
         # Build the COURSE DATA block from real syllabus data
         course_data_parts = []
@@ -340,8 +385,18 @@ OUTPUT — Return the module plan using exactly this structure:
             ilo_lines = "\n".join(f"  ILO-{i + 1}: {ilo}" for i, ilo in enumerate(ilos) if ilo)
             course_data_parts.append(f"COURSE INTENDED LEARNING OUTCOMES (ILOs):\n{ilo_lines}")
         if week_topic:
+            source = " › ".join(part for part in (section_label, subsection_label) if part)
             course_data_parts.append(
-                f"WEEK {week_number} SYLLABUS TOPIC: {week_topic.strip()}"
+                f"WEEK {week_number} SYLLABUS TOPIC"
+                + (f" (from {source})" if source else "")
+                + f": {week_topic.strip()}"
+            )
+        if section_context:
+            course_data_parts.append(
+                "SYLLABUS SECTION CONTENT"
+                + (f" — {section_label}" if section_label else "")
+                + (f" › {subsection_label}" if subsection_label else "")
+                + f":\n{section_context.strip()}"
             )
 
         course_context_block = (
@@ -377,6 +432,7 @@ Course       : {course_name}
 Module Number: {module_number}
 Module Title : {module_title}
 Week Number  : {week_number}{extra}
+Depth        : {level['label']} — {level['hint']}
 
 THINK STEP BY STEP before writing JSON:
 
@@ -384,8 +440,9 @@ Step 1 — Analyse the reference material and COURSE DATA above to identify the 
 concepts specific to "{module_title}" in {course_name}.{ilo_step}
 Step 3 — Write a 2-3 sentence introduction that places this module in the context of \
 {course_name}. Be specific — do NOT use generic filler.
-Step 4 — Break "{module_title}" into 3-5 logical subtopics. For each, write detailed \
-content (3-5 paragraphs) grounded in the reference material and course context.
+Step 4 — Break "{module_title}" into {level['subtopics']} logical subtopics. For each, write \
+{level['paragraphs']} paragraphs of content grounded in the reference material and course \
+context, matching the "{level['label']}" depth requested above.
 Step 5 — Design a short formative activity (15-20 min) aligned to this module's \
 objectives and the Course ILOs.
 
@@ -393,7 +450,7 @@ OUTPUT RULES:
 - Respond with ONLY valid JSON — no markdown, no preamble, no text outside the braces.
 - Every string value must be specific to {course_name} and "{module_title}".
 - Replace every "..." in the template below with real content.
-- The "subtopics" array MUST have at least 3 items.
+- The "subtopics" array MUST have at least {level['min_items']} items.
 
 {{
   "module_number": {module_number},
