@@ -24,6 +24,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import api from '../config/api'
 import { extractApiError } from '../utils'
+import { MarkdownInline } from './MarkdownText'
 
 // ── Palette ───────────────────────────────────────────────────────────────
 const TEXT = '#F0F0F2'
@@ -734,7 +735,7 @@ export default function FacultyAnalyticsReports({ courseId }) {
     const issues = item.distractor_issues || []
     return (
       <Box>
-        {item.question && <Txt size={12} sx={{ mb: 1 }}>{item.question}</Txt>}
+        {item.question && <Txt size={12} sx={{ mb: 1 }}><MarkdownInline text={item.question} /></Txt>}
         <Txt size={11.5} color={MUTED}>
           U = {item.upper_correct}/{n} correct in upper group · L = {item.lower_correct}/{n} in lower group · {item.total_correct}/{iaSummary.examinees} overall
           {item.point_biserial != null ? ` · r_pb = ${item.point_biserial}` : ''}
@@ -751,7 +752,7 @@ export default function FacultyAnalyticsReports({ courseId }) {
             const vColor = o.is_key || o.functional === true ? MASTERED : o.functional === false ? NEAR : TEXT
             return [
               <Box component="span" sx={{ fontWeight: o.is_key ? 700 : 400, color: o.is_key ? MASTERED : TEXT }}>
-                {o.option}{o.is_key ? ' ✓' : ''}
+                <MarkdownInline text={`${o.option || ''}${o.is_key ? ' ✓' : ''}`} />
               </Box>,
               o.upper, o.lower, `${fmtNum(asNum(o.percent))}%`,
               <Box component="span" sx={{ color: vColor }}>{verdict}</Box>,
