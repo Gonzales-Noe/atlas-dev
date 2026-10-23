@@ -1226,14 +1226,9 @@ export default function LandingPage() {
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
-            {['Privacy Policy', 'Terms and Conditions', 'Contact'].map(label => (
-              <span key={label} style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={e => e.target.style.color = 'rgba(255,255,255,0.7)'}
-                onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.3)'}
-              >
-                {label}
-              </span>
-            ))}
+            <Link to="/legal/privacy" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link to="/legal/terms" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
+            <Link to="/contact" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
           </div>
         </div>
       </footer>

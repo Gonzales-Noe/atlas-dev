@@ -813,7 +813,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   />
                   <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.5, textAlign: 'center' }}>
                     I agree to the{' '}
-                    <span style={{ color: '#86EFAC', fontWeight: 600 }}>Terms and Conditions of Use and Privacy Policy</span>
+                    <Link to={ROUTES.LEGAL_TERMS} style={{ color: '#86EFAC', fontWeight: 600 }}>Terms and Conditions of Use</Link>
+                    {' '}and{' '}
+                    <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: '#86EFAC', fontWeight: 600 }}>Privacy Policy</Link>
                   </span>
                 </label>
               </div>

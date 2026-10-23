@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
-  InputLabel, Select, FormControl,
+  InputLabel, Select, FormControl, CircularProgress,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -55,6 +55,7 @@ export default function AdminAccountManagement() {
   const [faculty, setFaculty] = useState([])
   const [courses, setCourses] = useState([])
   const [assignments, setAssignments] = useState([])
+  const [assignmentSections, setAssignmentSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -72,9 +73,14 @@ export default function AdminAccountManagement() {
   const [removingId, setRemovingId] = useState(null)
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(null)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [modalError, setModalError] = useState('')
+  const [modalSuccess, setModalSuccess] = useState('')
 
   const [selectedFaculty, setSelectedFaculty] = useState(null)
-  const [editForm, setEditForm] = useState({ email: '', status: 'active' })
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [menuItem, setMenuItem] = useState(null)
+  const [sections, setSections] = useState([])
+  const [editForm, setEditForm] = useState({ full_name: '', email: '', status: 'active' })
   const [createForm, setCreateForm] = useState({
     full_name: '', email: '', password: '',
     assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
@@ -86,10 +92,6 @@ export default function AdminAccountManagement() {
   })
   const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
 
-  const [anchorEl, setAnchorEl] = useState(null)
-  const [menuItem, setMenuItem] = useState(null)
-  const [sections, setSections] = useState([])
-
   useEffect(() => {
     loadAssignments()
     loadCustomization()
@@ -97,6 +99,22 @@ export default function AdminAccountManagement() {
       .then(data => setSections(data.sections || []))
       .catch(() => setSections([]))
   }, [])
+
+  async function refreshAssignmentLists() {
+    // Silent refresh used while a modal is open: never touches `loading`,
+    // otherwise GlassCard swaps to the loading placeholder, the Edit modal
+    // loses its backdrop context, and the screen goes black.
+    try {
+      const { data } = await api.get('/users/faculty-assignments/')
+      setFaculty(data.faculty || [])
+      setCourses(data.courses || [])
+      setAssignments(data.assignments || [])
+      setAssignmentSections(data.sections || [])
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to load faculty assignments.')
+    }
+  }
 
   async function loadAssignments() {
     setLoading(true)
@@ -106,6 +124,7 @@ export default function AdminAccountManagement() {
       setFaculty(data.faculty || [])
       setCourses(data.courses || [])
       setAssignments(data.assignments || [])
+      setAssignmentSections(data.sections || [])
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to load faculty assignments.')
     } finally {
@@ -149,6 +168,22 @@ export default function AdminAccountManagement() {
   const assignmentsFor = userId => assignments.filter(item => item.faculty_id === userId)
   // Courses currently assigned to the faculty member open in the Edit dialog.
   const facultyAssignments = selectedFaculty ? assignmentsFor(selectedFaculty.user_id) : []
+  // jasmin-rev merged sections from faculty-assignments with the academic
+  // structure so the Assign dialog never shows an empty dropdown.
+  const mergedSections = (() => {
+    const seen = new Set()
+    const merged = []
+    const push = raw => {
+      const value = (raw?.display_name || raw?.code || '').trim()
+      if (!value || seen.has(value.toLowerCase())) return
+      seen.add(value.toLowerCase())
+      merged.push(raw)
+    }
+    assignmentSections.forEach(push)
+    sections.forEach(push)
+    assignments.forEach(a => a.section && push({ section_id: a.section_id, code: a.section, display_name: a.section }))
+    return merged
+  })()
   const activeFaculty = faculty.filter(f => f.is_active).length
   const inactiveFaculty = faculty.filter(f => !f.is_active).length
   const totalCourses = assignments.length
@@ -160,22 +195,29 @@ export default function AdminAccountManagement() {
   // ── Edit account (PATCH /users/accounts/<user_id>/) ────────────────────────
   function handleEdit(fac) {
     setSelectedFaculty(fac)
-    setEditForm({ email: fac.email, status: fac.is_active ? 'active' : 'inactive' })
+    setEditForm({ full_name: fac.full_name || '', email: fac.email, status: fac.is_active ? 'active' : 'inactive' })
+    setModalError('')
+    setModalSuccess('')
+    setConfirmUnassign(null)
     setEditDialog(true)
     handleMenuClose()
   }
 
   async function handleSaveEdit() {
+    if (!selectedFaculty) return
+    setModalError('')
     try {
-      await api.patch(`/users/accounts/${selectedFaculty.user_id}/`, {
+      const { data } = await api.patch(`/users/accounts/${selectedFaculty.user_id}/`, {
+        full_name: editForm.full_name,
         email: editForm.email,
         is_active: editForm.status === 'active',
       })
       setEditDialog(false)
+      setSelectedFaculty(data || selectedFaculty)
       setNotice('Account updated.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update faculty account.')
+      setModalError(err.response?.data?.detail || 'Failed to update faculty account.')
     }
   }
 
@@ -185,11 +227,13 @@ export default function AdminAccountManagement() {
       full_name: '', email: '', password: '',
       assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
     })
+    setModalError('')
     setCreateDialog(true)
     handleMenuClose()
   }
 
   async function handleSaveCreate() {
+    setModalError('')
     try {
       await api.post('/users/faculty/', {
         full_name: createForm.full_name,
@@ -199,7 +243,7 @@ export default function AdminAccountManagement() {
       })
       setCreateDialog(false)
       setNotice('Faculty account created.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
       const detail = err.response?.data?.detail
       const errors = err.response?.data
@@ -207,7 +251,7 @@ export default function AdminAccountManagement() {
       if (errors && typeof errors === 'object' && !detail) {
         msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      setError(msg || 'Failed to create faculty account.')
+      setModalError(msg || 'Failed to create faculty account.')
       console.error('Create faculty error:', err.response?.data)
     }
   }
@@ -218,20 +262,21 @@ export default function AdminAccountManagement() {
     try {
       await api.patch(`/users/accounts/${fac.user_id}/`, { is_active: !fac.is_active })
       setNotice(fac.is_active ? 'Account deactivated.' : 'Account reactivated.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update account status.')
     }
   }
 
   // ── Assign course + section (POST /users/faculty-assignments/) ─────────────
+  // jasmin-rev behavior: always open blank so the admin picks a fresh
+  // course + section; merge sections from faculty-assignments + academic structure.
   function openAssignmentDialog(fac) {
-    const current = assignmentsFor(fac.user_id)[0]
     setSelectedFaculty(fac)
     setAssignmentForm({
-      course_id: current?.course_id || '',
-      course_code: '', course_title: '', description: '', section: current?.section || '',
+      course_id: '', course_code: '', course_title: '', description: '', section: '',
     })
+    setModalError('')
     setAssignmentDialog(true)
     handleMenuClose()
   }
@@ -250,14 +295,26 @@ export default function AdminAccountManagement() {
     const hasNewCourse = assignmentForm.course_code && assignmentForm.course_title
     if (!hasCourseId && !hasNewCourse) return
     if (!assignmentForm.section) return
+    setModalError('')
     try {
       await api.post('/users/faculty-assignments/', {
         faculty_id: selectedFaculty.user_id,
         ...assignmentForm,
       })
       setAssignmentDialog(false)
+      setAssignmentForm({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
       setNotice('Course assigned.')
-      loadAssignments()
+      await refreshAssignmentLists()
+      // Keep the detail/edit context fresh when assigning from the dialogs.
+      if (selectedFaculty?.user_id) {
+        try {
+          const { data } = await api.get('/users/faculty-assignments/')
+          const refreshed = (data.faculty || []).find(f => f.user_id === selectedFaculty.user_id)
+          if (refreshed) setSelectedFaculty(refreshed)
+        } catch {
+          // Non-fatal: list already reloaded above.
+        }
+      }
     } catch (err) {
       const detail = err.response?.data?.detail
       const errors = err.response?.data
@@ -265,7 +322,7 @@ export default function AdminAccountManagement() {
       if (errors && typeof errors === 'object' && !detail) {
         msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      setError(msg || 'Failed to assign course.')
+      setModalError(msg || 'Failed to assign course.')
       console.error('Assign course error:', err.response?.data)
     }
   }
@@ -292,8 +349,9 @@ export default function AdminAccountManagement() {
       )
       setConfirmDeleteAccount(null)
       setDetailDialog(false)
+      setEditDialog(false)
       setSelectedFaculty(null)
-      await loadAssignments()
+      await refreshAssignmentLists()
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete the account.')
     } finally {
@@ -302,23 +360,30 @@ export default function AdminAccountManagement() {
   }
 
   // ── Remove course assignment (DELETE /users/faculty-assignments/) ──────────
+  // Flow: click trash in Edit modal → inline confirm row inside that same modal
+  // → confirm → success message stays visible in the modal (no black screen,
+  // no stacked MUI Dialogs fighting over the backdrop).
   async function handleConfirmUnassign() {
     if (!confirmUnassign) return
-    setRemovingId(confirmUnassign.assignment_id)
+    const removed = confirmUnassign
+    setRemovingId(removed.assignment_id)
+    setModalError('')
+    setConfirmUnassign(null)
     try {
       await api.delete('/users/faculty-assignments/', {
-        data: { assignment_id: confirmUnassign.assignment_id },
+        data: { assignment_id: removed.assignment_id },
       })
-      setNotice(
-        confirmUnassign.section
-          ? `${confirmUnassign.course_code} (${confirmUnassign.section}) removed from ${selectedFaculty?.email}.`
-          : `${confirmUnassign.course_code} removed from ${selectedFaculty?.email}.`
-      )
-      setConfirmUnassign(null)
-      await loadAssignments()
+      const successMsg = removed.section
+        ? `Course ${removed.course_code} (${removed.section}) has been deleted from this faculty.`
+        : `Course ${removed.course_code} has been deleted from this faculty.`
+      setModalSuccess(successMsg)
+      setNotice(successMsg)
+      // Refresh the list behind the open modal without unmounting it.
+      // Uses the silent refresh so `loading` never flips and the Edit modal
+      // keeps its backdrop (that flip is what turned the screen black).
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to remove the course assignment.')
-      setConfirmUnassign(null)
+      setModalError(err.response?.data?.detail || 'Failed to remove the course assignment.')
     } finally {
       setRemovingId(null)
     }
@@ -736,6 +801,8 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && editDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
+            <TextField label="Full Name" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField select label="Status" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
               SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}>
@@ -748,6 +815,7 @@ export default function AdminAccountManagement() {
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 10 }}>
                 ASSIGNED COURSES ({facultyAssignments.length})
               </div>
+              {modalSuccess && <Alert severity="success" onClose={() => setModalSuccess('')} sx={{ mb: 1.5 }}>{modalSuccess}</Alert>}
               {facultyAssignments.length === 0 ? (
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
                   No courses assigned yet. Use “Assign Course” from the account menu to add one.
@@ -755,48 +823,74 @@ export default function AdminAccountManagement() {
               ) : (
                 <Stack spacing={1}>
                   {facultyAssignments.map(item => (
-                    <div
-                      key={item.assignment_id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                        padding: '8px 8px 8px 12px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 2,
-                        background: 'var(--input-bg)',
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {item.course_code} — {item.course_title}
-                        </div>
-                        {item.section && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                            Section: {item.section}
+                    <div key={item.assignment_id}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '8px 8px 8px 12px',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 2,
+                          background: 'var(--input-bg)',
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {item.course_code} — {item.course_title}
                           </div>
-                        )}
+                          {item.section && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              Section: {item.section}
+                            </div>
+                          )}
+                        </div>
+                        <IconButton
+                          aria-label={`Remove ${item.course_code}`}
+                          title="Remove course assignment"
+                          size="small"
+                          disabled={removingId === item.assignment_id}
+                          onClick={() => { setModalSuccess(''); setModalError(''); setConfirmUnassign(item) }}
+                          sx={{
+                            color: 'var(--brand-green-bright, #4ADE80)',
+                            '&:hover': { background: 'rgba(231,76,60,0.12)' },
+                            '&.Mui-disabled': { color: 'var(--text-tertiary)' },
+                          }}
+                        >
+                          {removingId === item.assignment_id
+                            ? <CircularProgress size={16} sx={{ color: 'var(--brand-green-bright, #4ADE80)' }} />
+                            : <DeleteOutlinedIcon fontSize="small" />}
+                        </IconButton>
                       </div>
-                      <Tooltip title="Remove course assignment">
-                        <span>
-                          <IconButton
-                            aria-label={`Remove ${item.course_code}`}
-                            size="small"
-                            disabled={removingId === item.assignment_id}
-                            onClick={() => setConfirmUnassign(item)}
-                            sx={{
-                              color: 'var(--brand-green-bright, #4ADE80)',
-                              '&:hover': { background: 'rgba(231,76,60,0.12)' },
-                              '&.Mui-disabled': { color: 'var(--text-tertiary)' },
-                            }}
-                          >
-                            {removingId === item.assignment_id
-                              ? <CircularProgress size={16} sx={{ color: 'var(--brand-green-bright, #4ADE80)' }} />
-                              : <DeleteOutlinedIcon fontSize="small" />}
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      {/* Inline confirmation — stays inside the same Edit modal so the
+                          backdrop never goes black from stacked MUI Dialogs. */}
+                      {confirmUnassign?.assignment_id === item.assignment_id && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: '10px 12px',
+                            border: '1px solid rgba(231,76,60,0.45)',
+                            borderRadius: 8,
+                            background: 'rgba(231,76,60,0.08)',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 8 }}>
+                            Delete <strong>{item.course_code}</strong>
+                            {item.section ? ` (Section: ${item.section})` : ''} from{' '}
+                            <strong>{selectedFaculty?.email}</strong>? They will immediately lose
+                            access to that course workspace. The course itself stays in the catalog.
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <OutlineBtn small onClick={() => setConfirmUnassign(null)} disabled={Boolean(removingId)}>
+                              Cancel
+                            </OutlineBtn>
+                            <PrimaryBtn small onClick={handleConfirmUnassign} disabled={Boolean(removingId)}>
+                              {removingId ? 'Deleting…' : 'Delete Course'}
+                            </PrimaryBtn>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </Stack>
@@ -807,34 +901,6 @@ export default function AdminAccountManagement() {
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setEditDialog(false)}>Cancel</OutlineBtn>
           <PrimaryBtn onClick={handleSaveEdit}>Save Changes</PrimaryBtn>
-        </DialogActions>
-      </Dialog>
-
-      {/* Remove Course Assignment Confirmation */}
-      <Dialog
-        open={Boolean(confirmUnassign)}
-        onClose={() => { if (!removingId) setConfirmUnassign(null) }}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}
-      >
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Remove course assignment?</DialogTitle>
-        <Divider sx={{ borderColor: 'var(--border-color)' }} />
-        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
-          <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-            This removes{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>{confirmUnassign?.course_code}</strong>
-            {confirmUnassign?.section ? ` (Section: ${confirmUnassign.section})` : ''} from{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>. They will
-            immediately lose access to that course workspace, its syllabus, assessments, and grading data.
-            The course itself stays in the catalog.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
-          <OutlineBtn onClick={() => setConfirmUnassign(null)} disabled={Boolean(removingId)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleConfirmUnassign} disabled={Boolean(removingId)}>
-            {removingId ? 'Removing…' : 'Remove Course'}
-          </PrimaryBtn>
         </DialogActions>
       </Dialog>
 
@@ -879,6 +945,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             <TextField label="Full Name" value={createForm.full_name} onChange={e => setCreateForm({ ...createForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={createForm.email} onChange={e => setCreateForm({ ...createForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField label="Temporary Password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} fullWidth size="small" type="password" sx={inputSx} />
@@ -966,6 +1033,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && assignmentDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Assigning access for <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>
             </div>
@@ -1027,15 +1095,15 @@ export default function AdminAccountManagement() {
               onChange={e => setAssignmentForm({ ...assignmentForm, section: e.target.value })}
               fullWidth size="small" sx={inputSx}
               SelectProps={{ native: false }}
-              helperText={sections.length ? undefined : 'No sections registered yet — you can type a section code.'}
+              helperText={mergedSections.length ? undefined : 'No sections registered yet — you can type a section code.'}
             >
               <MenuItem value="">-- select section --</MenuItem>
-              {sections.map(section => (
-                <MenuItem key={section.section_id} value={section.display_name || section.code}>
+              {mergedSections.map(section => (
+                <MenuItem key={section.section_id || section.display_name || section.code} value={section.display_name || section.code}>
                   {section.display_name || section.code}
                 </MenuItem>
               ))}
-              {assignmentForm.section && !sections.some(s => (s.display_name || s.code) === assignmentForm.section) && (
+              {assignmentForm.section && !mergedSections.some(s => (s.display_name || s.code) === assignmentForm.section) && (
                 <MenuItem value={assignmentForm.section}>{assignmentForm.section} (custom)</MenuItem>
               )}
             </TextField>

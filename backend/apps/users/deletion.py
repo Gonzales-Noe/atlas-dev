@@ -116,8 +116,11 @@ def delete_user_account(target: UserProfile):
 
     Returns dict(institution_deleted: bool, institution_id: str | None).
     """
-    target = UserProfile.objects.select_for_update().select_related('institution').get(pk=target.pk)
+    target = UserProfile.objects.select_for_update().get(pk=target.pk)
     institution = target.institution
+    # Refresh the institution instance (no lock + join combo: Postgres forbids
+    # SELECT ... FOR UPDATE over the nullable LEFT OUTER JOIN that
+    # select_related('institution') generates).
     role = _norm_role(target.role)
 
     if institution is None or role != 'admin':
