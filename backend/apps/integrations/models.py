@@ -253,6 +253,49 @@ class Course(models.Model):
         return f'{self.course_code} - {self.course_title}'
 
 
+class CourseRequestStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending review'
+    APPROVED = 'approved', 'Approved'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class CourseRequest(models.Model):
+    """A faculty-submitted proposal for a new course.
+
+    Faculty cannot create live Course rows directly — they file a request
+    here and an institution admin approves/rejects it. On approval the
+    backend materialises the real Course + CourseLoad rows.
+    """
+    request_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='course_requests')
+    requested_by = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='course_requests')
+    course_code = models.CharField(max_length=100)
+    course_title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    category = models.CharField(max_length=20, choices=CourseCategory.choices, default=CourseCategory.PROFESSIONAL)
+    units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    section = models.ForeignKey(Section, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_requests')
+    justification = models.TextField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=CourseRequestStatus.choices, default=CourseRequestStatus.PENDING)
+    admin_note = models.TextField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_course_requests',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_course = models.ForeignKey(
+        Course, on_delete=models.SET_NULL, null=True, blank=True, related_name='creation_requests',
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'course_request'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.course_code} - {self.course_title} ({self.status})'
+
+
 class CourseLoad(models.Model):
     assignment_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
