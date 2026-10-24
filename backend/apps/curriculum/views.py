@@ -2815,17 +2815,12 @@ Requirements:
         return issues
 
     try:
-        try:
-            raw_text = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': user_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=4000,
-            )
-        except ValueError as e:
-            logger.error("Assessment generation failed: %s", e)
-            return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
+        raw_text = llm.generate_response_with_fallback(
+            messages=[{'role': 'user', 'content': user_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=4000,
+        )
         generated_payload, parse_error = _parse_assessment_json(raw_text)
 
         if not generated_payload:
