@@ -237,6 +237,8 @@ class Course(models.Model):
     course_code = models.CharField(max_length=100)
     course_title = models.CharField(max_length=255)
     description = models.TextField(null=True, blank=True)
+    module_topic_section_key = models.CharField(max_length=255, null=True, blank=True, default='')
+    module_topic_subsection_key = models.CharField(max_length=255, null=True, blank=True, default='')
     category = models.CharField(max_length=20, choices=CourseCategory.choices, default=CourseCategory.PROFESSIONAL)
     units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
