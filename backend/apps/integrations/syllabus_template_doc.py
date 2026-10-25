@@ -300,26 +300,35 @@ def extract_docx_preview(file_obj):
             para_index += 1
         elif tag == 'tbl':
             table = DocxTable(child, doc)
-            rows = []
-            for row in table.rows:
+            # One clickable region per cell so Vision | Mission stay separate.
+            for row_i, row in enumerate(table.rows):
                 try:
                     cells = row.cells
                 except Exception:
                     continue
-                rows.append([' '.join(cell.text.split()) for cell in cells])
-            rows = [r for r in rows if any(r)]
-            preview = ' | '.join(rows[0]) if rows else f'Table {table_index + 1}'
-            block_id = f't-{table_index}'
-            blocks.append({
-                'id': block_id,
-                'kind': 'table',
-                'level': 0,
-                'text': preview[:200],
-                'style': 'Table',
-                'rows': rows[:40],
-                'text_hash': _text_hash(preview),
-                'anchor': {'type': 'table', 'index': table_index, 'text_hash': _text_hash(preview)},
-            })
+                for col_i, cell in enumerate(cells):
+                    text = ' '.join((cell.text or '').split())
+                    if not text:
+                        continue
+                    block_id = f't-{table_index}-r{row_i}-c{col_i}'
+                    blocks.append({
+                        'id': block_id,
+                        'kind': 'table_cell',
+                        'level': 0,
+                        'text': text[:2000],
+                        'style': 'TableCell',
+                        'text_hash': _text_hash(text),
+                        'table_index': table_index,
+                        'row': row_i,
+                        'col': col_i,
+                        'anchor': {
+                            'type': 'table_cell',
+                            'table': table_index,
+                            'row': row_i,
+                            'col': col_i,
+                            'text_hash': _text_hash(text),
+                        },
+                    })
             table_index += 1
 
     # Keep qn imported for future oxml tweaks without unused-import noise in some linters
@@ -327,8 +336,51 @@ def extract_docx_preview(file_obj):
     return {'blocks': blocks, 'block_count': len(blocks)}
 
 
+def _pdf_span_clusters(spans, gap_pt=18.0):
+    """
+    Split a PDF line into column-like clusters when spans have a horizontal gap
+    (e.g. Vision | description in a two-column table row).
+    """
+    cleaned = []
+    for span in spans or []:
+        text = (span.get('text') or '').strip()
+        if not text:
+            continue
+        bbox = span.get('bbox') or [0, 0, 0, 0]
+        cleaned.append({
+            'text': text,
+            'bbox': [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
+        })
+    if not cleaned:
+        return []
+    cleaned.sort(key=lambda s: s['bbox'][0])
+    clusters = [[cleaned[0]]]
+    for span in cleaned[1:]:
+        prev = clusters[-1][-1]
+        gap = span['bbox'][0] - prev['bbox'][2]
+        if gap >= gap_pt:
+            clusters.append([span])
+        else:
+            clusters[-1].append(span)
+    out = []
+    for group in clusters:
+        text = ' '.join(s['text'] for s in group).strip()
+        if not text:
+            continue
+        x0 = min(s['bbox'][0] for s in group)
+        y0 = min(s['bbox'][1] for s in group)
+        x1 = max(s['bbox'][2] for s in group)
+        y1 = max(s['bbox'][3] for s in group)
+        out.append({'text': text, 'bbox': [x0, y0, x1, y1]})
+    return out
+
+
 def extract_pdf_preview(file_obj):
-    """Native PDF text blocks with page + bbox for overlay clicks on the real PDF."""
+    """
+    Native PDF click targets: one region per visual line (and per table column
+    when a line has a clear horizontal gap). Separating rules/lines between
+    Vision and Mission stay as separate regions instead of one merged blob.
+    """
     try:
         import pymupdf
     except ImportError:
@@ -340,40 +392,47 @@ def extract_pdf_preview(file_obj):
     try:
         for page_index, page in enumerate(doc):
             page_dict = page.get_text('dict') or {}
-            block_i = 0
+            line_i = 0
             for raw in page_dict.get('blocks') or []:
                 if raw.get('type') != 0:
                     continue
-                lines = []
                 for line in raw.get('lines') or []:
-                    span_text = ''.join(span.get('text') or '' for span in (line.get('spans') or []))
-                    if span_text.strip():
-                        lines.append(span_text.strip())
-                text = ' '.join(lines).strip()
-                if not text:
-                    block_i += 1
-                    continue
-                bbox = raw.get('bbox') or [0, 0, 0, 0]
-                block_id = f'pdf-{page_index}-b-{block_i}'
-                blocks.append({
-                    'id': block_id,
-                    'kind': 'paragraph',
-                    'level': 0,
-                    'text': text[:2000],
-                    'style': '',
-                    'text_hash': _text_hash(text),
-                    'page': page_index,
-                    'bbox': [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
-                    'page_width': float(page.rect.width),
-                    'page_height': float(page.rect.height),
-                    'anchor': {
-                        'type': 'pdf_block',
-                        'page': page_index,
-                        'index': block_i,
-                        'text_hash': _text_hash(text),
-                    },
-                })
-                block_i += 1
+                    clusters = _pdf_span_clusters(line.get('spans') or [])
+                    if not clusters:
+                        # Fallback: whole line as one region
+                        span_text = ''.join(
+                            (span.get('text') or '') for span in (line.get('spans') or [])
+                        ).strip()
+                        if not span_text:
+                            continue
+                        bbox = line.get('bbox') or [0, 0, 0, 0]
+                        clusters = [{
+                            'text': span_text,
+                            'bbox': [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
+                        }]
+                    for cluster in clusters:
+                        text = cluster['text'][:2000]
+                        bbox = cluster['bbox']
+                        block_id = f'pdf-{page_index}-l-{line_i}'
+                        line_i += 1
+                        blocks.append({
+                            'id': block_id,
+                            'kind': 'paragraph',
+                            'level': 0,
+                            'text': text,
+                            'style': '',
+                            'text_hash': _text_hash(text),
+                            'page': page_index,
+                            'bbox': bbox,
+                            'page_width': float(page.rect.width),
+                            'page_height': float(page.rect.height),
+                            'anchor': {
+                                'type': 'pdf_line',
+                                'page': page_index,
+                                'index': line_i - 1,
+                                'text_hash': _text_hash(text),
+                            },
+                        })
     finally:
         doc.close()
     return {'blocks': blocks, 'block_count': len(blocks)}
@@ -572,17 +631,55 @@ def _resolve_paragraph(doc, region_id, blocks_by_id=None):
     return None
 
 
+def _parse_table_region(region_id):
+    """
+    Accept t-0 (whole table) or t-0-r1-c2 (cell).
+    Returns (table_index, row_index|None, col_index|None).
+    """
+    if not region_id or not str(region_id).startswith('t-'):
+        return None
+    parts = str(region_id).split('-')
+    try:
+        table_index = int(parts[1])
+    except (IndexError, ValueError):
+        return None
+    row_index = col_index = None
+    if len(parts) >= 4 and parts[2].startswith('r') and parts[3].startswith('c'):
+        try:
+            row_index = int(parts[2][1:])
+            col_index = int(parts[3][1:])
+        except ValueError:
+            row_index = col_index = None
+    return table_index, row_index, col_index
+
+
 def _resolve_table(doc, region_id, blocks_by_id=None):
     rid = _fill_region_id(region_id, blocks_by_id)
-    if not rid or not rid.startswith('t-'):
+    parsed = _parse_table_region(rid)
+    if not parsed:
         return None
-    try:
-        index = int(rid.split('-', 1)[1])
-    except ValueError:
+    table_index, _row, _col = parsed
+    for i, table in enumerate(_iter_body_tables(doc)):
+        if i == table_index:
+            return table
+    return None
+
+
+def _resolve_table_cell(doc, region_id, blocks_by_id=None):
+    rid = _fill_region_id(region_id, blocks_by_id)
+    parsed = _parse_table_region(rid)
+    if not parsed:
+        return None
+    table_index, row_index, col_index = parsed
+    if row_index is None or col_index is None:
         return None
     for i, table in enumerate(_iter_body_tables(doc)):
-        if i == index:
-            return table
+        if i != table_index:
+            continue
+        try:
+            return table.rows[row_index].cells[col_index]
+        except (IndexError, AttributeError):
+            return None
     return None
 
 
@@ -680,7 +777,11 @@ def fill_docx_from_field_map(template_bytes, field_map, syllabus, preview_blocks
             if not content_id:
                 continue
             fill_id = _fill_region_id(content_id, blocks_by_id)
-            if sub.get('table_enabled') and fill_id.startswith('t-'):
+            answer = str(section_answers.get(sub_key) or '').strip()
+            cell = _resolve_table_cell(doc, fill_id, blocks_by_id)
+            if cell is not None and answer:
+                cell.text = answer
+            elif sub.get('table_enabled') and fill_id.startswith('t-'):
                 table = _resolve_table(doc, fill_id, blocks_by_id)
                 rows = section_tables.get(sub_key) or []
                 columns = sub.get('table_columns') or []
@@ -688,15 +789,17 @@ def fill_docx_from_field_map(template_bytes, field_map, syllabus, preview_blocks
                     _fill_table(table, columns, rows)
             else:
                 paragraph = _resolve_paragraph(doc, fill_id, blocks_by_id)
-                answer = str(section_answers.get(sub_key) or '').strip()
                 if paragraph is not None and answer:
                     _set_paragraph_text(paragraph, answer)
 
         content_id = section.get('working_content_region_id') or section.get('content_region_id') or ''
         fill_id = _fill_region_id(content_id, blocks_by_id)
-        if fill_id.startswith('p-'):
+        answer = _answer_for_section(syllabus, section)
+        cell = _resolve_table_cell(doc, fill_id, blocks_by_id)
+        if cell is not None and answer and not section.get('is_static'):
+            cell.text = answer
+        elif fill_id.startswith('p-'):
             paragraph = _resolve_paragraph(doc, fill_id, blocks_by_id)
-            answer = _answer_for_section(syllabus, section)
             if paragraph is not None and answer and not section.get('is_static'):
                 _set_paragraph_text(paragraph, answer)
         elif fill_id.startswith('t-'):

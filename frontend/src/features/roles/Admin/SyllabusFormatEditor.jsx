@@ -1,5 +1,4 @@
 // Exact-file click map: left = real DOCX/PDF/Excel, right = recorded sections.
-// Every click is highlighted on the document and appended to click_log.
 
 import { useCallback, useMemo, useState } from 'react'
 import { Alert, Stack, TextField, Typography, FormControlLabel, Switch } from '@mui/material'
@@ -17,6 +16,31 @@ function slug(label) {
   return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
+function normalizeLookup(text) {
+  return String(text || '').toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+/** Ranked search over preview blocks for manual find → highlight. */
+function findBlocksByQuery(blocks, query) {
+  const q = normalizeLookup(query)
+  if (!q) return []
+  const scored = []
+  for (const block of blocks || []) {
+    const text = normalizeLookup(block?.text)
+    if (!text) continue
+    let score = 0
+    if (text === q) score = 100
+    else if (text.startsWith(q)) score = 80
+    else if (text.includes(q)) score = 60
+    else continue
+    // Prefer short labels (Vision) over long paragraphs that merely contain the word.
+    score += Math.max(0, 20 - Math.min(20, text.length / 8))
+    scored.push({ block, score })
+  }
+  scored.sort((a, b) => b.score - a.score)
+  return scored.map(item => item.block)
+}
+
 function regionRole(fieldMap, blockId) {
   const sections = fieldMap?.sections || []
   for (const section of sections) {
@@ -28,19 +52,6 @@ function regionRole(fieldMap, blockId) {
     }
   }
   return null
-}
-
-function appendClickLog(fieldMap, block, role) {
-  const prev = Array.isArray(fieldMap?.click_log) ? fieldMap.click_log : []
-  return [
-    ...prev,
-    {
-      id: block.id,
-      text: String(block.text || '').slice(0, 200),
-      role,
-      at: new Date().toISOString(),
-    },
-  ].slice(-200)
 }
 
 export default function SyllabusFormatEditor({
@@ -60,9 +71,11 @@ export default function SyllabusFormatEditor({
   const [selectedKey, setSelectedKey] = useState('')
   const [selectedSubKey, setSelectedSubKey] = useState('')
   const [hint, setHint] = useState('Click text on your uploaded file to add it as a section.')
+  const [findQuery, setFindQuery] = useState('')
+  const [lookupIds, setLookupIds] = useState(() => new Set())
+  const [focusRegionId, setFocusRegionId] = useState('')
 
   const sections = fieldMap?.sections || []
-  const clickLog = Array.isArray(fieldMap?.click_log) ? fieldMap.click_log : []
   const selectedSection = sections.find(s => s.key === selectedKey) || null
   const selectedSubsection = (selectedSection?.subsections || []).find(s => s.key === selectedSubKey) || null
 
@@ -79,14 +92,25 @@ export default function SyllabusFormatEditor({
     return ids
   }, [sections])
 
+  // Only emphasize the active role target (title OR content), not both at once.
   const selectedIds = useMemo(() => {
     const ids = new Set()
-    if (selectedSection?.title_region_id) ids.add(selectedSection.title_region_id)
-    if (selectedSection?.content_region_id) ids.add(selectedSection.content_region_id)
-    if (selectedSubsection?.title_region_id) ids.add(selectedSubsection.title_region_id)
-    if (selectedSubsection?.content_region_id) ids.add(selectedSubsection.content_region_id)
+    if (selectedSubsection) {
+      if (clickMode === 'subsection_content' && selectedSubsection.content_region_id) {
+        ids.add(selectedSubsection.content_region_id)
+      } else if (selectedSubsection.title_region_id) {
+        ids.add(selectedSubsection.title_region_id)
+      }
+      return ids
+    }
+    if (!selectedSection) return ids
+    if (clickMode === 'content' && selectedSection.content_region_id) {
+      ids.add(selectedSection.content_region_id)
+    } else if (selectedSection.title_region_id) {
+      ids.add(selectedSection.title_region_id)
+    }
     return ids
-  }, [selectedSection, selectedSubsection])
+  }, [selectedSection, selectedSubsection, clickMode])
 
   const roleById = useMemo(() => {
     const map = new Map()
@@ -101,20 +125,12 @@ export default function SyllabusFormatEditor({
     return map
   }, [sections])
 
-  function commitMap(nextSections, nextClickLog) {
+  function updateSections(nextSections) {
     onFieldMapChange({
       ...(fieldMap || {}),
       version: 1,
       sections: nextSections,
-      click_log: nextClickLog ?? fieldMap?.click_log ?? [],
     })
-  }
-
-  function updateSections(nextSections, clickMeta) {
-    const log = clickMeta
-      ? appendClickLog({ ...fieldMap, click_log: fieldMap?.click_log }, clickMeta.block, clickMeta.role)
-      : fieldMap?.click_log
-    commitMap(nextSections, log)
   }
 
   const handleBlockClick = useCallback(block => {
@@ -155,7 +171,7 @@ export default function SyllabusFormatEditor({
         working_content_region_id: '',
         editor: null,
       }
-      updateSections([...sections, next], { block, role: 'title' })
+      updateSections([...sections, next])
       setSelectedKey(key)
       setSelectedSubKey('')
       setClickMode('content')
@@ -189,7 +205,7 @@ export default function SyllabusFormatEditor({
                 : section.table_columns,
             }
           : section
-      )), { block, role: 'content' })
+      ))
       setClickMode('section')
       setHint(`Content for “${selectedSection.label}” recorded. Click another heading to add the next section.`)
       return
@@ -234,7 +250,7 @@ export default function SyllabusFormatEditor({
         section.key === selectedKey
           ? { ...section, subsections: [...subs, nextSub] }
           : section
-      )), { block, role: 'subsection_title' })
+      ))
       setSelectedSubKey(key)
       setClickMode('subsection_content')
       setHint(`Recorded subsection “${label}”. Now click where its content should be written.`)
@@ -268,7 +284,7 @@ export default function SyllabusFormatEditor({
               : sub
           )),
         }
-      }), { block, role: 'subsection_content' })
+      })
       setClickMode('subsection')
       setHint(`Content for subsection “${selectedSubsection.label}” recorded.`)
     }
@@ -307,11 +323,29 @@ export default function SyllabusFormatEditor({
     subsection_content: 'Click document → place subsection content',
   }[clickMode]
 
+  function runFind(andUse = false) {
+    const matches = findBlocksByQuery(blocks, findQuery)
+    if (!matches.length) {
+      setLookupIds(new Set())
+      setFocusRegionId('')
+      setHint(`No match for “${findQuery.trim()}” in the document.`)
+      return
+    }
+    const ids = new Set(matches.slice(0, 8).map(b => b.id))
+    setLookupIds(ids)
+    setFocusRegionId(matches[0].id)
+    setHint(
+      andUse
+        ? `Found “${matches[0].text.slice(0, 80)}”. Applying to current mode…`
+        : `Found ${matches.length} match(es). Highlighted on the left — click Use match to map, or click the highlight.`,
+    )
+    if (andUse) handleBlockClick(matches[0])
+  }
+
   return (
     <Stack spacing={1.5} sx={{ minHeight: 420 }}>
       <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-        Upload your syllabus sample. The exact DOCX, PDF, or Excel file is shown on the left —
-        every click is highlighted and recorded on the right.
+        Upload your syllabus sample. Click line-by-line on the left, or type a label below to find and highlight it.
       </Typography>
 
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
@@ -333,6 +367,25 @@ export default function SyllabusFormatEditor({
       {uploadMessage && (
         <Alert severity={uploadSeverity || 'info'}>{uploadMessage}</Alert>
       )}
+
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+        <TextField
+          size="small"
+          label="Find text in document"
+          placeholder="e.g. Vision"
+          value={findQuery}
+          onChange={event => setFindQuery(event.target.value)}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              runFind(false)
+            }
+          }}
+          sx={{ ...inputSx, flex: 1, minWidth: 180 }}
+        />
+        <OutlineBtn small onClick={() => runFind(false)} disabled={!findQuery.trim()}>Find & highlight</OutlineBtn>
+        <OutlineBtn small onClick={() => runFind(true)} disabled={!findQuery.trim()}>Use match</OutlineBtn>
+      </Stack>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <OutlineBtn small onClick={() => { setClickMode('section'); setHint('Click text on the file to add or select a section.') }}
@@ -366,6 +419,8 @@ export default function SyllabusFormatEditor({
             mappedIds={mappedIds}
             selectedIds={selectedIds}
             roleById={roleById}
+            lookupIds={lookupIds}
+            focusRegionId={focusRegionId}
             onBlockClick={handleBlockClick}
           />
         </div>
@@ -412,10 +467,12 @@ export default function SyllabusFormatEditor({
                     cursor: 'pointer',
                   }}
                 >
-                  <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{section.label}</div>
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 4 }}>
-                    Title {section.title_region_id ? '✓' : '—'} · Content {section.content_region_id ? '✓' : 'needed'}
-                    {(section.subsections || []).length ? ` · ${(section.subsections || []).length} subsection(s)` : ''}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{section.label}</span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>
+                      Title {section.title_region_id ? '✓' : '—'} · Content {section.content_region_id ? '✓' : 'needed'}
+                      {(section.subsections || []).length ? ` · ${(section.subsections || []).length} sub` : ''}
+                    </span>
                   </div>
                   {BUILTIN_SYLLABUS_EDITORS[section.key] && (
                     <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -493,22 +550,6 @@ export default function SyllabusFormatEditor({
             })}
           </Stack>
 
-          {!!clickLog.length && (
-            <Stack spacing={0.5} sx={{ mt: 2 }}>
-              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
-                CLICK LOG ({clickLog.length})
-              </Typography>
-              <div style={{ maxHeight: 120, overflow: 'auto' }}>
-                {[...clickLog].reverse().slice(0, 30).map((entry, index) => (
-                  <div key={`${entry.id}-${entry.at}-${index}`} style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', padding: '2px 0' }}>
-                    <span style={{ color: 'var(--accent)' }}>{entry.role || 'click'}</span>
-                    {' · '}
-                    {(entry.text || entry.id || '').slice(0, 80)}
-                  </div>
-                ))}
-              </div>
-            </Stack>
-          )}
         </div>
       </div>
     </Stack>
