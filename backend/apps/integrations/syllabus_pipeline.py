@@ -144,6 +144,8 @@ def analyze_syllabus_template(file_obj, file_type, refine='false', llm=None):
             ), 2),
         },
     }
+    if parsed.get('docling_error'):
+        result['docling_note'] = parsed['docling_error']
     if not sections:
         result['detail'] = 'No section headings were detected. Add the syllabus sections manually.'
     return result

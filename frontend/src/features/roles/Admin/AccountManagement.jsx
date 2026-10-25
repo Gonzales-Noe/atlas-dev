@@ -443,7 +443,11 @@ export default function AdminAccountManagement() {
   // Replaces the sections/style in the dialog; persisted only by "Save Format".
   async function importSyllabusTemplate(file) {
     if (!file) return
-    setTemplateImport({ busy: true, message: 'Reading the syllabus template…', severity: 'info' })
+    setTemplateImport({
+      busy: true,
+      message: 'Parsing syllabus (fast extract first; Docling may take up to ~35s then falls back)…',
+      severity: 'info',
+    })
     try {
       const result = await analyzeSyllabusTemplate(file)
       const branding = result.branding_suggestions || {}

@@ -241,21 +241,22 @@ def _pdf_style(file_obj):
         header_text = consensus(header_candidates)
         footer_text = consensus(footer_candidates)
 
-        # Crop top/bottom bands of page 1 as optional header/footer images
+        # Crop top/bottom bands of page 1 as optional header/footer images.
+        # Keep DPI low so small syllabus PDFs stay fast.
         header_image = ''
         footer_image = ''
         try:
             h = page0.rect.height
             header_clip = pymupdf.Rect(0, 0, page0.rect.width, min(h * 0.14, 120))
             footer_clip = pymupdf.Rect(0, max(h * 0.86, h - 100), page0.rect.width, h)
-            header_pix = page0.get_pixmap(clip=header_clip, dpi=120)
-            footer_pix = page0.get_pixmap(clip=footer_clip, dpi=120)
+            header_pix = page0.get_pixmap(clip=header_clip, dpi=72)
+            footer_pix = page0.get_pixmap(clip=footer_clip, dpi=72)
             header_image = 'data:image/png;base64,' + base64.b64encode(header_pix.tobytes('png')).decode('ascii')
             footer_image = 'data:image/png;base64,' + base64.b64encode(footer_pix.tobytes('png')).decode('ascii')
-            # Drop nearly-blank crops (very small payload)
-            if len(header_image) < 800:
+            # Drop nearly-blank or oversized crops (avoid multi-MB payloads)
+            if len(header_image) < 800 or len(header_image) > 400_000:
                 header_image = ''
-            if len(footer_image) < 800:
+            if len(footer_image) < 800 or len(footer_image) > 400_000:
                 footer_image = ''
         except Exception:
             logger.debug('Could not crop PDF header/footer bands', exc_info=True)
