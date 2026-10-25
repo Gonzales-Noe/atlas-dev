@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
-  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
+  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert,
   InputLabel, Select, FormControl, CircularProgress,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
@@ -20,11 +20,10 @@ import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import {
-  analyzeSyllabusTemplate,
-  BUILTIN_SYLLABUS_EDITORS,
-  describeDetectedStructure,
   fetchAcademicStructure,
+  previewSyllabusTemplate,
 } from './academicApi'
+import SyllabusFormatEditor from './SyllabusFormatEditor'
 import { ROUTES } from '../../../config/route'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
@@ -33,11 +32,6 @@ const inputSx = {
   '& .MuiInputLabel-root': { fontSize: '0.875rem' },
   input: { color: 'var(--text-primary)' },
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
-}
-
-// Internal id for a section; never shown in the Syllabus Format UI.
-function sectionKey(label) {
-  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
 // Fall back to the email for older accounts without a stored display name.
@@ -94,9 +88,12 @@ export default function AdminAccountManagement() {
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
     footer_text: '', syllabus_sections: [], syllabus_style_profile: {},
+    syllabus_field_map: { sections: [] },
+    syllabus_preview_blocks: [],
+    syllabus_template_name: '',
   })
   const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
-  const [formatTab, setFormatTab] = useState('structure')
+  const [formatTab, setFormatTab] = useState('map')
 
   useEffect(() => {
     loadAssignments()
@@ -148,6 +145,10 @@ export default function AdminAccountManagement() {
         syllabus_style_profile: data.syllabus_style_profile && typeof data.syllabus_style_profile === 'object'
           ? data.syllabus_style_profile
           : {},
+        syllabus_field_map: data.syllabus_field_map && typeof data.syllabus_field_map === 'object'
+          ? data.syllabus_field_map
+          : { sections: [] },
+        syllabus_preview_blocks: Array.isArray(data.syllabus_preview_blocks) ? data.syllabus_preview_blocks : [],
       }))
     } catch (err) {
       // Non-fatal: customization may not be configured yet.
@@ -400,39 +401,30 @@ export default function AdminAccountManagement() {
 
   // ── Syllabus format (PATCH /users/institution-customization/) ──────────────
   async function saveCustomization() {
-    const hasUnnamedSubsection = (customization.syllabus_sections || []).some(section =>
-      section.enabled !== false
-      && !section.is_static
-      && (Array.isArray(section.subsections) ? section.subsections : [])
-        .some(subsection => !subsection.label?.trim()),
-    )
-    if (hasUnnamedSubsection) {
-      setError('Add a name to each syllabus subsection before saving.')
+    const mapSections = customization.syllabus_field_map?.sections || []
+    if (!mapSections.length && !(customization.syllabus_preview_blocks || []).length) {
+      setError('Upload a DOCX and click sections before saving.')
       return
     }
-    const syllabus_sections = (customization.syllabus_sections || [])
-      .filter(section => section.label?.trim())
-      .map((section, index) => {
-        const label = section.label.trim()
-        const key = BUILTIN_SYLLABUS_EDITORS[section.key]
-          ? section.key
-          : (section.key?.trim() || sectionKey(label) || `section-${index + 1}`)
-        return {
-          ...section,
-          key,
-          label,
-          subsections: (Array.isArray(section.subsections) ? section.subsections : [])
-            .filter(subsection => subsection.label?.trim())
-            .map((subsection, subsectionIndex) => ({
-              ...subsection,
-              key: subsection.key?.trim() || sectionKey(subsection.label) || `subsection-${subsectionIndex + 1}`,
-              label: subsection.label.trim(),
-            })),
-        }
-      })
+    const missingContent = mapSections.filter(section => section.enabled !== false && !section.content_region_id)
+    if (missingContent.length) {
+      setError(`Place content for: ${missingContent.map(s => s.label).join(', ')}`)
+      return
+    }
     try {
-      await api.patch('/users/institution-customization/', { ...customization, syllabus_sections })
-      setCustomization({ ...customization, syllabus_sections })
+      const payload = {
+        ...customization,
+        syllabus_field_map: customization.syllabus_field_map || { sections: [] },
+        syllabus_preview_blocks: customization.syllabus_preview_blocks || [],
+      }
+      const { data } = await api.patch('/users/institution-customization/', payload)
+      setCustomization(current => ({
+        ...current,
+        ...data,
+        syllabus_field_map: data.syllabus_field_map || payload.syllabus_field_map,
+        syllabus_sections: data.syllabus_sections || current.syllabus_sections,
+        syllabus_preview_blocks: data.syllabus_preview_blocks || payload.syllabus_preview_blocks,
+      }))
       setCustomizationDialog(false)
       setNotice('Syllabus format saved.')
     } catch (err) {
@@ -440,53 +432,31 @@ export default function AdminAccountManagement() {
     }
   }
 
-  // Replaces the sections/style in the dialog; persisted only by "Save Format".
-  async function importSyllabusTemplate(file) {
+  async function uploadDocxTemplate(file) {
     if (!file) return
-    setTemplateImport({
-      busy: true,
-      message: 'Parsing syllabus (fast extract first; Docling may take up to ~35s then falls back)…',
-      severity: 'info',
-    })
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    const loadingMsg = ext === 'pdf' || ext === 'xlsx' || ext === 'xls'
+      ? `Converting ${ext.toUpperCase()} to editable DOCX…`
+      : 'Loading editable DOCX preview…'
+    setTemplateImport({ busy: true, message: loadingMsg, severity: 'info' })
     try {
-      const result = await analyzeSyllabusTemplate(file)
-      const branding = result.branding_suggestions || {}
-      const styleProfile = result.style_profile && typeof result.style_profile === 'object'
-        ? result.style_profile
-        : {}
-      if (Array.isArray(result.sections) && result.sections.length) {
-        setCustomization(current => ({
-          ...current,
-          syllabus_template_name: result.template_name || file.name,
-          syllabus_sections: result.sections,
-          syllabus_style_profile: styleProfile,
-          header_text: current.header_text || branding.header_text || '',
-          footer_text: current.footer_text || branding.footer_text || '',
-          header_image_url: current.header_image_url || branding.header_image_url || '',
-          footer_image_url: current.footer_image_url || branding.footer_image_url || '',
-        }))
-        setFormatTab('structure')
-        setTemplateImport({ busy: false, message: describeDetectedStructure(result), severity: 'success' })
-      } else {
-        setCustomization(current => ({
-          ...current,
-          syllabus_template_name: result.template_name || file.name,
-          syllabus_style_profile: styleProfile,
-          header_text: current.header_text || branding.header_text || '',
-          footer_text: current.footer_text || branding.footer_text || '',
-          header_image_url: current.header_image_url || branding.header_image_url || '',
-          footer_image_url: current.footer_image_url || branding.footer_image_url || '',
-        }))
-        setTemplateImport({
-          busy: false,
-          message: result.detail || 'No sections were detected. Add them manually below.',
-          severity: 'warning',
-        })
-      }
+      const result = await previewSyllabusTemplate(file)
+      setCustomization(current => ({
+        ...current,
+        syllabus_template_name: result.template_name || file.name,
+        syllabus_preview_blocks: Array.isArray(result.blocks) ? result.blocks : [],
+        syllabus_field_map: result.field_map || { sections: [], version: 1 },
+      }))
+      setFormatTab('map')
+      setTemplateImport({
+        busy: false,
+        message: result.detail || `Loaded ${result.block_count || 0} clickable blocks. Click to add sections.`,
+        severity: result.converted ? 'warning' : 'success',
+      })
     } catch (err) {
       setTemplateImport({
         busy: false,
-        message: err.response?.data?.detail || 'Could not analyze the syllabus template.',
+        message: err.response?.data?.detail || 'Could not load the syllabus template.',
         severity: 'error',
       })
     }
@@ -512,164 +482,6 @@ export default function AdminAccountManagement() {
       }
       return { ...current, syllabus_style_profile: profile }
     })
-  }
-
-  function updateSyllabusSection(index, changes) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === index ? { ...section, ...changes } : section
-      )),
-    }))
-  }
-
-  function addSyllabusSubsection(sectionIndex) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? {
-              ...section,
-              subsections: [
-                ...(Array.isArray(section.subsections) ? section.subsections : []),
-                {
-                  key: `subsection-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                  label: '',
-                  required: false,
-                },
-              ],
-            }
-          : section
-      )),
-    }))
-  }
-
-  function updateSyllabusSubsection(sectionIndex, subsectionIndex, changes) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? {
-              ...section,
-              subsections: (section.subsections || []).map((subsection, j) => (
-                j === subsectionIndex ? { ...subsection, ...changes } : subsection
-              )),
-            }
-          : section
-      )),
-    }))
-  }
-
-  function removeSyllabusSubsection(sectionIndex, subsectionIndex) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? { ...section, subsections: (section.subsections || []).filter((_, j) => j !== subsectionIndex) }
-          : section
-      )),
-    }))
-  }
-
-  function updateTableColumn(sectionIndex, subsectionIndex, columnIndex, value) {
-    const changeColumns = columns => columns.map((column, index) => (
-      index === columnIndex ? value : column
-    ))
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, {
-        table_columns: changeColumns(customization.syllabus_sections[sectionIndex].table_columns || []),
-      })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, {
-      table_columns: changeColumns(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []),
-    })
-  }
-
-  function updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, value) {
-    const field = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex]
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex]
-    const groups = Array.isArray(field?.table_column_groups) ? field.table_column_groups : []
-    const nextGroups = Array.from(
-      { length: (field?.table_columns || []).length },
-      (_, index) => index === columnIndex ? value : (groups[index] || ''),
-    )
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, { table_column_groups: nextGroups })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, { table_column_groups: nextGroups })
-  }
-
-  function addTableColumn(sectionIndex, subsectionIndex) {
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, {
-        table_columns: [...(customization.syllabus_sections[sectionIndex].table_columns || []), ''],
-        table_column_groups: [...(customization.syllabus_sections[sectionIndex].table_column_groups || []), ''],
-      })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, {
-      table_columns: [
-        ...(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []),
-        '',
-      ],
-      table_column_groups: [
-        ...(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_column_groups || []),
-        '',
-      ],
-    })
-  }
-
-  function removeTableColumn(sectionIndex, subsectionIndex, columnIndex) {
-    const columns = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex].table_columns || []
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []
-    const nextColumns = columns.filter((_, index) => index !== columnIndex)
-    const groups = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex].table_column_groups || []
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_column_groups || []
-    const table_column_groups = groups.filter((_, index) => index !== columnIndex)
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, { table_columns: nextColumns, table_column_groups })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, { table_columns: nextColumns, table_column_groups })
-  }
-
-  function renderTableColumns(section, sectionIndex, subsectionIndex = null) {
-    const field = subsectionIndex == null
-      ? section
-      : (section.subsections || [])[subsectionIndex]
-    const columns = Array.isArray(field?.table_columns) ? field.table_columns : []
-    return (
-      <Stack spacing={1} sx={{ pl: 2 }}>
-        {columns.map((column, columnIndex) => (
-          <Stack key={columnIndex} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
-            <TextField
-              size="small"
-              label={`Column ${columnIndex + 1} heading`}
-              value={column}
-              onChange={event => updateTableColumn(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-              fullWidth
-            />
-            <TextField
-              size="small"
-              label={`Group heading ${columnIndex + 1} (optional)`}
-              helperText="Repeat the same heading on adjacent columns to merge them."
-              value={field.table_column_groups?.[columnIndex] || ''}
-              onChange={event => updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-              fullWidth
-            />
-            <OutlineBtn small onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)}>Remove</OutlineBtn>
-          </Stack>
-        ))}
-        <OutlineBtn small onClick={() => addTableColumn(sectionIndex, subsectionIndex)}>Add Column</OutlineBtn>
-      </Stack>
-    )
   }
 
   return (
@@ -1191,38 +1003,34 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Syllabus Format / Customization Dialog */}
-      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>University Syllabus Format</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Upload a syllabus example to detect structure and style automatically (parser-first). Review, then Save Format.
-            </div>
-            <div>
-              <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
-                {templateImport.busy ? 'Analyzing template…' : 'Import from syllabus file (PDF/DOCX)'}
-              </OutlineBtn>
-              <input id="syllabus-template-import" hidden type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={e => { importSyllabusTemplate(e.target.files?.[0]); e.target.value = '' }} />
-            </div>
-            {templateImport.message && (
-              <Alert severity={templateImport.severity} onClose={templateImport.busy ? undefined : () => setTemplateImport(current => ({ ...current, message: '' }))}>
-                {templateImport.message}
-              </Alert>
-            )}
-
             <Stack direction="row" spacing={1}>
-              <OutlineBtn small onClick={() => setFormatTab('structure')}
-                style={formatTab === 'structure' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
-                Structure
+              <OutlineBtn small onClick={() => setFormatTab('map')}
+                style={formatTab === 'map' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
+                Click map
               </OutlineBtn>
               <OutlineBtn small onClick={() => setFormatTab('style')}
                 style={formatTab === 'style' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
                 Style & branding
               </OutlineBtn>
             </Stack>
+
+            {formatTab === 'map' && (
+              <SyllabusFormatEditor
+                blocks={customization.syllabus_preview_blocks || []}
+                fieldMap={customization.syllabus_field_map || { sections: [] }}
+                onFieldMapChange={nextMap => setCustomization(current => ({ ...current, syllabus_field_map: nextMap }))}
+                templateName={customization.syllabus_template_name || ''}
+                onUpload={uploadDocxTemplate}
+                uploading={templateImport.busy}
+                uploadMessage={templateImport.message}
+                uploadSeverity={templateImport.severity}
+              />
+            )}
 
             {formatTab === 'style' && (
               <Stack spacing={2}>
@@ -1281,121 +1089,6 @@ export default function AdminAccountManagement() {
               </Stack>
             )}
 
-            {formatTab === 'structure' && (
-              <>
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Syllabus sections</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Sections, subsections and tables detected from the template, or add them yourself.
-            </div>
-            {(customization.syllabus_sections || []).map((section, index) => (
-              <Stack key={`${section.key || section.label || 'section'}-${index}`} spacing={1}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'start' }}>
-                  <TextField size="small" label="Section title" value={section.label || ''} fullWidth
-                    onChange={e => updateSyllabusSection(index, {
-                      label: e.target.value,
-                      // Keep built-in editor keys; otherwise derive the key from the title.
-                      key: BUILTIN_SYLLABUS_EDITORS[section.key] ? section.key : sectionKey(e.target.value),
-                    })} sx={inputSx}
-                    helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
-                      ? `Uses the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
-                      : undefined} />
-                  {section.confidence != null && (
-                    <Typography
-                      component="span"
-                      title="Detection confidence for this section"
-                      sx={{
-                        fontSize: '0.72rem',
-                        fontWeight: 700,
-                        alignSelf: 'center',
-                        px: 1,
-                        py: 0.4,
-                        borderRadius: 1,
-                        whiteSpace: 'nowrap',
-                        color: Number(section.confidence) >= 0.75 ? '#166534' : Number(section.confidence) >= 0.5 ? '#854d0e' : '#991b1b',
-                        bgcolor: Number(section.confidence) >= 0.75 ? 'rgba(22,101,52,0.12)' : Number(section.confidence) >= 0.5 ? 'rgba(133,77,14,0.12)' : 'rgba(153,27,27,0.12)',
-                      }}
-                    >
-                      {Math.round(Number(section.confidence) * 100)}%
-                    </Typography>
-                  )}
-                  <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: current.syllabus_sections.filter((_, i) => i !== index) }))}>Remove</OutlineBtn>
-                </div>
-                <Stack direction="row" spacing={2}>
-                  <FormControlLabel
-                    control={<Switch checked={section.enabled !== false} onChange={e => updateSyllabusSection(index, { enabled: e.target.checked })} />}
-                    label="Show to faculty"
-                  />
-                  <FormControlLabel
-                    control={<Switch checked={Boolean(section.is_static)} onChange={e => updateSyllabusSection(index, { is_static: e.target.checked })} />}
-                    label="Fixed for all"
-                  />
-                </Stack>
-                {section.is_static && (
-                  <TextField size="small" label="Shared fixed content" value={section.static_content || ''} multiline minRows={2}
-                    onChange={e => updateSyllabusSection(index, { static_content: e.target.value })} sx={inputSx} />
-                )}
-                {!section.is_static && (
-                  <Stack spacing={1}>
-                    <FormControlLabel
-                      control={<Switch checked={Boolean(section.table_enabled)} onChange={e => updateSyllabusSection(index, { table_enabled: e.target.checked })} />}
-                      label="Include a table in this section"
-                    />
-                    {section.table_enabled && renderTableColumns(section, index)}
-                  </Stack>
-                )}
-                {!section.is_static && (
-                  <Stack spacing={1} sx={{ pl: 1.5, borderLeft: '2px solid var(--border-color)' }}>
-                    <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Subsections / answer fields</Typography>
-                    {(Array.isArray(section.subsections) ? section.subsections : []).map((subsection, subsectionIndex) => (
-                      <Stack key={subsection.key || subsectionIndex} spacing={1}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <TextField
-                            size="small"
-                            label="Subsection name"
-                            value={subsection.label || ''}
-                            onChange={e => updateSyllabusSubsection(index, subsectionIndex, { label: e.target.value })}
-                            sx={inputSx}
-                            fullWidth
-                          />
-                          <FormControlLabel
-                            control={<Switch checked={Boolean(subsection.required)} onChange={e => updateSyllabusSubsection(index, subsectionIndex, { required: e.target.checked })} />}
-                            label="Required"
-                            sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                          />
-                          <OutlineBtn small onClick={() => removeSyllabusSubsection(index, subsectionIndex)}>Remove</OutlineBtn>
-                        </Stack>
-                        <FormControlLabel
-                          control={<Switch checked={Boolean(subsection.table_enabled)} onChange={e => updateSyllabusSubsection(index, subsectionIndex, { table_enabled: e.target.checked })} />}
-                          label="Use a table for this subsection"
-                        />
-                        {subsection.table_enabled && renderTableColumns(section, index, subsectionIndex)}
-                      </Stack>
-                    ))}
-                    <OutlineBtn small onClick={() => addSyllabusSubsection(index)}>Add Subsection</OutlineBtn>
-                  </Stack>
-                )}
-              </Stack>
-            ))}
-            <OutlineBtn small onClick={() => setCustomization(current => ({
-              ...current,
-              syllabus_sections: [
-                ...(current.syllabus_sections || []),
-                {
-                  key: `section-${(current.syllabus_sections || []).length + 1}`,
-                  label: '',
-                  enabled: true,
-                  is_static: false,
-                  static_content: '',
-                  table_enabled: false,
-                  table_columns: [],
-                  subsections: [],
-                },
-              ],
-            }))}>
-              Add Section
-            </OutlineBtn>
-              </>
-            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>

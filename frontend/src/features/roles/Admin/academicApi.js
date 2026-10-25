@@ -34,20 +34,30 @@ export async function analyzeSyllabusTemplate(file) {
   try {
     const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      // Docling may take up to ~35s then LiteParse finishes; leave headroom.
       timeout: 90000,
     })
     return data
   } catch (err) {
     if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))) {
       const timeoutErr = new Error(
-        'Analysis timed out. The server will fall back to a faster parser on retry — try again, or use a DOCX if you have one.',
+        'Analysis timed out. Prefer Upload DOCX for the click-to-map editor.',
       )
       timeoutErr.response = { data: { detail: timeoutErr.message } }
       throw timeoutErr
     }
     throw err
   }
+}
+
+/** Upload editable DOCX → clickable preview blocks (MVP template-first editor). */
+export async function previewSyllabusTemplate(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const { data } = await api.post('/users/institution-syllabus-template/preview/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  })
+  return data
 }
 
 // Section keys the faculty workspace renders with a dedicated editor.
