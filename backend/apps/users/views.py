@@ -26,7 +26,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.integrations import syllabus_structure
 from apps.integrations.document_processor import DocumentProcessor
-from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -463,6 +463,18 @@ class FacultyCreateView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         profile = serializer.save()
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="faculty_account_created",
+            resource_type="UserProfile",
+            resource_id=profile.user_id,
+            details={
+                "faculty_email": profile.email,
+                "faculty_name": profile.full_name or '',
+                "role": profile.role,
+                "institution_id": str(profile.institution_id) if profile.institution_id else None,
+            },
+        )
         return Response(
             {
                 'detail': 'Faculty account created.',
@@ -787,6 +799,18 @@ class InstitutionManagementView(APIView):
                 institution.subscription_status = 'canceled'
 
         institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name', 'subscription_ends_at'])
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("institution_reactivated" if institution.is_active else "institution_deactivated"),
+                resource_type="Institution",
+                resource_id=institution.institution_id,
+                details={
+                    "institution_name": institution.name,
+                    "is_active": institution.is_active,
+                    "application_status": institution.application_status,
+                },
+            )
         return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
     def delete(self, request, institution_id):
@@ -802,10 +826,23 @@ class InstitutionManagementView(APIView):
         if not institution:
             return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        institution_name = institution.name
+        institution_id_str = str(institution.institution_id)
+
         try:
             result = delete_institution(institution)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="institution_deleted",
+            resource_type="Institution",
+            resource_id=institution_id_str,
+            details={
+                "deleted_institution_name": institution_name,
+                "institution_id": institution_id_str,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -861,6 +898,20 @@ class AccountDetailView(APIView):
             target.email = request.data['email'].strip().lower()
 
         target.save()
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("account_reactivated" if target.is_active else "account_deactivated"),
+                resource_type="UserProfile",
+                resource_id=target.user_id,
+                details={
+                    "account_email": target.email,
+                    "account_name": target.full_name or '',
+                    "role": target.role,
+                    "is_active": target.is_active,
+                    "institution_id": str(target.institution_id) if target.institution_id else None,
+                },
+            )
         return Response(UserAccountSerializer(target).data)
 
     def delete(self, request, user_id):
@@ -890,10 +941,28 @@ class AccountDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        target_email = target.email
+        target_name = target.full_name or ''
+        target_role = target.role
+        target_institution_id = str(target.institution_id) if target.institution_id else None
+
         try:
             result = delete_user_account(target)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="account_deleted",
+            resource_type="UserProfile",
+            resource_id=user_id,
+            details={
+                "deleted_email": target_email,
+                "deleted_name": target_name,
+                "deleted_role": target_role,
+                "institution_deleted": result.get('institution_deleted', False),
+                "institution_id": target_institution_id,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -1035,6 +1104,21 @@ class FacultyAssignmentsView(APIView):
             course=course,
             faculty=faculty,
             section=section,
+        )
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="course_assigned",
+            resource_type="CourseLoad",
+            resource_id=assignment.assignment_id,
+            details={
+                "faculty_id": str(faculty.user_id),
+                "faculty_email": faculty.email,
+                "course_id": str(course.course_id),
+                "course_code": course.course_code,
+                "course_title": course.course_title,
+                "section_id": str(section.section_id),
+                "section": section.section_name,
+            },
         )
         return Response({
             'assignment_id': str(assignment.assignment_id),
