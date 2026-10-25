@@ -75,6 +75,7 @@ class InstitutionCustomization(models.Model):
     syllabus_template_name = models.CharField(max_length=255, blank=True, default='')
     syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
+    syllabus_style_profile = models.JSONField(default=dict, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

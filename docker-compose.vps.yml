@@ -1,6 +1,7 @@
 # Hostinger KVM 2 production stack.
 # Postgres stays on Supabase (set DB_* in .env).
-# Ollama runs on the VPS for local LLM fallback — not on your laptop.
+# Ollama runs on the VPS for optional local LLM polish — not on your laptop.
+# Syllabus format extraction is parser-first (Docling/LiteParse); refine defaults off.
 #
 # Usage:
 #   cp backend/.env.example backend/.env   # fill secrets on the server

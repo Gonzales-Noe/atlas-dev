@@ -56,6 +56,10 @@ export default function AdminSetupWizard({ open, onFinished }) {
   const [notice, setNotice] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [sections, setSections] = useState([])
+  const [styleProfile, setStyleProfile] = useState({})
+  const [brandingDraft, setBrandingDraft] = useState({
+    header_text: '', footer_text: '', header_image_url: '', footer_image_url: '',
+  })
   const [manualSection, setManualSection] = useState('')
   const [facultyForm, setFacultyForm] = useState({ full_name: '', email: '', password: '' })
   const [assignmentGroups, setAssignmentGroups] = useState([EMPTY_ASSIGNMENT()])
@@ -78,6 +82,15 @@ export default function AdminSetupWizard({ open, onFinished }) {
         : []
       setTemplateName(customization.syllabus_template_name || '')
       setSections(savedSections)
+      setStyleProfile(customization.syllabus_style_profile && typeof customization.syllabus_style_profile === 'object'
+        ? customization.syllabus_style_profile
+        : {})
+      setBrandingDraft({
+        header_text: customization.header_text || '',
+        footer_text: customization.footer_text || '',
+        header_image_url: customization.header_image_url || '',
+        footer_image_url: customization.footer_image_url || '',
+      })
       const assignedFacultyIds = new Set((assignmentsData.assignments || []).map(item => item.faculty_id))
       const existingCount = (assignmentsData.faculty || []).filter(faculty => assignedFacultyIds.has(faculty.user_id)).length
       setHasAssignedFaculty(existingCount > 0)
@@ -265,6 +278,16 @@ export default function AdminSetupWizard({ open, onFinished }) {
     try {
       const result = await analyzeSyllabusTemplate(file)
       setTemplateName(result.template_name || file.name)
+      const branding = result.branding_suggestions || {}
+      if (result.style_profile && typeof result.style_profile === 'object') {
+        setStyleProfile(result.style_profile)
+      }
+      setBrandingDraft(current => ({
+        header_text: current.header_text || branding.header_text || '',
+        footer_text: current.footer_text || branding.footer_text || '',
+        header_image_url: current.header_image_url || branding.header_image_url || '',
+        footer_image_url: current.footer_image_url || branding.footer_image_url || '',
+      }))
       if (Array.isArray(result.sections) && result.sections.length) {
         setSections(result.sections)
         setNotice(describeDetectedStructure(result))
@@ -365,6 +388,8 @@ export default function AdminSetupWizard({ open, onFinished }) {
       await saveInstitutionCustomization({
         syllabus_template_name: templateName,
         syllabus_sections: enabledSections,
+        syllabus_style_profile: styleProfile || {},
+        ...brandingDraft,
       })
       setSections(enabledSections)
       setActiveStep(1)

@@ -27,11 +27,11 @@ except ImportError:
     SemanticChunker = None
 
 try:
-    import fitz  # PyMuPDF – header-aware PDF extraction
+    import pymupdf  # PyMuPDF – header-aware PDF extraction
     PYMUPDF_AVAILABLE = True
 except ImportError:
     PYMUPDF_AVAILABLE = False
-    fitz = None
+    pymupdf = None
 
 try:
     from liteparse import LiteParse  # PDFium-based PDF → Markdown (tables + headings)
@@ -235,7 +235,7 @@ class DocumentProcessor:
             else:
                 file_obj.seek(0)
                 data = file_obj.read()
-            doc = fitz.open(stream=data, filetype="pdf")
+            doc = pymupdf.open(stream=data, filetype="pdf")
 
             # ── Pass 1: collect all font sizes to find the median body size ───
             all_sizes = []

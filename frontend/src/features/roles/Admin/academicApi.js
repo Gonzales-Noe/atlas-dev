@@ -56,8 +56,19 @@ export function describeDetectedStructure(result) {
     0,
   )
   const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
-  const method = result?.source === 'ai' ? 'AI-assisted' : 'heading-based'
-  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} (${method}). Review them before saving.`
+  const parser = result?.structure_source === 'docling_tree'
+    ? 'Docling tree'
+    : (result?.parser === 'docling' ? 'Docling' : 'heading outline')
+  const llm = result?.llm_provider && result.llm_provider !== 'none'
+    ? ` + ${result.llm_provider} polish`
+    : ''
+  const structureConfidence = result?.confidence?.sections
+  const styleConfidence = result?.confidence?.style
+  const confNote = [
+    structureConfidence != null ? `structure ${Math.round(Number(structureConfidence) * 100)}%` : null,
+    styleConfidence != null ? `style ${Math.round(Number(styleConfidence) * 100)}%` : null,
+  ].filter(Boolean).join(', ')
+  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} via ${parser}${llm}${confNote ? ` (${confNote})` : ''}. Review before saving.`
 }
 
 export async function createFacultyWithAssignments(payload) {
