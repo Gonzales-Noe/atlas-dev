@@ -1,10 +1,11 @@
-// Split editor: left = clickable DOCX preview, right = sections list.
-// Flow: click a block → add/select section → click again → place content region.
+// Exact-file click map: left = real DOCX/PDF/Excel, right = recorded sections.
+// Every click is highlighted on the document and appended to click_log.
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { Alert, Stack, TextField, Typography, FormControlLabel, Switch } from '@mui/material'
 import { OutlineBtn } from '../../../components/ui'
 import { BUILTIN_SYLLABUS_EDITORS } from './academicApi'
+import SyllabusDocumentPreview from './SyllabusDocumentPreview'
 
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
@@ -29,22 +30,39 @@ function regionRole(fieldMap, blockId) {
   return null
 }
 
+function appendClickLog(fieldMap, block, role) {
+  const prev = Array.isArray(fieldMap?.click_log) ? fieldMap.click_log : []
+  return [
+    ...prev,
+    {
+      id: block.id,
+      text: String(block.text || '').slice(0, 200),
+      role,
+      at: new Date().toISOString(),
+    },
+  ].slice(-200)
+}
+
 export default function SyllabusFormatEditor({
   blocks,
   fieldMap,
   onFieldMapChange,
   templateName,
+  templateFileUrl,
+  fileType,
+  localFile,
   onUpload,
   uploading,
   uploadMessage,
   uploadSeverity,
 }) {
-  const [clickMode, setClickMode] = useState('section') // section | content | subsection | subsection_content
+  const [clickMode, setClickMode] = useState('section')
   const [selectedKey, setSelectedKey] = useState('')
   const [selectedSubKey, setSelectedSubKey] = useState('')
-  const [hint, setHint] = useState('Click a heading or block on the left to add it as a section.')
+  const [hint, setHint] = useState('Click text on your uploaded file to add it as a section.')
 
   const sections = fieldMap?.sections || []
+  const clickLog = Array.isArray(fieldMap?.click_log) ? fieldMap.click_log : []
   const selectedSection = sections.find(s => s.key === selectedKey) || null
   const selectedSubsection = (selectedSection?.subsections || []).find(s => s.key === selectedSubKey) || null
 
@@ -61,11 +79,45 @@ export default function SyllabusFormatEditor({
     return ids
   }, [sections])
 
-  function updateSections(nextSections) {
-    onFieldMapChange({ ...(fieldMap || {}), version: 1, sections: nextSections })
+  const selectedIds = useMemo(() => {
+    const ids = new Set()
+    if (selectedSection?.title_region_id) ids.add(selectedSection.title_region_id)
+    if (selectedSection?.content_region_id) ids.add(selectedSection.content_region_id)
+    if (selectedSubsection?.title_region_id) ids.add(selectedSubsection.title_region_id)
+    if (selectedSubsection?.content_region_id) ids.add(selectedSubsection.content_region_id)
+    return ids
+  }, [selectedSection, selectedSubsection])
+
+  const roleById = useMemo(() => {
+    const map = new Map()
+    for (const section of sections) {
+      if (section.title_region_id) map.set(section.title_region_id, 'title')
+      if (section.content_region_id) map.set(section.content_region_id, 'content')
+      for (const sub of section.subsections || []) {
+        if (sub.title_region_id) map.set(sub.title_region_id, 'title')
+        if (sub.content_region_id) map.set(sub.content_region_id, 'content')
+      }
+    }
+    return map
+  }, [sections])
+
+  function commitMap(nextSections, nextClickLog) {
+    onFieldMapChange({
+      ...(fieldMap || {}),
+      version: 1,
+      sections: nextSections,
+      click_log: nextClickLog ?? fieldMap?.click_log ?? [],
+    })
   }
 
-  function handleBlockClick(block) {
+  function updateSections(nextSections, clickMeta) {
+    const log = clickMeta
+      ? appendClickLog({ ...fieldMap, click_log: fieldMap?.click_log }, clickMeta.block, clickMeta.role)
+      : fieldMap?.click_log
+    commitMap(nextSections, log)
+  }
+
+  const handleBlockClick = useCallback(block => {
     if (!block?.id) return
     const existing = regionRole(fieldMap, block.id)
 
@@ -78,7 +130,7 @@ export default function SyllabusFormatEditor({
         return
       }
       if (existing) {
-        setHint('That block is already mapped. Select a free block, or choose a section on the right.')
+        setHint('That spot is already mapped. Click a free area, or select a section on the right.')
         return
       }
       const label = (block.text || 'Section').split('\n')[0].slice(0, 120)
@@ -100,13 +152,14 @@ export default function SyllabusFormatEditor({
         subsections: [],
         title_region_id: block.id,
         content_region_id: '',
+        working_content_region_id: '',
         editor: null,
       }
-      updateSections([...sections, next])
+      updateSections([...sections, next], { block, role: 'title' })
       setSelectedKey(key)
       setSelectedSubKey('')
       setClickMode('content')
-      setHint(`Added “${label}”. Now click the area on the left where faculty content for this section should go.`)
+      setHint(`Recorded “${label}”. Click where faculty content for this section should go.`)
       return
     }
 
@@ -118,10 +171,10 @@ export default function SyllabusFormatEditor({
       }
       if (existing && !(existing.section.key === selectedKey && existing.role === 'content' && !existing.subsection)) {
         if (block.id === selectedSection.title_region_id) {
-          setHint('Pick a different block for content (not the section title).')
+          setHint('Pick a different area for content (not the section title).')
           return
         }
-        setHint('That block is already used. Click an unmapped block for content placement.')
+        setHint('That spot is already used. Click an unmapped area for content.')
         return
       }
       updateSections(sections.map(section => (
@@ -129,15 +182,16 @@ export default function SyllabusFormatEditor({
           ? {
               ...section,
               content_region_id: block.id,
+              working_content_region_id: block.working_region_id || '',
               table_enabled: block.kind === 'table' ? true : section.table_enabled,
               table_columns: block.kind === 'table' && Array.isArray(block.rows?.[0])
                 ? block.rows[0]
                 : section.table_columns,
             }
           : section
-      )))
+      )), { block, role: 'content' })
       setClickMode('section')
-      setHint(`Content for “${selectedSection.label}” placed. Click another block to add the next section.`)
+      setHint(`Content for “${selectedSection.label}” recorded. Click another heading to add the next section.`)
       return
     }
 
@@ -154,7 +208,7 @@ export default function SyllabusFormatEditor({
           setHint(`Selected subsection “${existing.subsection.label}”. Click where its content goes.`)
           return
         }
-        setHint('That block is already mapped.')
+        setHint('That spot is already mapped.')
         return
       }
       const label = (block.text || 'Subsection').split('\n')[0].slice(0, 120)
@@ -174,15 +228,16 @@ export default function SyllabusFormatEditor({
         table_columns: block.kind === 'table' && Array.isArray(block.rows?.[0]) ? block.rows[0] : [],
         title_region_id: block.id,
         content_region_id: '',
+        working_content_region_id: '',
       }
       updateSections(sections.map(section => (
         section.key === selectedKey
           ? { ...section, subsections: [...subs, nextSub] }
           : section
-      )))
+      )), { block, role: 'subsection_title' })
       setSelectedSubKey(key)
       setClickMode('subsection_content')
-      setHint(`Added subsection “${label}”. Now click where its content should be written.`)
+      setHint(`Recorded subsection “${label}”. Now click where its content should be written.`)
       return
     }
 
@@ -192,7 +247,7 @@ export default function SyllabusFormatEditor({
         return
       }
       if (existing && !(existing.subsection?.key === selectedSubKey && existing.role === 'content')) {
-        setHint('That block is already used. Click an unmapped block for subsection content.')
+        setHint('That spot is already used. Click an unmapped area for subsection content.')
         return
       }
       updateSections(sections.map(section => {
@@ -204,6 +259,7 @@ export default function SyllabusFormatEditor({
               ? {
                   ...sub,
                   content_region_id: block.id,
+                  working_content_region_id: block.working_region_id || '',
                   table_enabled: block.kind === 'table' ? true : sub.table_enabled,
                   table_columns: block.kind === 'table' && Array.isArray(block.rows?.[0])
                     ? block.rows[0]
@@ -212,11 +268,12 @@ export default function SyllabusFormatEditor({
               : sub
           )),
         }
-      }))
+      }), { block, role: 'subsection_content' })
       setClickMode('subsection')
-      setHint(`Content for subsection “${selectedSubsection.label}” placed. Click to add another subsection, or switch to Section mode.`)
+      setHint(`Content for subsection “${selectedSubsection.label}” recorded.`)
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: uses latest sections/fieldMap from closure each click
+  }, [clickMode, fieldMap, sections, selectedKey, selectedSection, selectedSubKey, selectedSubsection])
 
   function updateSelectedSection(changes) {
     if (!selectedKey) return
@@ -229,7 +286,7 @@ export default function SyllabusFormatEditor({
     setSelectedKey('')
     setSelectedSubKey('')
     setClickMode('section')
-    setHint('Section removed. Click a block to add another.')
+    setHint('Section removed. Click the document to add another.')
   }
 
   function removeSelectedSubsection() {
@@ -244,22 +301,22 @@ export default function SyllabusFormatEditor({
   }
 
   const modeLabel = {
-    section: 'Click preview → add section',
-    content: 'Click preview → place section content',
-    subsection: 'Click preview → add subsection',
-    subsection_content: 'Click preview → place subsection content',
+    section: 'Click document → add / select section',
+    content: 'Click document → place section content',
+    subsection: 'Click document → add subsection',
+    subsection_content: 'Click document → place subsection content',
   }[clickMode]
 
   return (
     <Stack spacing={1.5} sx={{ minHeight: 420 }}>
       <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-        Upload a syllabus sample (.docx preferred; .pdf and .xlsx are converted to an editable DOCX).
-        Click blocks on the left to add sections, then click again to place where content is written on export.
+        Upload your syllabus sample. The exact DOCX, PDF, or Excel file is shown on the left —
+        every click is highlighted and recorded on the right.
       </Typography>
 
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
         <OutlineBtn small disabled={uploading} onClick={() => document.getElementById('syllabus-docx-preview-input')?.click()}>
-          {uploading ? 'Loading template…' : (templateName ? 'Replace template' : 'Upload template (DOCX / PDF / Excel)')}
+          {uploading ? 'Loading template…' : (templateName ? 'Replace file' : 'Upload DOCX / PDF / Excel')}
         </OutlineBtn>
         <input
           id="syllabus-docx-preview-input"
@@ -269,7 +326,7 @@ export default function SyllabusFormatEditor({
           onChange={e => { onUpload(e.target.files?.[0]); e.target.value = '' }}
         />
         {templateName && (
-          <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Template: {templateName}</Typography>
+          <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>File: {templateName}</Typography>
         )}
       </Stack>
 
@@ -278,11 +335,11 @@ export default function SyllabusFormatEditor({
       )}
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-        <OutlineBtn small onClick={() => { setClickMode('section'); setHint('Click a block to add or select a section.') }}
+        <OutlineBtn small onClick={() => { setClickMode('section'); setHint('Click text on the file to add or select a section.') }}
           style={clickMode === 'section' || clickMode === 'content' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
           Section mode
         </OutlineBtn>
-        <OutlineBtn small disabled={!selectedSection} onClick={() => { setClickMode('subsection'); setHint('Click a block to add a subsection under the selected section.') }}
+        <OutlineBtn small disabled={!selectedSection} onClick={() => { setClickMode('subsection'); setHint('Click text to add a subsection under the selected section.') }}
           style={clickMode === 'subsection' || clickMode === 'subsection_content' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
           Subsection mode
         </OutlineBtn>
@@ -295,78 +352,34 @@ export default function SyllabusFormatEditor({
       <Typography sx={{ fontSize: '0.75rem', color: 'var(--accent)', fontWeight: 600 }}>{modeLabel}</Typography>
       <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{hint}</Typography>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 12, minHeight: 360 }}>
-        {/* LEFT: preview */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.35fr 1fr', gap: 12, minHeight: 360 }}>
         <div style={{
-          border: '1px solid var(--border-color)', borderRadius: 8, padding: 12,
-          overflow: 'auto', maxHeight: 480, background: 'var(--bg-secondary, rgba(255,255,255,0.02))',
+          border: '1px solid var(--border-color)', borderRadius: 8, padding: 8,
+          overflow: 'auto', maxHeight: 520, background: 'var(--bg-secondary, rgba(255,255,255,0.02))',
         }}>
-          {!blocks?.length && (
-            <Typography sx={{ fontSize: '0.85rem', color: 'var(--text-tertiary)' }}>
-              Upload a .docx to see the clickable preview.
-            </Typography>
-          )}
-          {(blocks || []).map(block => {
-            const mapped = mappedIds.has(block.id)
-            const role = regionRole(fieldMap, block.id)
-            const isTitle = role?.role === 'title'
-            const isContent = role?.role === 'content'
-            const isSelectedTitle = selectedSection?.title_region_id === block.id
-              || selectedSubsection?.title_region_id === block.id
-            const isSelectedContent = selectedSection?.content_region_id === block.id
-              || selectedSubsection?.content_region_id === block.id
-            return (
-              <button
-                key={block.id}
-                type="button"
-                onClick={() => handleBlockClick(block)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  textAlign: 'left',
-                  marginBottom: 6,
-                  padding: '8px 10px',
-                  borderRadius: 6,
-                  cursor: 'pointer',
-                  border: isSelectedTitle || isSelectedContent
-                    ? '1px solid var(--accent)'
-                    : mapped
-                      ? '1px solid rgba(134,239,172,0.45)'
-                      : '1px solid transparent',
-                  background: isSelectedContent
-                    ? 'rgba(134,239,172,0.18)'
-                    : isSelectedTitle
-                      ? 'rgba(96,165,250,0.18)'
-                      : isContent
-                        ? 'rgba(134,239,172,0.08)'
-                        : isTitle
-                          ? 'rgba(96,165,250,0.08)'
-                          : 'transparent',
-                  color: 'var(--text-primary)',
-                  fontWeight: block.kind === 'heading' ? 700 : 400,
-                  fontSize: block.kind === 'heading' ? (block.level <= 1 ? '1rem' : '0.9rem') : '0.82rem',
-                }}
-              >
-                <span style={{ opacity: 0.45, fontSize: '0.68rem', marginRight: 6 }}>{block.id}</span>
-                {isTitle && <span style={{ fontSize: '0.65rem', color: '#93c5fd', marginRight: 6 }}>TITLE</span>}
-                {isContent && <span style={{ fontSize: '0.65rem', color: '#86efac', marginRight: 6 }}>CONTENT</span>}
-                {block.kind === 'table' ? `Table: ${block.text}` : block.text}
-              </button>
-            )
-          })}
+          <SyllabusDocumentPreview
+            fileUrl={templateFileUrl}
+            fileType={fileType}
+            templateName={templateName}
+            localFile={localFile}
+            blocks={blocks}
+            mappedIds={mappedIds}
+            selectedIds={selectedIds}
+            roleById={roleById}
+            onBlockClick={handleBlockClick}
+          />
         </div>
 
-        {/* RIGHT: list */}
         <div style={{
           border: '1px solid var(--border-color)', borderRadius: 8, padding: 12,
-          overflow: 'auto', maxHeight: 480,
+          overflow: 'auto', maxHeight: 520,
         }}>
-          <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-primary)', mb: 1 }}>
-            Sections ({sections.length})
+          <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', mb: 1 }}>
+            RECORDED SECTIONS ({sections.length})
           </Typography>
           {!sections.length && (
             <Typography sx={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-              Nothing listed yet — click the preview.
+              Nothing recorded yet. Click headings or cells on the left.
             </Typography>
           )}
           <Stack spacing={1}>
@@ -382,95 +395,118 @@ export default function SyllabusFormatEditor({
                     setSelectedSubKey('')
                     setClickMode(section.content_region_id ? 'section' : 'content')
                     setHint(section.content_region_id
-                      ? `Selected “${section.label}”. Use Subsection mode or Place content to remap.`
-                      : `Selected “${section.label}”. Click the preview to place its content.`)
+                      ? `Selected “${section.label}”.`
+                      : `Selected “${section.label}”. Click the document to place content.`)
                   }}
-                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.click() }}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedKey(section.key)
+                    }
+                  }}
                   style={{
-                    padding: 8,
-                    borderRadius: 6,
+                    padding: 10,
+                    borderRadius: 8,
                     border: active ? '1px solid var(--accent)' : '1px solid var(--border-color)',
                     background: active ? 'rgba(134,239,172,0.08)' : 'transparent',
                     cursor: 'pointer',
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--text-primary)' }}>{section.label}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
-                    title: {section.title_region_id || '—'} · content: {section.content_region_id || 'not placed'}
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.88rem' }}>{section.label}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: 4 }}>
+                    Title {section.title_region_id ? '✓' : '—'} · Content {section.content_region_id ? '✓' : 'needed'}
+                    {(section.subsections || []).length ? ` · ${(section.subsections || []).length} subsection(s)` : ''}
                   </div>
-                  {(section.subsections || []).map(sub => (
-                    <div
-                      key={sub.key}
-                      style={{
-                        marginTop: 4, marginLeft: 8, fontSize: '0.78rem',
-                        color: selectedSubKey === sub.key ? 'var(--accent)' : 'var(--text-secondary)',
-                      }}
-                      onClick={e => {
-                        e.stopPropagation()
-                        setSelectedKey(section.key)
-                        setSelectedSubKey(sub.key)
-                        setClickMode(sub.content_region_id ? 'subsection' : 'subsection_content')
-                      }}
-                    >
-                      · {sub.label}
-                      <span style={{ opacity: 0.6 }}> ({sub.content_region_id || 'no content place'})</span>
+                  {BUILTIN_SYLLABUS_EDITORS[section.key] && (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                      Built-in editor: {BUILTIN_SYLLABUS_EDITORS[section.key]}
                     </div>
-                  ))}
+                  )}
+                  {active && (
+                    <Stack spacing={1} sx={{ mt: 1 }} onClick={event => event.stopPropagation()}>
+                      <TextField
+                        size="small"
+                        label="Section name"
+                        value={section.label}
+                        onChange={event => updateSelectedSection({
+                          label: event.target.value,
+                          key: BUILTIN_SYLLABUS_EDITORS[section.key] ? section.key : slug(event.target.value) || section.key,
+                        })}
+                        sx={inputSx}
+                        fullWidth
+                      />
+                      <FormControlLabel
+                        control={<Switch checked={section.enabled !== false} onChange={event => updateSelectedSection({ enabled: event.target.checked })} size="small" />}
+                        label="Show to faculty"
+                        sx={{ color: 'var(--text-secondary)' }}
+                      />
+                      <FormControlLabel
+                        control={<Switch checked={Boolean(section.is_static)} onChange={event => updateSelectedSection({ is_static: event.target.checked })} size="small" />}
+                        label="Fixed for all"
+                        sx={{ color: 'var(--text-secondary)' }}
+                      />
+                      {section.is_static && (
+                        <TextField
+                          size="small"
+                          label="Fixed content"
+                          value={section.static_content || ''}
+                          onChange={event => updateSelectedSection({ static_content: event.target.value })}
+                          multiline
+                          minRows={2}
+                          sx={inputSx}
+                          fullWidth
+                        />
+                      )}
+                      {(section.subsections || []).map(sub => (
+                        <div
+                          key={sub.key}
+                          style={{
+                            marginLeft: 8,
+                            padding: 8,
+                            borderLeft: '2px solid var(--border-color)',
+                            background: sub.key === selectedSubKey ? 'rgba(96,165,250,0.1)' : 'transparent',
+                          }}
+                          onClick={() => {
+                            setSelectedSubKey(sub.key)
+                            setClickMode(sub.content_region_id ? 'subsection' : 'subsection_content')
+                          }}
+                        >
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>{sub.label}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>
+                            Title {sub.title_region_id ? '✓' : '—'} · Content {sub.content_region_id ? '✓' : 'needed'}
+                          </div>
+                        </div>
+                      ))}
+                      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                        <OutlineBtn small onClick={() => { setClickMode('subsection'); setHint('Click the document to add a subsection.') }}>
+                          Add subsection
+                        </OutlineBtn>
+                        {selectedSubKey && (
+                          <OutlineBtn small onClick={removeSelectedSubsection}>Remove subsection</OutlineBtn>
+                        )}
+                        <OutlineBtn small onClick={removeSelectedSection}>Remove section</OutlineBtn>
+                      </Stack>
+                    </Stack>
+                  )}
                 </div>
               )
             })}
           </Stack>
 
-          {selectedSection && (
-            <Stack spacing={1} sx={{ mt: 2, pt: 1.5, borderTop: '1px solid var(--border-color)' }}>
-              <TextField
-                size="small"
-                label="Section title"
-                value={selectedSection.label || ''}
-                onChange={e => updateSelectedSection({
-                  label: e.target.value,
-                  key: BUILTIN_SYLLABUS_EDITORS[selectedSection.key]
-                    ? selectedSection.key
-                    : (slug(e.target.value) || selectedSection.key),
-                })}
-                sx={inputSx}
-                fullWidth
-              />
-              <FormControlLabel
-                control={<Switch checked={selectedSection.enabled !== false} onChange={e => updateSelectedSection({ enabled: e.target.checked })} />}
-                label="Show to faculty"
-                sx={{ color: 'var(--text-secondary)' }}
-              />
-              <FormControlLabel
-                control={<Switch checked={Boolean(selectedSection.is_static)} onChange={e => updateSelectedSection({ is_static: e.target.checked })} />}
-                label="Fixed for all"
-                sx={{ color: 'var(--text-secondary)' }}
-              />
-              <TextField
-                select
-                size="small"
-                label="Built-in editor (optional)"
-                value={BUILTIN_SYLLABUS_EDITORS[selectedSection.key] ? selectedSection.key : ''}
-                onChange={e => {
-                  const editor = e.target.value
-                  if (!editor) return
-                  updateSelectedSection({ key: editor, editor })
-                  setSelectedKey(editor)
-                }}
-                sx={inputSx}
-                SelectProps={{ native: true }}
-              >
-                <option value="">Custom / none</option>
-                {Object.entries(BUILTIN_SYLLABUS_EDITORS).map(([key, label]) => (
-                  <option key={key} value={key}>{label}</option>
+          {!!clickLog.length && (
+            <Stack spacing={0.5} sx={{ mt: 2 }}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-tertiary)' }}>
+                CLICK LOG ({clickLog.length})
+              </Typography>
+              <div style={{ maxHeight: 120, overflow: 'auto' }}>
+                {[...clickLog].reverse().slice(0, 30).map((entry, index) => (
+                  <div key={`${entry.id}-${entry.at}-${index}`} style={{ fontSize: '0.7rem', color: 'var(--text-secondary)', padding: '2px 0' }}>
+                    <span style={{ color: 'var(--accent)' }}>{entry.role || 'click'}</span>
+                    {' · '}
+                    {(entry.text || entry.id || '').slice(0, 80)}
+                  </div>
                 ))}
-              </TextField>
-              <Stack direction="row" spacing={1}>
-                <OutlineBtn small onClick={removeSelectedSection}>Remove section</OutlineBtn>
-                {selectedSubsection && (
-                  <OutlineBtn small onClick={removeSelectedSubsection}>Remove subsection</OutlineBtn>
-                )}
-              </Stack>
+              </div>
             </Stack>
           )}
         </div>
@@ -478,5 +514,3 @@ export default function SyllabusFormatEditor({
     </Stack>
   )
 }
-
-export { SyllabusFormatEditor }

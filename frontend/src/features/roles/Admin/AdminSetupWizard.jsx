@@ -50,8 +50,11 @@ export default function AdminSetupWizard({ open, onFinished }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [templateName, setTemplateName] = useState('')
+  const [templateFileUrl, setTemplateFileUrl] = useState('')
+  const [templateFileType, setTemplateFileType] = useState('')
+  const [templateLocalFile, setTemplateLocalFile] = useState(null)
   const [previewBlocks, setPreviewBlocks] = useState([])
-  const [fieldMap, setFieldMap] = useState({ sections: [], version: 1 })
+  const [fieldMap, setFieldMap] = useState({ sections: [], click_log: [], version: 1 })
   const [templateUploadMsg, setTemplateUploadMsg] = useState({ message: '', severity: 'info' })
   const [styleProfile, setStyleProfile] = useState({})
   const [brandingDraft, setBrandingDraft] = useState({
@@ -74,10 +77,13 @@ export default function AdminSetupWizard({ open, onFinished }) {
         fetchFacultyAssignments(),
       ])
       setTemplateName(customization.syllabus_template_name || '')
+      setTemplateFileUrl(customization.syllabus_template_url || '')
+      setTemplateFileType(customization.syllabus_template_kind || '')
+      setTemplateLocalFile(null)
       setPreviewBlocks(Array.isArray(customization.syllabus_preview_blocks) ? customization.syllabus_preview_blocks : [])
       setFieldMap(customization.syllabus_field_map && typeof customization.syllabus_field_map === 'object'
         ? customization.syllabus_field_map
-        : { sections: [], version: 1 })
+        : { sections: [], click_log: [], version: 1 })
       setStyleProfile(customization.syllabus_style_profile && typeof customization.syllabus_style_profile === 'object'
         ? customization.syllabus_style_profile
         : {})
@@ -127,23 +133,26 @@ export default function AdminSetupWizard({ open, onFinished }) {
 
   async function handleTemplateUpload(file) {
     if (!file) return
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
     setSaving(true)
     setError('')
     setNotice('')
-    setTemplateUploadMsg({ message: 'Loading template preview…', severity: 'info' })
+    setTemplateLocalFile(file)
+    setTemplateUploadMsg({ message: `Loading your ${ext.toUpperCase() || 'file'}…`, severity: 'info' })
     try {
       const result = await previewSyllabusTemplate(file)
       setTemplateName(result.template_name || file.name)
+      setTemplateFileType(result.file_type || ext)
+      setTemplateFileUrl(result.template_file_url || '/api/users/institution-syllabus-template/file/')
       setPreviewBlocks(Array.isArray(result.blocks) ? result.blocks : [])
-      setFieldMap(result.field_map || { sections: [], version: 1 })
+      setFieldMap(result.field_map || { sections: [], click_log: [], version: 1 })
       setTemplateUploadMsg({
-        message: result.detail || `Loaded ${result.block_count || 0} blocks. Click to map sections.`,
-        severity: result.converted ? 'warning' : 'success',
+        message: result.detail || `Exact file loaded (${result.block_count || 0} clickable regions).`,
+        severity: 'success',
       })
-      setNotice(result.converted
-        ? 'File converted to editable DOCX. Click sections, then place content areas.'
-        : 'Template loaded. Click blocks to build your section list.')
+      setNotice('Exact file loaded. Click text on the left to record sections.')
     } catch (err) {
+      setTemplateLocalFile(null)
       setError(toMessage(err, 'Could not load the syllabus template.'))
       setTemplateUploadMsg({ message: '', severity: 'info' })
     } finally {
@@ -335,6 +344,9 @@ export default function AdminSetupWizard({ open, onFinished }) {
                   fieldMap={fieldMap}
                   onFieldMapChange={setFieldMap}
                   templateName={templateName}
+                  templateFileUrl={templateFileUrl}
+                  fileType={templateFileType}
+                  localFile={templateLocalFile}
                   onUpload={handleTemplateUpload}
                   uploading={saving}
                   uploadMessage={templateUploadMsg.message}

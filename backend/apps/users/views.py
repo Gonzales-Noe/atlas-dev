@@ -16,6 +16,7 @@ from django.core import signing
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import transaction
+from django.http import HttpResponse
 
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
@@ -1095,22 +1096,29 @@ class InstitutionCustomizationView(APIView):
                 'header_text': '',
                 'footer_text': '',
                 'syllabus_template_name': '',
+                'syllabus_template_kind': '',
+                'syllabus_template_url': '',
                 'syllabus_sections': [],
                 'syllabus_style_profile': {},
-                'syllabus_field_map': {'sections': []},
+                'syllabus_field_map': {'sections': [], 'click_log': []},
                 'syllabus_preview_blocks': [],
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
+        has_file = bool(customization.syllabus_template)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,
             'header_text': customization.header_text,
             'footer_text': customization.footer_text,
             'syllabus_template_name': customization.syllabus_template_name,
+            'syllabus_template_kind': customization.syllabus_template_kind or '',
+            'syllabus_template_url': (
+                '/api/users/institution-syllabus-template/file/' if has_file else ''
+            ),
             'syllabus_sections': customization.syllabus_sections,
             'syllabus_style_profile': customization.syllabus_style_profile or {},
-            'syllabus_field_map': customization.syllabus_field_map or {'sections': []},
+            'syllabus_field_map': customization.syllabus_field_map or {'sections': [], 'click_log': []},
             'syllabus_preview_blocks': customization.syllabus_preview_blocks or [],
             'field_labels': customization.field_labels,
         })
@@ -1145,8 +1153,8 @@ class InstitutionCustomizationView(APIView):
 
 class SyllabusTemplatePreviewView(APIView):
     """
-    Upload a syllabus sample (DOCX preferred; PDF/XLSX auto-converted to DOCX),
-    store the editable DOCX, and return clickable preview blocks.
+    Upload the exact syllabus sample (DOCX / PDF / Excel), store it as-is,
+    and return native click targets for the real-document preview.
     """
 
     def post(self, request):
@@ -1169,7 +1177,6 @@ class SyllabusTemplatePreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Size/type checks for pdf/docx via DocumentProcessor; xlsx checked lightly here.
         if file_type in {'pdf', 'docx'}:
             is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
             if not is_valid:
@@ -1179,40 +1186,35 @@ class SyllabusTemplatePreviewView(APIView):
             if uploaded_file.size and uploaded_file.size > max_bytes:
                 return Response({'detail': 'File is too large.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        conversion_note = ''
         try:
             uploaded_file.seek(0)
-            docx_bytes, conversion_note = syllabus_template_doc.normalize_upload_to_docx(
-                uploaded_file, file_type,
-            )
-            preview = syllabus_template_doc.extract_docx_preview(BytesIO(docx_bytes))
+            built = syllabus_template_doc.build_exact_preview(uploaded_file, file_type)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             logger.exception('Could not build syllabus preview for %s', uploaded_file.name)
             return Response(
-                {'detail': 'Could not read that file. Try a .docx, or re-export the PDF/Excel and upload again.'},
+                {'detail': 'Could not read that file. Try a .docx, .pdf, or .xlsx and upload again.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if not preview.get('blocks'):
-            return Response(
-                {'detail': 'No readable paragraphs or tables were found after conversion.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Always persist an editable .docx (converted when needed).
-        stem = uploaded_file.name.rsplit('.', 1)[0][:200] or 'syllabus_template'
-        stored_name = f'{stem}.docx'
+        original_name = uploaded_file.name[:255]
         try:
             customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
-            customization.syllabus_template.save(stored_name, ContentFile(docx_bytes), save=False)
-            customization.syllabus_template_name = uploaded_file.name[:255]
-            customization.syllabus_preview_blocks = preview['blocks']
-            customization.syllabus_field_map = {'sections': [], 'version': 1}
+            customization.syllabus_template.save(original_name, ContentFile(built['original_bytes']), save=False)
+            stem = original_name.rsplit('.', 1)[0][:200] or 'syllabus_template'
+            customization.syllabus_working_docx.save(
+                f'{stem}.docx',
+                ContentFile(built['working_docx_bytes']),
+                save=False,
+            )
+            customization.syllabus_template_name = original_name
+            customization.syllabus_template_kind = built['kind']
+            customization.syllabus_preview_blocks = built['blocks']
+            customization.syllabus_field_map = {'sections': [], 'click_log': [], 'version': 1}
             customization.save(update_fields=[
-                'syllabus_template', 'syllabus_template_name',
-                'syllabus_preview_blocks', 'syllabus_field_map', 'updated_at',
+                'syllabus_template', 'syllabus_working_docx', 'syllabus_template_name',
+                'syllabus_template_kind', 'syllabus_preview_blocks', 'syllabus_field_map', 'updated_at',
             ])
         except Exception:
             logger.exception('Could not store syllabus template %s', uploaded_file.name)
@@ -1221,20 +1223,51 @@ class SyllabusTemplatePreviewView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        detail = 'Click a block on the left to add a section, then click again to place where its content goes.'
-        if conversion_note:
-            detail = f'{conversion_note} {detail}'
-
+        detail = (
+            'Your exact file is shown on the left. Click any text to record a section, '
+            'then click again to place where content should be written.'
+        )
         return Response({
-            'template_name': uploaded_file.name,
-            'stored_as': stored_name,
-            'converted': bool(conversion_note),
-            'conversion_note': conversion_note,
-            'blocks': preview['blocks'],
-            'block_count': preview['block_count'],
-            'field_map': {'sections': [], 'version': 1},
+            'template_name': original_name,
+            'file_type': built['kind'],
+            'mime': built['mime'],
+            'converted': False,
+            'template_file_url': '/api/users/institution-syllabus-template/file/',
+            'blocks': built['blocks'],
+            'block_count': built['block_count'],
+            'field_map': {'sections': [], 'click_log': [], 'version': 1},
             'detail': detail,
         })
+
+
+class SyllabusTemplateFileView(APIView):
+    """Serve the exact uploaded syllabus sample for the clickable preview."""
+
+    def get(self, request):
+        if normalize_role(request.user.role) not in {'admin', 'faculty'}:
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.institution:
+            return Response({'detail': 'No institution.'}, status=status.HTTP_400_BAD_REQUEST)
+        customization = InstitutionCustomization.objects.filter(institution=request.user.institution).first()
+        if not customization or not customization.syllabus_template:
+            return Response({'detail': 'No syllabus template uploaded.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            customization.syllabus_template.open('rb')
+            data = customization.syllabus_template.read()
+            customization.syllabus_template.close()
+        except Exception:
+            logger.exception('Could not read syllabus template file')
+            return Response({'detail': 'Template file is missing.'}, status=status.HTTP_404_NOT_FOUND)
+
+        kind = (customization.syllabus_template_kind or '').lower()
+        if not kind and customization.syllabus_template_name:
+            kind = customization.syllabus_template_name.rsplit('.', 1)[-1].lower()
+        content_type = syllabus_template_doc.MIME_BY_KIND.get(kind, 'application/octet-stream')
+        filename = customization.syllabus_template_name or f'template.{kind or "bin"}'
+        response = HttpResponse(data, content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Cache-Control'] = 'private, max-age=60'
+        return response
 
 
 class SyllabusTemplateAnalyzeView(APIView):

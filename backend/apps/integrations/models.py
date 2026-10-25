@@ -73,12 +73,16 @@ class InstitutionCustomization(models.Model):
     header_text = models.CharField(max_length=500, blank=True, default='')
     footer_text = models.CharField(max_length=500, blank=True, default='')
     syllabus_template_name = models.CharField(max_length=255, blank=True, default='')
+    # Exact uploaded sample (docx / pdf / xlsx) — what admins click in the preview
     syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
+    syllabus_template_kind = models.CharField(max_length=16, blank=True, default='')
+    # Working DOCX used when filling faculty exports (same bytes when upload was already DOCX)
+    syllabus_working_docx = models.FileField(upload_to='syllabus_templates/working/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
     syllabus_style_profile = models.JSONField(default=dict, blank=True)
-    # Click-mapped DOCX regions: sections with title_region_id + content_region_id
+    # Click-mapped regions: sections with title_region_id + content_region_id (+ click_log)
     syllabus_field_map = models.JSONField(default=dict, blank=True)
-    # Cached preview blocks for the uploaded editable template (admin click UI)
+    # Cached click targets for the uploaded file (admin click UI)
     syllabus_preview_blocks = models.JSONField(default=list, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)

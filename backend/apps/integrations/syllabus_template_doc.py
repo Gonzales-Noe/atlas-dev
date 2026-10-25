@@ -1,10 +1,11 @@
 """
-DOCX syllabus template: preview blocks, field-map sync, and fill-for-export.
+Syllabus template: exact-file preview, click map, and DOCX fill-for-export.
 
-MVP flow:
-  1. Upload DOCX (or PDF/XLSX converted to DOCX) → clickable blocks
-  2. Admin clicks a block → section listed; clicks again → content placement
-  3. Export clones the DOCX and writes faculty answers into content regions
+Flow:
+  1. Upload DOCX / PDF / Excel — store the original file as the clickable source
+  2. Extract native click targets (paragraphs, PDF text blocks, sheet cells)
+  3. Keep a working DOCX copy for faculty export fill (identity for DOCX uploads)
+  4. Admin clicks the real document → sections recorded; place content regions
 """
 
 from __future__ import annotations
@@ -21,6 +22,12 @@ _MD_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*\S)\s*$')
 _TABLE_SEP_RE = re.compile(r'^\|?\s*:?-{3,}')
 
 SUPPORTED_UPLOAD_TYPES = {'docx', 'pdf', 'xlsx', 'xls'}
+MIME_BY_KIND = {
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'pdf': 'application/pdf',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'xls': 'application/vnd.ms-excel',
+}
 
 
 def _read_bytes(file_obj):
@@ -152,7 +159,7 @@ def docx_from_xlsx(file_obj):
 
 def normalize_upload_to_docx(file_obj, file_type):
     """
-    Returns (docx_bytes, conversion_note).
+    Build a working DOCX for export fill. Returns (docx_bytes, conversion_note).
     conversion_note is empty when the upload was already DOCX.
     """
     kind = (file_type or '').lower().lstrip('.')
@@ -164,16 +171,65 @@ def normalize_upload_to_docx(file_obj, file_type):
         return _read_bytes(file_obj), ''
     if kind == 'pdf':
         docx_bytes = docx_from_pdf(file_obj)
-        return docx_bytes, (
-            'Converted PDF → editable DOCX for mapping. Layout is approximate; '
-            'prefer uploading the original Word file when you have it.'
-        )
-    # xls / xlsx
+        return docx_bytes, 'Working DOCX derived from PDF for export fill.'
     docx_bytes = docx_from_xlsx(file_obj)
-    return docx_bytes, (
-        'Converted Excel → editable DOCX (one section/table per sheet). '
-        'Review the preview, then click to map sections and content places.'
-    )
+    return docx_bytes, 'Working DOCX derived from Excel for export fill.'
+
+
+def _attach_working_region_ids(blocks, working_blocks):
+    """Match native preview blocks to working-DOCX paragraph/table ids by text hash."""
+    by_hash = {}
+    for wb in working_blocks or []:
+        h = wb.get('text_hash')
+        if h and h not in by_hash:
+            by_hash[h] = wb.get('id') or ''
+    for block in blocks or []:
+        h = block.get('text_hash')
+        if h and h in by_hash:
+            block['working_region_id'] = by_hash[h]
+    return blocks
+
+
+def build_exact_preview(file_obj, file_type):
+    """
+    Keep the original bytes for clickable preview; also build a working DOCX.
+
+    Returns dict:
+      original_bytes, kind, blocks, block_count, working_docx_bytes, note
+    """
+    kind = (file_type or '').lower().lstrip('.')
+    if kind not in SUPPORTED_UPLOAD_TYPES:
+        raise ValueError(
+            f'Unsupported file type “{kind}”. Upload a .docx, .pdf, or .xlsx syllabus sample.'
+        )
+    original = _read_bytes(file_obj)
+    if kind == 'docx':
+        blocks = extract_docx_preview(BytesIO(original))['blocks']
+        working = original
+        note = ''
+    elif kind == 'pdf':
+        blocks = extract_pdf_preview(BytesIO(original))['blocks']
+        working, note = normalize_upload_to_docx(BytesIO(original), 'pdf')
+        working_blocks = extract_docx_preview(BytesIO(working))['blocks']
+        _attach_working_region_ids(blocks, working_blocks)
+    else:
+        blocks = extract_xlsx_preview(BytesIO(original))['blocks']
+        working, note = normalize_upload_to_docx(BytesIO(original), kind)
+        working_blocks = extract_docx_preview(BytesIO(working))['blocks']
+        _attach_working_region_ids(blocks, working_blocks)
+
+    if not blocks:
+        raise ValueError('No readable content found in that file.')
+
+    return {
+        'original_bytes': original,
+        'kind': kind,
+        'blocks': blocks,
+        'block_count': len(blocks),
+        'working_docx_bytes': working,
+        'note': note,
+        'mime': MIME_BY_KIND.get(kind, 'application/octet-stream'),
+    }
 
 
 def _slug(text):
@@ -271,6 +327,139 @@ def extract_docx_preview(file_obj):
     return {'blocks': blocks, 'block_count': len(blocks)}
 
 
+def extract_pdf_preview(file_obj):
+    """Native PDF text blocks with page + bbox for overlay clicks on the real PDF."""
+    try:
+        import pymupdf
+    except ImportError:
+        import fitz as pymupdf  # type: ignore
+
+    data = _read_bytes(file_obj)
+    doc = pymupdf.open(stream=data, filetype='pdf')
+    blocks = []
+    try:
+        for page_index, page in enumerate(doc):
+            page_dict = page.get_text('dict') or {}
+            block_i = 0
+            for raw in page_dict.get('blocks') or []:
+                if raw.get('type') != 0:
+                    continue
+                lines = []
+                for line in raw.get('lines') or []:
+                    span_text = ''.join(span.get('text') or '' for span in (line.get('spans') or []))
+                    if span_text.strip():
+                        lines.append(span_text.strip())
+                text = ' '.join(lines).strip()
+                if not text:
+                    block_i += 1
+                    continue
+                bbox = raw.get('bbox') or [0, 0, 0, 0]
+                block_id = f'pdf-{page_index}-b-{block_i}'
+                blocks.append({
+                    'id': block_id,
+                    'kind': 'paragraph',
+                    'level': 0,
+                    'text': text[:2000],
+                    'style': '',
+                    'text_hash': _text_hash(text),
+                    'page': page_index,
+                    'bbox': [float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])],
+                    'page_width': float(page.rect.width),
+                    'page_height': float(page.rect.height),
+                    'anchor': {
+                        'type': 'pdf_block',
+                        'page': page_index,
+                        'index': block_i,
+                        'text_hash': _text_hash(text),
+                    },
+                })
+                block_i += 1
+    finally:
+        doc.close()
+    return {'blocks': blocks, 'block_count': len(blocks)}
+
+
+def extract_xlsx_preview(file_obj):
+    """Native Excel cells — same grid the UI renders for click mapping."""
+    import openpyxl
+
+    data = _read_bytes(file_obj)
+    try:
+        wb = openpyxl.load_workbook(BytesIO(data), data_only=True, read_only=True)
+    except Exception as exc:
+        raise ValueError(f'Could not read that Excel file: {exc}') from exc
+
+    blocks = []
+    sheets = []
+    try:
+        for sheet_index, sheet in enumerate(wb.worksheets):
+            title = (sheet.title or f'Sheet {sheet_index + 1}').strip()
+            sheet_id = f'xls-{sheet_index}-title'
+            blocks.append({
+                'id': sheet_id,
+                'kind': 'heading',
+                'level': 1,
+                'text': title,
+                'style': 'Sheet',
+                'text_hash': _text_hash(title),
+                'sheet': sheet_index,
+                'sheet_name': title,
+                'row': None,
+                'col': None,
+                'anchor': {'type': 'sheet_title', 'sheet': sheet_index, 'text_hash': _text_hash(title)},
+            })
+            max_row = 0
+            max_col = 0
+            cells = []
+            for row in sheet.iter_rows():
+                for cell in row:
+                    value = cell.value
+                    if value is None or str(value).strip() == '':
+                        continue
+                    text = str(value).strip()
+                    r = cell.row
+                    c = cell.column
+                    max_row = max(max_row, r)
+                    max_col = max(max_col, c)
+                    if r > 80 or c > 40:
+                        continue
+                    cell_id = f'xls-{sheet_index}-r{r}-c{c}'
+                    block = {
+                        'id': cell_id,
+                        'kind': 'paragraph',
+                        'level': 0,
+                        'text': text[:500],
+                        'style': 'Cell',
+                        'text_hash': _text_hash(text),
+                        'sheet': sheet_index,
+                        'sheet_name': title,
+                        'row': r,
+                        'col': c,
+                        'anchor': {
+                            'type': 'cell',
+                            'sheet': sheet_index,
+                            'row': r,
+                            'col': c,
+                            'text_hash': _text_hash(text),
+                        },
+                    }
+                    blocks.append(block)
+                    cells.append({'id': cell_id, 'row': r, 'col': c, 'text': text[:500]})
+            sheets.append({
+                'index': sheet_index,
+                'name': title,
+                'max_row': min(max_row, 80) or 1,
+                'max_col': min(max_col, 40) or 1,
+                'cells': cells,
+            })
+    finally:
+        wb.close()
+
+    if not any(b.get('kind') != 'heading' for b in blocks):
+        raise ValueError('That Excel file has no readable cells.')
+    return {'blocks': blocks, 'block_count': len(blocks), 'sheets': sheets}
+
+
 def field_map_to_syllabus_sections(field_map):
     """Derive faculty-compatible syllabus_sections from the click map."""
     used = set()
@@ -355,11 +544,26 @@ def _set_paragraph_text(paragraph, text):
         paragraph.add_run(text)
 
 
+def _fill_region_id(region_id, blocks_by_id=None):
+    """Prefer working DOCX region id when the click was on PDF/Excel."""
+    if not region_id:
+        return ''
+    rid = str(region_id)
+    if rid.startswith('p-') or rid.startswith('t-'):
+        return rid
+    if blocks_by_id and rid in blocks_by_id:
+        working = blocks_by_id[rid].get('working_region_id') or ''
+        if working:
+            return working
+    return rid
+
+
 def _resolve_paragraph(doc, region_id, blocks_by_id=None):
-    if not region_id or not str(region_id).startswith('p-'):
+    rid = _fill_region_id(region_id, blocks_by_id)
+    if not rid or not rid.startswith('p-'):
         return None
     try:
-        index = int(str(region_id).split('-', 1)[1])
+        index = int(rid.split('-', 1)[1])
     except ValueError:
         return None
     for i, paragraph in enumerate(_iter_body_paragraphs(doc)):
@@ -368,11 +572,12 @@ def _resolve_paragraph(doc, region_id, blocks_by_id=None):
     return None
 
 
-def _resolve_table(doc, region_id):
-    if not region_id or not str(region_id).startswith('t-'):
+def _resolve_table(doc, region_id, blocks_by_id=None):
+    rid = _fill_region_id(region_id, blocks_by_id)
+    if not rid or not rid.startswith('t-'):
         return None
     try:
-        index = int(str(region_id).split('-', 1)[1])
+        index = int(rid.split('-', 1)[1])
     except ValueError:
         return None
     for i, table in enumerate(_iter_body_tables(doc)):
@@ -425,10 +630,10 @@ def _answer_for_section(syllabus, section):
     return ''
 
 
-def fill_docx_from_field_map(template_bytes, field_map, syllabus):
+def fill_docx_from_field_map(template_bytes, field_map, syllabus, preview_blocks=None):
     """
-    Clone template DOCX bytes, write answers into content_region_id targets.
-    Returns filled DOCX bytes.
+    Clone working DOCX bytes, write answers into content region targets.
+    PDF/Excel clicks resolve via working_region_id on preview blocks.
     """
     from docx import Document
 
@@ -436,6 +641,26 @@ def fill_docx_from_field_map(template_bytes, field_map, syllabus):
     sections = (field_map or {}).get('sections') if isinstance(field_map, dict) else []
     if not isinstance(sections, list):
         sections = []
+
+    blocks_by_id = {}
+    for block in preview_blocks or []:
+        if isinstance(block, dict) and block.get('id'):
+            blocks_by_id[block['id']] = block
+    # Also allow working ids stored directly on mapped sections
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for key in ('title_region_id', 'content_region_id', 'working_content_region_id'):
+            rid = section.get(key)
+            if rid and rid not in blocks_by_id and str(rid).startswith(('p-', 't-')):
+                blocks_by_id[rid] = {'id': rid, 'working_region_id': rid}
+        for sub in section.get('subsections') or []:
+            if not isinstance(sub, dict):
+                continue
+            for key in ('title_region_id', 'content_region_id', 'working_content_region_id'):
+                rid = sub.get(key)
+                if rid and rid not in blocks_by_id and str(rid).startswith(('p-', 't-')):
+                    blocks_by_id[rid] = {'id': rid, 'working_region_id': rid}
 
     custom = syllabus.get('custom_subsections') if isinstance(syllabus.get('custom_subsections'), dict) else {}
     custom_tables = syllabus.get('custom_tables') if isinstance(syllabus.get('custom_tables'), dict) else {}
@@ -445,37 +670,37 @@ def fill_docx_from_field_map(template_bytes, field_map, syllabus):
             continue
         section_key = str(section.get('key') or '')
 
-        # Subsection content placements
         section_answers = custom.get(section_key) if isinstance(custom.get(section_key), dict) else {}
         section_tables = custom_tables.get(section_key) if isinstance(custom_tables.get(section_key), dict) else {}
         for sub in section.get('subsections') or []:
             if not isinstance(sub, dict):
                 continue
             sub_key = str(sub.get('key') or '')
-            content_id = sub.get('content_region_id') or ''
+            content_id = sub.get('working_content_region_id') or sub.get('content_region_id') or ''
             if not content_id:
                 continue
-            if sub.get('table_enabled') and content_id.startswith('t-'):
-                table = _resolve_table(doc, content_id)
+            fill_id = _fill_region_id(content_id, blocks_by_id)
+            if sub.get('table_enabled') and fill_id.startswith('t-'):
+                table = _resolve_table(doc, fill_id, blocks_by_id)
                 rows = section_tables.get(sub_key) or []
                 columns = sub.get('table_columns') or []
                 if table is not None and rows:
                     _fill_table(table, columns, rows)
             else:
-                paragraph = _resolve_paragraph(doc, content_id)
+                paragraph = _resolve_paragraph(doc, fill_id, blocks_by_id)
                 answer = str(section_answers.get(sub_key) or '').strip()
                 if paragraph is not None and answer:
                     _set_paragraph_text(paragraph, answer)
 
-        # Section-level content placement
-        content_id = section.get('content_region_id') or ''
-        if content_id.startswith('p-'):
-            paragraph = _resolve_paragraph(doc, content_id)
+        content_id = section.get('working_content_region_id') or section.get('content_region_id') or ''
+        fill_id = _fill_region_id(content_id, blocks_by_id)
+        if fill_id.startswith('p-'):
+            paragraph = _resolve_paragraph(doc, fill_id, blocks_by_id)
             answer = _answer_for_section(syllabus, section)
             if paragraph is not None and answer and not section.get('is_static'):
                 _set_paragraph_text(paragraph, answer)
-        elif content_id.startswith('t-'):
-            table = _resolve_table(doc, content_id)
+        elif fill_id.startswith('t-'):
+            table = _resolve_table(doc, fill_id, blocks_by_id)
             rows = (custom_tables.get(section_key) or {}).get('__section__') or []
             if table is not None and rows:
                 _fill_table(table, section.get('table_columns') or [], rows)
@@ -533,6 +758,7 @@ def normalize_field_map(field_map):
                 'table_column_groups': list(sub.get('table_column_groups') or []),
                 'title_region_id': str(sub.get('title_region_id') or ''),
                 'content_region_id': str(sub.get('content_region_id') or ''),
+                'working_content_region_id': str(sub.get('working_content_region_id') or ''),
             })
         sections.append({
             'key': key,
@@ -546,6 +772,21 @@ def normalize_field_map(field_map):
             'editor': item.get('editor') or None,
             'title_region_id': str(item.get('title_region_id') or ''),
             'content_region_id': str(item.get('content_region_id') or ''),
+            'working_content_region_id': str(item.get('working_content_region_id') or ''),
             'subsections': subs,
         })
-    return {'sections': sections, 'version': 1}
+    click_log = field_map.get('click_log') if isinstance(field_map.get('click_log'), list) else []
+    return {
+        'sections': sections,
+        'version': 1,
+        'click_log': [
+            {
+                'id': str(entry.get('id') or ''),
+                'text': str(entry.get('text') or '')[:500],
+                'role': str(entry.get('role') or ''),
+                'at': str(entry.get('at') or ''),
+            }
+            for entry in click_log[-200:]
+            if isinstance(entry, dict) and entry.get('id')
+        ],
+    }

@@ -3631,11 +3631,14 @@ def _resolve_institution_branding(course):
     if not customization:
         return {}
     template_bytes = b''
-    if customization.syllabus_template:
+    # Prefer working DOCX for fill; fall back to original when it is already a DOCX.
+    working = customization.syllabus_working_docx
+    source = working if working else customization.syllabus_template
+    if source:
         try:
-            customization.syllabus_template.open('rb')
-            template_bytes = customization.syllabus_template.read()
-            customization.syllabus_template.close()
+            source.open('rb')
+            template_bytes = source.read()
+            source.close()
         except Exception:
             template_bytes = b''
     return {
@@ -3648,6 +3651,7 @@ def _resolve_institution_branding(course):
         'syllabus_sections': customization.syllabus_sections or [],
         'syllabus_style_profile': customization.syllabus_style_profile or {},
         'syllabus_field_map': customization.syllabus_field_map or {},
+        'syllabus_preview_blocks': customization.syllabus_preview_blocks or [],
         'syllabus_template_bytes': template_bytes,
         'syllabus_template_name': customization.syllabus_template_name or '',
     }
@@ -4195,7 +4199,12 @@ def export_syllabus_docx(request):
                 and mapped_sections
             ):
                 from apps.integrations.syllabus_template_doc import fill_docx_from_field_map
-                filled = fill_docx_from_field_map(institution_template, field_map, syllabus)
+                filled = fill_docx_from_field_map(
+                    institution_template,
+                    field_map,
+                    syllabus,
+                    preview_blocks=(branding or {}).get('syllabus_preview_blocks') or [],
+                )
                 filename = f"{course_code}_syllabus.docx"
                 http_response = HttpResponse(
                     filled,
