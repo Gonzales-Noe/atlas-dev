@@ -205,7 +205,7 @@ export default function SyllabusFormatEditor({
                 : section.table_columns,
             }
           : section
-      ))
+      )))
       setClickMode('section')
       setHint(`Content for “${selectedSection.label}” recorded. Click another heading to add the next section.`)
       return
@@ -250,7 +250,7 @@ export default function SyllabusFormatEditor({
         section.key === selectedKey
           ? { ...section, subsections: [...subs, nextSub] }
           : section
-      ))
+      )))
       setSelectedSubKey(key)
       setClickMode('subsection_content')
       setHint(`Recorded subsection “${label}”. Now click where its content should be written.`)
@@ -284,7 +284,7 @@ export default function SyllabusFormatEditor({
               : sub
           )),
         }
-      })
+      }))
       setClickMode('subsection')
       setHint(`Content for subsection “${selectedSubsection.label}” recorded.`)
     }
