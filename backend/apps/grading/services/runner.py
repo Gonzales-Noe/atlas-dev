@@ -128,23 +128,23 @@ class OmrCheckerRunnerService:
     @staticmethod
     def _extract_pdf(pdf_path: Path, target_dir: Path) -> dict:
         """
-        Convert each PDF page to a PNG at 144 dpi using PyMuPDF (fitz).
+        Convert each PDF page to a PNG at 144 dpi using PyMuPDF.
         PyMuPDF is already declared in requirements.txt as pymupdf>=1.24.0.
         """
         try:
-            import fitz  # PyMuPDF  # noqa: PLC0415
+            import pymupdf  # noqa: PLC0415
         except ImportError:
             return {
                 "success": False,
                 "stderr": (
-                    "PyMuPDF (fitz) is not installed; "
+                    "PyMuPDF is not installed; "
                     "cannot convert PDF bundles to images."
                 ),
             }
 
         try:
-            doc = fitz.open(str(pdf_path))
-            scale = fitz.Matrix(2.0, 2.0)  # 2× → ~144 dpi
+            doc = pymupdf.open(str(pdf_path))
+            scale = pymupdf.Matrix(2.0, 2.0)  # 2× → ~144 dpi
             for page_num, page in enumerate(doc, start=1):
                 pix = page.get_pixmap(matrix=scale, alpha=False)
                 pix.save(str(target_dir / f"page_{page_num:04d}.png"))

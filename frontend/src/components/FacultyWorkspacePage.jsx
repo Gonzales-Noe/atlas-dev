@@ -1440,6 +1440,39 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  async function downloadSyllabusBlob(response, fallbackExt) {
+    const blob = response.data
+    const contentDisposition = response.headers?.['content-disposition'] || ''
+    const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+    const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+    const downloadName = match?.[1] || `${baseName}_syllabus.${fallbackExt}`
+    const blobUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.setAttribute('download', downloadName)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(blobUrl)
+  }
+
+  async function readExportError(err, fallback) {
+    let message = fallback
+    const blobData = err?.response?.data
+    if (blobData instanceof Blob) {
+      try {
+        const text = await blobData.text()
+        const parsed = JSON.parse(text)
+        message = parsed?.error || parsed?.detail || message
+      } catch (_) {
+        message = err?.message || message
+      }
+    } else {
+      message = extractApiError(err) || err?.message || message
+    }
+    return message
+  }
+
   async function handleExportDocx() {
     if (!courseId) {
       setSyllabusExportError('Select a course first before exporting.')
@@ -1461,37 +1494,34 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         timeout: 120000,
       })
 
-      const blob = response.data
-      const contentDisposition = response.headers?.['content-disposition'] || ''
-      const match = contentDisposition.match(/filename="?([^";]+)"?/i)
       const isXlsx = syllabusTemplateFile?.name?.toLowerCase().endsWith('.xlsx')
-      const ext = isXlsx ? 'xlsx' : 'docx'
-      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
-      const downloadName = match?.[1] || `${baseName}_syllabus.${ext}`
-
-      const blobUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.setAttribute('download', downloadName)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(blobUrl)
+      await downloadSyllabusBlob(response, isXlsx ? 'xlsx' : 'docx')
     } catch (err) {
-      let message = 'Failed to export syllabus.'
-      const blobData = err?.response?.data
-      if (blobData instanceof Blob) {
-        try {
-          const text = await blobData.text()
-          const parsed = JSON.parse(text)
-          message = parsed?.error || parsed?.detail || message
-        } catch (_) {
-          message = err?.message || message
-        }
-      } else {
-        message = extractApiError(err) || err?.message || message
-      }
-      setSyllabusExportError(message)
+      setSyllabusExportError(await readExportError(err, 'Failed to export syllabus.'))
+    } finally {
+      setSyllabusExporting(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!courseId) {
+      setSyllabusExportError('Select a course first before exporting.')
+      return
+    }
+    setSyllabusExporting(true)
+    setSyllabusExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      const response = await api.post('/curriculum/export-syllabus-pdf/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+      await downloadSyllabusBlob(response, 'pdf')
+    } catch (err) {
+      setSyllabusExportError(await readExportError(err, 'Failed to export styled PDF.'))
     } finally {
       setSyllabusExporting(false)
     }
@@ -4517,6 +4547,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       }}
                     >
                       {syllabusExporting ? 'Exporting…' : 'Export DOCX'}
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={syllabusExporting ? 'Exporting…' : 'Export PDF using university syllabus style'}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={syllabusExporting}
+                      onClick={handleExportPdf}
+                      sx={{
+                        textTransform: 'none',
+                        borderColor: MAROON,
+                        color: MAROON,
+                        fontSize: '0.75rem',
+                        py: 0.5,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        borderRadius: 1.5,
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      }}
+                    >
+                      Export PDF
                     </Button>
                   </span>
                 </Tooltip>

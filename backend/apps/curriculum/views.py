@@ -3635,7 +3635,10 @@ def _resolve_institution_branding(course):
         'footer_text': customization.footer_text or '',
         'header_image': customization.header_image_url or '',
         'footer_image': customization.footer_image_url or '',
+        'header_image_url': customization.header_image_url or '',
+        'footer_image_url': customization.footer_image_url or '',
         'syllabus_sections': customization.syllabus_sections or [],
+        'syllabus_style_profile': customization.syllabus_style_profile or {},
     }
 
 
@@ -4196,6 +4199,78 @@ def export_syllabus_docx(request):
         logger.exception('Error generating DOCX for syllabus export')
         return Response(
             {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_syllabus_pdf(request):
+    """
+    Export a filled syllabus as a styled PDF using the institution style profile.
+
+    Endpoint: POST /api/curriculum/export-syllabus-pdf/
+
+    Body (multipart/form-data or JSON):
+        course_id     — optional UUID; uses latest saved syllabus_content when set
+        syllabus_data — optional JSON fallback
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get('course_id')
+    course = None
+    syllabus = None
+    if course_id:
+        course, error_response = _get_assigned_course_or_403(request, course_id)
+        if error_response:
+            return error_response
+        latest_syllabus = (
+            Syllabus.objects.filter(course=course)
+            .order_by('-generated_at', '-syllabus_id')
+            .first()
+        )
+        if latest_syllabus and isinstance(latest_syllabus.syllabus_content, dict):
+            syllabus = latest_syllabus.syllabus_content
+
+    if syllabus is None:
+        raw_data = request.data.get('syllabus_data', '{}')
+        if isinstance(raw_data, str):
+            try:
+                syllabus = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return Response(
+                    {'success': False, 'error': 'Invalid syllabus_data JSON.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            syllabus = raw_data
+
+    if not isinstance(syllabus, dict) or not syllabus:
+        return Response(
+            {'success': False, 'error': 'No syllabus data found to export.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    branding = _resolve_institution_branding(course)
+    try:
+        from apps.integrations.syllabus_export import export_syllabus_pdf as render_pdf
+        from django.http import HttpResponse
+
+        pdf_bytes, engine = render_pdf(
+            syllabus,
+            branding=branding,
+            style_profile=branding.get('syllabus_style_profile') or {},
+        )
+        course_code = (syllabus.get('course_code') or 'syllabus').replace('/', '-').replace(' ', '_')
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{course_code}_syllabus.pdf"'
+        response['X-ATLAS-PDF-Engine'] = engine
+        return response
+    except Exception as exc:
+        logger.exception('Error generating styled syllabus PDF')
+        return Response(
+            {'success': False, 'error': f'Failed to generate PDF: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

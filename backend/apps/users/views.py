@@ -24,7 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations import syllabus_structure
+from apps.integrations import syllabus_pipeline
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
@@ -1094,6 +1094,7 @@ class InstitutionCustomizationView(APIView):
                 'footer_text': '',
                 'syllabus_template_name': '',
                 'syllabus_sections': [],
+                'syllabus_style_profile': {},
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
@@ -1104,6 +1105,7 @@ class InstitutionCustomizationView(APIView):
             'footer_text': customization.footer_text,
             'syllabus_template_name': customization.syllabus_template_name,
             'syllabus_sections': customization.syllabus_sections,
+            'syllabus_style_profile': customization.syllabus_style_profile or {},
             'field_labels': customization.field_labels,
         })
 
@@ -1120,6 +1122,7 @@ class InstitutionCustomizationView(APIView):
             'footer_text',
             'syllabus_template_name',
             'syllabus_sections',
+            'syllabus_style_profile',
             'field_labels',
         ):
             if field in request.data:
@@ -1130,9 +1133,10 @@ class InstitutionCustomizationView(APIView):
 
 class SyllabusTemplateAnalyzeView(APIView):
     """
-    Derive the syllabus form structure (sections, subsections and table
-    columns) from a PDF or DOCX syllabus template for the admin to review.
-    Pass refine=false to skip the LLM cleanup and use the heading outline only.
+    Derive syllabus form structure + style profile from a PDF/DOCX template.
+
+    Parser-first (Docling when installed, else LiteParse). LLM refine is off by
+    default; pass refine=true|ollama|groq to enable optional polish.
     """
 
     def post(self, request):
@@ -1148,10 +1152,14 @@ class SyllabusTemplateAnalyzeView(APIView):
         if not is_valid:
             return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
+        refine = request.data.get('refine', 'false')
         try:
-            markdown = syllabus_structure.markdown_from_upload(uploaded_file, file_type)
+            uploaded_file.seek(0)
+            analysis = syllabus_pipeline.analyze_syllabus_template(
+                uploaded_file, file_type, refine=refine,
+            )
         except Exception:
-            logger.exception('Could not extract text from syllabus template %s', uploaded_file.name)
+            logger.exception('Could not analyze syllabus template %s', uploaded_file.name)
             return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -1159,7 +1167,22 @@ class SyllabusTemplateAnalyzeView(APIView):
             customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
             customization.syllabus_template.save(uploaded_file.name, uploaded_file, save=False)
             customization.syllabus_template_name = uploaded_file.name[:255]
-            customization.save(update_fields=['syllabus_template', 'syllabus_template_name', 'updated_at'])
+            # Stash latest detected style for the admin to review before Save Format.
+            customization.syllabus_style_profile = analysis.get('style_profile') or {}
+            branding = analysis.get('branding_suggestions') or {}
+            # Prefill empty branding fields from extracted header/footer bands.
+            if not customization.header_text and branding.get('header_text'):
+                customization.header_text = str(branding['header_text'])[:500]
+            if not customization.footer_text and branding.get('footer_text'):
+                customization.footer_text = str(branding['footer_text'])[:500]
+            if not customization.header_image_url and branding.get('header_image_url'):
+                customization.header_image_url = branding['header_image_url']
+            if not customization.footer_image_url and branding.get('footer_image_url'):
+                customization.footer_image_url = branding['footer_image_url']
+            customization.save(update_fields=[
+                'syllabus_template', 'syllabus_template_name', 'syllabus_style_profile',
+                'header_text', 'footer_text', 'header_image_url', 'footer_image_url', 'updated_at',
+            ])
         except Exception:
             logger.exception('Could not store syllabus template %s', uploaded_file.name)
             return Response(
@@ -1167,22 +1190,20 @@ class SyllabusTemplateAnalyzeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        refine = str(request.data.get('refine', 'true')).lower() not in {'0', 'false', 'no'}
-        sections, source = syllabus_structure.extract_syllabus_structure(markdown, refine=refine)
-
-        if not sections:
-            return Response({
-                'detail': 'No section headings were detected. Add the syllabus sections manually.',
-                'sections': [],
-                'source': source,
-                'template_name': uploaded_file.name,
-            })
-
-        return Response({
-            'sections': sections,
-            'source': source,
+        branding = analysis.get('branding_suggestions') or {}
+        payload = {
+            'sections': analysis.get('sections') or [],
+            'style_profile': analysis.get('style_profile') or {},
+            'source': analysis.get('source'),
+            'parser': analysis.get('parser'),
+            'llm_provider': analysis.get('llm_provider'),
+            'confidence': analysis.get('confidence') or {},
+            'branding_suggestions': branding,
             'template_name': uploaded_file.name,
-        })
+        }
+        if analysis.get('detail'):
+            payload['detail'] = analysis['detail']
+        return Response(payload)
 
 
 class EnrollCourseView(APIView):

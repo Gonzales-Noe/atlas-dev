@@ -35,6 +35,11 @@ const inputSx = {
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
 }
 
+// Internal id for a section; never shown in the Syllabus Format UI.
+function sectionKey(label) {
+  return String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
 // Fall back to the email for older accounts without a stored display name.
 function displayName(fac) {
   if (!fac) return '—'
@@ -88,9 +93,10 @@ export default function AdminAccountManagement() {
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
-    footer_text: '', syllabus_sections: [],
+    footer_text: '', syllabus_sections: [], syllabus_style_profile: {},
   })
   const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
+  const [formatTab, setFormatTab] = useState('structure')
 
   useEffect(() => {
     loadAssignments()
@@ -139,6 +145,9 @@ export default function AdminAccountManagement() {
         ...prev,
         ...data,
         syllabus_sections: Array.isArray(data.syllabus_sections) ? data.syllabus_sections : [],
+        syllabus_style_profile: data.syllabus_style_profile && typeof data.syllabus_style_profile === 'object'
+          ? data.syllabus_style_profile
+          : {},
       }))
     } catch (err) {
       // Non-fatal: customization may not be configured yet.
@@ -401,8 +410,29 @@ export default function AdminAccountManagement() {
       setError('Add a name to each syllabus subsection before saving.')
       return
     }
+    const syllabus_sections = (customization.syllabus_sections || [])
+      .filter(section => section.label?.trim())
+      .map((section, index) => {
+        const label = section.label.trim()
+        const key = BUILTIN_SYLLABUS_EDITORS[section.key]
+          ? section.key
+          : (section.key?.trim() || sectionKey(label) || `section-${index + 1}`)
+        return {
+          ...section,
+          key,
+          label,
+          subsections: (Array.isArray(section.subsections) ? section.subsections : [])
+            .filter(subsection => subsection.label?.trim())
+            .map((subsection, subsectionIndex) => ({
+              ...subsection,
+              key: subsection.key?.trim() || sectionKey(subsection.label) || `subsection-${subsectionIndex + 1}`,
+              label: subsection.label.trim(),
+            })),
+        }
+      })
     try {
-      await api.patch('/users/institution-customization/', customization)
+      await api.patch('/users/institution-customization/', { ...customization, syllabus_sections })
+      setCustomization({ ...customization, syllabus_sections })
       setCustomizationDialog(false)
       setNotice('Syllabus format saved.')
     } catch (err) {
@@ -410,20 +440,39 @@ export default function AdminAccountManagement() {
     }
   }
 
-  // Replaces the sections in the dialog; they are persisted only by "Save Format".
+  // Replaces the sections/style in the dialog; persisted only by "Save Format".
   async function importSyllabusTemplate(file) {
     if (!file) return
     setTemplateImport({ busy: true, message: 'Reading the syllabus template…', severity: 'info' })
     try {
       const result = await analyzeSyllabusTemplate(file)
+      const branding = result.branding_suggestions || {}
+      const styleProfile = result.style_profile && typeof result.style_profile === 'object'
+        ? result.style_profile
+        : {}
       if (Array.isArray(result.sections) && result.sections.length) {
         setCustomization(current => ({
           ...current,
           syllabus_template_name: result.template_name || file.name,
           syllabus_sections: result.sections,
+          syllabus_style_profile: styleProfile,
+          header_text: current.header_text || branding.header_text || '',
+          footer_text: current.footer_text || branding.footer_text || '',
+          header_image_url: current.header_image_url || branding.header_image_url || '',
+          footer_image_url: current.footer_image_url || branding.footer_image_url || '',
         }))
+        setFormatTab('structure')
         setTemplateImport({ busy: false, message: describeDetectedStructure(result), severity: 'success' })
       } else {
+        setCustomization(current => ({
+          ...current,
+          syllabus_template_name: result.template_name || file.name,
+          syllabus_style_profile: styleProfile,
+          header_text: current.header_text || branding.header_text || '',
+          footer_text: current.footer_text || branding.footer_text || '',
+          header_image_url: current.header_image_url || branding.header_image_url || '',
+          footer_image_url: current.footer_image_url || branding.footer_image_url || '',
+        }))
         setTemplateImport({
           busy: false,
           message: result.detail || 'No sections were detected. Add them manually below.',
@@ -437,6 +486,28 @@ export default function AdminAccountManagement() {
         severity: 'error',
       })
     }
+  }
+
+  function updateStyleProfile(path, value) {
+    setCustomization(current => {
+      const profile = { ...(current.syllabus_style_profile || {}) }
+      if (path === 'typography.body.family') {
+        profile.typography = {
+          ...(profile.typography || {}),
+          body: { ...(profile.typography?.body || {}), family: value },
+        }
+      } else if (path === 'typography.body.size_pt') {
+        profile.typography = {
+          ...(profile.typography || {}),
+          body: { ...(profile.typography?.body || {}), size_pt: Number(value) || 11 },
+        }
+      } else if (path === 'colors.accent') {
+        profile.colors = { ...(profile.colors || {}), accent: value }
+      } else if (path === 'page.size') {
+        profile.page = { ...(profile.page || {}), size: value }
+      }
+      return { ...current, syllabus_style_profile: profile }
+    })
   }
 
   function updateSyllabusSection(index, changes) {
@@ -1116,44 +1187,13 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Syllabus Format / Customization Dialog */}
-      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>University Syllabus Format</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2}>
-            <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>HEADER IMAGE (OPTIONAL)</div>
-              <OutlineBtn small onClick={() => document.getElementById('custom-header-input')?.click()}>
-                {customization.header_image_url ? 'Replace header image' : 'Choose header image'}
-              </OutlineBtn>
-              <input id="custom-header-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
-                onChange={e => readImageFile(e.target.files?.[0], 'header_image_url')} />
-              {customization.header_image_url && (
-                <img src={customization.header_image_url} alt="Header preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
-              )}
-            </div>
-            <TextField label="Header text fallback (optional)" value={customization.header_text || ''}
-              onChange={e => setCustomization({ ...customization, header_text: e.target.value })}
-              fullWidth multiline minRows={2} size="small" sx={inputSx} />
-
-            <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>FOOTER IMAGE (OPTIONAL)</div>
-              <OutlineBtn small onClick={() => document.getElementById('custom-footer-input')?.click()}>
-                {customization.footer_image_url ? 'Replace footer image' : 'Choose footer image'}
-              </OutlineBtn>
-              <input id="custom-footer-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
-                onChange={e => readImageFile(e.target.files?.[0], 'footer_image_url')} />
-              {customization.footer_image_url && (
-                <img src={customization.footer_image_url} alt="Footer preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
-              )}
-            </div>
-            <TextField label="Footer text fallback (optional)" value={customization.footer_text || ''}
-              onChange={e => setCustomization({ ...customization, footer_text: e.target.value })}
-              fullWidth multiline minRows={2} size="small" sx={inputSx} />
-
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Syllabus sections</div>
             <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Import a syllabus template to detect sections, subsections and tables automatically, or add them yourself and define the answer fields faculty should complete as subsections.
+              Upload a syllabus example to detect structure and style automatically (parser-first). Review, then Save Format.
             </div>
             <div>
               <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
@@ -1168,16 +1208,112 @@ export default function AdminAccountManagement() {
                 {templateImport.message}
               </Alert>
             )}
+
+            <Stack direction="row" spacing={1}>
+              <OutlineBtn small onClick={() => setFormatTab('structure')}
+                style={formatTab === 'structure' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
+                Structure
+              </OutlineBtn>
+              <OutlineBtn small onClick={() => setFormatTab('style')}
+                style={formatTab === 'style' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
+                Style & branding
+              </OutlineBtn>
+            </Stack>
+
+            {formatTab === 'style' && (
+              <Stack spacing={2}>
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>HEADER IMAGE (OPTIONAL)</div>
+                  <OutlineBtn small onClick={() => document.getElementById('custom-header-input')?.click()}>
+                    {customization.header_image_url ? 'Replace header image' : 'Choose header image'}
+                  </OutlineBtn>
+                  <input id="custom-header-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={e => readImageFile(e.target.files?.[0], 'header_image_url')} />
+                  {customization.header_image_url && (
+                    <img src={customization.header_image_url} alt="Header preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
+                  )}
+                </div>
+                <TextField label="Header text (optional)" value={customization.header_text || ''}
+                  onChange={e => setCustomization({ ...customization, header_text: e.target.value })}
+                  fullWidth multiline minRows={2} size="small" sx={inputSx} />
+
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>FOOTER IMAGE (OPTIONAL)</div>
+                  <OutlineBtn small onClick={() => document.getElementById('custom-footer-input')?.click()}>
+                    {customization.footer_image_url ? 'Replace footer image' : 'Choose footer image'}
+                  </OutlineBtn>
+                  <input id="custom-footer-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={e => readImageFile(e.target.files?.[0], 'footer_image_url')} />
+                  {customization.footer_image_url && (
+                    <img src={customization.footer_image_url} alt="Footer preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
+                  )}
+                </div>
+                <TextField label="Footer text (optional)" value={customization.footer_text || ''}
+                  onChange={e => setCustomization({ ...customization, footer_text: e.target.value })}
+                  fullWidth multiline minRows={2} size="small" sx={inputSx} />
+
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Detected style profile</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <TextField size="small" label="Body font" sx={inputSx}
+                    value={customization.syllabus_style_profile?.typography?.body?.family || ''}
+                    onChange={e => updateStyleProfile('typography.body.family', e.target.value)} />
+                  <TextField size="small" label="Body size (pt)" type="number" sx={inputSx}
+                    value={customization.syllabus_style_profile?.typography?.body?.size_pt ?? ''}
+                    onChange={e => updateStyleProfile('typography.body.size_pt', e.target.value)} />
+                  <TextField size="small" label="Accent color" sx={inputSx}
+                    value={customization.syllabus_style_profile?.colors?.accent || ''}
+                    onChange={e => updateStyleProfile('colors.accent', e.target.value)} />
+                  <TextField size="small" label="Page size" sx={inputSx}
+                    value={customization.syllabus_style_profile?.page?.size || ''}
+                    onChange={e => updateStyleProfile('page.size', e.target.value)} />
+                </div>
+                <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  Style confidence:{' '}
+                  {customization.syllabus_style_profile?.source?.confidence != null
+                    ? `${Math.round(Number(customization.syllabus_style_profile.source.confidence) * 100)}%`
+                    : '—'}
+                  {' · '}Parser: {customization.syllabus_style_profile?.source?.parser || '—'}
+                </Typography>
+              </Stack>
+            )}
+
+            {formatTab === 'structure' && (
+              <>
+            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Syllabus sections</div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+              Sections, subsections and tables detected from the template, or add them yourself.
+            </div>
             {(customization.syllabus_sections || []).map((section, index) => (
-              <Stack key={`${section.key}-${index}`} spacing={1}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>
-                  <TextField size="small" label="Key" value={section.key || ''}
-                    onChange={e => updateSyllabusSection(index, { key: e.target.value })} sx={inputSx} />
-                  <TextField size="small" label="Section title" value={section.label || ''}
-                    onChange={e => updateSyllabusSection(index, { label: e.target.value })} sx={inputSx}
+              <Stack key={`${section.key || section.label || 'section'}-${index}`} spacing={1}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'start' }}>
+                  <TextField size="small" label="Section title" value={section.label || ''} fullWidth
+                    onChange={e => updateSyllabusSection(index, {
+                      label: e.target.value,
+                      // Keep built-in editor keys; otherwise derive the key from the title.
+                      key: BUILTIN_SYLLABUS_EDITORS[section.key] ? section.key : sectionKey(e.target.value),
+                    })} sx={inputSx}
                     helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
                       ? `Uses the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
                       : undefined} />
+                  {section.confidence != null && (
+                    <Typography
+                      component="span"
+                      title="Detection confidence for this section"
+                      sx={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        alignSelf: 'center',
+                        px: 1,
+                        py: 0.4,
+                        borderRadius: 1,
+                        whiteSpace: 'nowrap',
+                        color: Number(section.confidence) >= 0.75 ? '#166534' : Number(section.confidence) >= 0.5 ? '#854d0e' : '#991b1b',
+                        bgcolor: Number(section.confidence) >= 0.75 ? 'rgba(22,101,52,0.12)' : Number(section.confidence) >= 0.5 ? 'rgba(133,77,14,0.12)' : 'rgba(153,27,27,0.12)',
+                      }}
+                    >
+                      {Math.round(Number(section.confidence) * 100)}%
+                    </Typography>
+                  )}
                   <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: current.syllabus_sections.filter((_, i) => i !== index) }))}>Remove</OutlineBtn>
                 </div>
                 <Stack direction="row" spacing={2}>
@@ -1236,9 +1372,26 @@ export default function AdminAccountManagement() {
                 )}
               </Stack>
             ))}
-            <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: [...(current.syllabus_sections || []), { key: '', label: '', enabled: true, is_static: false, static_content: '', table_enabled: false, table_columns: [], subsections: [] }] }))}>
+            <OutlineBtn small onClick={() => setCustomization(current => ({
+              ...current,
+              syllabus_sections: [
+                ...(current.syllabus_sections || []),
+                {
+                  key: `section-${(current.syllabus_sections || []).length + 1}`,
+                  label: '',
+                  enabled: true,
+                  is_static: false,
+                  static_content: '',
+                  table_enabled: false,
+                  table_columns: [],
+                  subsections: [],
+                },
+              ],
+            }))}>
               Add Section
             </OutlineBtn>
+              </>
+            )}
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>

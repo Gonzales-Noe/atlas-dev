@@ -1,5 +1,6 @@
 import json
 import os
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -8,7 +9,8 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure
+from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
+from apps.integrations.syllabus_pipeline import _parse_refine_flag
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
 from apps.integrations.llm_service import LLMService
 from apps.integrations.models import GlobalDocument
@@ -389,6 +391,13 @@ class SyllabusStructureTests(SimpleTestCase):
     def _by_label(self, sections):
         return {section['label']: section for section in sections}
 
+    def test_default_extract_skips_llm(self):
+        llm = MagicMock()
+        sections, source = syllabus_structure.extract_syllabus_structure(SAMPLE_SYLLABUS_MD, llm=llm)
+        self.assertEqual(source, 'outline')
+        self.assertTrue(sections)
+        llm.generate_response_with_fallback.assert_not_called()
+
     def test_outline_maps_headings_tables_and_builtin_editors(self):
         sections, source = syllabus_structure.extract_syllabus_structure(SAMPLE_SYLLABUS_MD, refine=False)
         by_label = self._by_label(sections)
@@ -431,7 +440,9 @@ class SyllabusStructureTests(SimpleTestCase):
              'subsections': [{'label': 'Imaginary Field', 'table_columns': []}]},
         ]})
 
-        sections, source = syllabus_structure.extract_syllabus_structure(SAMPLE_SYLLABUS_MD, llm=llm)
+        sections, source = syllabus_structure.extract_syllabus_structure(
+            SAMPLE_SYLLABUS_MD, refine=True, llm=llm,
+        )
         by_label = self._by_label(sections)
 
         self.assertEqual(source, 'ai')
@@ -452,10 +463,139 @@ class SyllabusStructureTests(SimpleTestCase):
         llm = MagicMock()
         llm.generate_response_with_fallback.side_effect = ValueError('all providers failed')
 
-        sections, source = syllabus_structure.extract_syllabus_structure(SAMPLE_SYLLABUS_MD, llm=llm)
+        sections, source = syllabus_structure.extract_syllabus_structure(
+            SAMPLE_SYLLABUS_MD, refine=True, llm=llm,
+        )
 
         self.assertEqual(source, 'outline')
         self.assertEqual(sections[0]['label'], 'Course Specifications')
+
+    def test_refine_prefers_ollama_provider(self):
+        llm = MagicMock()
+        llm.generate_response_with_fallback.return_value = json.dumps({
+            'sections': [{'label': 'Course Specifications', 'editor': 'basic',
+                          'is_static': False, 'table_columns': [], 'subsections': []}],
+        })
+        syllabus_structure.extract_syllabus_structure(
+            SAMPLE_SYLLABUS_MD, refine=True, llm=llm, preferred_provider='ollama',
+        )
+        kwargs = llm.generate_response_with_fallback.call_args.kwargs
+        self.assertEqual(kwargs.get('preferred_provider'), 'ollama')
+
+
+class SyllabusStyleTests(SimpleTestCase):
+    def test_docx_style_extracts_margins_and_header_text(self):
+        from docx import Document
+        from docx.shared import Inches, Pt
+
+        buffer = BytesIO()
+        doc = Document()
+        section = doc.sections[0]
+        section.top_margin = Inches(1)
+        section.left_margin = Inches(0.75)
+        section.header.paragraphs[0].text = 'University of Example'
+        section.footer.paragraphs[0].text = 'Page 1'
+        doc.add_paragraph('Body text')
+        doc.save(buffer)
+        buffer.seek(0)
+
+        profile = syllabus_style.extract_style_profile(buffer, 'docx')
+        self.assertEqual(profile['source']['parser'], 'docx')
+        self.assertGreaterEqual(profile['source']['confidence'], 0.5)
+        self.assertEqual(profile['header']['text'], 'University of Example')
+        self.assertIn('Page', profile['footer']['text'])
+        self.assertAlmostEqual(profile['page']['margins']['top'], 72.0, delta=1)
+        branding = syllabus_style.apply_style_to_branding(profile)
+        self.assertEqual(branding['header_text'], 'University of Example')
+
+    def test_parse_refine_flag_defaults_off(self):
+        self.assertEqual(_parse_refine_flag(None), (False, None))
+        self.assertEqual(_parse_refine_flag('false'), (False, None))
+        self.assertEqual(_parse_refine_flag('ollama'), (True, 'ollama'))
+        self.assertEqual(_parse_refine_flag('true'), (True, 'ollama'))
+
+
+class SyllabusDoclingParseTests(SimpleTestCase):
+    def _sample_docx(self):
+        from docx import Document
+
+        buffer = BytesIO()
+        doc = Document()
+        doc.add_heading('Course Specifications', level=1)
+        doc.add_paragraph('Course Code: CS 101')
+        doc.add_paragraph('Lab Hours: 3')
+        doc.add_heading('Weekly Schedule', level=1)
+        table = doc.add_table(rows=2, cols=2)
+        table.rows[0].cells[0].text = 'Week'
+        table.rows[0].cells[1].text = 'Topic'
+        table.rows[1].cells[0].text = '1'
+        table.rows[1].cells[1].text = 'Intro'
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer
+
+    def test_docx_upload_uses_docling_when_installed(self):
+        from apps.integrations import syllabus_parse
+
+        self.assertTrue(
+            syllabus_parse._docling_available(),
+            'Docling must be installed (pip install docling==2.142.1)',
+        )
+        markdown, parser = syllabus_parse.markdown_from_upload(self._sample_docx(), 'docx')
+        self.assertEqual(parser, 'docling')
+        self.assertIn('Course Specifications', markdown)
+        self.assertIn('Weekly Schedule', markdown)
+
+    def test_docling_tree_builds_outline_and_pipeline_confidence(self):
+        from apps.integrations import syllabus_parse, syllabus_docling, syllabus_pipeline
+
+        self.assertTrue(syllabus_parse._docling_available())
+        parsed = syllabus_parse.parse_upload(self._sample_docx(), 'docx')
+        self.assertEqual(parsed['parser'], 'docling')
+        self.assertIsNotNone(parsed['document'])
+        outline = syllabus_docling.build_outline_from_docling(parsed['document'])
+        labels = [section['label'] for section in outline]
+        self.assertIn('Course Specifications', labels)
+        self.assertIn('Weekly Schedule', labels)
+
+        result = syllabus_pipeline.analyze_syllabus_template(self._sample_docx(), 'docx', refine='false')
+        self.assertEqual(result['parser'], 'docling')
+        self.assertEqual(result['structure_source'], 'docling_tree')
+        self.assertTrue(result['sections'])
+        self.assertTrue(all('confidence' in section for section in result['sections']))
+
+
+class SyllabusExportTests(SimpleTestCase):
+    def test_styled_pdf_export_produces_bytes(self):
+        from apps.integrations.syllabus_export import build_syllabus_html, export_syllabus_pdf
+
+        syllabus = {
+            'course_title': 'Intro to Computing',
+            'course_code': 'CS101',
+            'university_name': 'Example University',
+            'course_description': 'An introductory course.',
+        }
+        branding = {
+            'header_text': 'Example University',
+            'footer_text': 'Confidential',
+            'syllabus_sections': [],
+            'syllabus_style_profile': {
+                'page': {'size': 'A4', 'orientation': 'portrait',
+                         'margins': {'top': 54, 'right': 54, 'bottom': 54, 'left': 54}},
+                'typography': {
+                    'body': {'family': 'Times New Roman', 'size_pt': 11},
+                    'heading_1': {'family': 'Arial', 'size_pt': 14, 'weight': 'bold'},
+                },
+                'colors': {'text': '#111111', 'accent': '#003366', 'table_header_bg': '#eeeeee'},
+                'table': {'border': True, 'header_bold': True},
+            },
+        }
+        html_doc = build_syllabus_html(syllabus, branding=branding, style_profile=branding['syllabus_style_profile'])
+        self.assertIn('Intro to Computing', html_doc)
+        self.assertIn('003366', html_doc)
+        pdf_bytes, engine = export_syllabus_pdf(syllabus, branding=branding)
+        self.assertIn(engine, {'weasyprint', 'reportlab'})
+        self.assertTrue(pdf_bytes.startswith(b'%PDF'))
 
 
 class PiiMaskingTests(SimpleTestCase):
