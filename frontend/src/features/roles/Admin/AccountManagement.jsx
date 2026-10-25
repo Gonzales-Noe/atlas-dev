@@ -88,11 +88,14 @@ export default function AdminAccountManagement() {
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
     footer_text: '', syllabus_sections: [], syllabus_style_profile: {},
-    syllabus_field_map: { sections: [] },
+    syllabus_field_map: { sections: [], click_log: [] },
     syllabus_preview_blocks: [],
     syllabus_template_name: '',
+    syllabus_template_kind: '',
+    syllabus_template_url: '',
   })
   const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
+  const [templateLocalFile, setTemplateLocalFile] = useState(null)
   const [formatTab, setFormatTab] = useState('map')
 
   useEffect(() => {
@@ -147,8 +150,10 @@ export default function AdminAccountManagement() {
           : {},
         syllabus_field_map: data.syllabus_field_map && typeof data.syllabus_field_map === 'object'
           ? data.syllabus_field_map
-          : { sections: [] },
+          : { sections: [], click_log: [] },
         syllabus_preview_blocks: Array.isArray(data.syllabus_preview_blocks) ? data.syllabus_preview_blocks : [],
+        syllabus_template_kind: data.syllabus_template_kind || '',
+        syllabus_template_url: data.syllabus_template_url || '',
       }))
     } catch (err) {
       // Non-fatal: customization may not be configured yet.
@@ -435,25 +440,30 @@ export default function AdminAccountManagement() {
   async function uploadDocxTemplate(file) {
     if (!file) return
     const ext = (file.name.split('.').pop() || '').toLowerCase()
-    const loadingMsg = ext === 'pdf' || ext === 'xlsx' || ext === 'xls'
-      ? `Converting ${ext.toUpperCase()} to editable DOCX…`
-      : 'Loading editable DOCX preview…'
-    setTemplateImport({ busy: true, message: loadingMsg, severity: 'info' })
+    setTemplateLocalFile(file)
+    setTemplateImport({
+      busy: true,
+      message: `Loading your ${ext.toUpperCase() || 'file'} for click mapping…`,
+      severity: 'info',
+    })
     try {
       const result = await previewSyllabusTemplate(file)
       setCustomization(current => ({
         ...current,
         syllabus_template_name: result.template_name || file.name,
+        syllabus_template_kind: result.file_type || ext,
+        syllabus_template_url: result.template_file_url || '/api/users/institution-syllabus-template/file/',
         syllabus_preview_blocks: Array.isArray(result.blocks) ? result.blocks : [],
-        syllabus_field_map: result.field_map || { sections: [], version: 1 },
+        syllabus_field_map: result.field_map || { sections: [], click_log: [], version: 1 },
       }))
       setFormatTab('map')
       setTemplateImport({
         busy: false,
-        message: result.detail || `Loaded ${result.block_count || 0} clickable blocks. Click to add sections.`,
-        severity: result.converted ? 'warning' : 'success',
+        message: result.detail || `Exact file loaded (${result.block_count || 0} clickable regions). Click to record sections.`,
+        severity: 'success',
       })
     } catch (err) {
+      setTemplateLocalFile(null)
       setTemplateImport({
         busy: false,
         message: err.response?.data?.detail || 'Could not load the syllabus template.',
@@ -1022,9 +1032,12 @@ export default function AdminAccountManagement() {
             {formatTab === 'map' && (
               <SyllabusFormatEditor
                 blocks={customization.syllabus_preview_blocks || []}
-                fieldMap={customization.syllabus_field_map || { sections: [] }}
+                fieldMap={customization.syllabus_field_map || { sections: [], click_log: [] }}
                 onFieldMapChange={nextMap => setCustomization(current => ({ ...current, syllabus_field_map: nextMap }))}
                 templateName={customization.syllabus_template_name || ''}
+                templateFileUrl={customization.syllabus_template_url || ''}
+                fileType={customization.syllabus_template_kind || ''}
+                localFile={templateLocalFile}
                 onUpload={uploadDocxTemplate}
                 uploading={templateImport.busy}
                 uploadMessage={templateImport.message}

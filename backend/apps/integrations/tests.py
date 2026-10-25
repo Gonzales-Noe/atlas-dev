@@ -608,7 +608,7 @@ class SyllabusTemplateDocTests(SimpleTestCase):
         texts = [p.text for p in out.paragraphs]
         self.assertIn('A premier university.', texts)
 
-    def test_xlsx_converts_to_docx_preview(self):
+    def test_xlsx_exact_preview_keeps_cells(self):
         import openpyxl
         from apps.integrations import syllabus_template_doc
 
@@ -619,11 +619,12 @@ class SyllabusTemplateDocTests(SimpleTestCase):
         ws.append(['Course Code', 'CS101'])
         xlsx_buf = BytesIO()
         wb.save(xlsx_buf)
-        docx_bytes, note = syllabus_template_doc.normalize_upload_to_docx(BytesIO(xlsx_buf.getvalue()), 'xlsx')
-        self.assertTrue(note)
-        preview = syllabus_template_doc.extract_docx_preview(BytesIO(docx_bytes))
-        labels = ' '.join(b['text'] for b in preview['blocks'])
+        built = syllabus_template_doc.build_exact_preview(BytesIO(xlsx_buf.getvalue()), 'xlsx')
+        self.assertEqual(built['kind'], 'xlsx')
+        labels = ' '.join(b['text'] for b in built['blocks'])
         self.assertIn('Course Specs', labels)
+        self.assertIn('CS101', labels)
+        self.assertTrue(built['working_docx_bytes'])
 
     def test_unsupported_type_rejected(self):
         from apps.integrations import syllabus_template_doc
