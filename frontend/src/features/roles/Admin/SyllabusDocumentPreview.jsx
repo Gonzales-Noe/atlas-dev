@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from 'react'
 import { Typography } from '@mui/material'
 import { renderAsync } from 'docx-preview'
 import * as pdfjs from 'pdfjs-dist'
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import * as XLSX from 'xlsx'
 import api from '../../../config/api'
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+// Served from /public so production nginx can load it as a plain script URL
+// (hashed Vite ?url imports of .mjs often fail module fetch behind SPA fallback).
+pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.mjs`
 
 const HIGHLIGHT = {
   title: 'rgba(96,165,250,0.35)',
