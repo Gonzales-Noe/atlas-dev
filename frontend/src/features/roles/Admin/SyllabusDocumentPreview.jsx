@@ -12,10 +12,11 @@ import api from '../../../config/api'
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.min.mjs`
 
 const HIGHLIGHT = {
-  title: 'rgba(96,165,250,0.35)',
-  content: 'rgba(134,239,172,0.4)',
-  mapped: 'rgba(134,239,172,0.18)',
-  selected: 'rgba(250,204,21,0.45)',
+  title: 'rgba(96,165,250,0.22)',
+  content: 'rgba(134,239,172,0.22)',
+  mapped: 'rgba(134,239,172,0.12)',
+  selected: 'rgba(96,165,250,0.28)',
+  lookup: 'rgba(250,204,21,0.35)',
 }
 
 function kindFromName(name = '', fallback = '') {
@@ -31,20 +32,29 @@ async function fetchTemplateBlob(fileUrl) {
   return response.data
 }
 
-function paintHighlight(el, blockId, mappedIds, selectedIds, roleById) {
+function paintHighlight(el, blockId, mappedIds, selectedIds, roleById, lookupIds) {
   const selected = selectedIds?.has?.(blockId)
+  const lookup = lookupIds?.has?.(blockId)
   const role = roleById?.get?.(blockId)
   const mapped = mappedIds?.has?.(blockId)
-  el.style.outline = selected ? '2px solid #f59e0b' : mapped ? '1px solid #86efac' : '1px solid transparent'
-  el.style.background = selected
-    ? HIGHLIGHT.selected
-    : role === 'content'
-      ? HIGHLIGHT.content
-      : role === 'title'
-        ? HIGHLIGHT.title
-        : mapped
-          ? HIGHLIGHT.mapped
-          : 'transparent'
+  el.style.outline = lookup
+    ? '2px solid #fbbf24'
+    : selected
+      ? '1px solid #60a5fa'
+      : mapped
+        ? '1px solid rgba(134,239,172,0.55)'
+        : '1px solid transparent'
+  el.style.background = lookup
+    ? HIGHLIGHT.lookup
+    : selected
+      ? HIGHLIGHT.selected
+      : role === 'content'
+        ? HIGHLIGHT.content
+        : role === 'title'
+          ? HIGHLIGHT.title
+          : mapped
+            ? HIGHLIGHT.mapped
+            : 'transparent'
   el.style.cursor = 'pointer'
 }
 
@@ -57,18 +67,20 @@ export default function SyllabusDocumentPreview({
   mappedIds,
   selectedIds,
   roleById,
+  lookupIds,
+  focusRegionId,
   onBlockClick,
 }) {
   const hostRef = useRef(null)
   const clickRef = useRef(onBlockClick)
-  const highlightRef = useRef({ mappedIds, selectedIds, roleById })
+  const highlightRef = useRef({ mappedIds, selectedIds, roleById, lookupIds })
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [sheetIndex, setSheetIndex] = useState(0)
   const [renderKey, setRenderKey] = useState(0)
 
   clickRef.current = onBlockClick
-  highlightRef.current = { mappedIds, selectedIds, roleById }
+  highlightRef.current = { mappedIds, selectedIds, roleById, lookupIds }
 
   const kind = kindFromName(templateName, fileType)
 
@@ -124,9 +136,13 @@ export default function SyllabusDocumentPreview({
     if (!host) return
     host.querySelectorAll('[data-region-id]').forEach(el => {
       const id = el.getAttribute('data-region-id')
-      paintHighlight(el, id, mappedIds, selectedIds, roleById)
+      paintHighlight(el, id, mappedIds, selectedIds, roleById, lookupIds)
     })
-  }, [mappedIds, selectedIds, roleById, renderKey])
+    if (focusRegionId) {
+      const target = host.querySelector(`[data-region-id="${CSS.escape(focusRegionId)}"]`)
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }, [mappedIds, selectedIds, roleById, lookupIds, focusRegionId, renderKey])
 
   if (!fileUrl && !localFile) {
     return (
@@ -171,7 +187,7 @@ async function renderDocx(host, blob, blocks, onClick, getHl) {
   })
 
   const paraBlocks = blocks.filter(b => String(b.id || '').startsWith('p-'))
-  const tableBlocks = blocks.filter(b => String(b.id || '').startsWith('t-'))
+  const cellBlocks = blocks.filter(b => String(b.id || '').startsWith('t-') && b.kind === 'table_cell')
   const hl = getHl()
 
   let pIdx = 0
@@ -182,7 +198,7 @@ async function renderDocx(host, blob, blocks, onClick, getHl) {
     pIdx += 1
     if (!block) continue
     p.setAttribute('data-region-id', block.id)
-    paintHighlight(p, block.id, hl.mappedIds, hl.selectedIds, hl.roleById)
+    paintHighlight(p, block.id, hl.mappedIds, hl.selectedIds, hl.roleById, hl.lookupIds)
     p.addEventListener('click', event => {
       event.preventDefault()
       event.stopPropagation()
@@ -190,15 +206,33 @@ async function renderDocx(host, blob, blocks, onClick, getHl) {
     })
   }
 
-  ;[...wrap.querySelectorAll('table')].forEach((table, index) => {
-    const block = tableBlocks[index]
-    if (!block) return
-    table.setAttribute('data-region-id', block.id)
-    paintHighlight(table, block.id, hl.mappedIds, hl.selectedIds, hl.roleById)
-    table.addEventListener('click', event => {
-      event.preventDefault()
-      event.stopPropagation()
-      onClick(block)
+  // Wire each table cell separately (Vision / Mission stay independent).
+  const cellByKey = new Map()
+  for (const block of cellBlocks) {
+    cellByKey.set(`${block.table_index}-${block.row}-${block.col}`, block)
+  }
+  ;[...wrap.querySelectorAll('table')].forEach((table, tableIndex) => {
+    ;[...table.querySelectorAll('tr')].forEach((tr, rowIndex) => {
+      ;[...tr.children].forEach((td, colIndex) => {
+        if (td.tagName !== 'TD' && td.tagName !== 'TH') return
+        const text = (td.textContent || '').trim()
+        if (!text) return
+        const block = cellByKey.get(`${tableIndex}-${rowIndex}-${colIndex}`) || {
+          id: `t-${tableIndex}-r${rowIndex}-c${colIndex}`,
+          kind: 'table_cell',
+          text,
+          table_index: tableIndex,
+          row: rowIndex,
+          col: colIndex,
+        }
+        td.setAttribute('data-region-id', block.id)
+        paintHighlight(td, block.id, hl.mappedIds, hl.selectedIds, hl.roleById, hl.lookupIds)
+        td.addEventListener('click', event => {
+          event.preventDefault()
+          event.stopPropagation()
+          onClick(block)
+        })
+      })
     })
   })
 }
@@ -248,7 +282,7 @@ async function renderPdf(host, blob, blocks, onClick, getHl) {
       hit.style.border = 'none'
       hit.style.padding = '0'
       hit.style.zIndex = '2'
-      paintHighlight(hit, block.id, hl.mappedIds, hl.selectedIds, hl.roleById)
+      paintHighlight(hit, block.id, hl.mappedIds, hl.selectedIds, hl.roleById, hl.lookupIds)
       hit.addEventListener('click', event => {
         event.preventDefault()
         onClick(block)
@@ -307,7 +341,7 @@ async function renderXlsx(host, blob, blocks, sheetIndex, onClick, getHl, setShe
     caption.style.padding = '8px'
     caption.style.fontWeight = '700'
     caption.setAttribute('data-region-id', titleBlock.id)
-    paintHighlight(caption, titleBlock.id, hl.mappedIds, hl.selectedIds, hl.roleById)
+    paintHighlight(caption, titleBlock.id, hl.mappedIds, hl.selectedIds, hl.roleById, hl.lookupIds)
     caption.addEventListener('click', () => onClick(titleBlock))
     table.appendChild(caption)
   }
@@ -334,7 +368,7 @@ async function renderXlsx(host, blob, blocks, sheetIndex, onClick, getHl, setShe
           col: c + 1,
         }
         td.setAttribute('data-region-id', block.id)
-        paintHighlight(td, block.id, hl.mappedIds, hl.selectedIds, hl.roleById)
+        paintHighlight(td, block.id, hl.mappedIds, hl.selectedIds, hl.roleById, hl.lookupIds)
         td.addEventListener('click', () => onClick(block))
       }
       tr.appendChild(td)
