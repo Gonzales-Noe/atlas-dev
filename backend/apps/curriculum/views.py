@@ -3630,6 +3630,14 @@ def _resolve_institution_branding(course):
     ).first()
     if not customization:
         return {}
+    template_bytes = b''
+    if customization.syllabus_template:
+        try:
+            customization.syllabus_template.open('rb')
+            template_bytes = customization.syllabus_template.read()
+            customization.syllabus_template.close()
+        except Exception:
+            template_bytes = b''
     return {
         'header_text': customization.header_text or '',
         'footer_text': customization.footer_text or '',
@@ -3639,6 +3647,9 @@ def _resolve_institution_branding(course):
         'footer_image_url': customization.footer_image_url or '',
         'syllabus_sections': customization.syllabus_sections or [],
         'syllabus_style_profile': customization.syllabus_style_profile or {},
+        'syllabus_field_map': customization.syllabus_field_map or {},
+        'syllabus_template_bytes': template_bytes,
+        'syllabus_template_name': customization.syllabus_template_name or '',
     }
 
 
@@ -4171,8 +4182,28 @@ def export_syllabus_docx(request):
             return http_response
 
         else:
-            # ── DOCX template or default plain build ─────────────────────
+            # ── DOCX: field-map fill (institution template) or plain/user template ─
             from docx import Document
+            field_map = (branding or {}).get('syllabus_field_map') or {}
+            institution_template = (branding or {}).get('syllabus_template_bytes') or b''
+            mapped_sections = field_map.get('sections') if isinstance(field_map, dict) else None
+
+            if (
+                not template_file
+                and institution_template
+                and isinstance(mapped_sections, list)
+                and mapped_sections
+            ):
+                from apps.integrations.syllabus_template_doc import fill_docx_from_field_map
+                filled = fill_docx_from_field_map(institution_template, field_map, syllabus)
+                filename = f"{course_code}_syllabus.docx"
+                http_response = HttpResponse(
+                    filled,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                )
+                http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return http_response
+
             if template_file:
                 doc = Document(template_file)
                 _fill_docx_template(doc, syllabus)

@@ -6,6 +6,7 @@ import logging
 import secrets
 import uuid
 from datetime import timedelta
+from io import BytesIO
 
 import requests
 
@@ -13,6 +14,7 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core import signing
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import transaction
 
 from django.db.models import Count, Q, Value
@@ -24,7 +26,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations import syllabus_pipeline
+from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
@@ -1095,6 +1097,8 @@ class InstitutionCustomizationView(APIView):
                 'syllabus_template_name': '',
                 'syllabus_sections': [],
                 'syllabus_style_profile': {},
+                'syllabus_field_map': {'sections': []},
+                'syllabus_preview_blocks': [],
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
@@ -1106,6 +1110,8 @@ class InstitutionCustomizationView(APIView):
             'syllabus_template_name': customization.syllabus_template_name,
             'syllabus_sections': customization.syllabus_sections,
             'syllabus_style_profile': customization.syllabus_style_profile or {},
+            'syllabus_field_map': customization.syllabus_field_map or {'sections': []},
+            'syllabus_preview_blocks': customization.syllabus_preview_blocks or [],
             'field_labels': customization.field_labels,
         })
 
@@ -1123,20 +1129,118 @@ class InstitutionCustomizationView(APIView):
             'syllabus_template_name',
             'syllabus_sections',
             'syllabus_style_profile',
+            'syllabus_preview_blocks',
             'field_labels',
         ):
             if field in request.data:
                 setattr(customization, field, request.data[field])
+        if 'syllabus_field_map' in request.data:
+            field_map = syllabus_template_doc.normalize_field_map(request.data.get('syllabus_field_map'))
+            customization.syllabus_field_map = field_map
+            # Keep faculty workspace sections in sync with the click map.
+            customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
         customization.save()
         return self.get(request)
 
 
+class SyllabusTemplatePreviewView(APIView):
+    """
+    Upload a syllabus sample (DOCX preferred; PDF/XLSX auto-converted to DOCX),
+    store the editable DOCX, and return clickable preview blocks.
+    """
+
+    def post(self, request):
+        if normalize_role(request.user.role) != 'admin':
+            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.institution:
+            return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response(
+                {'detail': 'Choose a syllabus file (.docx, .pdf, or .xlsx).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file_type = uploaded_file.name.rsplit('.', 1)[-1].lower()
+        if file_type not in syllabus_template_doc.SUPPORTED_UPLOAD_TYPES:
+            return Response(
+                {'detail': 'Unsupported type. Upload a .docx, .pdf, or .xlsx syllabus sample.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Size/type checks for pdf/docx via DocumentProcessor; xlsx checked lightly here.
+        if file_type in {'pdf', 'docx'}:
+            is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
+            if not is_valid:
+                return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            max_bytes = getattr(DocumentProcessor, 'MAX_FILE_SIZE', 20 * 1024 * 1024)
+            if uploaded_file.size and uploaded_file.size > max_bytes:
+                return Response({'detail': 'File is too large.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        conversion_note = ''
+        try:
+            uploaded_file.seek(0)
+            docx_bytes, conversion_note = syllabus_template_doc.normalize_upload_to_docx(
+                uploaded_file, file_type,
+            )
+            preview = syllabus_template_doc.extract_docx_preview(BytesIO(docx_bytes))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception('Could not build syllabus preview for %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Could not read that file. Try a .docx, or re-export the PDF/Excel and upload again.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not preview.get('blocks'):
+            return Response(
+                {'detail': 'No readable paragraphs or tables were found after conversion.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Always persist an editable .docx (converted when needed).
+        stem = uploaded_file.name.rsplit('.', 1)[0][:200] or 'syllabus_template'
+        stored_name = f'{stem}.docx'
+        try:
+            customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
+            customization.syllabus_template.save(stored_name, ContentFile(docx_bytes), save=False)
+            customization.syllabus_template_name = uploaded_file.name[:255]
+            customization.syllabus_preview_blocks = preview['blocks']
+            customization.syllabus_field_map = {'sections': [], 'version': 1}
+            customization.save(update_fields=[
+                'syllabus_template', 'syllabus_template_name',
+                'syllabus_preview_blocks', 'syllabus_field_map', 'updated_at',
+            ])
+        except Exception:
+            logger.exception('Could not store syllabus template %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Preview succeeded, but the file could not be stored. Try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        detail = 'Click a block on the left to add a section, then click again to place where its content goes.'
+        if conversion_note:
+            detail = f'{conversion_note} {detail}'
+
+        return Response({
+            'template_name': uploaded_file.name,
+            'stored_as': stored_name,
+            'converted': bool(conversion_note),
+            'conversion_note': conversion_note,
+            'blocks': preview['blocks'],
+            'block_count': preview['block_count'],
+            'field_map': {'sections': [], 'version': 1},
+            'detail': detail,
+        })
+
+
 class SyllabusTemplateAnalyzeView(APIView):
     """
-    Derive syllabus form structure + style profile from a PDF/DOCX template.
-
-    Parser-first (Docling when installed, else LiteParse). LLM refine is off by
-    default; pass refine=true|ollama|groq to enable optional polish.
+    Legacy parser path (Docling/LiteParse). Prefer SyllabusTemplatePreviewView
+    for the click-to-map DOCX editor.
     """
 
     def post(self, request):
@@ -1173,10 +1277,8 @@ class SyllabusTemplateAnalyzeView(APIView):
             customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
             customization.syllabus_template.save(uploaded_file.name, uploaded_file, save=False)
             customization.syllabus_template_name = uploaded_file.name[:255]
-            # Stash latest detected style for the admin to review before Save Format.
             customization.syllabus_style_profile = analysis.get('style_profile') or {}
             branding = analysis.get('branding_suggestions') or {}
-            # Prefill empty branding fields from extracted header/footer bands.
             if not customization.header_text and branding.get('header_text'):
                 customization.header_text = str(branding['header_text'])[:500]
             if not customization.footer_text and branding.get('footer_text'):

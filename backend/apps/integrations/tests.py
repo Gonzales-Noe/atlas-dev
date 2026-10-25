@@ -565,6 +565,72 @@ class SyllabusDoclingParseTests(SimpleTestCase):
         self.assertTrue(all('confidence' in section for section in result['sections']))
 
 
+class SyllabusTemplateDocTests(SimpleTestCase):
+    def test_preview_click_map_and_fill_roundtrip(self):
+        from docx import Document
+        from apps.integrations import syllabus_template_doc
+
+        buffer = BytesIO()
+        doc = Document()
+        doc.add_heading('Vision and Mission', level=1)
+        doc.add_paragraph('PLACEHOLDER_VISION')
+        doc.add_heading('Course Information', level=1)
+        doc.add_paragraph('PLACEHOLDER_COURSE')
+        doc.save(buffer)
+        template_bytes = buffer.getvalue()
+
+        preview = syllabus_template_doc.extract_docx_preview(BytesIO(template_bytes))
+        self.assertGreaterEqual(len(preview['blocks']), 4)
+        title = next(b for b in preview['blocks'] if 'Vision' in b['text'])
+        content = next(b for b in preview['blocks'] if b['text'] == 'PLACEHOLDER_VISION')
+
+        field_map = {
+            'sections': [{
+                'key': 'vision-mission',
+                'label': 'Vision and Mission',
+                'title_region_id': title['id'],
+                'content_region_id': content['id'],
+                'enabled': True,
+                'is_static': False,
+                'subsections': [],
+            }],
+        }
+        sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
+        self.assertEqual(sections[0]['label'], 'Vision and Mission')
+        self.assertEqual(sections[0]['content_region_id'], content['id'])
+
+        filled = syllabus_template_doc.fill_docx_from_field_map(
+            template_bytes,
+            field_map,
+            {'vision-mission': 'A premier university.'},
+        )
+        out = Document(BytesIO(filled))
+        texts = [p.text for p in out.paragraphs]
+        self.assertIn('A premier university.', texts)
+
+    def test_xlsx_converts_to_docx_preview(self):
+        import openpyxl
+        from apps.integrations import syllabus_template_doc
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = 'Course Specs'
+        ws.append(['Field', 'Value'])
+        ws.append(['Course Code', 'CS101'])
+        xlsx_buf = BytesIO()
+        wb.save(xlsx_buf)
+        docx_bytes, note = syllabus_template_doc.normalize_upload_to_docx(BytesIO(xlsx_buf.getvalue()), 'xlsx')
+        self.assertTrue(note)
+        preview = syllabus_template_doc.extract_docx_preview(BytesIO(docx_bytes))
+        labels = ' '.join(b['text'] for b in preview['blocks'])
+        self.assertIn('Course Specs', labels)
+
+    def test_unsupported_type_rejected(self):
+        from apps.integrations import syllabus_template_doc
+        with self.assertRaises(ValueError):
+            syllabus_template_doc.normalize_upload_to_docx(BytesIO(b'hi'), 'txt')
+
+
 class SyllabusParseTimeoutTests(SimpleTestCase):
     def test_liteparse_mode_skips_docling(self):
         from docx import Document

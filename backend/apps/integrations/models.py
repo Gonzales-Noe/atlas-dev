@@ -76,6 +76,10 @@ class InstitutionCustomization(models.Model):
     syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
     syllabus_style_profile = models.JSONField(default=dict, blank=True)
+    # Click-mapped DOCX regions: sections with title_region_id + content_region_id
+    syllabus_field_map = models.JSONField(default=dict, blank=True)
+    # Cached preview blocks for the uploaded editable template (admin click UI)
+    syllabus_preview_blocks = models.JSONField(default=list, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

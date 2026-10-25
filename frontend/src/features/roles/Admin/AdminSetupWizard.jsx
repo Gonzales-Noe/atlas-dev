@@ -1,25 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Alert, Box, Button, CircularProgress, Dialog, DialogContent, Divider,
-  FormControlLabel, IconButton, LinearProgress, Stack, Step,
-  StepLabel, Stepper, Switch, TextField, Typography,
+  IconButton, LinearProgress, Stack, Step,
+  StepLabel, Stepper, TextField, Typography,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import {
-  analyzeSyllabusTemplate,
-  BUILTIN_SYLLABUS_EDITORS,
   completeSetup,
-  describeDetectedStructure,
   createFacultyWithAssignments,
   fetchFacultyAssignments,
   fetchInstitutionCustomization,
+  previewSyllabusTemplate,
   saveInstitutionCustomization,
   uploadInstitutionKnowledgeDocument,
   WIZARD_STEPS,
 } from './academicApi'
+import SyllabusFormatEditor from './SyllabusFormatEditor'
 import { PrimaryBtn, OutlineBtn } from '../../../components/ui'
 import LoadingState from '../../../components/LoadingState'
 
@@ -44,10 +43,6 @@ function toMessage(err, fallback) {
   return fallback
 }
 
-function sectionKey(label) {
-  return label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-}
-
 export default function AdminSetupWizard({ open, onFinished }) {
   const [activeStep, setActiveStep] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -55,12 +50,13 @@ export default function AdminSetupWizard({ open, onFinished }) {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [templateName, setTemplateName] = useState('')
-  const [sections, setSections] = useState([])
+  const [previewBlocks, setPreviewBlocks] = useState([])
+  const [fieldMap, setFieldMap] = useState({ sections: [], version: 1 })
+  const [templateUploadMsg, setTemplateUploadMsg] = useState({ message: '', severity: 'info' })
   const [styleProfile, setStyleProfile] = useState({})
   const [brandingDraft, setBrandingDraft] = useState({
     header_text: '', footer_text: '', header_image_url: '', footer_image_url: '',
   })
-  const [manualSection, setManualSection] = useState('')
   const [facultyForm, setFacultyForm] = useState({ full_name: '', email: '', password: '' })
   const [assignmentGroups, setAssignmentGroups] = useState([EMPTY_ASSIGNMENT()])
   const [hasAssignedFaculty, setHasAssignedFaculty] = useState(false)
@@ -77,11 +73,11 @@ export default function AdminSetupWizard({ open, onFinished }) {
         fetchInstitutionCustomization(),
         fetchFacultyAssignments(),
       ])
-      const savedSections = Array.isArray(customization.syllabus_sections)
-        ? customization.syllabus_sections
-        : []
       setTemplateName(customization.syllabus_template_name || '')
-      setSections(savedSections)
+      setPreviewBlocks(Array.isArray(customization.syllabus_preview_blocks) ? customization.syllabus_preview_blocks : [])
+      setFieldMap(customization.syllabus_field_map && typeof customization.syllabus_field_map === 'object'
+        ? customization.syllabus_field_map
+        : { sections: [], version: 1 })
       setStyleProfile(customization.syllabus_style_profile && typeof customization.syllabus_style_profile === 'object'
         ? customization.syllabus_style_profile
         : {})
@@ -129,257 +125,45 @@ export default function AdminSetupWizard({ open, onFinished }) {
     setNotice('')
   }, [activeStep])
 
-  function updateSection(index, changes) {
-    setSections(current => current.map((section, i) => i === index ? { ...section, ...changes } : section))
-  }
-
-  function updateSubsection(sectionIndex, subsectionIndex, changes) {
-    setSections(current => current.map((section, i) => (
-      i === sectionIndex
-        ? {
-            ...section,
-            subsections: (section.subsections || []).map((subsection, j) => (
-              j === subsectionIndex ? { ...subsection, ...changes } : subsection
-            )),
-          }
-        : section
-    )))
-  }
-
-  function updateTableColumn(sectionIndex, subsectionIndex, columnIndex, value) {
-    if (subsectionIndex == null) {
-      const section = sections[sectionIndex]
-      updateSection(sectionIndex, {
-        table_columns: (section.table_columns || []).map((column, i) => i === columnIndex ? value : column),
-      })
-      return
-    }
-    const subsection = sections[sectionIndex].subsections[subsectionIndex]
-    updateSubsection(sectionIndex, subsectionIndex, {
-      table_columns: (subsection.table_columns || []).map((column, i) => i === columnIndex ? value : column),
-    })
-  }
-
-  function updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, value) {
-    const field = subsectionIndex == null
-      ? sections[sectionIndex]
-      : sections[sectionIndex].subsections[subsectionIndex]
-    const groups = Array.isArray(field?.table_column_groups) ? field.table_column_groups : []
-    const nextGroups = Array.from(
-      { length: (field?.table_columns || []).length },
-      (_, index) => index === columnIndex ? value : (groups[index] || ''),
-    )
-    if (subsectionIndex == null) {
-      updateSection(sectionIndex, { table_column_groups: nextGroups })
-      return
-    }
-    updateSubsection(sectionIndex, subsectionIndex, { table_column_groups: nextGroups })
-  }
-
-  function addTableColumn(sectionIndex, subsectionIndex) {
-    if (subsectionIndex == null) {
-      updateSection(sectionIndex, {
-        table_columns: [...(sections[sectionIndex].table_columns || []), ''],
-        table_column_groups: [...(sections[sectionIndex].table_column_groups || []), ''],
-      })
-      return
-    }
-    const subsection = sections[sectionIndex].subsections[subsectionIndex]
-    updateSubsection(sectionIndex, subsectionIndex, {
-      table_columns: [...(subsection.table_columns || []), ''],
-      table_column_groups: [...(subsection.table_column_groups || []), ''],
-    })
-  }
-
-  function removeTableColumn(sectionIndex, subsectionIndex, columnIndex) {
-    if (subsectionIndex == null) {
-      updateSection(sectionIndex, {
-        table_columns: (sections[sectionIndex].table_columns || []).filter((_, i) => i !== columnIndex),
-        table_column_groups: (sections[sectionIndex].table_column_groups || []).filter((_, i) => i !== columnIndex),
-      })
-      return
-    }
-    const subsection = sections[sectionIndex].subsections[subsectionIndex]
-    updateSubsection(sectionIndex, subsectionIndex, {
-      table_columns: (subsection.table_columns || []).filter((_, i) => i !== columnIndex),
-      table_column_groups: (subsection.table_column_groups || []).filter((_, i) => i !== columnIndex),
-    })
-  }
-
-  function renderTableColumns(section, sectionIndex, subsectionIndex = null) {
-    const field = subsectionIndex == null
-      ? section
-      : (section.subsections || [])[subsectionIndex]
-    const columns = Array.isArray(field?.table_columns) ? field.table_columns : []
-    return (
-      <Stack spacing={1} sx={{ pl: 2 }}>
-        {columns.map((column, columnIndex) => (
-          <Stack key={columnIndex} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
-            <TextField
-              label={`Column ${columnIndex + 1} heading`}
-              size="small"
-              fullWidth
-              value={column}
-              onChange={event => updateTableColumn(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-            />
-            <TextField
-              label={`Group heading ${columnIndex + 1} (optional)`}
-              helperText="Repeat the same heading on adjacent columns to merge them."
-              size="small"
-              fullWidth
-              value={field.table_column_groups?.[columnIndex] || ''}
-              onChange={event => updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-            />
-            <IconButton aria-label={`Remove column ${columnIndex + 1}`} onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)} sx={{ color: '#86EFAC' }}>
-              <DeleteOutlinedIcon />
-            </IconButton>
-          </Stack>
-        ))}
-        <OutlineBtn onClick={() => addTableColumn(sectionIndex, subsectionIndex)} style={{ alignSelf: 'flex-start' }}>
-          <AddIcon fontSize="small" /> Add column
-        </OutlineBtn>
-      </Stack>
-    )
-  }
-
-  function addSubsection(sectionIndex) {
-    setSections(current => current.map((section, i) => (
-      i === sectionIndex
-        ? {
-            ...section,
-            subsections: [
-              ...(Array.isArray(section.subsections) ? section.subsections : []),
-              {
-                key: `subsection-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                label: '',
-                required: false,
-              },
-            ],
-          }
-        : section
-    )))
-  }
-
-  function removeSubsection(sectionIndex, subsectionIndex) {
-    setSections(current => current.map((section, i) => (
-      i === sectionIndex
-        ? { ...section, subsections: (section.subsections || []).filter((_, j) => j !== subsectionIndex) }
-        : section
-    )))
-  }
-
   async function handleTemplateUpload(file) {
     if (!file) return
     setSaving(true)
     setError('')
     setNotice('')
+    setTemplateUploadMsg({ message: 'Loading template preview…', severity: 'info' })
     try {
-      const result = await analyzeSyllabusTemplate(file)
+      const result = await previewSyllabusTemplate(file)
       setTemplateName(result.template_name || file.name)
-      const branding = result.branding_suggestions || {}
-      if (result.style_profile && typeof result.style_profile === 'object') {
-        setStyleProfile(result.style_profile)
-      }
-      setBrandingDraft(current => ({
-        header_text: current.header_text || branding.header_text || '',
-        footer_text: current.footer_text || branding.footer_text || '',
-        header_image_url: current.header_image_url || branding.header_image_url || '',
-        footer_image_url: current.footer_image_url || branding.footer_image_url || '',
-      }))
-      if (Array.isArray(result.sections) && result.sections.length) {
-        setSections(result.sections)
-        setNotice(describeDetectedStructure(result))
-      } else {
-        setNotice(result.detail || 'No headings were detected. Add your sections manually below.')
-      }
+      setPreviewBlocks(Array.isArray(result.blocks) ? result.blocks : [])
+      setFieldMap(result.field_map || { sections: [], version: 1 })
+      setTemplateUploadMsg({
+        message: result.detail || `Loaded ${result.block_count || 0} blocks. Click to map sections.`,
+        severity: result.converted ? 'warning' : 'success',
+      })
+      setNotice(result.converted
+        ? 'File converted to editable DOCX. Click sections, then place content areas.'
+        : 'Template loaded. Click blocks to build your section list.')
     } catch (err) {
-      setError(toMessage(err, 'Could not analyze the syllabus template.'))
+      setError(toMessage(err, 'Could not load the syllabus template.'))
+      setTemplateUploadMsg({ message: '', severity: 'info' })
     } finally {
       setSaving(false)
     }
   }
 
-  function addManualSection() {
-    const label = manualSection.trim()
-    if (!label) return
-    const key = sectionKey(label)
-    if (sections.some(section => section.label?.trim().toLowerCase() === label.toLowerCase())) {
-      setError('That section is already in the template.')
-      return
-    }
-    setSections(current => [...current, {
-      key: key || `section-${current.length + 1}`,
-      label,
-      enabled: true,
-      is_static: false,
-      static_content: '',
-      subsections: [],
-    }])
-    setManualSection('')
-    setError('')
-  }
-
   async function saveTemplateAndContinue() {
-    const hasUnnamedSubsection = sections.some(section =>
-      section.enabled
-      && !section.is_static
-      && (Array.isArray(section.subsections) ? section.subsections : [])
-        .some(subsection => !subsection.label?.trim()),
-    )
-    if (hasUnnamedSubsection) {
-      setError('Add a name to each syllabus subsection before continuing.')
+    const mapSections = fieldMap?.sections || []
+    if (!previewBlocks.length) {
+      setError('Upload a syllabus template (.docx, .pdf, or .xlsx) first.')
       return
     }
-    const hasInvalidTable = sections.some(section => {
-      if (!section.enabled || section.is_static) return false
-      const hasInvalidColumns = field => field.table_enabled
-        && (!Array.isArray(field.table_columns)
-          || !field.table_columns.length
-          || field.table_columns.some(column => !String(column).trim()))
-      return hasInvalidColumns(section)
-        || (Array.isArray(section.subsections) ? section.subsections : []).some(hasInvalidColumns)
-    })
-    if (hasInvalidTable) {
-      setError('Add a heading for every table column before continuing.')
+    if (!mapSections.length) {
+      setError('Click at least one section on the preview before continuing.')
       return
     }
-    const enabledSections = sections
-      .filter(section => section.enabled && section.label?.trim())
-      .map(section => ({
-        ...section,
-        key: section.key?.trim() || sectionKey(section.label),
-        label: section.label.trim(),
-        static_content: section.is_static ? (section.static_content || '').trim() : '',
-        subsections: (Array.isArray(section.subsections) ? section.subsections : [])
-          .filter(subsection => subsection.label?.trim())
-          .map(subsection => ({
-            ...subsection,
-            label: subsection.label.trim(),
-            required: Boolean(subsection.required),
-            table_enabled: Boolean(subsection.table_enabled),
-            table_columns: Array.isArray(subsection.table_columns)
-              ? subsection.table_columns.map(column => column.trim())
-              : [],
-            table_column_groups: Array.isArray(subsection.table_column_groups)
-              ? subsection.table_column_groups.map(group => group.trim())
-              : [],
-          })),
-        table_enabled: Boolean(section.table_enabled),
-        table_columns: Array.isArray(section.table_columns)
-          ? section.table_columns.map(column => column.trim())
-          : [],
-        table_column_groups: Array.isArray(section.table_column_groups)
-          ? section.table_column_groups.map(group => group.trim())
-          : [],
-      }))
-    if (!enabledSections.length) {
-      setError('Add and enable at least one syllabus section to continue.')
-      return
-    }
-    if (enabledSections.some(section => section.is_static && !section.static_content)) {
-      setError('Add the fixed content for each section marked as static.')
+    const missingContent = mapSections.filter(section => section.enabled !== false && !section.content_region_id)
+    if (missingContent.length) {
+      setError(`Place content for: ${missingContent.map(s => s.label).join(', ')}`)
       return
     }
     setSaving(true)
@@ -387,11 +171,11 @@ export default function AdminSetupWizard({ open, onFinished }) {
     try {
       await saveInstitutionCustomization({
         syllabus_template_name: templateName,
-        syllabus_sections: enabledSections,
+        syllabus_field_map: fieldMap,
+        syllabus_preview_blocks: previewBlocks,
         syllabus_style_profile: styleProfile || {},
         ...brandingDraft,
       })
-      setSections(enabledSections)
       setActiveStep(1)
     } catch (err) {
       setError(toMessage(err, 'Could not save the syllabus template.'))
@@ -497,7 +281,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
       open={open}
       onClose={() => {}}
       fullWidth
-      maxWidth="md"
+      maxWidth={activeStep === 0 ? 'lg' : 'md'}
       disableEscapeKeyDown
       transitionDuration={0}
       BackdropProps={{ sx: { backgroundColor: 'transparent' } }}
@@ -544,124 +328,18 @@ export default function AdminSetupWizard({ open, onFinished }) {
               <>
                 <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the institution syllabus template</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Upload a PDF/DOCX syllabus to detect its sections, subsections and tables automatically, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared institutional information can be fixed for everyone.
+                  Upload a DOCX, PDF, or Excel syllabus. Click headings on the left to build sections, then click again to place where faculty content goes.
                 </Typography>
-                <Button
-                  component="label"
-                  variant="outlined"
-                  startIcon={<CloudUploadIcon />}
-                  disabled={saving}
-                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#86EFAC', color: '#86EFAC' }}
-                >
-                  {templateName || 'Upload syllabus template (PDF or DOCX)'}
-                  <input hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    onChange={event => { handleTemplateUpload(event.target.files?.[0]); event.target.value = '' }} />
-                </Button>
-                {templateName && <Typography sx={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>Template: {templateName}</Typography>}
-                {sections.map((section, index) => (
-                  <Box key={`${section.key || section.label}-${index}`} sx={{ p: 1.5, border: '1px solid var(--border-color)', borderRadius: 2 }}>
-                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-                      <TextField
-                        label="Section name"
-                        size="small"
-                        fullWidth
-                        value={section.label || ''}
-                        onChange={event => updateSection(index, {
-                          label: event.target.value,
-                          key: BUILTIN_SYLLABUS_EDITORS[section.key] ? section.key : sectionKey(event.target.value),
-                        })}
-                        helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
-                          ? `Faculty fill this with the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
-                          : undefined}
-                        sx={inputSx}
-                      />
-                      <FormControlLabel
-                        control={<Switch checked={section.enabled !== false} onChange={event => updateSection(index, { enabled: event.target.checked })} />}
-                        label="Show to faculty"
-                        sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                      />
-                      <FormControlLabel
-                        control={<Switch checked={Boolean(section.is_static)} onChange={event => updateSection(index, { is_static: event.target.checked })} />}
-                        label="Fixed for all"
-                        sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                      />
-                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#86EFAC' }}>
-                        <DeleteOutlinedIcon />
-                      </IconButton>
-                    </Stack>
-                    {section.is_static && (
-                      <TextField
-                        label="Shared fixed content"
-                        value={section.static_content || ''}
-                        onChange={event => updateSection(index, { static_content: event.target.value })}
-                        fullWidth
-                        multiline
-                        minRows={2}
-                        size="small"
-                        sx={{ ...inputSx, mt: 1.5 }}
-                        placeholder="For example, the institution's mission and vision."
-                      />
-                    )}
-                    {!section.is_static && (
-                      <Stack spacing={1} sx={{ mt: 1.5 }}>
-                        <FormControlLabel
-                          control={<Switch checked={Boolean(section.table_enabled)} onChange={event => updateSection(index, { table_enabled: event.target.checked })} />}
-                          label="Include a table in this section"
-                          sx={{ color: 'var(--text-secondary)' }}
-                        />
-                        {section.table_enabled && renderTableColumns(section, index)}
-                      </Stack>
-                    )}
-                    {!section.is_static && (
-                      <Stack spacing={1} sx={{ mt: 1.5, pl: 1.5, borderLeft: '2px solid var(--border-color)' }}>
-                        <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Subsections / answer fields</Typography>
-                        {(Array.isArray(section.subsections) ? section.subsections : []).map((subsection, subsectionIndex) => (
-                          <Stack key={subsection.key || subsectionIndex} spacing={1}>
-                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-                              <TextField
-                                label="Subsection name"
-                                size="small"
-                                fullWidth
-                                value={subsection.label || ''}
-                                onChange={event => updateSubsection(index, subsectionIndex, { label: event.target.value })}
-                                sx={inputSx}
-                              />
-                              <FormControlLabel
-                                control={<Switch checked={Boolean(subsection.required)} onChange={event => updateSubsection(index, subsectionIndex, { required: event.target.checked })} />}
-                                label="Required"
-                                sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                              />
-                              <IconButton aria-label={`Remove ${subsection.label || 'subsection'}`} onClick={() => removeSubsection(index, subsectionIndex)} sx={{ color: '#86EFAC' }}>
-                                <DeleteOutlinedIcon />
-                              </IconButton>
-                            </Stack>
-                            <FormControlLabel
-                              control={<Switch checked={Boolean(subsection.table_enabled)} onChange={event => updateSubsection(index, subsectionIndex, { table_enabled: event.target.checked })} />}
-                              label="Use a table for this subsection"
-                              sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                            />
-                            {subsection.table_enabled && renderTableColumns(section, index, subsectionIndex)}
-                          </Stack>
-                        ))}
-                        <OutlineBtn onClick={() => addSubsection(index)} style={{ alignSelf: 'flex-start' }}>
-                          <AddIcon fontSize="small" /> Add subsection
-                        </OutlineBtn>
-                      </Stack>
-                    )}
-                  </Box>
-                ))}
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <TextField
-                    label="Add a section manually"
-                    value={manualSection}
-                    onChange={event => setManualSection(event.target.value)}
-                    onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); addManualSection() } }}
-                    fullWidth
-                    size="small"
-                    sx={inputSx}
-                  />
-                  <OutlineBtn onClick={addManualSection} disabled={!manualSection.trim()}><AddIcon fontSize="small" /> Add section</OutlineBtn>
-                </Stack>
+                <SyllabusFormatEditor
+                  blocks={previewBlocks}
+                  fieldMap={fieldMap}
+                  onFieldMapChange={setFieldMap}
+                  templateName={templateName}
+                  onUpload={handleTemplateUpload}
+                  uploading={saving}
+                  uploadMessage={templateUploadMsg.message}
+                  uploadSeverity={templateUploadMsg.severity}
+                />
               </>
             )}
 
