@@ -31,11 +31,23 @@ export async function saveInstitutionCustomization(payload) {
 export async function analyzeSyllabusTemplate(file) {
   const formData = new FormData()
   formData.append('file', file)
-  const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
-  })
-  return data
+  try {
+    const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      // Docling may take up to ~35s then LiteParse finishes; leave headroom.
+      timeout: 90000,
+    })
+    return data
+  } catch (err) {
+    if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))) {
+      const timeoutErr = new Error(
+        'Analysis timed out. The server will fall back to a faster parser on retry — try again, or use a DOCX if you have one.',
+      )
+      timeoutErr.response = { data: { detail: timeoutErr.message } }
+      throw timeoutErr
+    }
+    throw err
+  }
 }
 
 // Section keys the faculty workspace renders with a dedicated editor.
@@ -68,7 +80,8 @@ export function describeDetectedStructure(result) {
     structureConfidence != null ? `structure ${Math.round(Number(structureConfidence) * 100)}%` : null,
     styleConfidence != null ? `style ${Math.round(Number(styleConfidence) * 100)}%` : null,
   ].filter(Boolean).join(', ')
-  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} via ${parser}${llm}${confNote ? ` (${confNote})` : ''}. Review before saving.`
+  const note = result?.docling_note ? ` Note: ${result.docling_note}.` : ''
+  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} via ${parser}${llm}${confNote ? ` (${confNote})` : ''}.${note} Review before saving.`
 }
 
 export async function createFacultyWithAssignments(payload) {

@@ -565,6 +565,25 @@ class SyllabusDoclingParseTests(SimpleTestCase):
         self.assertTrue(all('confidence' in section for section in result['sections']))
 
 
+class SyllabusParseTimeoutTests(SimpleTestCase):
+    def test_liteparse_mode_skips_docling(self):
+        from docx import Document
+        from apps.integrations import syllabus_parse
+
+        buffer = BytesIO()
+        doc = Document()
+        doc.add_heading('Course Policies', level=1)
+        doc.add_paragraph('Be on time.')
+        doc.save(buffer)
+        buffer.seek(0)
+
+        with patch.dict(os.environ, {'SYLLABUS_PARSER': 'liteparse'}):
+            parsed = syllabus_parse.parse_upload(buffer, 'docx')
+        self.assertEqual(parsed['parser'], 'liteparse')
+        self.assertIsNone(parsed['document'])
+        self.assertIn('Course Policies', parsed['markdown'])
+
+
 class SyllabusExportTests(SimpleTestCase):
     def test_styled_pdf_export_produces_bytes(self):
         from apps.integrations.syllabus_export import build_syllabus_html, export_syllabus_pdf

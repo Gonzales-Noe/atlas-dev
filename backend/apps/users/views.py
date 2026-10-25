@@ -1158,9 +1158,15 @@ class SyllabusTemplateAnalyzeView(APIView):
             analysis = syllabus_pipeline.analyze_syllabus_template(
                 uploaded_file, file_type, refine=refine,
             )
-        except Exception:
+        except ValueError as exc:
+            logger.warning('Syllabus template rejected %s: %s', uploaded_file.name, exc)
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
             logger.exception('Could not analyze syllabus template %s', uploaded_file.name)
-            return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'detail': f'The template could not be read ({exc.__class__.__name__}). Try a DOCX, or a smaller text-based PDF.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             uploaded_file.seek(0)
