@@ -1796,18 +1796,31 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
         exam_code = str(selected_exam.get('examCode') or '').strip()
         topic_rows = [row for row in (selected_exam.get('topics') or []) if isinstance(row, dict)]
 
-    if not topic_rows and faculty_topics:
-        topic_rows = [
-            {
-                'topic': str(topic).strip(),
-                'ilos': [],
-                'weight': '',
-                'bloom_items': {},
-                'total_points': '',
-            }
-            for topic in faculty_topics
-            if str(topic).strip()
+    normalized_faculty_topics = [
+        {
+            'topic': str(topic).strip(),
+            'ilos': [],
+            'weight': '',
+            'bloom_items': {},
+            'total_points': '',
+        }
+        for topic in faculty_topics
+        if str(topic).strip()
+    ]
+    if normalized_faculty_topics:
+        # Faculty selection narrows the selected TOS exam, but never replaces its
+        # Bloom distribution, ILO mapping, or item allocation. This keeps TOS as
+        # the assessment authority while allowing topic-level selection in the UI.
+        requested_topics = {
+            _normalize_topic_key(row.get('topic'))
+            for row in normalized_faculty_topics
+            if _normalize_topic_key(row.get('topic'))
+        }
+        tos_topic_rows = [
+            row for row in topic_rows
+            if _normalize_topic_key(row.get('topic') or row.get('label')) in requested_topics
         ]
+        topic_rows = tos_topic_rows or topic_rows
 
     total_items = 0
     if isinstance(selected_exam, dict):
@@ -2069,16 +2082,15 @@ def generate_assessment(request):
         source_exam_label=source_exam_label,
         faculty_topics=faculty_topics,
     )
-    # Not every syllabus has a TOS. Without a major exam, the assessment is
-    # built from the topics the faculty picked (their module topics) and the
-    # item count they asked for.
+    # Assessments are TOS-based. A major examination with topic rows is required;
+    # faculty_topics can only narrow that TOS selection.
     has_tos_exam = isinstance(source.get('selected_exam'), dict)
     if not has_tos_exam:
         if not source['topic_rows']:
             return Response(
                 {
                     'success': False,
-                    'detail': 'No major examination found in TOS. Choose at least one module topic to build the assessment from.',
+                    'detail': 'No major examination with TOS topics found. Complete the TOS tab before creating an assessment.',
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -2094,7 +2106,7 @@ def generate_assessment(request):
         ilos=syllabus_content.get('ilos') or [],
         ilo_bloom=syllabus_content.get('ilo_bloom') or [],
         assessment_label=source['assessment_name'],
-        default_bloom_weights=None if has_tos_exam else DEFAULT_BLOOM_WEIGHTS,
+        default_bloom_weights=None,
     )
     section_module_matches = _match_sections_to_course_modules(course, sections)
     total_generated = sum(len(s['items']) for s in sections)
