@@ -10,10 +10,12 @@ import ViewModuleIcon from '@mui/icons-material/ViewModule'
 import AssignmentIcon from '@mui/icons-material/Assignment'
 import GradeIcon from '@mui/icons-material/Grade'
 import AnalyticsIcon from '@mui/icons-material/Analytics'
+import TableChartIcon from '@mui/icons-material/TableChart'
 import LockIcon from '@mui/icons-material/Lock'
 export const PIPELINE_STEPS = [
   { key: 'syllabus', label: 'Syllabus', Icon: MenuBookIcon },
   { key: 'module', label: 'Modules', Icon: ViewModuleIcon },
+  { key: 'tos', label: 'TOS', Icon: TableChartIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
   { key: 'grading', label: 'Grading', Icon: GradeIcon },
   { key: 'analytics', label: 'Analytics', Icon: AnalyticsIcon },
@@ -56,7 +58,7 @@ function StepNode({ step, index, active, done, locked, onSelect, compact }) {
 export default function WorkspacePipelineStepper({ activeTab, isStepDone, onSelect, doneCount, totalSteps }) {
   const compact = useMediaQuery('(max-width: 900px)')
   const done = doneCount || 0
-  const total = totalSteps || 5
+  const total = totalSteps || PIPELINE_STEPS.length
   const pct = total ? Math.round((done / total) * 100) : 0
   return (
     <Box sx={{ width: '100%' }}>
