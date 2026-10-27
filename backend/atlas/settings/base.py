@@ -145,6 +145,19 @@ EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'true').lower() == 'true'
 EMAIL_USE_SSL = os.environ.get('EMAIL_USE_SSL', 'false').lower() == 'true'
 EMAIL_TIMEOUT = int(os.environ.get('EMAIL_TIMEOUT', '15'))
 
+# Public base URL used inside transactional emails (reset links, logo, etc.).
+# Override with BASE_URL in production, e.g. https://atlas.example.com
+BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5173').rstrip('/')
+
+# Comma-separated list of recipients that should receive contact-form emails.
+ATLAS_CONTACT_EMAILS = os.environ.get(
+    'ATLAS_CONTACT_EMAILS', 'atlasdegdev@gmail.com'
+)
+
+# Optional override for the logo URL embedded in emails. Falls back to the
+# static email/atlas-logo.png asset served by Django.
+ATLAS_EMAIL_LOGO_URL = os.environ.get('ATLAS_EMAIL_LOGO_URL', '').strip()
+
 PAYMONGO_SECRET_KEY = os.environ.get('PAYMONGO_SECRET_KEY', '').strip()
 PAYMONGO_WEBHOOK_SECRET = os.environ.get('PAYMONGO_WEBHOOK_SECRET', '').strip()
 PAYMONGO_API_BASE = os.environ.get('PAYMONGO_API_BASE', 'https://api.paymongo.com').rstrip('/')

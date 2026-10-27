@@ -21,9 +21,11 @@ openai>=1.0.0                   # OpenAI SDK (OpenAI/OpenRouter compatible)
 requests>=2.31.0                # HTTP client for Ollama/OpenRouter API calls
 groq>=0.9.0                     # Groq Python SDK
 # ── Document Processing ────────────────────────────────────
-python-docx==0.8.11             # DOCX file parsing
-pymupdf>=1.24.0                 # PyMuPDF – header-aware PDF structural extraction
-liteparse>=2.16.0               # PDFium PDF → Markdown (tables + headings) for RAG chunking
+python-docx>=1.2.0,<2.0.0       # DOCX parsing (1.2+ required by Docling)
+pymupdf>=1.24.0                 # PyMuPDF – header-aware PDF structural extraction + style heuristics
+liteparse>=2.16.0               # PDFium PDF → Markdown fallback when Docling unavailable
+docling==2.142.1                # Primary syllabus layout/table parser (University Syllabus Format)
+weasyprint>=62.0                # Styled syllabus PDF export (HTML/CSS); ReportLab used if unavailable
 pypdf==4.0.0                    # PDF parsing (fallback)
 PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)

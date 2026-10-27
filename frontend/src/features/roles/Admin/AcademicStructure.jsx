@@ -11,7 +11,7 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import AdminLayout from './AdminLayout'
 import {
   COURSE_CATEGORIES, createCourse, createSection, deleteCourse, deleteSection,
-  fetchAcademicStructure, updateCourse,
+  fetchAcademicStructure, fetchCourseRequests, reviewCourseRequest, updateCourse,
 } from './academicApi'
 import { GlassCard, OutlineBtn, PageHeader, PrimaryBtn, StatCard, StatusChip } from '../../../components/ui'
 import LoadingState from '../../../components/LoadingState'
@@ -56,12 +56,21 @@ export default function AdminAcademicStructure() {
   const [courseForm, setCourseForm] = useState(emptyCourse)
   const [editingCourse, setEditingCourse] = useState(null)
   const [courseFilter, setCourseFilter] = useState('')
+  const [requests, setRequests] = useState([])
+  const [requestsLoading, setRequestsLoading] = useState(false)
+  const [reviewingId, setReviewingId] = useState(null)
+  const [reviewNote, setReviewNote] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      setStructure(await fetchAcademicStructure())
+      const [academic, pending] = await Promise.all([
+        fetchAcademicStructure(),
+        fetchCourseRequests('').catch(() => []),
+      ])
+      setStructure(academic)
+      setRequests(pending)
     } catch (err) {
       setError(toMessage(err, 'Failed to load courses and sections.'))
     } finally {
@@ -83,6 +92,31 @@ export default function AdminAcademicStructure() {
       setError(toMessage(err, 'The change could not be saved.'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const pendingRequests = requests.filter((r) => r.status === 'pending')
+  const historyRequests = requests.filter((r) => r.status !== 'pending')
+
+  async function reviewRequest(requestId, action) {
+    if (action === 'reject' && !reviewNote.trim()) {
+      setError('Add a short note so the faculty member knows what to fix.')
+      return
+    }
+    setRequestsLoading(true)
+    setError('')
+    setNotice('')
+    try {
+      const result = await reviewCourseRequest(requestId, { action, admin_note: reviewNote.trim() })
+      setRequests((prev) => prev.map((r) => (r.request_id === requestId ? { ...r, ...result } : r)))
+      setReviewNote('')
+      setReviewingId(null)
+      await load()
+      setNotice(action === 'approve' ? 'Course request approved — the course is now live.' : 'Course request sent back to faculty with your note.')
+    } catch (err) {
+      setError(toMessage(err, 'Could not review that request.'))
+    } finally {
+      setRequestsLoading(false)
     }
   }
 
@@ -150,7 +184,54 @@ export default function AdminAcademicStructure() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard title="Sections" value={loading ? '—' : structure.sections.length} icon="🧩" accent="#FFD60A" />
         <StatCard title="Courses" value={loading ? '—' : structure.courses.length} icon="📚" accent="#86EFAC" />
+        <StatCard title="Pending requests" value={loading ? '—' : pendingRequests.length} icon="✉️" accent="#60AAFF" />
       </div>
+
+      {pendingRequests.length > 0 && (
+        <GlassCard style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1rem' }}>Course requests waiting for review</div>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem' }}>Faculty proposed these — approve to publish them, or send back with a note.</div>
+            </div>
+          </div>
+          {pendingRequests.map((req) => (
+            <div key={req.request_id} style={{ border: '1px solid var(--border-color)', borderRadius: 12, padding: 14, marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 800 }}>{req.course_code} — {req.course_title}</div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                    From {req.requested_by_name || req.requested_by_email} · {req.category}{req.units ? ` · ${req.units} units` : ''}
+                  </div>
+                  {req.description && <div style={{ fontSize: '0.85rem', marginTop: 6 }}>{req.description}</div>}
+                  {req.justification && <div style={{ fontSize: '0.82rem', marginTop: 6, color: 'var(--text-secondary)' }}>Why: {req.justification}</div>}
+                </div>
+                <StatusChip label="Pending review" type="warning" />
+              </div>
+              {reviewingId === req.request_id ? (
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <TextField label="Note for faculty (required to reject, optional to approve)" size="small" multiline rows={2}
+                    value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} sx={inputSx} />
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    <PrimaryBtn small disabled={requestsLoading} onClick={() => reviewRequest(req.request_id, 'approve')}>Approve & publish</PrimaryBtn>
+                    <OutlineBtn small disabled={requestsLoading || !reviewNote.trim()} onClick={() => reviewRequest(req.request_id, 'reject')}>Send back with note</OutlineBtn>
+                    <OutlineBtn small disabled={requestsLoading} onClick={() => { setReviewingId(null); setReviewNote('') }}>Cancel</OutlineBtn>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ marginTop: 12 }}>
+                  <PrimaryBtn small disabled={requestsLoading} onClick={() => { setReviewingId(req.request_id); setReviewNote('') }}>Review request</PrimaryBtn>
+                </div>
+              )}
+            </div>
+          ))}
+          {historyRequests.length > 0 && (
+            <div style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              {historyRequests.length} reviewed request(s) — newest decisions stay visible in faculty workspaces.
+            </div>
+          )}
+        </GlassCard>
+      )}
 
       <GlassCard style={{ padding: 0 }}>
         <Tabs value={tab} onChange={(_, value) => setTab(value)}

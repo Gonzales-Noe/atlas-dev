@@ -19,6 +19,7 @@ import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
 import BillingOnboarding from './pages/billing/BillingOnboarding.jsx'
+import LegalPage from './pages/legal/LegalPage.jsx'
 
 class FacultyWorkspaceErrorBoundary extends Component {
   state = { error: null }
@@ -76,6 +77,8 @@ function App() {
         <Route path={ROUTES.SIGN_UP} element={<SignUpPage />} />
         <Route path={ROUTES.RESET_PASSWORD} element={<PasswordReset />} />
         <Route path={ROUTES.BILLING} element={<BillingOnboarding />} />
+        <Route path={ROUTES.LEGAL_TERMS} element={<LegalPage />} />
+        <Route path="/legal/:doc" element={<LegalPage />} />
 
         {/* Super Admin Routes */}
         <Route

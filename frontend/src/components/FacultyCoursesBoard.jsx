@@ -1,5 +1,5 @@
 // src/components/FacultyCoursesBoard.jsx
-// Course landing page � light theme matching sign-in page.
+// Course landing page — light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
@@ -33,45 +33,68 @@ const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
 export default function FacultyCoursesBoard() {
   const navigate = useNavigate()
   const [errorDismissed, setErrorDismissed] = useState(false)
+  const [notice, setNotice] = useState('')
   const { data, loading, error, refetch } = useApi('/curriculum/faculty-courses/')
-  // reset dismissed state whenever error changes
+  const [requests, setRequests] = useState([])
   useEffect(() => { setErrorDismissed(false) }, [error])
 
-  // --- Create new course dialog ---
+  // --- Request new course dialog (admin approval required) ---
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_code: '', course_title: '', description: '' })
+  const [sending, setSending] = useState(false)
+  const [sendError, setSendError] = useState('')
+  const [form, setForm] = useState({ course_code: '', course_title: '', description: '', justification: '' })
 
   const openDialog = () => {
-    setForm({ course_code: '', course_title: '', description: '' })
-    setCreateError('')
+    setForm({ course_code: '', course_title: '', description: '', justification: '' })
+    setSendError('')
     setDialogOpen(true)
   }
-  const closeDialog = () => { if (!creating) setDialogOpen(false) }
+  const closeDialog = () => { if (!sending) setDialogOpen(false) }
 
-  const handleFormChange = (e) => setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+  const handleFormChange = (e) => {
+    const { name, value } = e.target
+    setForm((f) => ({ ...f, [name]: name === 'course_code' ? value.toUpperCase() : value }))
+  }
 
-  const handleCreate = async () => {
+  const loadRequests = async () => {
+    try {
+      const { data: json } = await api.get('/curriculum/course-requests/mine/')
+      setRequests(json?.requests || [])
+    } catch {
+      setRequests([])
+    }
+  }
+  useEffect(() => { loadRequests() }, [])
+
+  const handleSend = async () => {
     if (!form.course_code.trim() || !form.course_title.trim()) {
-      setCreateError('Course code and title are required.')
+      setSendError('Course code and title are required.')
       return
     }
-    setCreating(true)
-    setCreateError('')
+    setSending(true)
+    setSendError('')
     try {
-      const { data: json } = await api.post('/curriculum/courses/', form)
+      await api.post('/curriculum/courses/', {
+        course_code: form.course_code.trim().toUpperCase(),
+        course_title: form.course_title.trim(),
+        description: form.description.trim(),
+        justification: form.justification.trim(),
+      })
       setDialogOpen(false)
-      navigate(`/faculty/workspace/${json.course.course_id}`)
+      setNotice('Request sent. Your admin will review it before the course appears below.')
+      loadRequests()
+      refetch?.()
     } catch (err) {
-      const detail = err.response?.data?.detail || 'Failed to create course.'
-      setCreateError(detail)
+      const detail = err.response?.data?.detail || 'Failed to send course request.'
+      setSendError(detail)
     } finally {
-      setCreating(false)
+      setSending(false)
     }
   }
 
   const courses = data?.courses || []
+  const pending = requests.filter((r) => r.status === 'pending')
+
 
   return (
     <FacultyLayout>
@@ -80,16 +103,26 @@ export default function FacultyCoursesBoard() {
           <AutoAlert message={error} onClose={() => setErrorDismissed(true)} sx={{ mb: 3 }} />
         )}
 
-        <Typography variant="h5" sx={{ fontWeight: 800, color: '#1A1A1A', mb: 0.5 }}>
+        {notice && (
+          <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 3 }}>{notice}</Alert>
+        )}
+
+        <Typography variant="h5" sx={{ fontWeight: 800, color: 'var(--text-primary)', mb: 0.5 }}>
           My Courses
         </Typography>
-        <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
-          Select a course to open your workspace � syllabus, modules, assessments, grading, and knowledge uploads.
+        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 3 }}>
+          Approved courses live here. New courses need admin approval first — use “Request new course”.
         </Typography>
+
+        {pending.length > 0 && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            {pending.length} request(s) waiting for admin approval: {pending.map((r) => r.course_code).join(', ')}.
+          </Alert>
+        )}
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#15803D' }} />
+            <CircularProgress sx={{ color: 'var(--brand-green-mid)' }} />
           </Box>
         ) : (
           <Box
@@ -98,25 +131,28 @@ export default function FacultyCoursesBoard() {
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
             }}
           >
-            {/* -- Create new course card -- */}
+            {/* -- Request new course card -- */}
             <Card
               elevation={0}
               onClick={openDialog}
               sx={{
-                bgcolor: '#fff', borderRadius: 3,
-                border: '2px dashed rgba(21,128,61,0.25)',
+                bgcolor: 'var(--bg-card)', borderRadius: 3,
+                border: '2px dashed var(--border-active)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: '#15803D', boxShadow: '0 4px 16px rgba(21,128,61,0.10)' },
+                '&:hover': { borderColor: 'var(--brand-green-mid)', boxShadow: 'var(--shadow-lg)' },
               }}
             >
               <CardActionArea sx={{ height: '100%' }}>
                 <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
-                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 28, color: '#15803D' }} />
+                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: 'var(--active-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 28, color: 'var(--brand-green-mid)' }} />
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#15803D', mt: 0.5 }}>
-                    Create new course
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--brand-green-mid)', mt: 0.5 }}>
+                    Request new course
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+                    Needs admin approval
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -130,10 +166,10 @@ export default function FacultyCoursesBoard() {
                   key={course.course_id}
                   elevation={0}
                   sx={{
-                    bgcolor: '#fff', borderRadius: 3,
-                    border: '1px solid rgba(0,0,0,0.08)',
+                    bgcolor: 'var(--bg-card)', borderRadius: 3,
+                    border: '1px solid var(--border-color)',
                     transition: 'transform 0.15s, box-shadow 0.15s',
-                    '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' },
+                    '&:hover': { transform: 'translateY(-3px)', boxShadow: 'var(--shadow-lg)' },
                   }}
                 >
                   <CardActionArea
@@ -147,11 +183,11 @@ export default function FacultyCoursesBoard() {
                       <Typography variant="caption" sx={{ color: accentColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', fontSize: '0.65rem' }}>
                         {course.course_code}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700, color: '#1A1A1A', lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
                         {course.course_title}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#888' }}>
-                        {course.syllabus_count ?? 0} syllabi � {course.assessment_count ?? 0} assessments
+                      <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                        {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
                       </Typography>
                     </CardContent>
                   </CardActionArea>
@@ -161,21 +197,22 @@ export default function FacultyCoursesBoard() {
 
             {courses.length === 0 && (
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
-                <SchoolIcon sx={{ fontSize: 72, color: '#ddd', mb: 2 }} />
-                <Typography variant="body1" sx={{ color: '#999' }}>No assigned courses yet.</Typography>
-                <Typography variant="body2" sx={{ color: '#bbb', mt: 0.5 }}>Click "Create new course" to add your first course.</Typography>
+                <SchoolIcon sx={{ fontSize: 72, color: 'var(--border-color)', mb: 2 }} />
+                <Typography variant="body1" sx={{ color: 'var(--text-tertiary)' }}>No approved courses yet.</Typography>
+                <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', mt: 0.5 }}>Click “Request new course” — it appears here after admin approval.</Typography>
               </Box>
             )}
           </Box>
         )}
       </Box>
 
-      {/* -- Create new course dialog -- */}
+      {/* -- Request new course dialog -- */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, color: '#15803D' }}>New Course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: 'var(--brand-green-mid)' }}>Request new course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
-          {createError && (
-            <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
+          <Alert severity="info" sx={{ mb: 0 }}>Your admin reviews every request before the course appears in your workspace.</Alert>
+          {sendError && (
+            <Alert severity="error" sx={{ mb: 0 }}>{sendError}</Alert>
           )}
           <TextField
             label="Course Title"
@@ -185,7 +222,7 @@ export default function FacultyCoursesBoard() {
             placeholder="e.g. Business Analytics"
             size="small"
             autoFocus
-            disabled={creating}
+            disabled={sending}
             inputProps={{ maxLength: 255 }}
           />
           <TextField
@@ -195,7 +232,7 @@ export default function FacultyCoursesBoard() {
             onChange={handleFormChange}
             placeholder="e.g. BA401"
             size="small"
-            disabled={creating}
+            disabled={sending}
             inputProps={{ maxLength: 100 }}
           />
           <TextField
@@ -207,21 +244,32 @@ export default function FacultyCoursesBoard() {
             size="small"
             multiline
             minRows={2}
-            disabled={creating}
+            disabled={sending}
+          />
+          <TextField
+            label="Why do you need this course? (helps approval)"
+            name="justification"
+            value={form.justification}
+            onChange={handleFormChange}
+            placeholder="e.g. Required for 2nd-year BSBA next term"
+            size="small"
+            multiline
+            minRows={2}
+            disabled={sending}
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={closeDialog} disabled={creating} sx={{ color: '#666' }}>
+          <Button onClick={closeDialog} disabled={sending} sx={{ color: 'var(--text-secondary)' }}>
             Cancel
           </Button>
           <Button
             variant="contained"
-            onClick={handleCreate}
-            disabled={creating}
-            startIcon={creating ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
-            sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#14532D' }, fontWeight: 700, borderRadius: 2 }}
+            onClick={handleSend}
+            disabled={sending}
+            startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
+            sx={{ bgcolor: 'var(--brand-green-mid)', '&:hover': { bgcolor: 'var(--brand-green-core)' }, fontWeight: 700, borderRadius: 2 }}
           >
-            {creating ? 'Creating�' : 'Create'}
+            {sending ? 'Sending…' : 'Send for approval'}
           </Button>
         </DialogActions>
       </Dialog>

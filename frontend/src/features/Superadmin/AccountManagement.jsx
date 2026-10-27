@@ -4,6 +4,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TablePagination, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Menu, MenuItem, IconButton, Switch, FormControlLabel, Divider, Button, Stack,
+  Select, FormControl, InputLabel,
 } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
@@ -13,6 +14,13 @@ import { StatCard, PageHeader, StatusChip, GlassCard, PrimaryBtn, OutlineBtn } f
 import api from '../../config/api'
 
 const planType = p => ({ Premium: 'premium', Professional: 'info', Starter: 'default', Enterprise: 'premium', pro: 'info', enterprise: 'premium' }[p] || 'default')
+
+// Normalize plan values coming from the backend (any casing) to the option values used in dropdowns.
+const normalizePlan = p => {
+  if (!p) return ''
+  const s = String(p).trim().toLowerCase()
+  return { starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' }[s] || s
+}
 
 export default function AccountManagement() {
   const [page, setPage]             = useState(0)
@@ -34,6 +42,8 @@ export default function AccountManagement() {
   const [confirmDeleteInstitution, setConfirmDeleteInstitution] = useState(null)
   const [deletingInstitution, setDeletingInstitution] = useState(false)
   const [editForm, setEditForm] = useState({ institution: '', subscription_plan: '', is_active: true })
+  const [subscriptionForm, setSubscriptionForm] = useState({ subscription_plan: '', payment_status: '' })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     api.get('/auth/institutions/')
@@ -89,18 +99,35 @@ export default function AccountManagement() {
 
   const openEdit = (account) => {
     setSelectedAccount(account)
-    setEditForm({ institution: account.institution, subscription_plan: account.subscription_plan || '', is_active: account.status === 'active' })
+    setEditForm({ institution: account.institution, subscription_plan: normalizePlan(account.subscription_plan), is_active: account.status === 'active' })
     setEditOpen(true)
   }
 
   const updateInstitution = async (payload) => {
-    const { data } = await api.patch(`/auth/institutions/${selectedAccount.id}/`, { ...payload, name: editForm.institution })
-    setAccounts(current => current.map(item => item.id === selectedAccount.id ? {
-      ...item,
-      institution: editForm.institution || item.institution,
-      subscription_plan: editForm.subscription_plan || item.subscription_plan,
-      status: data.status === 'active' ? 'active' : data.status,
-    } : item))
+    if (!selectedAccount) return
+    setSaving(true)
+    setError('')
+    try {
+      const { data } = await api.patch(`/auth/institutions/${selectedAccount.id}/`, { ...payload, name: editForm.institution })
+      const nextStatus = (data && data.status) ? data.status : (editForm.is_active ? 'active' : 'inactive')
+      setAccounts(current => current.map(item => item.id === selectedAccount.id ? {
+        ...item,
+        institution: editForm.institution || item.institution,
+        subscription_plan: editForm.subscription_plan || item.subscription_plan,
+        status: nextStatus,
+      } : item))
+      setSelectedAccount(current => current ? {
+        ...current,
+        institution: editForm.institution,
+        subscription_plan: editForm.subscription_plan,
+        status: nextStatus,
+      } : null)
+      setNotice('Account updated.')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update the account.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const inputSx = { '& .MuiOutlinedInput-root': { background: 'rgba(255,255,255,0.05)', borderRadius: 2, fontSize: '0.875rem' }, '& .MuiInputLabel-root': { fontSize: '0.875rem' }, input: { color: '#F0F0F2' } }
@@ -200,7 +227,7 @@ export default function AccountManagement() {
                       PaperProps={{ sx: { background: '#16161E !important', border: '1px solid rgba(255,255,255,0.1) !important', borderRadius: '14px !important', minWidth: 180 } }}>
                       <MenuItem onClick={() => { setSelectedAccount(acc); setDetailsOpen(true); handleMenuClose() }}>View Details</MenuItem>
                       <MenuItem onClick={() => { openEdit(acc); handleMenuClose() }}>Edit Account</MenuItem>
-                      <MenuItem onClick={() => { setSelectedAccount(acc); setSubscriptionOpen(true); handleMenuClose() }}>Manage Subscription</MenuItem>
+                      <MenuItem onClick={() => { setSelectedAccount(acc); setSubscriptionForm({ subscription_plan: normalizePlan(acc.subscription_plan), payment_status: acc.payment_status || 'paid' }); setSubscriptionOpen(true); handleMenuClose() }}>Manage Subscription</MenuItem>
                       <MenuItem onClick={() => { setSelectedAccount(acc); setUsageOpen(true); handleMenuClose() }}>View Usage</MenuItem>
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08) !important', my: '4px !important' }} />
                       {acc.status === 'active'
@@ -256,17 +283,62 @@ export default function AccountManagement() {
         <DialogContent sx={{ pt: 3 }}>
           {selectedAccount && <Stack spacing={2}>
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>{selectedAccount.institution}</div>
-            <TextField select native label="Plan" value={selectedAccount.subscription_plan || ''} onChange={e => setSelectedAccount({ ...selectedAccount, subscription_plan: e.target.value })} sx={inputSx}>
-              <option value="">Not selected</option><option value="Starter">Starter</option><option value="Professional">Professional</option><option value="Enterprise">Enterprise</option>
-            </TextField>
-            <TextField select native label="Payment status" value={selectedAccount.payment_status || 'paid'} onChange={e => setSelectedAccount({ ...selectedAccount, payment_status: e.target.value })} sx={inputSx}>
-              <option value="unpaid">Unpaid</option><option value="pending">Pending</option><option value="paid">Paid</option>
-            </TextField>
+            <FormControl fullWidth size="small" sx={inputSx}>
+              <InputLabel>Plan</InputLabel>
+              <Select
+                label="Plan"
+                value={subscriptionForm.subscription_plan}
+                onChange={e => setSubscriptionForm({ ...subscriptionForm, subscription_plan: e.target.value })}
+              >
+                <MenuItem value="">Not selected</MenuItem>
+                <MenuItem value="Starter">Starter</MenuItem>
+                <MenuItem value="Professional">Professional</MenuItem>
+                <MenuItem value="Enterprise">Enterprise</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl fullWidth size="small" sx={inputSx}>
+              <InputLabel>Payment status</InputLabel>
+              <Select
+                label="Payment status"
+                value={subscriptionForm.payment_status || 'paid'}
+                onChange={e => setSubscriptionForm({ ...subscriptionForm, payment_status: e.target.value })}
+              >
+                <MenuItem value="unpaid">Unpaid</MenuItem>
+                <MenuItem value="pending">Pending</MenuItem>
+                <MenuItem value="paid">Paid</MenuItem>
+              </Select>
+            </FormControl>
           </Stack>}
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <OutlineBtn onClick={() => setSubscriptionOpen(false)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={async () => { await api.patch(`/auth/institutions/${selectedAccount.id}/`, { selected_plan: selectedAccount.subscription_plan, payment_status: selectedAccount.payment_status }); setAccounts(current => current.map(item => item.id === selectedAccount.id ? { ...item, subscription_plan: selectedAccount.subscription_plan, payment_status: selectedAccount.payment_status } : item)); setSubscriptionOpen(false) }}>Save subscription</PrimaryBtn>
+          <PrimaryBtn onClick={async () => {
+            if (!selectedAccount) return
+            setSaving(true)
+            setError('')
+            try {
+              const { data } = await api.patch(`/auth/institutions/${selectedAccount.id}/`, { selected_plan: subscriptionForm.subscription_plan, payment_status: subscriptionForm.payment_status })
+              const nextStatus = (data && data.status) ? data.status : selectedAccount.status
+              setAccounts(current => current.map(item => item.id === selectedAccount.id ? {
+                ...item,
+                subscription_plan: subscriptionForm.subscription_plan,
+                payment_status: subscriptionForm.payment_status,
+                status: nextStatus,
+              } : item))
+              setSelectedAccount(current => current ? {
+                ...current,
+                subscription_plan: subscriptionForm.subscription_plan,
+                payment_status: subscriptionForm.payment_status,
+                status: nextStatus,
+              } : null)
+              setNotice('Subscription updated.')
+              setSubscriptionOpen(false)
+            } catch (err) {
+              setError(err.response?.data?.detail || 'Failed to update the subscription.')
+            } finally {
+              setSaving(false)
+            }
+          }} disabled={saving}>Save subscription</PrimaryBtn>
         </DialogActions>
       </Dialog>
 
@@ -290,9 +362,19 @@ export default function AccountManagement() {
         <DialogContent sx={{ pt: 3 }}>
           <Stack spacing={2}>
             <TextField label="Institution Name" fullWidth size="small" value={editForm.institution} onChange={e => setEditForm({ ...editForm, institution: e.target.value })} sx={inputSx} />
-            <TextField select native label="Plan" fullWidth size="small" value={editForm.subscription_plan} onChange={e => setEditForm({ ...editForm, subscription_plan: e.target.value })} sx={inputSx}>
-              <option value="">Not selected</option><option value="Starter">Starter</option><option value="Professional">Professional</option><option value="Enterprise">Enterprise</option>
-            </TextField>
+            <FormControl fullWidth size="small" sx={inputSx}>
+              <InputLabel>Plan</InputLabel>
+              <Select
+                label="Plan"
+                value={editForm.subscription_plan}
+                onChange={e => setEditForm({ ...editForm, subscription_plan: e.target.value })}
+              >
+                <MenuItem value="">Not selected</MenuItem>
+                <MenuItem value="Starter">Starter</MenuItem>
+                <MenuItem value="Professional">Professional</MenuItem>
+                <MenuItem value="Enterprise">Enterprise</MenuItem>
+              </Select>
+            </FormControl>
             <FormControlLabel
               control={<Switch checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#15803D !important' } }} />}
               label={<span style={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Active Account</span>}
@@ -301,7 +383,14 @@ export default function AccountManagement() {
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <OutlineBtn onClick={() => { setCreateOpen(false); setEditOpen(false) }}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={async () => { if (editOpen) await updateInstitution({ selected_plan: editForm.subscription_plan, is_active: editForm.is_active }); setCreateOpen(false); setEditOpen(false) }}>{editOpen ? 'Update' : 'Create'}</PrimaryBtn>
+          <PrimaryBtn onClick={async () => {
+            if (editOpen) {
+              await updateInstitution({ selected_plan: editForm.subscription_plan, is_active: editForm.is_active })
+              setEditOpen(false)
+            } else {
+              setCreateOpen(false)
+            }
+          }} disabled={saving}>{editOpen ? 'Update' : 'Create'}</PrimaryBtn>
         </DialogActions>
       </Dialog>
 

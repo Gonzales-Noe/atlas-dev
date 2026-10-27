@@ -6,6 +6,7 @@ import logging
 import secrets
 import uuid
 from datetime import timedelta
+from io import BytesIO
 
 import requests
 
@@ -13,7 +14,9 @@ from django.conf import settings
 from django.contrib.auth.hashers import make_password
 from django.core import signing
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import transaction
+from django.http import HttpResponse
 
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
@@ -24,9 +27,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.integrations import syllabus_structure
+from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.document_processor import DocumentProcessor
-from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -38,6 +41,7 @@ from apps.integrations.trial import (
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
+    ContactFormSerializer,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
     FacultyCreateSerializer,
@@ -462,6 +466,18 @@ class FacultyCreateView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         profile = serializer.save()
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="faculty_account_created",
+            resource_type="UserProfile",
+            resource_id=profile.user_id,
+            details={
+                "faculty_email": profile.email,
+                "faculty_name": profile.full_name or '',
+                "role": profile.role,
+                "institution_id": str(profile.institution_id) if profile.institution_id else None,
+            },
+        )
         return Response(
             {
                 'detail': 'Faculty account created.',
@@ -481,24 +497,18 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data['email']
 
         profile = UserProfile.objects.filter(email__iexact=email, is_active=True).first()
+        otp = None
         if profile:
             otp = _generate_otp()
             cache.set(_otp_cache_key(email), otp, timeout=600)
-            try:
-                send_mail(
-                    subject='ATLAS password reset code',
-                    message=(
-                        f'Your ATLAS password reset code is {otp}.\n\n'
-                        'This code expires in 10 minutes.'
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-            except Exception:
-                pass
-        else:
-            otp = None
+            # Send the branded OTP email through the shared email service so the
+            # structure, logo and footer stay consistent with the rest of ATLAS.
+            from .email_service import send_password_reset_otp
+            send_password_reset_otp(
+                email=email,
+                otp=otp,
+                user_name=profile.name or '',
+            )
 
         response_payload = {'detail': 'If the account exists, a reset code has been generated.'}
         if settings.DEBUG and otp is not None:
@@ -775,11 +785,35 @@ class InstitutionManagementView(APIView):
             institution.name = str(request.data['name']).strip()[:255]
         if 'payment_status' in request.data and request.data['payment_status'] in {'unpaid', 'pending', 'paid'}:
             institution.payment_status = request.data['payment_status']
+            # When a plan is selected and marked paid, activate the subscription so
+            # users under this institution can access the dashboard based on the plan.
+            if (
+                request.data['payment_status'] == 'paid'
+                and 'selected_plan' in request.data
+                and str(request.data['selected_plan']).strip()
+            ):
+                institution.subscription_status = 'active'
+                institution.subscription_ends_at = timezone.now() + timedelta(days=PAID_PLAN_DAYS)
         if 'is_active' in request.data:
             institution.is_active = bool(request.data['is_active'])
             institution.application_status = 'active' if institution.is_active else 'rejected'
+            if not institution.is_active:
+                # Deactivating the account revokes dashboard access.
+                institution.subscription_status = 'canceled'
 
-        institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name'])
+        institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name', 'subscription_ends_at'])
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("institution_reactivated" if institution.is_active else "institution_deactivated"),
+                resource_type="Institution",
+                resource_id=institution.institution_id,
+                details={
+                    "institution_name": institution.name,
+                    "is_active": institution.is_active,
+                    "application_status": institution.application_status,
+                },
+            )
         return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
     def delete(self, request, institution_id):
@@ -795,10 +829,23 @@ class InstitutionManagementView(APIView):
         if not institution:
             return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        institution_name = institution.name
+        institution_id_str = str(institution.institution_id)
+
         try:
             result = delete_institution(institution)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="institution_deleted",
+            resource_type="Institution",
+            resource_id=institution_id_str,
+            details={
+                "deleted_institution_name": institution_name,
+                "institution_id": institution_id_str,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -847,10 +894,27 @@ class AccountDetailView(APIView):
         if 'is_active' in request.data:
             target.is_active = bool(request.data['is_active'])
 
+        if 'full_name' in request.data:
+            target.full_name = str(request.data['full_name'] or '').strip()
+
         if 'email' in request.data:
             target.email = request.data['email'].strip().lower()
 
         target.save()
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("account_reactivated" if target.is_active else "account_deactivated"),
+                resource_type="UserProfile",
+                resource_id=target.user_id,
+                details={
+                    "account_email": target.email,
+                    "account_name": target.full_name or '',
+                    "role": target.role,
+                    "is_active": target.is_active,
+                    "institution_id": str(target.institution_id) if target.institution_id else None,
+                },
+            )
         return Response(UserAccountSerializer(target).data)
 
     def delete(self, request, user_id):
@@ -880,10 +944,28 @@ class AccountDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        target_email = target.email
+        target_name = target.full_name or ''
+        target_role = target.role
+        target_institution_id = str(target.institution_id) if target.institution_id else None
+
         try:
             result = delete_user_account(target)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="account_deleted",
+            resource_type="UserProfile",
+            resource_id=user_id,
+            details={
+                "deleted_email": target_email,
+                "deleted_name": target_name,
+                "deleted_role": target_role,
+                "institution_deleted": result.get('institution_deleted', False),
+                "institution_id": target_institution_id,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -1026,6 +1108,21 @@ class FacultyAssignmentsView(APIView):
             faculty=faculty,
             section=section,
         )
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="course_assigned",
+            resource_type="CourseLoad",
+            resource_id=assignment.assignment_id,
+            details={
+                "faculty_id": str(faculty.user_id),
+                "faculty_email": faculty.email,
+                "course_id": str(course.course_id),
+                "course_code": course.course_code,
+                "course_title": course.course_title,
+                "section_id": str(section.section_id),
+                "section": section.section_name,
+            },
+        )
         return Response({
             'assignment_id': str(assignment.assignment_id),
             'faculty_id': str(faculty.user_id),
@@ -1078,17 +1175,30 @@ class InstitutionCustomizationView(APIView):
                 'header_text': '',
                 'footer_text': '',
                 'syllabus_template_name': '',
+                'syllabus_template_kind': '',
+                'syllabus_template_url': '',
                 'syllabus_sections': [],
+                'syllabus_style_profile': {},
+                'syllabus_field_map': {'sections': [], 'click_log': []},
+                'syllabus_preview_blocks': [],
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
+        has_file = bool(customization.syllabus_template)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,
             'header_text': customization.header_text,
             'footer_text': customization.footer_text,
             'syllabus_template_name': customization.syllabus_template_name,
+            'syllabus_template_kind': customization.syllabus_template_kind or '',
+            'syllabus_template_url': (
+                '/api/users/institution-syllabus-template/file/' if has_file else ''
+            ),
             'syllabus_sections': customization.syllabus_sections,
+            'syllabus_style_profile': customization.syllabus_style_profile or {},
+            'syllabus_field_map': customization.syllabus_field_map or {'sections': [], 'click_log': []},
+            'syllabus_preview_blocks': customization.syllabus_preview_blocks or [],
             'field_labels': customization.field_labels,
         })
 
@@ -1105,19 +1215,144 @@ class InstitutionCustomizationView(APIView):
             'footer_text',
             'syllabus_template_name',
             'syllabus_sections',
+            'syllabus_style_profile',
+            'syllabus_preview_blocks',
             'field_labels',
         ):
             if field in request.data:
                 setattr(customization, field, request.data[field])
+        if 'syllabus_field_map' in request.data:
+            field_map = syllabus_template_doc.normalize_field_map(request.data.get('syllabus_field_map'))
+            customization.syllabus_field_map = field_map
+            # Keep faculty workspace sections in sync with the click map.
+            customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
         customization.save()
         return self.get(request)
 
 
+class SyllabusTemplatePreviewView(APIView):
+    """
+    Upload the exact syllabus sample (DOCX / PDF / Excel), store it as-is,
+    and return native click targets for the real-document preview.
+    """
+
+    def post(self, request):
+        if normalize_role(request.user.role) != 'admin':
+            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.institution:
+            return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        uploaded_file = request.FILES.get('file')
+        if uploaded_file is None:
+            return Response(
+                {'detail': 'Choose a syllabus file (.docx, .pdf, or .xlsx).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        file_type = uploaded_file.name.rsplit('.', 1)[-1].lower()
+        if file_type not in syllabus_template_doc.SUPPORTED_UPLOAD_TYPES:
+            return Response(
+                {'detail': 'Unsupported type. Upload a .docx, .pdf, or .xlsx syllabus sample.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if file_type in {'pdf', 'docx'}:
+            is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
+            if not is_valid:
+                return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            max_bytes = getattr(DocumentProcessor, 'MAX_FILE_SIZE', 20 * 1024 * 1024)
+            if uploaded_file.size and uploaded_file.size > max_bytes:
+                return Response({'detail': 'File is too large.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            uploaded_file.seek(0)
+            built = syllabus_template_doc.build_exact_preview(uploaded_file, file_type)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            logger.exception('Could not build syllabus preview for %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Could not read that file. Try a .docx, .pdf, or .xlsx and upload again.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        original_name = uploaded_file.name[:255]
+        try:
+            customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
+            customization.syllabus_template.save(original_name, ContentFile(built['original_bytes']), save=False)
+            stem = original_name.rsplit('.', 1)[0][:200] or 'syllabus_template'
+            customization.syllabus_working_docx.save(
+                f'{stem}.docx',
+                ContentFile(built['working_docx_bytes']),
+                save=False,
+            )
+            customization.syllabus_template_name = original_name
+            customization.syllabus_template_kind = built['kind']
+            customization.syllabus_preview_blocks = built['blocks']
+            customization.syllabus_field_map = {'sections': [], 'click_log': [], 'version': 1}
+            customization.save(update_fields=[
+                'syllabus_template', 'syllabus_working_docx', 'syllabus_template_name',
+                'syllabus_template_kind', 'syllabus_preview_blocks', 'syllabus_field_map', 'updated_at',
+            ])
+        except Exception:
+            logger.exception('Could not store syllabus template %s', uploaded_file.name)
+            return Response(
+                {'detail': 'Preview succeeded, but the file could not be stored. Try again.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        detail = (
+            'Your exact file is shown on the left. Click any text to record a section, '
+            'then click again to place where content should be written.'
+        )
+        return Response({
+            'template_name': original_name,
+            'file_type': built['kind'],
+            'mime': built['mime'],
+            'converted': False,
+            'template_file_url': '/api/users/institution-syllabus-template/file/',
+            'blocks': built['blocks'],
+            'block_count': built['block_count'],
+            'field_map': {'sections': [], 'click_log': [], 'version': 1},
+            'detail': detail,
+        })
+
+
+class SyllabusTemplateFileView(APIView):
+    """Serve the exact uploaded syllabus sample for the clickable preview."""
+
+    def get(self, request):
+        if normalize_role(request.user.role) not in {'admin', 'faculty'}:
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        if not request.user.institution:
+            return Response({'detail': 'No institution.'}, status=status.HTTP_400_BAD_REQUEST)
+        customization = InstitutionCustomization.objects.filter(institution=request.user.institution).first()
+        if not customization or not customization.syllabus_template:
+            return Response({'detail': 'No syllabus template uploaded.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            customization.syllabus_template.open('rb')
+            data = customization.syllabus_template.read()
+            customization.syllabus_template.close()
+        except Exception:
+            logger.exception('Could not read syllabus template file')
+            return Response({'detail': 'Template file is missing.'}, status=status.HTTP_404_NOT_FOUND)
+
+        kind = (customization.syllabus_template_kind or '').lower()
+        if not kind and customization.syllabus_template_name:
+            kind = customization.syllabus_template_name.rsplit('.', 1)[-1].lower()
+        content_type = syllabus_template_doc.MIME_BY_KIND.get(kind, 'application/octet-stream')
+        filename = customization.syllabus_template_name or f'template.{kind or "bin"}'
+        response = HttpResponse(data, content_type=content_type)
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        response['Cache-Control'] = 'private, max-age=60'
+        return response
+
+
 class SyllabusTemplateAnalyzeView(APIView):
     """
-    Derive the syllabus form structure (sections, subsections and table
-    columns) from a PDF or DOCX syllabus template for the admin to review.
-    Pass refine=false to skip the LLM cleanup and use the heading outline only.
+    Legacy parser path (Docling/LiteParse). Prefer SyllabusTemplatePreviewView
+    for the click-to-map DOCX editor.
     """
 
     def post(self, request):
@@ -1133,18 +1368,41 @@ class SyllabusTemplateAnalyzeView(APIView):
         if not is_valid:
             return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
+        refine = request.data.get('refine', 'false')
         try:
-            markdown = syllabus_structure.markdown_from_upload(uploaded_file, file_type)
-        except Exception:
-            logger.exception('Could not extract text from syllabus template %s', uploaded_file.name)
-            return Response({'detail': 'The template could not be read. Try another PDF or DOCX file.'}, status=status.HTTP_400_BAD_REQUEST)
+            uploaded_file.seek(0)
+            analysis = syllabus_pipeline.analyze_syllabus_template(
+                uploaded_file, file_type, refine=refine,
+            )
+        except ValueError as exc:
+            logger.warning('Syllabus template rejected %s: %s', uploaded_file.name, exc)
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception('Could not analyze syllabus template %s', uploaded_file.name)
+            return Response(
+                {'detail': f'The template could not be read ({exc.__class__.__name__}). Try a DOCX, or a smaller text-based PDF.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         try:
             uploaded_file.seek(0)
             customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
             customization.syllabus_template.save(uploaded_file.name, uploaded_file, save=False)
             customization.syllabus_template_name = uploaded_file.name[:255]
-            customization.save(update_fields=['syllabus_template', 'syllabus_template_name', 'updated_at'])
+            customization.syllabus_style_profile = analysis.get('style_profile') or {}
+            branding = analysis.get('branding_suggestions') or {}
+            if not customization.header_text and branding.get('header_text'):
+                customization.header_text = str(branding['header_text'])[:500]
+            if not customization.footer_text and branding.get('footer_text'):
+                customization.footer_text = str(branding['footer_text'])[:500]
+            if not customization.header_image_url and branding.get('header_image_url'):
+                customization.header_image_url = branding['header_image_url']
+            if not customization.footer_image_url and branding.get('footer_image_url'):
+                customization.footer_image_url = branding['footer_image_url']
+            customization.save(update_fields=[
+                'syllabus_template', 'syllabus_template_name', 'syllabus_style_profile',
+                'header_text', 'footer_text', 'header_image_url', 'footer_image_url', 'updated_at',
+            ])
         except Exception:
             logger.exception('Could not store syllabus template %s', uploaded_file.name)
             return Response(
@@ -1152,22 +1410,20 @@ class SyllabusTemplateAnalyzeView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        refine = str(request.data.get('refine', 'true')).lower() not in {'0', 'false', 'no'}
-        sections, source = syllabus_structure.extract_syllabus_structure(markdown, refine=refine)
-
-        if not sections:
-            return Response({
-                'detail': 'No section headings were detected. Add the syllabus sections manually.',
-                'sections': [],
-                'source': source,
-                'template_name': uploaded_file.name,
-            })
-
-        return Response({
-            'sections': sections,
-            'source': source,
+        branding = analysis.get('branding_suggestions') or {}
+        payload = {
+            'sections': analysis.get('sections') or [],
+            'style_profile': analysis.get('style_profile') or {},
+            'source': analysis.get('source'),
+            'parser': analysis.get('parser'),
+            'llm_provider': analysis.get('llm_provider'),
+            'confidence': analysis.get('confidence') or {},
+            'branding_suggestions': branding,
             'template_name': uploaded_file.name,
-        })
+        }
+        if analysis.get('detail'):
+            payload['detail'] = analysis['detail']
+        return Response(payload)
 
 
 class EnrollCourseView(APIView):
@@ -1234,3 +1490,56 @@ class UnenrollCourseView(APIView):
             'detail': 'Unenrolled successfully.',
             'courses_enrolled': updated_courses,
         })
+
+
+class ContactFormView(APIView):
+    """Public endpoint for the landing-page contact form.
+
+    Validates the submission, emails a branded notification to the ATLAS
+    support team, and sends a branded confirmation back to the user. The
+    endpoint is intentionally unauthenticated — anyone can reach out.
+    """
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from django.utils import timezone as tz
+        from .email_service import send_contact_confirmation, send_contact_notification
+
+        serializer = ContactFormSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        submitted_at = tz.now().strftime('%B %d, %Y at %I:%M %p UTC')
+
+        # Notify the ATLAS team (best-effort; never fail the submission).
+        try:
+            send_contact_notification(
+                name=data['name'],
+                email=data['email'],
+                institution=data['institution'],
+                message=data['message'],
+                submitted_at=submitted_at,
+            )
+        except Exception:
+            logger.exception('Failed to send contact notification for %s', data['email'])
+
+        # Send a confirmation back to the user (best-effort).
+        try:
+            send_contact_confirmation(name=data['name'], email=data['email'])
+        except Exception:
+            logger.exception('Failed to send contact confirmation to %s', data['email'])
+
+        return Response(
+            {
+                'detail': 'Message received. Our team will get back to you within 24 hours.',
+                'contact': {
+                    'name': data['name'],
+                    'email': data['email'],
+                    'institution': data['institution'],
+                    'submitted_at': submitted_at,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )

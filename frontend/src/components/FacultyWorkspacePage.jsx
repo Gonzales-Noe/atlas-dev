@@ -1,10 +1,11 @@
 // src/components/FacultyWorkspacePage.jsx
-// 3-panel workspace — light theme matching sign-in page (white/#F7F9FC/#15803D).
+// 3-panel workspace — shared dark faculty workspace theme.
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import AutoAlert from './AutoAlert'
+import MarkdownText, { MarkdownInline } from './MarkdownText'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Checkbox from '@mui/material/Checkbox'
@@ -54,6 +55,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import TableChartIcon from '@mui/icons-material/TableChart'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ChatIcon from '@mui/icons-material/Chat'
@@ -62,19 +64,23 @@ import CloseIcon from '@mui/icons-material/Close'
 import SaveIcon from '@mui/icons-material/Save'
 import EditIcon from '@mui/icons-material/Edit'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutlined'
+import LockIcon from '@mui/icons-material/Lock'
 import ReplayIcon from '@mui/icons-material/Replay'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
+import { materializeTosExam, materializeTosList, tosMaterializedEqual, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
 import { notifyGenerationComplete } from '../utils/userPreferences'
-import SidebarUserMenu from './SidebarUserMenu'
-import AtlasLogo from './AtlasLogo'
+import WorkspacePipelineStepper from './WorkspacePipelineStepper'
+import WorkspacePageHeader from './WorkspacePageHeader'
+import useWorkspaceProgress from '../hooks/useWorkspaceProgress'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
-import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -84,6 +90,7 @@ const BG = '#0F0F12'
 const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
+  { key: 'tos',        label: 'TOS',         Icon: TableChartIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
   { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
   { key: 'analytics',  label: 'Analytics',   Icon: AnalyticsIcon },
@@ -98,7 +105,6 @@ const SYLLABUS_SECTIONS = [
   { key: 'fwmap',         label: 'Framework Mapping' },
   { key: 'ilofwmatrix',   label: 'ILO–Framework Matrix' },
   { key: 'schedule',      label: 'Weekly Schedule' },
-  { key: 'tos',           label: 'Table of Specifications' },
   { key: 'grading',       label: 'Grading' },
   { key: 'policies',      label: 'Policies' },
 ]
@@ -118,6 +124,14 @@ const PROVIDER_LABELS = {
 const ASSESSMENT_TYPES = [
   'quiz', 'long quiz', 'midterm exam', 'final exam',
   'assignment', 'project', 'activity', 'performance task',
+]
+
+// How deeply the AI should structure a generated module.
+const STRUCTURING_LEVELS = [
+  { value: 'standard',  label: 'Standard',      description: '3–5 subtopics — balanced depth for a class session' },
+  { value: 'detailed',  label: 'Detailed',      description: '4–6 subtopics — deep coverage, full lecture or lab series' },
+  { value: 'concise',   label: 'Concise',       description: '2–3 subtopics — a quick refresher or orientation' },
+  { value: 'activity',  label: 'Activity-led',  description: 'The class activity drives it; subtopics support it' },
 ]
 
 const EMPTY_TASK    = { code: '', task: '', ird: '', category: '', weight: '', ilo_values: [], subs: [], c: '', p: '', a: '' }
@@ -192,10 +206,12 @@ function getBloomVerbsForYear(yearLevel) {
 
 const TABLE_TH = {
   padding: '6px 10px', borderBottom: '2px solid #e0e0e0', borderRight: '1px solid #eee',
-  backgroundColor: BG, color: '#555', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left', whiteSpace: 'nowrap',
+  backgroundColor: BG, color: '#555', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left',
+  whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word',
 }
 const TABLE_TD = {
   padding: '3px 5px', borderBottom: '1px solid #f0f0f0', borderRight: '1px solid #f5f5f5', verticalAlign: 'top',
+  whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word', overflow: 'visible',
 }
 
 // ── TOS keyword-alignment helpers (ported from PEA pipeline mapping.js) ───────
@@ -329,6 +345,22 @@ function GenButton({ children, ...props }) {
   )
 }
 
+function WorkspaceProgressBanner({ label, detail, value }) {
+  const determinate = Number.isFinite(value)
+  const safeValue = determinate ? Math.max(0, Math.min(100, value)) : undefined
+  return (
+    <Box role="status" aria-live="polite" sx={{ flexShrink: 0, px: { xs: 1.5, md: 3 }, py: 0.75, bgcolor: '#15181A', borderBottom: '1px solid rgba(134,239,172,0.28)' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.45 }}>
+        <CircularProgress size={13} sx={{ color: '#86EFAC' }} />
+        <Typography variant="caption" sx={{ color: '#F0F0F2', fontWeight: 700 }}>{label}</Typography>
+        {determinate && <Typography variant="caption" sx={{ color: '#86EFAC', ml: 'auto', fontWeight: 700 }}>{Math.round(safeValue)}%</Typography>}
+      </Box>
+      {detail && <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.58)', display: 'block', mb: 0.5 }}>{detail}</Typography>}
+      <LinearProgress variant={determinate ? 'determinate' : 'indeterminate'} value={safeValue}
+        sx={{ height: 3, borderRadius: 99, bgcolor: 'rgba(255,255,255,0.12)', '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC', borderRadius: 99 } }} />
+    </Box>
+  )
+}
 function AddRowBtn({ onClick, label }) {
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
@@ -473,8 +505,8 @@ function MultiSelectCell({ value, options, onChange }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '5px 12px', cursor: 'pointer', fontSize: '0.73rem',
-                  background: checked ? '#F0FDF4' : 'transparent',
-                  color: checked ? '#15803D' : '#333',
+                  background: checked ? 'rgba(22,163,74,0.18)' : 'transparent',
+                   color: checked ? '#86EFAC' : '#F0F0F2',
                 }}
               >
                 <input type="checkbox" checked={checked} readOnly
@@ -597,7 +629,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
   }
 
   return (
-    <div style={{ '--c-card': '#ffffff', '--c-border': 'rgba(0,0,0,0.09)', '--c-panel': '#F7F9FC', '--c-text': '#333333', '--c-muted': '#888888', '--c-muted2': '#666666', '--c-accent': '#15803D', '--c-accent-br': 'rgba(21,128,61,0.3)', '--c-border2': 'rgba(0,0,0,0.15)' }}>
+    <div style={{ '--c-card': '#16161E', '--c-border': 'rgba(255,255,255,0.09)', '--c-panel': '#0F0F12', '--c-text': '#F0F0F2', '--c-muted': 'rgba(255,255,255,0.5)', '--c-muted2': 'rgba(255,255,255,0.68)', '--c-accent': '#86EFAC', '--c-accent-br': 'rgba(134,239,172,0.45)', '--c-border2': 'rgba(255,255,255,0.14)' }}>
       <div style={{ ...cardStyle, marginBottom: 14 }}>
         <div style={{ ...cardHeaderStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setAtsOpen(o => !o)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -710,40 +742,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const { courseId: courseIdParam } = useParams()
   const [searchParams] = useSearchParams()
   const courseId = courseIdParam || searchParams.get('course') || ''
-  const sidebarPreferenceKey = `atlas-dashboard-sidebar-collapsed:${user?.id ?? user?.email ?? 'faculty'}`
 
   const [activeTab, setActiveTab]     = useState(initialTab)
   const [syllabusSub, setSyllabusSub] = useState('overview')
 
-  const [leftWidth, setLeftWidth]   = useState(240)
+  function selectWorkspaceTab(key) {
+    setActiveTab(key)
+    setMobileNavOpen(false)
+    if (key !== 'module') { setSelectedModule(null); setModuleContent(null); setChatOpen(false) }
+  }
+
   const [rightWidth, setRightWidth] = useState(380)
-  const [leftCollapsed, setLeftCollapsed] = useState(() => {
-    try {
-      return window.localStorage.getItem(sidebarPreferenceKey) === 'true'
-    } catch {
-      return false
-    }
-  })
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
+  // Tracks which course the syllabus form was seeded for — a workspace refresh
+  // must not overwrite unsaved syllabus edits.
+  const seededCourseRef = useRef(null)
   const isMobile = useMediaQuery('(max-width: 768px)')
   const [mobileNavOpen, setMobileNavOpen]       = useState(false)
   const [mobileUploadOpen, setMobileUploadOpen] = useState(false)
-
-  function toggleLeftPanel() {
-    updateLeftSidebarPreference(!leftCollapsed)
-    setDragging(null)
-  }
-
-  function updateLeftSidebarPreference(nextCollapsed) {
-    setLeftCollapsed(nextCollapsed)
-    try {
-      window.localStorage.setItem(sidebarPreferenceKey, String(nextCollapsed))
-    } catch {
-      // Keep the sidebar usable when browser storage is unavailable.
-    }
-  }
 
   function toggleRightPanel() {
     setRightCollapsed(v => !v)
@@ -755,7 +773,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionLoading, setActionLoading] = useState(false)
 
   const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'auto', top_k: 5, extra_instructions: '' })
-  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'auto', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, topic_id: '', structuring_level: 'standard', provider: 'auto', top_k: 5, extra_instructions: '' })
   const [assessmentParams, setAssessmentParams] = useState({
     faculty_topics: '',
     extra_instructions: '',
@@ -812,8 +830,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [confirmDeleteAssessmentId, setConfirmDeleteAssessmentId] = useState(null)
 
   // ── Module creation flow state ───────────────────────────────────────────
-  const [moduleCreating, setModuleCreating]         = useState(false)
-  const [moduleFromSchedule, setModuleFromSchedule] = useState(false)
+  const [moduleGeneratingAll, setModuleGeneratingAll] = useState(false)
+  const [moduleGeneratingTopic, setModuleGeneratingTopic] = useState(new Set())
+  const [deletedModuleIds, setDeletedModuleIds] = useState(new Set())
+
+  // ── Syllabus section / subsection the Module topics are read from ────────
+  const [moduleTopicSectionKey, setModuleTopicSectionKey]       = useState('')
+  const [moduleTopicSubsectionKey, setModuleTopicSubsectionKey] = useState('')
+  const [moduleTopicConfirmed, setModuleTopicConfirmed]         = useState(false)
+  const [topicSourceDialogOpen, setTopicSourceDialogOpen]       = useState(false)
+  const [topicSourceSaving, setTopicSourceSaving]               = useState(false)
+  const [topicSourceError, setTopicSourceError]                 = useState('')
+  const [topicSourceNoticeOpen, setTopicSourceNoticeOpen]       = useState(false)
+  const [generateDialogOpen, setGenerateDialogOpen]             = useState(false)
+  const [generateDialogMode, setGenerateDialogMode]             = useState('single') // 'single' | 'all'
+  const [pendingGenerate, setPendingGenerate]                   = useState(null)
 
   // ── Module detail / viewer state ─────────────────────────────────────────
   const [selectedModule, setSelectedModule]         = useState(null) // { module_id, ... }
@@ -825,6 +856,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
   const [assessmentCreating, setAssessmentCreating] = useState(false)
   const [assessmentSessionId, setAssessmentSessionId] = useState(null)
+  // Assessment generation popup (Create Assessment = multi-topic scope, Generate Assessment = single topic)
+  const [assessmentGenDialogOpen, setAssessmentGenDialogOpen] = useState(false)
+  const [assessmentGenMode, setAssessmentGenMode] = useState('single') // 'single' | 'multi'
+  const [assessmentGenTitle, setAssessmentGenTitle] = useState('Major Examination')
+  const [assessmentGenSelectedTopics, setAssessmentGenSelectedTopics] = useState([])
+  const [assessmentGenItemCount, setAssessmentGenItemCount] = useState(50)
   const [assessmentToolsTab, setAssessmentToolsTab] = useState('builder')
   const [manualAssessmentItem, setManualAssessmentItem] = useState({
     question_text: '',
@@ -870,6 +907,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Syllabus upload (parse) state ────────────────────────────────────────
   const syllabusUploadRef                   = useRef(null)
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
+  const [syllabusUploadProgress, setSyllabusUploadProgress] = useState(null)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
   const [activeFwKey, setActiveFwKey] = useState('SO')
@@ -984,10 +1022,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ilos: r.ilos || [],
       hours_class: r.hours_class ?? 0,
       hours_min:   r.hours_min ?? 0,
-      weight: r.weight || '',
-      bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_items || {})[k] || (r.bloom_dist || {})[k] || '' }), {}),
+      weight: r.weight === 0 || r.weight ? r.weight : '',
+      bloom_items: BLOOM_KEYS.reduce((a, k) => {
+        const stored = (r.bloom_items || {})[k]
+        const distributed = (r.bloom_dist || {})[k]
+        const count = stored === 0 || stored ? stored : (distributed === 0 || distributed ? distributed : '')
+        return { ...a, [k]: count }
+      }, {}),
       bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_pct || {})[k] || '' }), {}),
-      total_points: r.total_points || '',
+      total_points: r.total_points === 0 || r.total_points ? r.total_points : '',
     })
     const normTos = (() => {
       const raw_tos = raw.tos || []
@@ -1005,6 +1048,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         checkedBy:  exam.checkedBy  || '',
         approvedBy: exam.approvedBy || '',
         totalTestItems: exam.totalTestItems || 0,
+        totalExamMinutes: exam.totalExamMinutes || 0,
         topics: (exam.topics || []).length ? exam.topics.map(normTopicRow) : [mkEmptyTopicRow()],
       }))
     })()
@@ -1201,10 +1245,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })))
     }
     if (activeSyllabusSectionKey === 'schedule') {
+      const SCHEDULE_AI_FIELDS = ['chapter', 'topics', 'weeks', 'outcomes', 'delivery', 'ilo', 'so']
+      const SCHEDULE_FIELD_LABELS = {
+        chapter: 'Week Number',
+        topics: 'Topic / Activity',
+        weeks: 'Weeks',
+        outcomes: 'Task',
+        delivery: 'Delivery',
+        ilo: 'ILOs & pts',
+        so: 'Student Outcomes',
+      }
       return withConfiguredTables((syllabusData.tla_chapters || []).flatMap((chapter, index) => (
-        ['topics', 'outcomes', 'delivery'].map(field => ({
+        SCHEDULE_AI_FIELDS.map(field => ({
           section: 'schedule',
-          label: `Week ${chapter.weeks || index + 1}: ${field}`,
+          label: `Week ${chapter.weeks || index + 1}: ${SCHEDULE_FIELD_LABELS[field] || field}`,
           fieldType: 'arrayObj',
           arrField: 'tla_chapters',
           arrIndex: index,
@@ -1427,32 +1481,100 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     handleGenerateSection()
   }
 
+  function parsedHasContent(value) {
+    if (value == null || value === '') return false
+    if (Array.isArray(value)) return value.some(parsedHasContent)
+    if (typeof value === 'object') return Object.values(value).some(parsedHasContent)
+    return true
+  }
+
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
+    setSyllabusUploading(true)
+    setSyllabusUploadError('')
+    setSyllabusUploadSuccess(false)
+    setSyllabusUploadProgress(null)
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
     try {
-      // Do NOT set Content-Type manually — let the browser set it with the correct boundary
-      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
+      const { data } = await api.post('/curriculum/import-syllabus-json/', formData, {
         headers: { 'Content-Type': undefined },
-        timeout: 120000,
+        timeout: 180000,
       })
-      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
-        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
-        setIsDirty(true)
-        setSyllabusUploadSuccess(true)
-      } else {
-        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
+      const imported = data?.syllabus_content
+      if (!data?.success || !parsedHasContent(imported)) {
+        setSyllabusUploadError('Could not find syllabus text in this file.')
+        return
       }
+      const base = {
+        ...EMPTY_SYLLABUS,
+        university_name: course?.institution_name || '',
+        college: course?.college_name || '',
+        program: course?.program_name || '',
+        course_title: course?.course_title || '',
+        course_code: course?.course_code || '',
+        credit_hours: course?.credit_hours != null ? String(course.credit_hours) : '',
+        instructor_name: course?.instructor_name || '',
+        instructor_email: course?.instructor_email || '',
+        year_level: course?.year_level || '',
+        course_category: course?.course_category || '',
+      }
+      Object.entries(imported).forEach(([key, value]) => {
+        if (value == null || value === '') return
+        if (Array.isArray(value) && value.length === 0) return
+        base[key] = value
+      })
+      setSyllabusData(normalizeSyllabusData(base))
+      setIsDirty(true)
+      setSaveSuccess(false)
+      setSyllabusSub('basic')
+      setSyllabusUploadSuccess(true)
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
     } finally {
       setSyllabusUploading(false)
+      setSyllabusUploadProgress(null)
       if (syllabusUploadRef.current) syllabusUploadRef.current.value = ''
     }
+  }
+
+  async function downloadSyllabusBlob(response, fallbackExt) {
+    const blob = response.data
+    const contentDisposition = response.headers?.['content-disposition'] || ''
+    const match = contentDisposition.match(/filename="?([^";]+)"?/i)
+    const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
+    const downloadName = match?.[1] || `${baseName}_syllabus.${fallbackExt}`
+    const blobUrl = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = blobUrl
+    link.setAttribute('download', downloadName)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(blobUrl)
+  }
+
+  async function readExportError(err, fallback) {
+    let message = fallback
+    const blobData = err?.response?.data
+    if (blobData instanceof Blob) {
+      try {
+        const text = await blobData.text()
+        const parsed = JSON.parse(text)
+        message = parsed?.error || parsed?.detail || message
+      } catch (_) {
+        message = err?.message || message
+      }
+    } else {
+      message = extractApiError(err) || err?.message || message
+    }
+    return message
+  }
+
+  function syllabusForPersist(data = syllabusData) {
+    return { ...(data || {}), tos: materializeTosList(data?.tos) }
   }
 
   async function handleExportDocx() {
@@ -1465,7 +1587,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const formData = new FormData()
       formData.append('course_id', courseId)
-      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
       if (syllabusTemplateFile) {
         formData.append('template', syllabusTemplateFile)
       }
@@ -1476,37 +1598,34 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         timeout: 120000,
       })
 
-      const blob = response.data
-      const contentDisposition = response.headers?.['content-disposition'] || ''
-      const match = contentDisposition.match(/filename="?([^";]+)"?/i)
       const isXlsx = syllabusTemplateFile?.name?.toLowerCase().endsWith('.xlsx')
-      const ext = isXlsx ? 'xlsx' : 'docx'
-      const baseName = (syllabusData.course_code || 'syllabus').replace(/[\\/\s]+/g, '_')
-      const downloadName = match?.[1] || `${baseName}_syllabus.${ext}`
-
-      const blobUrl = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.setAttribute('download', downloadName)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(blobUrl)
+      await downloadSyllabusBlob(response, isXlsx ? 'xlsx' : 'docx')
     } catch (err) {
-      let message = 'Failed to export syllabus.'
-      const blobData = err?.response?.data
-      if (blobData instanceof Blob) {
-        try {
-          const text = await blobData.text()
-          const parsed = JSON.parse(text)
-          message = parsed?.error || parsed?.detail || message
-        } catch (_) {
-          message = err?.message || message
-        }
-      } else {
-        message = extractApiError(err) || err?.message || message
-      }
-      setSyllabusExportError(message)
+      setSyllabusExportError(await readExportError(err, 'Failed to export syllabus.'))
+    } finally {
+      setSyllabusExporting(false)
+    }
+  }
+
+  async function handleExportPdf() {
+    if (!courseId) {
+      setSyllabusExportError('Select a course first before exporting.')
+      return
+    }
+    setSyllabusExporting(true)
+    setSyllabusExportError('')
+    try {
+      const formData = new FormData()
+      formData.append('course_id', courseId)
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
+      const response = await api.post('/curriculum/export-syllabus-pdf/', formData, {
+        headers: { 'Content-Type': undefined },
+        responseType: 'blob',
+        timeout: 120000,
+      })
+      await downloadSyllabusBlob(response, 'pdf')
+    } catch (err) {
+      setSyllabusExportError(await readExportError(err, 'Failed to export styled PDF.'))
     } finally {
       setSyllabusExporting(false)
     }
@@ -1525,7 +1644,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const formData = new FormData()
       formData.append('course_id', courseId)
-      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
 
       const response = await api.post('/curriculum/export-tos-docx/', formData, {
         headers: { 'Content-Type': undefined },
@@ -1582,13 +1701,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return () => clearTimeout(timer)
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
-  const customization = workspaceApi.data?.customization || {}
-  const configuredSections = (Array.isArray(customization.syllabus_sections)
-    ? customization.syllabus_sections
-    : []
-  )
-    .filter(section => section.enabled !== false && section.key?.trim() && section.label?.trim())
-    .map(section => ({ ...section, editorKey: syllabusEditorKey(section) }))
+
+  // ── ATLAS pipeline progress (Step 11: Faculty Review & Approval) ──
+  // Tracks per-module completion: auto-detected from workspace data +
+  // manual faculty approval via the header "Mark as Done" check.
+  const workspaceProgress = useWorkspaceProgress(courseId, workspaceApi.data)
+  const { isStepDone, markStepDone } = workspaceProgress
+  const configuredSections = SYLLABUS_SECTIONS.map(section => ({ ...section, editorKey: section.key }))
   const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
   const activeSyllabusSectionKey = activeConfiguredSection?.editorKey || activeConfiguredSection?.key || ''
 
@@ -1600,12 +1719,89 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ))
   }, [workspaceApi.data, courseId])
 
-  // Pre-populate syllabus form: saved JSON first, then fall back to course fields
+  // The module topic source is locked per course the first time the faculty
+  // confirms it — pull it back from the course record on every load.
+  useEffect(() => {
+    const courseData = workspaceApi.data?.course
+    if (!courseData) return
+    if (courseData.module_topic_confirmed_at) {
+      setModuleTopicConfirmed(true)
+      setModuleTopicSectionKey(courseData.module_topic_section_key || '')
+      setModuleTopicSubsectionKey(courseData.module_topic_subsection_key || '')
+    } else {
+      setModuleTopicConfirmed(false)
+    }
+  }, [workspaceApi.data?.course])
+
+  // Before the faculty confirms a source, pre-select the section that already
+  // holds topics so the dialog opens on a sensible default.
+  useEffect(() => {
+    if (moduleTopicConfirmed) return
+    setModuleTopicSectionKey(current => (
+      configuredSections.some(section => section.key === current)
+        ? current
+        : findDefaultTopicSection()
+    ))
+  }, [workspaceApi.data, courseId])
+
+  // Keep the chosen subsection valid for the chosen section.
+  useEffect(() => {
+    const section = configuredSections.find(item => item.key === moduleTopicSectionKey)
+    const subsections = section?.subsections || []
+    setModuleTopicSubsectionKey(current => (
+      current && subsections.some(sub => sub.key === current) ? current : ''
+    ))
+  }, [configuredSections, moduleTopicSectionKey])
+
+  // The topic source must be chosen before any module can be generated.
+  useEffect(() => {
+    if (activeTab !== 'module') return
+    const courseData = workspaceApi.data?.course
+    if (!courseData) return
+    if (courseData.module_topic_confirmed_at) {
+      setTopicSourceDialogOpen(false)
+      return
+    }
+    setTopicSourceDialogOpen(true)
+  }, [activeTab, workspaceApi.data?.course])
+
+  // A topic queued from the Syllabus tab opens the generate dialog once the
+  // topic source is locked in (after the "selection confirmed" notice).
+  useEffect(() => {
+    if (activeTab !== 'module' || !pendingGenerate) return
+    if (!moduleTopicConfirmed) return
+    if (topicSourceNoticeOpen) return
+    setModuleParams(p => ({
+      ...p,
+      module_title: pendingGenerate.topic,
+      week_number: pendingGenerate.week,
+      topic_id: pendingGenerate.topic_id || '',
+    }))
+    setPendingGenerate(null)
+    setGenerateDialogMode('single')
+    setGenerateDialogOpen(true)
+  }, [activeTab, pendingGenerate, moduleTopicConfirmed, topicSourceNoticeOpen])
+
+  // Pre-populate syllabus form: saved JSON first, then fall back to course fields.
+  // Seeded ONCE per course — a workspace refresh (after generating a module,
+  // confirming the topic source, saving, …) must never discard unsaved edits.
   useEffect(() => {
     const apiData = workspaceApi.data
     if (!apiData) return
     const course = apiData.course
     setSyllabusId(apiData.syllabus?.syllabus_id || null)
+
+    const seededFor = seededCourseRef.current
+    if (seededFor === courseId) return            // same course — just a refresh
+    const switchingCourse = Boolean(seededFor && seededFor !== courseId)
+    if (switchingCourse) {
+      setIsDirty(false)
+      setSaveSuccess(false)
+    } else if (isDirty) {
+      seededCourseRef.current = courseId          // keep the faculty's unsaved work
+      return
+    }
+    seededCourseRef.current = courseId
 
     const saved = apiData.syllabus?.syllabus_content
     if (saved && typeof saved === 'object') {
@@ -1690,7 +1886,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [workspaceApi.data])
 
   // Auto-clear transient notifications
-  useEffect(() => { if (!saveError) return; const t = setTimeout(() => setSaveError(''), 3000); return () => clearTimeout(t) }, [saveError])
   useEffect(() => { if (!actionError) return; const t = setTimeout(() => setActionError(''), 3000); return () => clearTimeout(t) }, [actionError])
   useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
   useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
@@ -1698,9 +1893,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // Clear AI field selection when the syllabus section tab changes
   useEffect(() => { setAiField(null) }, [syllabusSub])
 
-  // ── Auto-sync Major Examination tasks → TOS when the TOS section opens ──
+  // ── Auto-sync Major Examination tasks → TOS when the TOS tab opens ──
   useEffect(() => {
-    if (activeSyllabusSectionKey !== 'tos') return
+    if (activeTab !== 'tos' && activeSyllabusSectionKey !== 'tos') return
     const BLOOM_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
     setSyllabusData(s => {
       const majExam = (s.ats || []).find(a => a.label?.toLowerCase().includes('major exam'))
@@ -1748,6 +1943,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           checkedBy: '',
           approvedBy: '',
           totalTestItems,
+          totalExamMinutes: 0,
           topics: [{
             id: `r-${now}-${Math.random().toString(36).slice(2, 5)}`,
             topic: '',
@@ -1766,7 +1962,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (!updated) return s
       return { ...s, tos: finalTos }
     })
-  }, [activeSyllabusSectionKey])
+  }, [activeTab, activeSyllabusSectionKey])
+
+  // Keep saved TOS rows equal to the institutional formula: hours drive
+  // weight, points, and minutes; Bloom percentages drive item counts.
+  useEffect(() => {
+    setSyllabusData(prev => {
+      const nextTos = materializeTosList(prev.tos)
+      if (tosMaterializedEqual(prev.tos, nextTos)) return prev
+      return { ...prev, tos: nextTos }
+    })
+  }, [syllabusData.tos])
 
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
@@ -1793,11 +1999,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setSaveLoading(true)
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
-        syllabus_content: syllabusData,
+        syllabus_content: syllabusForPersist(),
+        syllabus_id: syllabusId,
       }, { timeout: 60000 })
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
       setSaveSuccess(true)
+      markStepDone('syllabus', true)
+      workspaceApi.execute()
     } catch (err) {
       setSaveError(extractApiError(err))
     } finally {
@@ -1811,7 +2020,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const onMove = (e) => {
       if (!containerRef.current) return
       const rect = containerRef.current.getBoundingClientRect()
-      if (dragging === 'left')  setLeftWidth(Math.max(160, Math.min(300, e.clientX - rect.left)))
       if (dragging === 'right') setRightWidth(Math.max(250, Math.min(480, rect.right - e.clientX)))
     }
     const onUp = () => setDragging(null)
@@ -1822,7 +2030,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   useEffect(() => {
     if (!isMobile) return
-    setLeftCollapsed(false)
     setRightCollapsed(false)
     setDragging(null)
   }, [isMobile])
@@ -1863,21 +2070,236 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     finally { setActionLoading(false) }
   }
 
+  // ── Module topic sources ──────────────────────────────────────────────────
+  // Topics that need a module live inside the Syllabus tab. Depending on the
+  // section they are stored as a table, as free text, or (Weekly Schedule) as
+  // TLA chapter rows. The Module tab picks the section + subsection to read.
+  function findColumnIndex(columns, hints) {
+    for (const hint of hints) {
+      const index = columns.findIndex(col => String(col || '').toLowerCase().includes(hint))
+      if (index >= 0) return index
+    }
+    return -1
+  }
+
+  function topicsFromTableRows(rows, columns) {
+    const topicCol = findColumnIndex(
+      columns,
+      ['topic', 'activity', 'subject', 'lesson', 'module', 'title', 'content', 'description'],
+    )
+    const weekCol = findColumnIndex(columns, ['week', 'chapter', 'session', 'meeting'])
+    const topics = []
+    ;(rows || []).forEach((row, index) => {
+      const cells = Array.isArray(row) ? row.map(cell => String(cell ?? '').trim()) : []
+      const raw = topicCol >= 0 ? cells[topicCol] : (cells.find(Boolean) || '')
+      const topic = String(raw || '').trim()
+      if (!topic) return
+      const weekMatch = weekCol >= 0 ? String(cells[weekCol] || '').match(/\d+/) : null
+      topics.push({
+        id: `table-${index}`,
+        week: weekMatch ? parseInt(weekMatch[0], 10) : index + 1,
+        topic,
+        context: cells.filter(Boolean).join(' · '),
+      })
+    })
+    return topics
+  }
+
+  function topicsFromText(text) {
+    const topics = []
+    String(text || '').split(/\r?\n/).forEach((line, index) => {
+      const cleaned = line.replace(/^\s*(?:[-*•–—]|\d+[.)])\s*/, '').trim()
+      if (!cleaned) return
+      const weekMatch = cleaned.match(/week\s*(\d+)/i)
+      topics.push({
+        id: `text-${index}`,
+        week: weekMatch ? parseInt(weekMatch[1], 10) : index + 1,
+        topic: cleaned,
+        context: '',
+      })
+    })
+    return topics
+  }
+
+  function collectScheduleTopics() {
+    const scheduleTopics = []
+    ;(syllabusData.tla_chapters || []).forEach((ch, index) => {
+      const topic = String(ch.topics || '').trim()
+      if (!topic) return
+      // Rows tied to an assessment task belong to the Assessments tab.
+      if (ch.outcomes && ch.outcomes !== 'Lecture/Discussion') return
+      scheduleTopics.push({
+        id: `schedule-${index}`,
+        week: parseInt(ch.chapter, 10) || index + 1,
+        topic,
+        context: [ch.outcomes, ch.delivery, ch.ilo]
+          .map(value => String(value || '').trim())
+          .filter(Boolean)
+          .join(' · '),
+      })
+    })
+    return scheduleTopics
+  }
+
+  // Which section should the topic source start on? The first one that already
+  // holds topics, so the selection dialog never opens on an empty section.
+  function findDefaultTopicSection() {
+    const withTopics = configuredSections.find(section => {
+      if (section.editorKey === 'schedule') {
+        return (syllabusData.tla_chapters || []).some(ch => String(ch.topics || '').trim())
+      }
+      if (section.table_enabled) {
+        return (syllabusData.custom_tables?.[section.key]?.['__section__'] || []).length > 0
+      }
+      return (section.subsections || []).some(sub => (
+        (syllabusData.custom_tables?.[section.key]?.[sub.key] || []).length > 0
+      ))
+    })
+    if (withTopics) return withTopics.key
+    return configuredSections.find(section => section.editorKey === 'schedule')?.key
+      || configuredSections.find(section => section.table_enabled)?.key
+      || configuredSections.find(section => (section.subsections || []).length > 0)?.key
+      || configuredSections[0]?.key
+      || ''
+  }
+
+  function collectModuleTopics(sectionKey = moduleTopicSectionKey, subsectionKey = moduleTopicSubsectionKey) {
+    const section = configuredSections.find(item => item.key === sectionKey)
+    if (!section) return []
+    const subsection = subsectionKey
+      ? (section.subsections || []).find(sub => sub.key === subsectionKey)
+      : null
+
+    // The section's own table (custom_tables[section]['__section__']) holds the
+    // topics whenever the section is table-driven.
+    const sectionTableRows = section.table_enabled
+      ? (syllabusData.custom_tables?.[section.key]?.['__section__'] || [])
+      : []
+    const sectionTableTopics = topicsFromTableRows(sectionTableRows, section.table_columns || [])
+
+    // A specific subsection was picked → read that one.
+    if (subsection) {
+      const subRows = syllabusData.custom_tables?.[section.key]?.[subsection.key] || []
+      const subTableTopics = topicsFromTableRows(subRows, subsection.table_columns || [])
+      if (subTableTopics.length) return subTableTopics
+      // The subsection has no table of its own — the section's table still
+      // holds the topics, so keep recognising it.
+      if (sectionTableTopics.length) return sectionTableTopics
+      return topicsFromText(syllabusData.custom_subsections?.[section.key]?.[subsection.key] || '')
+    }
+
+    // Whole section — the Weekly Schedule keeps its topics in the chapter rows.
+    if (section.editorKey === 'schedule') {
+      const scheduleTopics = collectScheduleTopics()
+      if (scheduleTopics.length) return scheduleTopics
+    }
+
+    // Whole section — its own table first, then every subsection table.
+    if (sectionTableTopics.length) return sectionTableTopics
+    const targets = []
+    ;(section.subsections || [])
+      .filter(sub => sub.table_enabled && (sub.table_columns || []).length)
+      .forEach(sub => targets.push({ key: sub.key, columns: sub.table_columns || [] }))
+    const fromTables = targets.flatMap(target => topicsFromTableRows(
+      syllabusData.custom_tables?.[section.key]?.[target.key] || [],
+      target.columns,
+    ))
+    if (fromTables.length) return fromTables
+
+    // Whole section — free text.
+    const texts = []
+    if (syllabusData.custom_sections?.[section.key]) {
+      texts.push(syllabusData.custom_sections[section.key])
+    }
+    ;(section.subsections || []).forEach(sub => {
+      const text = syllabusData.custom_subsections?.[section.key]?.[sub.key]
+      if (text) texts.push(text)
+    })
+    return texts.flatMap(text => topicsFromText(text))
+  }
+
+  function activeTopicSource() {
+    const section = configuredSections.find(item => item.key === moduleTopicSectionKey)
+    const subsection = (section?.subsections || []).find(sub => sub.key === moduleTopicSubsectionKey)
+    return {
+      section_key: moduleTopicSectionKey,
+      section_label: section?.label || '',
+      subsection_key: moduleTopicSubsectionKey,
+      subsection_label: subsection?.label || '',
+    }
+  }
+
+  // ── Topic source (locked once confirmed) ─────────────────────────────────
+  async function handleConfirmTopicSource() {
+    if (!courseId) return
+    if (!moduleTopicSectionKey) {
+      setTopicSourceError('Choose the syllabus section that holds the topics for your modules.')
+      return
+    }
+    setTopicSourceSaving(true)
+    setTopicSourceError('')
+    try {
+      const { data } = await api.patch(`/curriculum/course/${courseId}/module-topic/`, {
+        section_key: moduleTopicSectionKey,
+        subsection_key: moduleTopicSubsectionKey,
+      })
+      setModuleTopicConfirmed(true)
+      setModuleTopicSectionKey(data.module_topic_section_key || moduleTopicSectionKey)
+      setModuleTopicSubsectionKey(data.module_topic_subsection_key || '')
+      setTopicSourceDialogOpen(false)
+      setTopicSourceNoticeOpen(true)
+      workspaceApi.execute()
+    } catch (err) {
+      setTopicSourceError(extractApiError(err))
+    } finally {
+      setTopicSourceSaving(false)
+    }
+  }
+
+  // ── Generate dialog ──────────────────────────────────────────────────────
+  function openGenerateDialog(mode, topic) {
+    if (!moduleTopicConfirmed) {
+      setTopicSourceError('')
+      setTopicSourceDialogOpen(true)
+      return
+    }
+    setGenerateDialogMode(mode)
+    setModuleParams(p => ({
+      ...p,
+      module_title: mode === 'single' && topic ? topic.topic : '',
+      week_number: mode === 'single' && topic ? topic.week : '',
+      topic_id: mode === 'single' && topic ? topic.id : '',
+    }))
+    setGenerateDialogOpen(true)
+  }
+
   async function handleGenerateModule() {
     if (!course) return
     setActionError(''); setActionLoading(true); setResultText('')
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+      const topics = collectModuleTopics()
+      const topic = topics.find(
+        item => item.id === moduleParams.topic_id || item.topic === moduleParams.module_title,
+      ) || collectScheduleTopics().find(item => item.topic === moduleParams.module_title)
+      const source = activeTopicSource()
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
         module_title: moduleParams.module_title,
         week_number: Number(moduleParams.week_number) || 1,
+        section_key: source.section_key,
+        section_label: source.section_label,
+        subsection_key: source.subsection_key,
+        subsection_label: source.subsection_label,
+        topic: topic?.topic || moduleParams.module_title,
+        syllabus_context: topic?.context || '',
+        structuring_level: moduleParams.structuring_level || 'standard',
         provider: moduleParams.provider,
         top_k: Number(moduleParams.top_k),
         extra_instructions: moduleParams.extra_instructions,
         selected_doc_ids: selectedIds,
-      })
+      }, { timeout: 300000 })
       if (data.success && data.module_content) {
         // Open module viewer with the generated content
         setSelectedModule({
@@ -1890,12 +2312,70 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setModuleContentDirty(false)
         setExpandedSubtopics(new Set())
         setChatMessages([])
-        setModuleCreating(false)
+        setGenerateDialogOpen(false)
         workspaceApi.execute()
         notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
       }
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setActionLoading(false) }
+  }
+
+  async function handleGenerateAllModules() {
+    if (!course) return
+    const topics = collectModuleTopics()
+    if (!topics.length) {
+      setActionError('No topics found in the selected syllabus section. Add topics there first, or pick another section.')
+      return
+    }
+    setModuleGeneratingAll(true)
+    setActionError('')
+    try {
+      const source = activeTopicSource()
+      const existingModules = workspaceApi.data?.modules || []
+      const topicsWithoutModules = topics.filter(topic => {
+        const existing = existingModules.find(mod => mod.week_number === topic.week)
+        // Skip weeks that already have a module, unless the faculty deleted it.
+        if (!existing) return true
+        return deletedModuleIds.has(String(existing.module_id))
+      })
+      if (!topicsWithoutModules.length) {
+        setActionError('Every topic in this section already has a module.')
+        return
+      }
+      for (const topic of topicsWithoutModules) {
+        const week = topic.week
+        setModuleGeneratingTopic(prev => new Set(prev).add(week))
+        try {
+          const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+          await api.post('/curriculum/generate-module/', {
+            course_id: course.course_id,
+            course_name: course.course_title,
+            module_title: topic.topic,
+            week_number: week,
+            section_key: source.section_key,
+            section_label: source.section_label,
+            subsection_key: source.subsection_key,
+            subsection_label: source.subsection_label,
+            topic: topic.topic,
+            syllabus_context: topic.context || '',
+            structuring_level: moduleParams.structuring_level || 'standard',
+            provider: moduleParams.provider || 'auto',
+            top_k: Number(moduleParams.top_k) || 5,
+            extra_instructions: moduleParams.extra_instructions || '',
+            selected_doc_ids: selectedIds,
+          }, { timeout: 300000 })
+        } catch (err) {
+          setActionError(extractApiError(err))
+        } finally {
+          setModuleGeneratingTopic(prev => { const next = new Set(prev); next.delete(week); return next })
+        }
+      }
+      workspaceApi.execute()
+      setGenerateDialogOpen(false)
+      notifyGenerationComplete('Modules', `${topicsWithoutModules.length} module${topicsWithoutModules.length === 1 ? '' : 's'} generated`)
+    } finally {
+      setModuleGeneratingAll(false)
+    }
   }
 
   async function handleOpenModule(mod) {
@@ -1928,6 +2408,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       await api.put(`/curriculum/module/${selectedModule.module_id}/save/`, { module_content: moduleContent })
       setModuleContentDirty(false)
       workspaceApi.execute()
+      markStepDone('module', true)
     } catch (err) { setActionError(extractApiError(err)) }
     finally { setModuleSaving(false) }
   }
@@ -2179,6 +2660,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return levels.size > 0 ? Array.from(levels) : ['Remember']
   }
 
+  function selectedTosBloomPlan(selectedTopics) {
+    const selected = new Set((selectedTopics || []).map(topic => String(topic || '').trim().toLowerCase()))
+    if (selected.size === 0) return { total: 0, counts: {} }
+    const exam = materializeTosExam(getAssessmentBlueprint().selectedExam || { topics: [] })
+    const counts = {}
+    let total = 0
+    for (const row of exam.topics || []) {
+      const name = String(row?.topic || row?.label || '').trim().toLowerCase()
+      if (!selected.has(name)) continue
+      for (const key of TOS_BLOOM_KEYS) {
+        const count = Number(row?.bloom_items?.[key] || 0)
+        if (count <= 0) continue
+        const label = key.charAt(0).toUpperCase() + key.slice(1)
+        counts[label] = (counts[label] || 0) + count
+        total += count
+      }
+    }
+    return { total, counts }
+  }
+
   function formatAssessmentId(id) {
     const raw = String(id || '').trim()
     if (!raw) return ''
@@ -2204,6 +2705,106 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const total = assessmentDetail?.target_total_items || blueprint.totalItems
     const base = blueprint.assessmentName || 'Major Examination'
     return total ? `${base} (${total} items)` : base
+  }
+
+  // Topics of the generated modules — the assessment source for every assessment.
+  function assessmentModuleTopics() {
+    const seen = new Set()
+    return (workspaceApi.data?.modules || [])
+      .filter(mod => !deletedModuleIds.has(String(mod.module_id)))
+      .map(mod => ({ topic: String(mod.module_title || '').trim(), week: mod.week_number || null }))
+      .filter(item => item.topic && !seen.has(item.topic) && seen.add(item.topic))
+  }
+
+  function findMatchingModuleForTopic(topic) {
+    const topicText = String(topic || '').trim()
+    if (!topicText) return null
+    const modules = assessmentModuleTopics()
+    const exact = modules.find(module => module.topic.toLowerCase() === topicText.toLowerCase())
+    if (exact) return exact
+    const topicTokens = tosTokenize(topicText)
+    let best = null
+    for (const module of modules) {
+      const score = tosJaccard(topicTokens, tosTokenize(module.topic))
+      if (!best || score > best.score) best = { ...module, score }
+    }
+    return best && best.score >= 0.12 ? best : null
+  }
+
+  // TOS is the assessment authority. Generated modules are used to confirm and display
+  // which weekly module covers each TOS topic.
+  function assessmentGenAvailableTopics() {
+    const blueprint = getAssessmentBlueprint()
+    const topics = blueprint.selectedExam?.topics || []
+    return topics
+      .map(row => {
+        const topic = String(row?.topic || row?.label || '').trim()
+        const module = findMatchingModuleForTopic(topic)
+        return { topic, week: module?.week || null, moduleTitle: module?.topic || '' }
+      })
+      .filter(item => item.topic)
+  }
+
+  function toggleAssessmentGenTopic(topic) {
+    if (assessmentGenMode === 'single') {
+      setAssessmentGenSelectedTopics([topic])
+      return
+    }
+    setAssessmentGenSelectedTopics(prev =>
+      prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
+    )
+  }
+
+  function openAssessmentGenDialog(mode, prefillTopic) {
+    const blueprint = getAssessmentBlueprint()
+    setAssessmentGenMode(mode)
+    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Assessment')
+    setAssessmentGenItemCount(Math.max(1, Number(blueprint.totalItems || 50)))
+    if (mode === 'single' && prefillTopic) {
+      setAssessmentGenSelectedTopics([prefillTopic])
+    } else {
+      setAssessmentGenSelectedTopics([])
+    }
+    setAssessmentGenDialogOpen(true)
+  }
+
+  async function handleAssessmentGenSubmit() {
+    if (!course) return
+    const blueprint = getAssessmentBlueprint()
+    if (assessmentGenSelectedTopics.length === 0) {
+      setActionError('Select at least one TOS topic for the assessment.')
+      return
+    }
+    setActionLoading(true)
+    setActionError('')
+    try {
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+       // One request builds the whole assessment. TOS topics and Bloom/item
+       // allocations remain authoritative; selected topics only narrow the TOS scope.
+      const { data } = await api.post('/curriculum/generate-assessment/', {
+        course_id: course.course_id,
+        assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
+        provider: 'auto',
+        extra_instructions: '',
+        selected_doc_ids: selectedIds,
+        source_exam_code: blueprint.examCode,
+        source_exam_label: assessmentGenTitle || blueprint.assessmentName,
+        faculty_topics: assessmentGenSelectedTopics,
+        total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
+      }, { timeout: 300000 })
+      if (!data?.success) throw new Error(data?.detail || 'Generation failed.')
+      const newId = data?.assessment?.assessment_id
+      if (newId) setAssessmentSessionId(newId)
+      setAssessmentGenDialogOpen(false)
+      workspaceApi.execute()
+      markStepDone('assessment', true)
+      notifyGenerationComplete('Assessment', assessmentGenTitle || 'Assessment')
+      if (newId) await handleOpenAssessment(data.assessment)
+    } catch (err) {
+      setActionError(extractApiError(err) || err?.message || 'Assessment generation failed.')
+    } finally {
+      setActionLoading(false)
+    }
   }
 
   async function handleGenerateAssessment() {
@@ -2266,7 +2867,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           relation_instruction: assessmentParams.relation_instruction,
           overwrite_item: Boolean(assessmentParams.overwrite_item)
             || (blueprint.totalItems > 0 && Number(assessmentDetail?.total_items || 0) >= blueprint.totalItems),
-        })
+        }, { timeout: 300000 })
 
         if (!data?.success) {
           throw new Error(data?.detail || 'Generation failed during batch loop.')
@@ -2305,6 +2906,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       setAssessmentCreating(false)
       workspaceApi.execute()
+      markStepDone('assessment', true)
       notifyGenerationComplete('Assessment', getSelectedExamDisplayName())
       if (latestAssessmentSummary?.assessment_id) {
         await handleOpenAssessment(latestAssessmentSummary)
@@ -2497,7 +3099,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         target_item_number: itemNumber,
         overwrite_item: true,
         regenerate_choices_only: true,
-      })
+      }, { timeout: 300000 })
       if (data?.success) {
         workspaceApi.execute()
         if (data?.assessment?.assessment_id) {
@@ -2563,7 +3165,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         },
       }
 
-      const { data } = await api.post('/curriculum/generate-assessment/', payload)
+      const { data } = await api.post('/curriculum/generate-assessment/', payload, { timeout: 300000 })
       if (data?.success) {
         const newAssessmentId = data?.assessment?.assessment_id || assessmentId
         if (newAssessmentId) setAssessmentSessionId(newAssessmentId)
@@ -3205,7 +3807,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // ── Syllabus section renderer (all editable) ─────────────────────────────
-  function renderSyllabusSection() {
+  function renderSyllabusSection(sectionKey = activeSyllabusSectionKey) {
     if (!courseId) return null
     if (workspaceApi.loading && !workspaceApi.data) {
       return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: MAROON }} /></Box>
@@ -3231,7 +3833,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 1. Course Overview ───────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'overview') {
+    if (sectionKey === 'overview') {
       const iloCount  = (syllabusData.ilos || []).length
       const atCount   = (syllabusData.assessment_tasks || []).length
       const refCount  = (syllabusData.references || []).length
@@ -3314,7 +3916,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 2. Basic Info ────────────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'basic') {
+    if (sectionKey === 'basic') {
       return (
         <>
           <SectionCard title="Institution">
@@ -3377,7 +3979,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 3. Course Details ────────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'details') {
+    if (sectionKey === 'details') {
       return (
         <>
           <SectionCard title="Rationale &amp; Description">
@@ -3430,7 +4032,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 4. ILOs & Assessments ────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'iloat') {
+    if (sectionKey === 'iloat') {
       const iloCount = syllabusData.ilos.length
       return (
         <>
@@ -3465,7 +4067,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 5. ILO–AT Matrix ─────────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'iloatmatrix') {
+    if (sectionKey === 'iloatmatrix') {
       const iloCount = syllabusData.ilos.length
       const atsData = syllabusData.ats || []
       // Flatten sub-tasks with parent component info
@@ -3526,7 +4128,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 6. Framework Mapping ─────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'fwmap') {
+    if (sectionKey === 'fwmap') {
       const fwTabs = [
         { key: 'SO',   label: 'Student Outcomes',                  itemsField: 'student_outcomes', headersField: 'so_headers',   rowsField: 'so_cpa_rows',   rowValKey: 'so_vals',   hasCPA: true },
         { key: 'IGA',  label: 'Institutional Graduate Attributes', itemsField: 'igas',             headersField: 'iga_headers',  rowsField: 'iga_rows',      rowValKey: 'vals',      hasCPA: false },
@@ -3667,7 +4269,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 7. ILO–Framework Matrix ──────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'ilofwmatrix') {
+    if (sectionKey === 'ilofwmatrix') {
       const soHeaders   = syllabusData.so_headers   || ['']
       const igaHeaders  = syllabusData.iga_headers  || ['']
       const cdioHeaders = syllabusData.cdio_headers || ['']
@@ -3730,15 +4332,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 8. Weekly Schedule ───────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'schedule') {
+    if (sectionKey === 'schedule') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
       const _allSubs = (syllabusData.ats || []).flatMap(at => at.subs || [])
       const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
       return (
         <SectionCard title="Weekly schedule"
           action={<AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
-          <Box sx={{ overflowX: 'auto' }}>
-            <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
+          <Box sx={{ overflowX: 'auto', minWidth: '100%' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem', minWidth: '100%', tableLayout: 'auto' }}>
               <thead>
                 <tr>
                   <th style={{ ...TABLE_TH, minWidth: 36, width: 36 }}>Week</th>
@@ -3779,9 +4381,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <textarea
                         value={ch.topics || ''}
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
-                        rows={2}
-                        className="subtle-scroll"
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflowY: 'auto', overflowX: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4 }}
+                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
+                        ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={TABLE_TD}>
@@ -3811,6 +4413,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <option key={s.code} value={s.code}>{s.code} – {s.label || s.code}</option>
                           ))
                         )}
+                        {ch.outcomes && ch.outcomes !== 'Lecture/Discussion' && (
+                          <option value={ch.outcomes}>{ch.outcomes}</option>
+                        )}
                       </select>
                     </td>
                     <td style={TABLE_TD}>
@@ -3821,6 +4426,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       >
                         <option value="">—</option>
                         <option>F2F</option><option>Online</option><option>Hybrid</option><option>Exam</option><option>Lab</option>
+                        {ch.delivery && !['F2F', 'Online', 'Hybrid', 'Exam', 'Lab'].includes(ch.delivery) && (
+                          <option value={ch.delivery}>{ch.delivery}</option>
+                        )}
                       </select>
                     </td>
                     <td style={{ ...TABLE_TD, minWidth: 130 }}>
@@ -3853,13 +4461,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         onClick={() => {
                           if (_isLecture) {
                             if (!_existingMod) {
-                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '' }))
-                              setModuleFromSchedule(true)
-                              setModuleCreating(true)
+                              // Queue the topic — the Module tab opens the generate dialog for it.
+                              setPendingGenerate({
+                                topic: ch.topics || '',
+                                week: _weekNum || 1,
+                                topic_id: `schedule-${i}`,
+                              })
+                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '', topic_id: `schedule-${i}` }))
                               setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             } else {
-                              setModuleCreating(false)
-                              setModuleFromSchedule(false)
                               setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                             }
                             setResultText('')
@@ -3891,7 +4501,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       )
     }
 
-    if (activeSyllabusSectionKey === 'tos') {
+    if (sectionKey === 'tos') {
       const BLOOM_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
       const tosExams = syllabusData.tos || []
       const effectiveTosId = (activeTosId && tosExams.some(t => t.id === activeTosId)) ? activeTosId : (tosExams[0]?.id || null)
@@ -3906,7 +4516,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
 
       const addTosExam = () => {
-        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, topics: [newTopicRow()] }
+        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, totalExamMinutes: 0, topics: [newTopicRow()] }
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({ ...s, tos: [...s.tos, next] }))
         setActiveTosId(next.id)
@@ -3945,12 +4555,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setSyllabusData(s => ({ ...s, tos: s.tos.map(t => t.id !== examId ? t : { ...t, topics: t.topics.map(r => r.id !== rowId ? r : { ...r, ilos: checked ? [...(r.ilos || []), iloKey] : (r.ilos || []).filter(x => x !== iloKey) }) }) }))
       }
 
-      const totalHrs       = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0) : 0
-      const totalMins      = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0) : 0
-      const totalTestItems = activeTos ? (Number(activeTos.totalTestItems) || 0) : 0
-      const computedWeight = (row) => totalHrs > 0 ? (Number(row.hours_class) || 0) / totalHrs * 100 : 0
-      const computedPts    = (row) => Math.round(computedWeight(row) / 100 * totalTestItems)
-      const computedBItems = (row, k) => { const pts = computedPts(row); return pts > 0 ? Math.round((parseFloat((row.bloom_pct || {})[k]) || 0) / 100 * pts) : 0 }
+      const solvedTos = activeTos ? materializeTosExam(activeTos) : null
+      const solvedTopics = solvedTos?.topics || []
+      const totalHrs = solvedTopics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0)
+      const totalMins = solvedTopics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0)
+      const totalPts = solvedTopics.reduce((s, r) => s + (Number(r.total_points) || 0), 0)
 
       // ── ILO-Bloom alignment helpers ────────────────────────────────────────
       const BLOOM_LEVEL_NUM = { remember: 1, understand: 2, apply: 3, analyze: 4, evaluate: 5, create: 6 }
@@ -4123,6 +4732,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <LField label="Checked and verified by" value={activeTos.checkedBy} onChange={e => updTosExam(activeTos.id, 'checkedBy', e.target.value)} />
                     <LField label="Approved by" value={activeTos.approvedBy} onChange={e => updTosExam(activeTos.id, 'approvedBy', e.target.value)} />
                     <LField label="Total test items" type="number" value={activeTos.totalTestItems || ''} onChange={e => updTosExam(activeTos.id, 'totalTestItems', Number(e.target.value) || 0)} />
+                    <LField label="Total exam minutes" type="number" value={activeTos.totalExamMinutes || ''} onChange={e => updTosExam(activeTos.id, 'totalExamMinutes', Number(e.target.value) || 0)} />
                   </Box>
                   {/* Table */}
                   <Box sx={{ p: 2.5 }}>
@@ -4154,10 +4764,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           </tr>
                         </thead>
                         <tbody>
-                          {activeTos.topics.map(row => (
+                           {solvedTopics.map(row => {
+                             const matchedModule = findMatchingModuleForTopic(row.topic)
+                             const pctSum = BLOOM_KEYS.reduce((sum, key) => sum + (parseFloat((row.bloom_pct || {})[key]) || 0), 0)
+                             const pctOff = pctSum > 0 && Math.abs(pctSum - 100) > 0.5
+                             return (
                             <tr key={row.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                               <td style={{ ...TABLE_TD, textAlign: 'left' }}>
                                 {inlineInput(row.topic || '', e => updTopicRow(activeTos.id, row.id, 'topic', e.target.value), 180)}
+                                 <div style={{ marginTop: 5, padding: '4px 6px', borderRadius: 5, background: matchedModule ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)', color: matchedModule ? '#15803d' : '#b45309', fontSize: '0.65rem', fontWeight: 600 }}>
+                                   {matchedModule ? `Mapped module: Wk ${matchedModule.week || '—'} · ${matchedModule.topic}` : 'No generated module match yet'}
+                                 </div>
                               </td>
                               <td style={{ ...TABLE_TD, minWidth: 110 }}>
                                 <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center' }}>
@@ -4235,10 +4852,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 })()}
                               </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_class ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value), 52)}</td>
-                              <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_min ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_min', e.target.value), 52)}</td>
+                              <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
+                                  {Number(activeTos.totalExamMinutes) > 0 ? (Number(row.hours_min) || 0) : '—'}
+                                </Typography>
+                              </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>
-                                  {totalHrs > 0 ? computedWeight(row).toFixed(1) + '%' : '—'}
+                                  {totalHrs > 0 ? `${Number(row.weight || 0).toFixed(1)}%` : '—'}
                                 </Typography>
                               </td>
                               {BLOOM_KEYS.map(k => {
@@ -4250,7 +4871,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   <React.Fragment key={k}>
                                     <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: bg, opacity: isAbove ? 0.45 : 1 }}>
                                       <Typography variant="caption" sx={{ fontWeight: 600, color: level === ceiling ? '#16a34a' : '#555' }}>
-                                        {computedBItems(row, k) > 0 ? computedBItems(row, k) : '—'}
+                                        {Number((row.bloom_items || {})[k] || 0) > 0 ? Number(row.bloom_items[k]) : '—'}
                                       </Typography>
                                     </td>
                                     <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: bg, opacity: isAbove ? 0.45 : 1 }}>
@@ -4261,38 +4882,44 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               })}
                               <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: MAROON_LIGHT }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>
-                                  {computedPts(row) > 0 ? computedPts(row) : '—'}
+                                  {Number(row.total_points) > 0 ? row.total_points : '—'}
                                 </Typography>
+                                {pctOff && (
+                                  <div style={{ color: '#dc2626', fontSize: '0.6rem', fontWeight: 700, marginTop: 2 }}>
+                                    Bloom % is {pctSum.toFixed(0)}
+                                  </div>
+                                )}
                               </td>
                               <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                                 <RemoveBtn onClick={() => delTopicRow(activeTos.id, row.id)} disabled={activeTos.topics.length <= 1} />
                               </td>
-                            </tr>
-                          ))}
+                             </tr>
+                             )
+                           })}
                         </tbody>
                         <tfoot>
                           <tr style={{ backgroundColor: BG }}>
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'left' }}>Total</td>
                             <td style={TABLE_TD} />
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs}</td>
-                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalMins}</td>
-                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>100%</td>
+                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{Number(activeTos.totalExamMinutes) > 0 ? totalMins : '—'}</td>
+                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs > 0 ? '100%' : '—'}</td>
                             {BLOOM_KEYS.map(k => {
-                              const sumItems = activeTos.topics.reduce((acc, r) => acc + computedBItems(r, k), 0)
-                              const sumPct   = activeTos.topics.reduce((acc, r) => acc + (parseFloat((r.bloom_pct || {})[k]) || 0), 0)
+                              const sumItems = solvedTopics.reduce((acc, r) => acc + (Number((r.bloom_items || {})[k]) || 0), 0)
+                              const share = totalPts > 0 ? (sumItems / totalPts) * 100 : 0
                               return (
                                 <React.Fragment key={k}>
                                   <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
                                     {sumItems > 0 ? sumItems : ''}
                                   </td>
                                   <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
-                                    {sumPct > 0 ? `${sumPct.toFixed(1)}%` : ''}
+                                    {share > 0 ? `${share.toFixed(1)}%` : ''}
                                   </td>
                                 </React.Fragment>
                               )
                             })}
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: MAROON_LIGHT, color: MAROON }}>
-                              {totalTestItems > 0 ? totalTestItems : '—'}
+                              {totalPts > 0 ? totalPts : '—'}
                             </td>
                             <td style={{ ...TABLE_TD, borderRight: 'none' }} />
                           </tr>
@@ -4303,7 +4930,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <AddRowBtn label="Add topic row" onClick={() => addTopicRow(activeTos.id)} />
                     </Box>
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 1 }}>
-                      Weight % and Total Pts are auto-computed from hours and Total Test Items. Enter Bloom % per level per topic (must sum to 100%) — item counts are derived automatically.
+                      Weight, minutes, points, and Bloom item counts are computed for you. Class hours set the weight. That weight splits Total test items and Total exam minutes. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
                     </Typography>
                   </Box>
                 </>
@@ -4315,7 +4942,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 10. Grading ──────────────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'grading') {
+    if (sectionKey === 'grading') {
       return (
         <SectionCard title="Grade equivalence scale"
           action={<AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
@@ -4379,7 +5006,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     // ── 11. Policies ─────────────────────────────────────────────────────────
-    if (activeSyllabusSectionKey === 'policies') {
+    if (sectionKey === 'policies') {
       return (
         <SectionCard title="Course policies"
           action={<AddRowBtn label="Add policy" onClick={() => addSylItem('policies', EMPTY_POLICY)} />}>
@@ -4448,19 +5075,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (activeTab === 'syllabus') {
       const aiSectionFields = getAiFieldsForCurrentSection()
       const showSaveFooter = isDirty
-      const aiFooterHeight = activeSyllabusSectionKey === 'iloat' ? 136 : 96
-      const totalFooterPb  = (showSaveFooter ? 72 : 0) + aiFooterHeight
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
-                <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
-            {customization.header_image_url ? (
-              <Box sx={{ mb: 2, textAlign: 'center' }}><Box component="img" src={customization.header_image_url} alt="University header" sx={{ maxWidth: '100%', maxHeight: 140, objectFit: 'contain' }} /></Box>
-            ) : customization.header_text && (
-              <Box sx={{ mb: 2, px: 1.5, py: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1.5 }}>
-                <Typography variant="body2" sx={{ color: '#F0F0F2', whiteSpace: 'pre-wrap' }}>{customization.header_text}</Typography>
-              </Box>
-            )}
+                <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             {course && (
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 {/* hidden file input for syllabus upload */}
@@ -4480,7 +5098,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {syllabusData.course_title || course.course_title}
                   </Typography>
                 </Box>
-                <Tooltip title={syllabusUploading ? 'Parsing syllabus…' : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
+                <Tooltip title={syllabusUploading ? (syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus…') : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
                   <span>
                     <Button
                       size="small"
@@ -4500,7 +5118,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
                       }}
                     >
-                      {syllabusUploading ? 'Parsing…' : 'Upload Syllabus'}
+                      {syllabusUploading ? (syllabusUploadProgress ? `Step ${syllabusUploadProgress.index}/${syllabusUploadProgress.total}` : 'Reading…') : 'Upload Syllabus'}
                     </Button>
                   </span>
                 </Tooltip>
@@ -4525,6 +5143,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       }}
                     >
                       {syllabusExporting ? 'Exporting…' : 'Export DOCX'}
+                    </Button>
+                  </span>
+                </Tooltip>
+                <Tooltip title={syllabusExporting ? 'Exporting…' : 'Export PDF using university syllabus style'}>
+                  <span>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      disabled={syllabusExporting}
+                      onClick={handleExportPdf}
+                      sx={{
+                        textTransform: 'none',
+                        borderColor: MAROON,
+                        color: MAROON,
+                        fontSize: '0.75rem',
+                        py: 0.5,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        borderRadius: 1.5,
+                        '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      }}
+                    >
+                      Export PDF
                     </Button>
                   </span>
                 </Tooltip>
@@ -4557,14 +5198,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Tabs>
             </Box>
             {renderSyllabusSection()}
-            {renderConfiguredSubsections()}
-            {customization.footer_image_url ? (
-              <Box sx={{ mt: 2, textAlign: 'center' }}><Box component="img" src={customization.footer_image_url} alt="University footer" sx={{ maxWidth: '100%', maxHeight: 100, objectFit: 'contain' }} /></Box>
-            ) : customization.footer_text && (
-              <Box sx={{ mt: 2, px: 1.5, py: 1, bgcolor: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 1.5 }}>
-                <Typography variant="body2" sx={{ color: '#F0F0F2', whiteSpace: 'pre-wrap' }}>{customization.footer_text}</Typography>
-              </Box>
-            )}
           </Box>
 
           {aiPipelineDrafts && (
@@ -4589,36 +5222,32 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700 }}>
                       {draft.label}
                     </Typography>
-                    <Typography
-                      variant="body2"
-                      sx={{ color: 'rgba(255,255,255,0.78)', whiteSpace: 'pre-wrap', mt: 0.25 }}
-                    >
-                      {draft.text || 'The AI returned an empty suggestion for this field.'}
-                    </Typography>
+                    <MarkdownText
+                      text={draft.text || 'The AI returned an empty suggestion for this field.'}
+                      sx={{ color: 'rgba(255,255,255,0.78)', mt: 0.25 }}
+                    />
                   </Box>
                 ))}
               </Stack>
             </Paper>
           )}
 
-          {/* Sticky save footer — appears when any field has been edited */}
           {showSaveFooter && (
             <Box sx={{
-              position: 'sticky', bottom: `${aiFooterHeight}px`,
+              flexShrink: 0,
               bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
-              boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
-              zIndex: 10,
+              zIndex: 30,
             }}>
               {saveError
                 ? <>
-                    <Typography variant="caption" sx={{ color: '#c62828', flex: 1 }}>{saveError}</Typography>
-                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#c62828', p: 0.25 }}>
+                    <Typography variant="caption" sx={{ color: '#FCA5A5', flex: 1 }}>{saveError}</Typography>
+                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#FCA5A5', p: 0.25 }}>
                       <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
                     </IconButton>
                   </>
-                : <Typography variant="caption" sx={{ color: '#666', flex: 1 }}>
+                : <Typography variant="caption" sx={{ color: '#E5E7EB', flex: 1 }}>
                     You have unsaved changes in this syllabus.
                   </Typography>
               }
@@ -4636,14 +5265,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* The AI pipeline stays visible in every syllabus section. */}
           <Box sx={{
-            position: 'sticky',
-            bottom: 0,
+            flexShrink: 0,
             bgcolor: '#15181A',
             borderTop: '2px solid rgba(134,239,172,0.65)',
-            boxShadow: '0 -4px 20px rgba(0,0,0,0.28)',
             px: 2,
             py: 1,
-            zIndex: 20,
+            zIndex: 30,
           }}>
             <Stack spacing={0.75}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -4673,7 +5300,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     sx={{
                       bgcolor: '#16A34A',
                       '&:hover': { bgcolor: '#15803D' },
-                      '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
+                      '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.62)', opacity: 1 },
                       textTransform: 'none',
                       fontWeight: 800,
                       minHeight: 34,
@@ -4726,7 +5353,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     value={iloBloomVerb}
                     onChange={event => setIloBloomVerb(event.target.value)}
                     disabled={aiGenerating}
-                    sx={{ bgcolor: '#252A2B', color: '#fff', minWidth: 175, height: 32 }}
+                    sx={{
+                       bgcolor: '#252A2B',
+                       color: '#F0F0F2',
+                       minWidth: 175,
+                       height: 32,
+                       opacity: 1,
+                       '&.Mui-disabled': { color: 'rgba(255,255,255,0.62)', opacity: 1 },
+                       '& .MuiSelect-select.Mui-disabled': { WebkitTextFillColor: 'rgba(255,255,255,0.62)' },
+                     }}
                   >
                     <MenuItem value="">Bloom verb (optional)</MenuItem>
                     {getBloomVerbsForYear(syllabusData.year_level).flatMap(({ level, verbs }) => [
@@ -4741,7 +5376,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     placeholder="Focus for generated learning outcomes (optional)"
                     sx={{
                       flex: 1,
-                      '& .MuiOutlinedInput-root': { color: '#fff', bgcolor: '#252A2B' },
+                      '& .MuiOutlinedInput-root': {
+                         color: '#F0F0F2',
+                         bgcolor: '#252A2B',
+                         opacity: 1,
+                         '&.Mui-disabled': { opacity: 1 },
+                       },
+                       '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'rgba(255,255,255,0.62)', opacity: 1 },
+                       '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.62)', opacity: 1 },
                     }}
                   />
                 </Stack>
@@ -4830,7 +5472,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                         verticalAlign: 'top',
                                       }}
                                     >
-                                      {cell}
+                                      <MarkdownInline text={cell} />
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -4839,12 +5481,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           </Table>
                         </TableContainer>
                       ) : (
-                        <Typography
-                          variant="body2"
-                          sx={{ color: '#E5E7EB', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', lineHeight: 1.65 }}
-                        >
-                          {draft.text}
-                        </Typography>
+                        <MarkdownText
+                          text={draft.text}
+                          sx={{ color: '#E5E7EB' }}
+                        />
                       )}
                     </Paper>
                   ))}
@@ -4911,7 +5551,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* Saved confirmation — auto-dismissed after 3 s */}
           {saveSuccess && !isDirty && (
-            <Box sx={{ position: 'sticky', bottom: 0 }}>
+            <Box sx={{ flexShrink: 0 }}>
               <AutoAlert
                 message="Syllabus saved successfully."
                 severity="success"
@@ -4930,11 +5570,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (workspaceApi.error && !workspaceApi.data) return <AutoAlert message={workspaceApi.error} onClose={() => {}} />
 
     if (activeTab === 'module') {
-      // Lecture/Discussion topics from weekly schedule for dropdowns
-      const lectureWeeks = (syllabusData.tla_chapters || [])
-        .filter(ch => !ch.outcomes || ch.outcomes === 'Lecture/Discussion')
-        .filter(ch => ch.topics && ch.topics.trim())
-        .map(ch => ({ week: parseInt(ch.chapter, 10) || ch.chapter, topic: ch.topics.trim() }))
+      // Topics available for module generation, read from the selected
+      // syllabus section / subsection.
+      const moduleTopics = collectModuleTopics()
+      const lectureWeeks = moduleTopics.map(topic => ({
+        id: topic.id,
+        week: topic.week,
+        topic: topic.topic,
+        context: topic.context,
+      }))
+      const topicSection = configuredSections.find(section => section.key === moduleTopicSectionKey)
+      const topicSubsections = Array.isArray(topicSection?.subsections) ? topicSection.subsections : []
 
       // ── DETAIL view ────────────────────────────────────────────────────
       if (selectedModule && moduleContent) {
@@ -4987,12 +5633,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {moduleExporting ? 'Exporting…' : 'Export DOCX'}
                   </Button>
                   <Button size="small" startIcon={<SaveIcon sx={{ fontSize: '0.85rem !important' }} />}
-                    disabled={!moduleContentDirty || moduleSaving}
+                    disabled={!moduleContent || moduleSaving}
                     onClick={handleSaveModuleContent}
-                    sx={{ bgcolor: moduleContentDirty ? MAROON : '#ccc', color: '#fff', borderRadius: 1.5,
+                    sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5,
                           textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
                           '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                     {moduleSaving ? 'Saving…' : 'Save'}
+                  </Button>
+                  <Button size="small" startIcon={<AssignmentIcon sx={{ fontSize: '0.85rem !important' }} />}
+                    onClick={() => {
+                      setAssessmentParams(p => ({
+                        ...p,
+                        faculty_topics: mc.module_title || selectedModule.module_title,
+                        extra_instructions: `Generate assessment items based on Module "${mc.module_title || selectedModule.module_title}" (Week ${selectedModule.week_number}). Cover the subtopics and learning objectives defined in the module.`,
+                      }))
+                      selectWorkspaceTab('assessment')
+                      openAssessmentGenDialog('single', String(selectedModule.module_title || '').trim())
+                    }}
+                    sx={{ bgcolor: '#1565c0', color: '#fff', borderRadius: 1.5,
+                          textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
+                          '&:hover': { bgcolor: '#0d47a1' } }}>
+                    Generate Assessment
                   </Button>
                 </Box>
               </Box>
@@ -5154,7 +5815,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                       px: 1.5, py: 0.75, fontSize: '0.8rem', lineHeight: 1.5,
                     }}>
-                      {msg.content}
+                      <MarkdownInline text={msg.content} />
                     </Box>
                   ))}
                   {chatLoading && (
@@ -5185,158 +5846,393 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       // ── LIST view ──────────────────────────────────────────────────────
-      if (!moduleCreating) {
-        const modules = workspaceApi.data?.modules || []
-        return (
-          <Stack spacing={2}>
-            <AutoAlert message={actionError} onClose={() => setActionError('')} />
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      const modules = workspaceApi.data?.modules || []
+      const lectureTopics = moduleTopics
+      const topicSourceLabel = [
+        topicSection?.label,
+        (topicSubsections.find(sub => sub.key === moduleTopicSubsectionKey)?.label) || '',
+      ].filter(Boolean).join(' › ')
+
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
+          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 1.75 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Modules
               </Typography>
-              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                onClick={() => {
-                  setModuleFromSchedule(false)
-                  setModuleParams(p => ({ ...p, module_title: '', week_number: '' }))
-                  setResultText('')
-                  setModuleCreating(true)
-                }}
-                sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                     px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' } }}>
-                Create Module
-              </Button>
-            </Box>
-            {modules.length === 0 ? (
-              <Box sx={{ textAlign: 'center', py: 6 }}>
-                <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
-                <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No modules yet.</Typography>
-                <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Click <b>Create Module</b> above or use the ⚡ button in the Weekly Schedule.
-                </Typography>
+              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                <Button size="small" variant="outlined" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!moduleTopicConfirmed}
+                  onClick={() => openGenerateDialog('single', null)}
+                  sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.45, '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
+                  Create Module
+                </Button>
+                <Button size="small" variant="contained" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={moduleGeneratingAll || !moduleTopics.length || !moduleTopicConfirmed}
+                  onClick={() => openGenerateDialog('all', null)}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.75, py: 0.45, '&:hover': { bgcolor: '#14532D' },
+                       '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
+                </Button>
               </Box>
-            ) : (
-              <Stack spacing={0.75}>
-                {modules.map(m => (
-                  <Box key={m.module_id}
-                    onClick={() => handleOpenModule(m)}
-                      sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.75, py: 1.1,
-                        bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)',
-                          cursor: 'pointer',
-                        '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(22,163,74,0.20)' } }}>
-                    <Chip label={'Wk ' + m.week_number} size="small"
+            </Box>
+
+            {/* Topic source — locked once the faculty confirms it */}
+            <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center',
+                       mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
+              {moduleTopicConfirmed ? (
+                <>
+                  <LockIcon sx={{ fontSize: '1rem', color: MAROON }} />
+                  <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
+                  <Chip size="small" label={topicSourceLabel || 'Syllabus'}
+                    sx={{ height: 24, fontSize: '0.74rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
+                          border: '1px solid', borderColor: MAROON_LIGHT }} />
+                  <Tooltip title="This choice is locked and cannot be changed for this course.">
+                    <Typography variant="caption" sx={{ color: '#999' }}>Locked</Typography>
+                  </Tooltip>
+                </>
+              ) : (
+                <Button size="small" variant="contained" startIcon={<AssignmentIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  onClick={() => setTopicSourceDialogOpen(true)}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.45, '&:hover': { bgcolor: '#14532D' } }}>
+                  Choose syllabus section
+                </Button>
+              )}
+              <Chip size="small"
+                label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
+                sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
+                      bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
+                      color: moduleTopics.length ? MAROON : '#888',
+                      border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
+              <Typography variant="caption" sx={{ color: '#888', flex: 1, minWidth: 220 }}>
+                Modules are generated from the topics found in the selected syllabus section.
+              </Typography>
+            </Box>
+          </Paper>
+          {lectureTopics.length === 0 ? (
+            <Box sx={{ textAlign: 'center', py: 6 }}>
+              <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
+              <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No topics found in this section.</Typography>
+              <Typography variant="caption" sx={{ color: '#ccc' }}>
+                Add topics to “{topicSection?.label || 'the selected section'}” in the Syllabus tab
+                {topicSubsections.length ? ' (or pick another subsection)' : ''}, then generate modules from here.
+              </Typography>
+            </Box>
+          ) : (
+            <Stack spacing={1}>
+              {lectureTopics.map(topic => {
+                const existingMod = modules.find(m => !deletedModuleIds.has(String(m.module_id)) && m.week_number === topic.week)
+                  || modules.find(m => !deletedModuleIds.has(String(m.module_id)) && String(m.module_title || '').trim() === topic.topic)
+                const isGenerating = moduleGeneratingTopic.has(topic.week)
+                return (
+                  <Box key={`topic-${topic.id}`}
+                    sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.5, py: 1,
+                      bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)' }}>
+                    <Chip label={'Wk ' + topic.week} size="small"
                       sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
-                    <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600 }}>{m.module_title}</Typography>
-                    <Chip label={m.status} size="small" sx={{ height: 18, fontSize: '0.65rem', color: '#F0F0F2', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                    <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600, minWidth: 0 }}>
+                      {topic.topic}
+                    </Typography>
+                    <Chip label={existingMod ? 'Module Ready' : 'No Module'} size="small"
+                      sx={{ height: 18, fontSize: '0.65rem', color: existingMod ? '#2e7d32' : '#F0F0F2',
+                        bgcolor: existingMod ? 'rgba(46,125,50,0.12)' : 'rgba(255,255,255,0.08)',
+                        border: '1px solid rgba(255,255,255,0.12)' }} />
+                    {!existingMod ? (
+                      <Tooltip title={`Generate AI module for Week ${topic.week}`}>
+                        <IconButton size="small" disabled={isGenerating || !moduleTopicConfirmed}
+                          onClick={() => openGenerateDialog('single', topic)}
+                          sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}>
+                          {isGenerating ? <CircularProgress size={14} /> : <Zap sx={{ fontSize: '1rem' }} />}
+                        </IconButton>
+                      </Tooltip>
+                    ) : (
+                      <>
+                        <Tooltip title="Open module">
+                          <IconButton size="small"
+                            onClick={() => {
+                              setSelectedModule(null)
+                              setModuleContent(null)
+                              setChatOpen(false)
+                              setActiveTab('module')
+                              handleOpenModule(existingMod)
+                            }}
+                            sx={{ color: '#1565c0', '&:hover': { bgcolor: 'rgba(21,101,192,0.12)' } }}>
+                            <BookOpen sx={{ fontSize: '1rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit module">
+                          <IconButton size="small"
+                            onClick={() => {
+                              setModuleParams(p => ({
+                                ...p,
+                                module_title: existingMod.module_title,
+                                week_number: existingMod.week_number,
+                              }))
+                              setResultText('')
+                              setSelectedModule(null)
+                              setModuleContent(null)
+                              handleOpenModule(existingMod)
+                            }}
+                            sx={{ color: '#F0F0F2', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
+                            <EditIcon sx={{ fontSize: '1rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete module">
+                          <IconButton size="small"
+                            onClick={() => {
+                              setDeletedModuleIds(prev => new Set(prev).add(String(existingMod.module_id)))
+                            }}
+                            sx={{ color: '#FCA5A5', '&:hover': { bgcolor: 'rgba(239,68,68,0.12)' } }}>
+                            <Trash2 sx={{ fontSize: '1rem' }} />
+                          </IconButton>
+                        </Tooltip>
+                      </>
+                    )}
                   </Box>
-                ))}
-              </Stack>
-            )}
-          </Stack>
-        )
-      }
+                )
+              })}
+            </Stack>
+          )}
 
-      // ── CREATE view ────────────────────────────────────────────────────
-      return (
-        <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          {/* Back + header */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Tooltip title="Back to modules list">
-              <IconButton size="small"
-                onClick={() => { setModuleCreating(false); setModuleFromSchedule(false); setResultText('') }}
-                sx={{ color: '#666', border: '1px solid rgba(0,0,0,0.15)', borderRadius: 1 }}>
-                <ArrowBackIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-            <Typography variant="subtitle2"
-              sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-              Create Module
-            </Typography>
-          </Box>
+          {/* ── Topic source dialog — shown once, before the first generation ── */}
+          <Dialog open={topicSourceDialogOpen}
+            onClose={() => {}}
+            disableEscapeKeyDown
+            maxWidth="xs" fullWidth
+            PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+              Where do your module topics live?
+            </DialogTitle>
+              <DialogContent>
+                <Stack spacing={2} sx={{ mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ color: '#555' }}>
+                    Choose the syllabus section that holds the topics you need modules for. Add a
+                    subsection to narrow it down to the exact part that holds them.
+                  </Typography>
+                  {configuredSections.length === 0 ? (
+                    <Alert severity="warning" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                      Your institution has no syllabus sections configured yet. Add one in the Syllabus tab first.
+                    </Alert>
+                  ) : (
+                    <>
+                      <LField select label="Syllabus section" value={moduleTopicSectionKey}
+                        onChange={e => {
+                          setModuleTopicSectionKey(e.target.value)
+                          setModuleTopicSubsectionKey('')
+                          setTopicSourceError('')
+                        }}
+                        sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                        {configuredSections.map(section => (
+                          <MenuItem key={section.key} value={section.key}>{section.label}</MenuItem>
+                        ))}
+                      </LField>
+                      <LField select label="Subsection" value={moduleTopicSubsectionKey}
+                        onChange={e => setModuleTopicSubsectionKey(e.target.value)}
+                        disabled={!topicSubsections.length}
+                        helperText={topicSubsections.length
+                          ? 'Keep “Whole section” to use every topic in the section.'
+                          : 'This section has no subsections.'}
+                        sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                        <MenuItem value=""><em>Whole section</em></MenuItem>
+                        {topicSubsections.map(sub => (
+                          <MenuItem key={sub.key} value={sub.key}>{sub.label || sub.key}</MenuItem>
+                        ))}
+                      </LField>
+                    </>
+                  )}
+                  {topicSourceError && (
+                    <Typography variant="caption" sx={{ color: 'error.main' }}>{topicSourceError}</Typography>
+                  )}
+                  <Alert severity="info" sx={{ fontSize: '0.78rem', alignItems: 'center' }}>
+                    Module generation stays locked until you confirm a section.
+                  </Alert>
+                </Stack>
+              </DialogContent>
+              <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                <Button onClick={() => { setTopicSourceDialogOpen(false); setActiveTab('syllabus') }}
+                  sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                  Open Syllabus tab
+                </Button>
+                <Button variant="contained" onClick={handleConfirmTopicSource}
+                  disabled={topicSourceSaving || !moduleTopicSectionKey}
+                  startIcon={topicSourceSaving
+                    ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                    : <LockIcon sx={{ fontSize: '1rem !important' }} />}
+                  sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                  {topicSourceSaving ? 'Confirming…' : 'Confirm selection'}
+                </Button>
+              </DialogActions>
+          </Dialog>
 
-          {/* Module Generator > Module Builder */}
-          <SectionCard title="Module Generator">
-            <SectionCard title="Module Builder">
-              <Stack spacing={1.75}>
-                {/* Module Topic */}
-                {moduleFromSchedule ? (
-                  <LField label="Module Topic" value={moduleParams.module_title}
-                    InputProps={{ readOnly: true }}
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
+          {/* ── Selection confirmed notice ── */}
+          <Dialog open={topicSourceNoticeOpen} onClose={() => setTopicSourceNoticeOpen(false)}
+            maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700, fontSize: '1rem' }}>
+              <CheckCircleOutlineIcon sx={{ color: '#2e7d32' }} />
+              Selection confirmed
+            </DialogTitle>
+            <DialogContent>
+              <DialogContentText sx={{ fontSize: '0.9rem' }}>
+                Your module topics will come from{' '}
+                <strong>{topicSourceLabel || 'the selected section'}</strong>. This choice is now locked
+                and <strong>cannot be changed</strong> for this course — every module you generate will
+                be based on these same topics.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5 }}>
+              <Button variant="contained" onClick={() => setTopicSourceNoticeOpen(false)}
+                sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                Got it
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* ── Generate module dialog ── */}
+          <Dialog open={generateDialogOpen}
+            onClose={() => { if (!actionLoading && !moduleGeneratingAll) setGenerateDialogOpen(false) }}
+            maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+            <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+              {generateDialogMode === 'all' ? 'Generate all modules' : 'Generate module'}
+            </DialogTitle>
+            <DialogContent>
+              <Stack spacing={2} sx={{ mt: 0.5 }}>
+                {generateDialogMode === 'all' ? (
+                  <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                    One module will be generated for each of the {moduleTopics.length} topics in{' '}
+                    {topicSourceLabel || 'the selected section'}.
+                  </Alert>
                 ) : (
                   <LField select label="Module Topic" value={moduleParams.module_title}
                     onChange={e => {
                       const sel = lectureWeeks.find(lw => lw.topic === e.target.value)
-                      setModuleParams(p => ({ ...p, module_title: e.target.value, week_number: sel ? sel.week : p.week_number }))
-                    }}>
-                    <MenuItem value=""><em>— Select a Lecture/Discussion topic —</em></MenuItem>
-                    {lectureWeeks.map((lw, i) => (
-                      <MenuItem key={i} value={lw.topic}>
-                        Wk {lw.week} — {lw.topic.length > 60 ? lw.topic.slice(0, 57) + '…' : lw.topic}
+                      setModuleParams(p => ({
+                        ...p,
+                        module_title: e.target.value,
+                        week_number: sel ? sel.week : p.week_number,
+                        topic_id: sel ? sel.id : '',
+                      }))
+                    }}
+                    helperText={lectureWeeks.length
+                      ? `${lectureWeeks.length} topic${lectureWeeks.length === 1 ? '' : 's'} in ${topicSourceLabel || 'the selected section'}`
+                      : 'No topics found in the selected syllabus section.'}
+                    sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                    <MenuItem value=""><em>— Select a topic —</em></MenuItem>
+                    {lectureWeeks.map(lw => (
+                      <MenuItem key={lw.id} value={lw.topic}>
+                        Wk {lw.week} — {lw.topic.length > 60 ? `${lw.topic.slice(0, 57)}…` : lw.topic}
                       </MenuItem>
                     ))}
                   </LField>
                 )}
 
-                {/* Week Number */}
-                {moduleFromSchedule ? (
-                  <LField label="Week Number" value={moduleParams.week_number}
-                    InputProps={{ readOnly: true }}
-                    sx={{ '& .MuiOutlinedInput-root': { bgcolor: BG } }} />
-                ) : (
+                {generateDialogMode === 'single' && (
                   <LField select label="Week Number" value={moduleParams.week_number}
                     onChange={e => {
                       const sel = lectureWeeks.find(lw => String(lw.week) === String(e.target.value))
-                      setModuleParams(p => ({ ...p, week_number: e.target.value, module_title: sel ? sel.topic : p.module_title }))
-                    }}>
+                      setModuleParams(p => ({
+                        ...p,
+                        week_number: e.target.value,
+                        module_title: sel ? sel.topic : p.module_title,
+                        topic_id: sel ? sel.id : '',
+                      }))
+                    }}
+                    sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
                     <MenuItem value=""><em>— Select week —</em></MenuItem>
-                    {lectureWeeks.map((lw, i) => (
-                      <MenuItem key={i} value={lw.week}>
+                    {lectureWeeks.map(lw => (
+                      <MenuItem key={lw.id} value={lw.week}>
                         Week {lw.week}{lw.topic ? ` — ${lw.topic.slice(0, 40)}` : ''}
                       </MenuItem>
                     ))}
                   </LField>
                 )}
 
-                {/* Extra Instructions / Scope */}
-                <LField label="Extra Instructions / Scope" multiline minRows={3}
-                  value={moduleParams.extra_instructions}
-                  onChange={e => setModuleParams(p => ({ ...p, extra_instructions: e.target.value }))}
-                  placeholder="Describe subtopics, scope, or specific content the module should focus on…" />
-
-                {/* top-k */}
-                <LField type="number" label="Knowledge References (top-k)" value={moduleParams.top_k}
-                  onChange={e => setModuleParams(p => ({ ...p, top_k: e.target.value }))} />
-
-                {/* Provider */}
-                <LField select label="Model Provider" value={moduleParams.provider}
-                  onChange={e => setModuleParams(p => ({ ...p, provider: e.target.value }))}>
-                  {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
+                <LField select label="Structuring Level" value={moduleParams.structuring_level}
+                  onChange={e => setModuleParams(p => ({ ...p, structuring_level: e.target.value }))}
+                  helperText="Tells the AI how deeply to structure the module."
+                  sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
+                  {STRUCTURING_LEVELS.map(level => (
+                    <MenuItem key={level.value} value={level.value}>
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.88rem' }}>{level.label}</Typography>
+                        <Typography variant="caption" sx={{ color: '#777' }}>{level.description}</Typography>
+                      </Box>
+                    </MenuItem>
+                  ))}
                 </LField>
 
-                <GenButton onClick={handleGenerateModule} disabled={actionLoading || !moduleParams.module_title.toString().trim()}>
-                  {actionLoading ? 'Generating…' : 'Generate Module'}
-                </GenButton>
-                {actionLoading && (
-                  <Box sx={{ textAlign: 'center', py: 1.5 }}>
+                {actionError && <AutoAlert message={actionError} onClose={() => setActionError('')} />}
+
+                {(actionLoading || moduleGeneratingAll) && (
+                  <Box sx={{ textAlign: 'center', py: 1 }}>
                     <CircularProgress size={22} sx={{ color: MAROON }} />
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
-                      Running RAG pipeline and generating structured module…
+                      {moduleGeneratingAll
+                        ? 'Building your modules — this usually takes less than a minute.'
+                        : 'Building your module — this usually takes less than a minute.'}
                     </Typography>
                   </Box>
                 )}
               </Stack>
-            </SectionCard>
-          </SectionCard>
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+              <Button onClick={() => setGenerateDialogOpen(false)} disabled={actionLoading || moduleGeneratingAll}
+                sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                Cancel
+              </Button>
+              <Button variant="contained"
+                onClick={generateDialogMode === 'all' ? handleGenerateAllModules : handleGenerateModule}
+                disabled={actionLoading || moduleGeneratingAll
+                  || (generateDialogMode === 'single' && !moduleParams.module_title.toString().trim())}
+                startIcon={actionLoading || moduleGeneratingAll
+                  ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                  : <Zap sx={{ fontSize: '1rem !important' }} />}
+                sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                {actionLoading || moduleGeneratingAll ? 'Generating…' : 'Generate'}
+              </Button>
+            </DialogActions>
+          </Dialog>
         </Stack>
       )
     }
 
+    if (activeTab === 'tos') {
+      return (
+        <Stack spacing={2} sx={{ height: '100%', overflow: 'auto' }}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Box>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+                Table of Specifications
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#777' }}>
+                Define assessment coverage here, then use the module matches to prepare assessments.
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={() => setActiveTab('syllabus')} sx={{ textTransform: 'none', borderColor: MAROON, color: MAROON }}>
+              Back to syllabus
+            </Button>
+            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' } }}>
+              {saveLoading ? 'Saving…' : saveSuccess ? 'Saved' : 'Save TOS'}
+            </Button>
+          </Box>
+          {renderSyllabusSection('tos')}
+        </Stack>
+      )
+    }
     if (activeTab === 'assessment') {
       const majorExams = getMajorTosExams()
       const blueprint = getAssessmentBlueprint()
       const assessments = workspaceApi.data?.assessments || []
+      const assessmentGenTopics = assessmentGenAvailableTopics()
+      const canGenerateAssessment = assessmentGenTopics.length > 0
 
       if (selectedAssessment && assessmentDetail) {
         return (
@@ -5663,54 +6559,126 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )
       }
 
-      if (!assessmentCreating) {
-        return (
-          <Stack spacing={2}>
-            <AutoAlert message={actionError} onClose={() => setActionError('')} />
+      return (
+        <Stack spacing={2}>
+          <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Assessments
               </Typography>
-              <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                onClick={() => {
-                  setAssessmentCreating(true)
-                  setAssessmentSessionId(null)
-                  setSelectedAssessment(null)
-                  setAssessmentDetail(null)
-                  if (majorExams.length > 0) {
-                    setAssessmentParams(p => ({
-                      ...p,
-                      source_exam_code: p.source_exam_code || majorExams[0].examCode || '',
-                      source_exam_label: p.source_exam_label || majorExams[0].examLabel || '',
-                      item_by_item: true,
-                      target_item_number: 1,
-                      related_item_number: '',
-                      relation_instruction: '',
-                      overwrite_item: true,
-                    }))
-                  }
-                }}
-                sx={{
-                  bgcolor: MAROON,
-                  color: '#fff',
-                  borderRadius: 1.5,
-                  textTransform: 'none',
-                  fontSize: '0.78rem',
-                  px: 1.5,
-                  py: 0.4,
-                  '&:hover': { bgcolor: '#14532D' },
-                }}>
-                Create Assessment
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!canGenerateAssessment || actionLoading}
+                  onClick={() => openAssessmentGenDialog('multi')}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  Create Assessment
+                </Button>
+                <Button size="small" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
+                  disabled={!canGenerateAssessment || actionLoading}
+                  onClick={() => openAssessmentGenDialog('single')}
+                  sx={{ bgcolor: '#1565c0', color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
+                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#0d47a1' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
+                  Generate Assessment
+                </Button>
+              </Box>
             </Box>
+
+            {!canGenerateAssessment && (
+              <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                 Add a major exam with TOS topics first, then map those topics to generated modules before creating an assessment.
+              </Alert>
+            )}
+
+            {/* ── Assessment generation dialog ── */}
+            <Dialog open={assessmentGenDialogOpen}
+              onClose={() => { if (!actionLoading) setAssessmentGenDialogOpen(false) }}
+              maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
+              <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
+                {assessmentGenMode === 'multi' ? 'Create assessment' : 'Generate assessment'}
+              </DialogTitle>
+              <DialogContent>
+                <Stack spacing={2} sx={{ mt: 0.5 }}>
+                  <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
+                    {'Select TOS topics to cover. The assessment uses each selected topic\'s Bloom item counts exactly.'}
+                  </Alert>
+                  <LField label="Assessment Title" value={assessmentGenTitle}
+                    onChange={e => setAssessmentGenTitle(e.target.value)} />
+                  {!majorExams.length && (
+                    <LField label="Number of Items" type="number" value={assessmentGenItemCount}
+                      onChange={e => setAssessmentGenItemCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                      inputProps={{ min: 1, max: 100 }} />
+                  )}
+                  <Box>
+                    <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                      Topics to cover
+                    </Typography>
+                    {assessmentGenTopics.length === 0 ? (
+                      <Typography variant="caption" sx={{ color: '#aaa' }}>No topics available.</Typography>
+                    ) : (
+                      <Stack spacing={0.25} sx={{ maxHeight: 260, overflowY: 'auto' }}>
+                        {assessmentGenTopics.map(({ topic, week, moduleTitle }) => (
+                          <Box key={topic} onClick={() => toggleAssessmentGenTopic(topic)}
+                            sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, borderRadius: 1,
+                                  cursor: 'pointer',
+                                  '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
+                            <Checkbox size="small"
+                              checked={assessmentGenSelectedTopics.includes(topic)}
+                              sx={{ p: 0.5, '&.Mui-checked': { color: MAROON } }} />
+                            <Typography variant="body2" sx={{ fontSize: '0.84rem' }}>
+                              {week ? `Wk ${week} — ` : ''}{topic}
+                              {moduleTitle ? `  ·  Module: ${moduleTitle}` : '  ·  No matching module'}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Stack>
+                    )}
+                  </Box>
+                  {majorExams.length > 0 && (() => {
+                    const plan = selectedTosBloomPlan(assessmentGenSelectedTopics)
+                    const breakdown = Object.entries(plan.counts).map(([level, count]) => `${level} ${count}`).join(', ')
+                    return (
+                      <Typography variant="caption" sx={{ color: '#555', display: 'block' }}>
+                        {plan.total > 0
+                          ? `This assessment will have ${plan.total} item${plan.total === 1 ? '' : 's'}: ${breakdown}.`
+                          : 'Selected topics have no Bloom item counts yet. Set class hours, total test items, and Bloom % on the TOS first.'}
+                      </Typography>
+                    )
+                  })()}
+                  {actionLoading && (
+                    <Box sx={{ textAlign: 'center', py: 1 }}>
+                      <CircularProgress size={22} sx={{ color: MAROON }} />
+                      <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
+                        Building your assessment — this can take a minute.
+                      </Typography>
+                    </Box>
+                  )}
+                </Stack>
+              </DialogContent>
+              <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
+                <Button onClick={() => setAssessmentGenDialogOpen(false)} disabled={actionLoading}
+                  sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
+                  Cancel
+                </Button>
+                <Button variant="contained" onClick={handleAssessmentGenSubmit}
+                  disabled={actionLoading || assessmentGenSelectedTopics.length === 0}
+                  startIcon={actionLoading
+                    ? <CircularProgress size={16} sx={{ color: '#fff' }} />
+                    : <Zap sx={{ fontSize: '1rem !important' }} />}
+                  sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
+                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                  {actionLoading ? 'Generating…' : 'Generate'}
+                </Button>
+              </DialogActions>
+            </Dialog>
 
             {assessments.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 6 }}>
                 <AssignmentIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
                 <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No assessments yet.</Typography>
                 <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Click Create Assessment to build items from your syllabus TOS and score distribution.
+                  Click Create Assessment to build items from your selected module topics.
                 </Typography>
               </Box>
             ) : (
@@ -5772,7 +6740,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Stack>
         )
-      }
+
 
       return (
         <Stack spacing={2}>
@@ -5884,7 +6852,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         inputProps={{ readOnly: true }}
                       />
                       <Typography variant="caption" sx={{ color: '#777', display: 'block', mt: 0.5 }}>
-                        Topics are taken from the selected TOS exam.
+                         Topics and Bloom allocations are taken from the selected TOS exam; module matches are alignment references only.
                       </Typography>
                     </Box>
                   </>
@@ -5975,7 +6943,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       return (
-        <BubbleSheetPanel 
+        <BubbleSheetPanel
           courseId={courseId} 
           assessments={workspaceApi.data?.assessments || []}
           actionSheetMode={actionSheetMode}
@@ -6169,80 +7137,105 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // ── Root ──────────────────────────────────────────────────────────────────
+  const activeProgress = uploading
+    ? { label: 'Uploading course source', detail: uploadStatus || 'Sending the file to the course knowledge base…', value: uploadProgress }
+    : syllabusUploading
+      ? {
+          label: 'Reading the syllabus',
+          detail: 'Copying the file into the syllabus fields…',
+        }
+      : aiGenerating
+        ? { label: 'Generating syllabus content', detail: aiPipelineProgress?.label || 'Working through the selected fields…', value: aiPipelineProgress?.total ? (aiPipelineProgress.completed / aiPipelineProgress.total) * 100 : undefined }
+        : moduleGeneratingAll
+          ? { label: 'Generating modules', detail: `${moduleGeneratingTopic.size || 1} module${moduleGeneratingTopic.size === 1 ? '' : 's'} currently being processed…` }
+          : moduleGeneratingTopic.size > 0
+            ? { label: 'Generating module', detail: 'Building teaching content from the selected topic…' }
+            : subtopicGenerating
+              ? { label: 'Generating subtopic content', detail: 'Drafting content for the selected subtopic…' }
+              : chatLoading
+                ? { label: 'Generating assistant response', detail: 'Reviewing the current module content…' }
+                : actionLoading
+                  ? { label: activeTab === 'assessment' ? 'Generating assessment' : activeTab === 'module' ? 'Generating module' : 'Generating syllabus', detail: 'This may take a moment while the AI prepares the content…', value: assessmentBatchProgress?.requested ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100 : undefined }
+                  : null
+
   return (
     <Box ref={containerRef}
       className="faculty-workspace"
       sx={{ height: '100vh', bgcolor: BG, color: '#F0F0F2', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-      {/* Top bar */}
+      {/* ── ATLAS pipeline header: enriched top bar + progress stepper ── */}
+      {/* Step 11 (Faculty Review & Approval) lives in WorkspacePageHeader's check. */}
       <Box component="header"
         sx={{
-          display: 'flex', alignItems: 'center', gap: 2,
-          px: 3, height: 60, minHeight: 60,
-          ml: isMobile ? 0 : `${leftCollapsed ? 64 : leftWidth}px`,
-          width: isMobile ? '100%' : `calc(100% - ${leftCollapsed ? 64 : leftWidth}px)`,
-          bgcolor: 'rgba(8,8,10,0.85)',
+          px: { xs: 1.5, md: 3 }, pt: 1.5, pb: 1.25, flexShrink: 0,
+          bgcolor: 'rgba(8,8,10,0.9)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-          flexShrink: 0,
-          transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
         }}>
+        <WorkspacePageHeader
+          course={course}
+          activeLabel={(WORKSPACE_TABS.find((t) => t.key === activeTab) || {}).label || activeTab}
+          done={Boolean(isStepDone && isStepDone(activeTab))}
+          doneCount={workspaceProgress.doneCount}
+          totalSteps={workspaceProgress.totalSteps}
+          actionLoading={actionLoading}
+          onBack={() => navigate('/faculty/dashboard')}
+          onToggleDone={() => markStepDone(activeTab, !isStepDone(activeTab))}
+        />
+        <Box sx={{ mt: 1.25 }}>
+          <WorkspacePipelineStepper
+            activeTab={activeTab}
+            isStepDone={isStepDone}
+            onSelect={selectWorkspaceTab}
+            doneCount={workspaceProgress.doneCount}
+            totalSteps={workspaceProgress.totalSteps}
+          />
+        </Box>
         {isMobile && (
-          <Tooltip title="Navigation">
-            <IconButton onClick={() => setMobileNavOpen(true)} size="small" sx={{ color: '#666' }}>
-              <MenuIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        )}
-        <Tooltip title="Back to courses">
-          <Button onClick={() => navigate('/faculty/dashboard')} startIcon={<ArrowBackIcon fontSize="small" />} sx={{
-            height: 36, px: 1.5, borderRadius: 2,
-            color: 'rgba(255,255,255,0.75)',
-            bgcolor: 'rgba(255,255,255,0.06)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            textTransform: 'none', fontSize: '0.82rem', fontWeight: 600,
-            whiteSpace: 'nowrap',
-            transition: 'color 200ms, background-color 200ms',
-            '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.18)' },
-          }}>
-            Back to Courses
-          </Button>
-        </Tooltip>
-        <Box sx={{ flex: 1 }} />
-        {isMobile && activeTab !== 'analytics' && activeTab !== 'grading' && (
-          <Tooltip title="Knowledge Base">
-            <IconButton onClick={() => setMobileUploadOpen(true)} size="small" sx={{ color: MAROON, mr: 0.5 }}>
-              <CloudUploadIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+            <Button size="small" startIcon={<MenuIcon fontSize="small" />} onClick={() => setMobileNavOpen(true)}
+              sx={{ textTransform: 'none', color: 'rgba(255,255,255,0.75)', borderColor: 'rgba(255,255,255,0.15)' }} variant="outlined">
+              Modules
+            </Button>
+            {activeTab !== 'analytics' && activeTab !== 'grading' && (
+              <Button size="small" startIcon={<CloudUploadIcon fontSize="small" />} onClick={() => setMobileUploadOpen(true)}
+                sx={{ textTransform: 'none', color: '#86EFAC', borderColor: 'rgba(22,163,74,0.4)' }} variant="outlined">
+                Sources
+              </Button>
+            )}
+          </Box>
         )}
       </Box>
 
-      {/* Mobile nav Drawer */}
+      {/* Mobile nav Drawer — pipeline steps with completion checks */}
+      {activeProgress && <WorkspaceProgressBanner {...activeProgress} />}
+
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
-        PaperProps={{ sx: { width: 220, display: 'flex', flexDirection: 'column' } }}>
-        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+        PaperProps={{ sx: { width: 260, display: 'flex', flexDirection: 'column', bgcolor: '#101014' } }}>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <Typography variant="caption"
-            sx={{ color: '#999', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
-            Workspace
+            sx={{ color: '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
+            Course Workflow - {workspaceProgress.doneCount}/{workspaceProgress.totalSteps} done
           </Typography>
         </Box>
         <Stack sx={{ p: 1, gap: 0.25, flex: 1 }}>
           {WORKSPACE_TABS.map(({ key, label, Icon }) => {
             const on = activeTab === key
+            const stepDone = Boolean(isStepDone && isStepDone(key))
             return (
-              <Button key={key} onClick={() => { setActiveTab(key); setMobileNavOpen(false); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
+              <Button key={key} onClick={() => selectWorkspaceTab(key)}
                 startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
+                endIcon={stepDone ? <CheckCircleIcon sx={{ fontSize: '1rem !important', color: '#4ADE80' }} /> : null}
                 sx={{
                   justifyContent: 'flex-start', px: 1.5, py: 0.9,
                   borderRadius: 1.5, textTransform: 'none', fontSize: '0.85rem',
-                  fontWeight: on ? 700 : 400, color: on ? MAROON : '#555',
-                  bgcolor: on ? MAROON_LIGHT : 'transparent',
-                  borderLeft: on ? '3px solid ' + MAROON : '3px solid transparent',
+                  fontWeight: on ? 700 : 400, color: on ? '#86EFAC' : 'rgba(255,255,255,0.65)',
+                  bgcolor: on ? 'rgba(22,163,74,0.16)' : 'transparent',
+                  borderLeft: on ? '3px solid #16A34A' : '3px solid transparent',
                   minWidth: 0,
-                  '&:hover': { bgcolor: on ? MAROON_LIGHT : BG, color: on ? MAROON : '#1A1A1A' },
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#fff' },
                 }}>
-                {label}
+                {label}{stepDone ? ' - Done' : ''}
               </Button>
             )
           })}
@@ -6269,111 +7262,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Box>
       </Drawer>
 
-      {/* Three-panel area */}
+      {/* Main content area — modules render below the top pipeline stepper */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', userSelect: dragging ? 'none' : 'auto', bgcolor: '#0F0F12' }}>
 
-        {!isMobile && <Box sx={{ width: leftCollapsed ? 64 : leftWidth, flexShrink: 0 }} />}
+        {/* MIDDLE — main module content below the top pipeline stepper */}
 
-        {/* LEFT — nav (desktop) or compact rail when collapsed */}
-        {!isMobile && !leftCollapsed && (
-          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: leftWidth, flexShrink: 0, display: 'flex', flexDirection: 'column', bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', backdropFilter: 'blur(24px)', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
-            <Box sx={{ height: 60, px: 2, borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-              <AtlasLogo size={26} />
-              <Tooltip title="Collapse sidebar">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
-                  <PanelLeftClose size={22} strokeWidth={2.75} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Box sx={{ px: 2, pt: 1.5, pb: 1 }}>
-              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, bgcolor: 'rgba(48,209,88,0.10)', border: '1px solid rgba(48,209,88,0.25)', borderRadius: 1, px: 1.25, py: 0.5 }}>
-                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#30D158', boxShadow: '0 0 6px #30D158' }} />
-                <Typography sx={{ color: '#30D158', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em' }}>FACULTY</Typography>
-              </Box>
-            </Box>
-            <Stack sx={{ p: 1, gap: 0.25, flex: 1, overflowY: 'auto' }}>
-              {WORKSPACE_TABS.map(({ key, label, Icon }) => {
-                const on = activeTab === key
-                return (
-                  <Button key={key} onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
-                    startIcon={<Icon sx={{ fontSize: '1.05rem !important' }} />}
-                    sx={{
-                      justifyContent: 'flex-start', px: 1.5, py: 1,
-                      borderRadius: 1.5, textTransform: 'none', fontSize: '0.875rem',
-                      fontWeight: on ? 700 : 400,
-                      color: on ? '#F0F0F2' : 'rgba(255,255,255,0.5)',
-                      background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
-                      border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
-                      boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
-                      minWidth: 0,
-                      '&:hover': { bgcolor: on ? 'rgba(21,128,61,0.35)' : 'rgba(255,255,255,0.06)', color: '#F0F0F2' },
-                    }}>
-                    {label}
-                  </Button>
-                )
-              })}
-            </Stack>
-            <SidebarUserMenu
-              user={user}
-              metaLabel="Faculty"
-              sidebarCollapsed={leftCollapsed}
-              onSidebarCollapsedChange={updateLeftSidebarPreference}
-              onUpdateProfile={updateProfile}
-              onSignOut={() => { logout(); navigate('/signin') }}
-            />
-          </Box>
-        )}
-
-        {!isMobile && leftCollapsed && (
-          <Box sx={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 999, width: 64, flexShrink: 0, bgcolor: 'rgba(10,10,14,0.92)', borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', alignItems: 'stretch', transition: 'width 280ms cubic-bezier(0.4,0,0.2,1)' }}>
-            <Box sx={{ height: 60, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-              <Tooltip title="Expand panel">
-                <IconButton size="small" onClick={toggleLeftPanel} sx={{ width: 36, height: 36, borderRadius: 2, color: 'rgba(255,255,255,0.75)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', '&:hover': { color: '#fff', bgcolor: 'rgba(255,255,255,0.12)' } }}>
-                  <PanelLeftOpen size={22} strokeWidth={2.75} />
-                </IconButton>
-              </Tooltip>
-            </Box>
-            <Stack component="nav" sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 1, gap: 0.25 }}>
-              {WORKSPACE_TABS.map(({ key, label, Icon }) => {
-                const on = activeTab === key
-                return (
-                  <Tooltip key={key} title={label} placement="right">
-                    <IconButton size="small" onClick={() => { setActiveTab(key); if (key !== 'module') { setModuleCreating(false); setModuleFromSchedule(false); setSelectedModule(null); setModuleContent(null); setChatOpen(false) } }}
-                      sx={{
-                        width: 'calc(100% - 16px)', height: 44, mx: 1, borderRadius: 1.5,
-                        color: on ? '#86EFAC' : 'rgba(255,255,255,0.45)',
-                        background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'transparent',
-                        border: on ? '1px solid rgba(22,163,74,0.35)' : '1px solid transparent',
-                        boxShadow: on ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
-                        '&:hover': { background: on ? 'linear-gradient(135deg, rgba(21,128,61,0.35), rgba(22,163,74,0.20))' : 'rgba(255,255,255,0.06)', color: '#86EFAC' },
-                      }}>
-                      <Icon sx={{ fontSize: 20 }} />
-                    </IconButton>
-                  </Tooltip>
-                )
-              })}
-            </Stack>
-            <Box sx={{ mt: 'auto', width: '100%' }}>
-              <SidebarUserMenu
-                collapsed
-                user={user}
-                metaLabel="Faculty"
-                sidebarCollapsed={leftCollapsed}
-                onSidebarCollapsedChange={updateLeftSidebarPreference}
-                onUpdateProfile={updateProfile}
-                onSignOut={() => { logout(); navigate('/signin') }}
-              />
-            </Box>
-          </Box>
-        )}
-
-        {/* Drag — left (desktop only when expanded) */}
-        {!isMobile && !leftCollapsed && (
-          <Box onMouseDown={() => setDragging('left')}
-            sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
-                  bgcolor: dragging === 'left' ? MAROON + '44' : 'transparent',
-                  '&:hover': { bgcolor: 'rgba(21,128,61,0.14)' }, transition: 'background-color 0.15s' }} />
-        )}
+        {/* Main module content renders below the top pipeline stepper */}
 
         {/* MIDDLE */}
         <Box sx={{
@@ -6573,4 +7467,4 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       </Dialog>
     </Box>
   </Box>
-)}
+  )}

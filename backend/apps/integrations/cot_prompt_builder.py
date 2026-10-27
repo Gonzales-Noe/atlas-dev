@@ -18,6 +18,39 @@ Generation pipeline:
 # Keeps total prompt within typical 8 K-context LLM windows.
 _CONTEXT_TOKEN_BUDGET: int = 2_000
 
+# How deeply a module should be structured. Chosen by the faculty in the
+# "Generate module" dialog and translated into prompt instructions.
+MODULE_STRUCTURING_LEVELS: dict = {
+    "standard": {
+        "label": "Standard",
+        "subtopics": "3-5",
+        "paragraphs": "3-4",
+        "min_items": 3,
+        "hint": "Balanced depth for a regular class session — cover the core ideas without padding.",
+    },
+    "detailed": {
+        "label": "Detailed",
+        "subtopics": "4-6",
+        "paragraphs": "5-6",
+        "min_items": 4,
+        "hint": "Deep coverage for a full lecture or lab series — explain the concepts thoroughly.",
+    },
+    "concise": {
+        "label": "Concise",
+        "subtopics": "2-3",
+        "paragraphs": "2",
+        "min_items": 2,
+        "hint": "A quick refresher or orientation — hit the essentials only.",
+    },
+    "activity": {
+        "label": "Activity-led",
+        "subtopics": "3-4",
+        "paragraphs": "2-3",
+        "min_items": 3,
+        "hint": "The short activity drives the session — the subtopics support it.",
+    },
+}
+
 
 def _count_tokens(text: str) -> int:
     """Fast token estimate: 1 token ≈ 4 characters (no external dependency)."""
@@ -296,6 +329,10 @@ OUTPUT — Return the module plan using exactly this structure:
         ilos: list = None,
         course_description: str = "",
         week_topic: str = "",
+        section_label: str = "",
+        subsection_label: str = "",
+        section_context: str = "",
+        structuring_level: str = "standard",
     ) -> tuple:
         """
         Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
@@ -304,6 +341,10 @@ OUTPUT — Return the module plan using exactly this structure:
             ilos:               List of ILO/CLO strings from the course syllabus.
             course_description: The course description text.
             week_topic:         The topic for this specific week from the syllabus schedule.
+            section_label:      Syllabus section the topic was taken from.
+            subsection_label:   Subsection of that section the topic was taken from.
+            section_context:    Raw syllabus text of the selected section/subsection.
+            structuring_level: How deep the module should be (standard/detailed/concise/activity).
 
         JSON schema returned by the LLM:
         {
@@ -331,6 +372,10 @@ OUTPUT — Return the module plan using exactly this structure:
         """
         context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
+        level = MODULE_STRUCTURING_LEVELS.get(
+            (structuring_level or "standard").strip().lower(),
+            MODULE_STRUCTURING_LEVELS["standard"],
+        )
 
         # Build the COURSE DATA block from real syllabus data
         course_data_parts = []
@@ -340,8 +385,18 @@ OUTPUT — Return the module plan using exactly this structure:
             ilo_lines = "\n".join(f"  ILO-{i + 1}: {ilo}" for i, ilo in enumerate(ilos) if ilo)
             course_data_parts.append(f"COURSE INTENDED LEARNING OUTCOMES (ILOs):\n{ilo_lines}")
         if week_topic:
+            source = " › ".join(part for part in (section_label, subsection_label) if part)
             course_data_parts.append(
-                f"WEEK {week_number} SYLLABUS TOPIC: {week_topic.strip()}"
+                f"WEEK {week_number} SYLLABUS TOPIC"
+                + (f" (from {source})" if source else "")
+                + f": {week_topic.strip()}"
+            )
+        if section_context:
+            course_data_parts.append(
+                "SYLLABUS SECTION CONTENT"
+                + (f" — {section_label}" if section_label else "")
+                + (f" › {subsection_label}" if subsection_label else "")
+                + f":\n{section_context.strip()}"
             )
 
         course_context_block = (
@@ -377,6 +432,7 @@ Course       : {course_name}
 Module Number: {module_number}
 Module Title : {module_title}
 Week Number  : {week_number}{extra}
+Depth        : {level['label']} — {level['hint']}
 
 THINK STEP BY STEP before writing JSON:
 
@@ -384,8 +440,9 @@ Step 1 — Analyse the reference material and COURSE DATA above to identify the 
 concepts specific to "{module_title}" in {course_name}.{ilo_step}
 Step 3 — Write a 2-3 sentence introduction that places this module in the context of \
 {course_name}. Be specific — do NOT use generic filler.
-Step 4 — Break "{module_title}" into 3-5 logical subtopics. For each, write detailed \
-content (3-5 paragraphs) grounded in the reference material and course context.
+Step 4 — Break "{module_title}" into {level['subtopics']} logical subtopics. For each, write \
+{level['paragraphs']} paragraphs of content grounded in the reference material and course \
+context, matching the "{level['label']}" depth requested above.
 Step 5 — Design a short formative activity (15-20 min) aligned to this module's \
 objectives and the Course ILOs.
 
@@ -393,7 +450,7 @@ OUTPUT RULES:
 - Respond with ONLY valid JSON — no markdown, no preamble, no text outside the braces.
 - Every string value must be specific to {course_name} and "{module_title}".
 - Replace every "..." in the template below with real content.
-- The "subtopics" array MUST have at least 3 items.
+- The "subtopics" array MUST have at least {level['min_items']} items.
 
 {{
   "module_number": {module_number},
@@ -925,10 +982,17 @@ OUTPUT — Return the assessment using exactly this structure:
         """
         Build a prompt to parse a single raw segment into its corresponding section JSON schema.
         """
+        matrix_keys = {'iloatmatrix', 'ilofwmatrix', 'fwmap', 'tos', 'schedule'}
+        matrix_rule = ''
+        if section_key in matrix_keys:
+            matrix_rule = (
+                ' Rows are already extracted and separated with " | ". Copy the cell text into the JSON. '
+                'Do not invent rows, and do not paraphrase a cell.'
+            )
         system = (
             f"You are an expert parser specializing in BatStateU Course Information Syllabus (CIS) documents. "
             f"Your task is to parse the raw text segment for the '{section_key}' section into the exact JSON schema requested. "
-            f"Extract the complete and exact text from the segment — do not summarize or omit. "
+            f"Copy the complete text into the fields. Keep every sentence and every table row. Do not summarize, shorten, or omit.{matrix_rule} "
             f"Return ONLY a valid JSON object. No markdown fences, no comments, no extra text."
         )
 
@@ -1022,8 +1086,8 @@ OUTPUT — Return the assessment using exactly this structure:
             ),
             "policies": (
                 "{\n"
-                '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
-                '  "passing_grade": 75,\n'
+                '  "grading_rows": [],\n'
+                '  "passing_grade": null,\n'
                 '  "use_plus_minus": false,\n'
                 '  "remedial_enabled": true,\n'
                 '  "round_grades": false,\n'
@@ -1048,9 +1112,111 @@ OUTPUT — Return the assessment using exactly this structure:
                 '  "cdio_sdg_rows": [{"cdio_vals": ["", "ME, LA, FP"], "sdg_vals": ["ME, LA, FP", ""]}]\n'
                 "}"
             ),
+            "basic": (
+                "{\n"
+                '  "university_name": "",\n'
+                '  "college": "",\n'
+                '  "program": "",\n'
+                '  "document_title": "",\n'
+                '  "institution_contact": "",\n'
+                '  "vision": "",\n'
+                '  "mission": "",\n'
+                '  "course_title": "",\n'
+                '  "course_code": "",\n'
+                '  "course_category": "",\n'
+                '  "prerequisites": "",\n'
+                '  "year_level": "",\n'
+                '  "semester_year": "",\n'
+                '  "credit_hours": "",\n'
+                '  "instructor_name": "",\n'
+                '  "employee_id": "",\n'
+                '  "instructor_email": "",\n'
+                '  "contact_info": "",\n'
+                '  "education": "",\n'
+                '  "reference_cmo": "",\n'
+                '  "date_prepared": "",\n'
+                '  "revision_no": "",\n'
+                '  "revision_date": "",\n'
+                '  "period_of_study": ""\n'
+                "}"
+            ),
+            "details": (
+                "{\n"
+                '  "description": "",\n'
+                '  "rationale": "",\n'
+                '  "lecture_hours": "",\n'
+                '  "lab_hours": "",\n'
+                '  "total_hours": "",\n'
+                '  "technology_integration": "",\n'
+                '  "tlas": "",\n'
+                '  "assessment_criteria": "",\n'
+                '  "references": ["citation"]\n'
+                "}"
+            ),
+            "iloat": (
+                "{\n"
+                '  "ilos": ["ILO text"],\n'
+                '  "ilo_bloom": [{"level": "Apply", "verb": "implement"}],\n'
+                '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "category": "Summative", "weight": "60", "ilo_values": ["ME"], "subs": [], "c": "", "p": "", "a": ""}],\n'
+                '  "ats": [{"code": "C1", "label": "Major Examinations", "weight": 60, "subs": [{"code": "T1", "label": "Midterm", "weight": 30, "ilos": ["ILO1"], "scores": {}, "iloTotals": {}}]}]\n'
+                "}"
+            ),
+            "iloatmatrix": (
+                "{\n"
+                '  "ats": [{"code": "C1", "label": "Major Examinations", "weight": 60, "subs": [{"code": "T1", "label": "Midterm", "weight": 30, "ilos": ["ILO1"], "scores": {}, "iloTotals": {}}]}]\n'
+                "}"
+            ),
+            "fwmap": (
+                "{\n"
+                '  "references": ["citation"],\n'
+                '  "igas": [{"code": "IGA1", "title": "", "description": ""}],\n'
+                '  "student_outcomes": [{"code": "SO1", "title": "", "description": ""}],\n'
+                '  "cdio_skills": [{"code": "CDIO1", "title": "", "description": ""}],\n'
+                '  "sdg_skills": [{"code": "SDG1", "title": "", "description": ""}],\n'
+                '  "so_headers": ["1"],\n'
+                '  "so_cpa_rows": [{"so_vals": ["ME"], "c": "", "p": "", "a": ""}],\n'
+                '  "iga_headers": ["1"],\n'
+                '  "iga_rows": [{"vals": ["ME"]}],\n'
+                '  "cdio_headers": ["1"],\n'
+                '  "sdg_headers": ["1"],\n'
+                '  "cdio_sdg_rows": [{"cdio_vals": [""], "sdg_vals": [""]}]\n'
+                "}"
+            ),
+            "ilofwmatrix": (
+                "{\n"
+                '  "so_headers": ["1"],\n'
+                '  "so_cpa_rows": [{"so_vals": ["ME"], "c": "", "p": "", "a": ""}],\n'
+                '  "iga_headers": ["1"],\n'
+                '  "iga_rows": [{"vals": ["ME"]}],\n'
+                '  "cdio_headers": ["1"],\n'
+                '  "sdg_headers": ["1"],\n'
+                '  "cdio_sdg_rows": [{"cdio_vals": [""], "sdg_vals": [""]}]\n'
+                "}"
+            ),
+            "schedule": (
+                "{\n"
+                '  "tla_chapters": [{"chapter": "1", "topics": "", "weeks": "1", "outcomes": "", "ilo": "1", "ilo_refs": [1], "so": "", "delivery": ""}],\n'
+                '  "schedule_methods": [{"name": "Major Examinations", "values": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]}]\n'
+                "}"
+            ),
+            "tos": (
+                "{\n"
+                '  "tos": [{"examLabel": "Prelim Examination", "topics": [{"topic": "", "hours_class": "", "bloom_pct": {"remember": "", "understand": "", "apply": "", "analyze": "", "evaluate": "", "create": ""}}]}]\n'
+                "}"
+            ),
+            "grading": (
+                "{\n"
+                '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
+                '  "passing_grade": 75\n'
+                "}"
+            ),
         }
 
         section_instructions = {
+            "policies": (
+                "Fill policies and other_policies from this text. "
+                "Leave grading_rows as an empty list unless this text itself is a grade scale."
+            ),
             "header": (
                 "CRITICAL MAPPING INSTRUCTIONS FOR HEADER:\n"
                 "- Extract the full university name (e.g. Batangas State University) into 'university_name'.\n"
