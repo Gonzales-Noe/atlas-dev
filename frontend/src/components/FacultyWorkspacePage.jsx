@@ -891,8 +891,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     name: '',
     num_choices: 4,
     num_id_columns: 8,
-    has_essay: false,
-    essay_lines: 10,
   })
   const [editingItemId, setEditingItemId] = useState(null)
   const [editingItemDraft, setEditingItemDraft] = useState(null)
@@ -2942,8 +2940,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               name: linked.name || data.assessment.title || 'Answer Sheet',
               num_choices: Number(linked.num_choices || 4),
               num_id_columns: Number(linked.layout_metadata?.num_id_columns || 8),
-              has_essay: Boolean(linked.has_essay),
-              essay_lines: Number(linked.essay_lines || 10),
             })
           }
         } catch { /* ignore — template fetch is non-critical */ }
@@ -3542,8 +3538,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         name: linked?.name || `${assessmentDetail.title || 'Assessment'} Answer Sheet`,
         num_choices: Number(linked?.num_choices || 4),
         num_id_columns: Number(linked?.layout_metadata?.num_id_columns || 8),
-        has_essay: Boolean(linked?.has_essay),
-        essay_lines: Number(linked?.essay_lines || 10),
       })
     } catch (err) {
       setActionError(extractApiError(err) || 'Failed to load answer sheet template.')
@@ -3559,8 +3553,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       name: template?.name || 'Answer Sheet',
       num_choices: Number(template?.num_choices || 4),
       num_id_columns: Number(template?.layout_metadata?.num_id_columns || 8),
-      has_essay: Boolean(template?.has_essay),
-      essay_lines: Number(template?.essay_lines || 10),
     })
     setAnswerSheetDialogOpen(true)
   }
@@ -3574,8 +3566,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         name: answerSheetForm.name,
         total_items: Number(assessmentDetail.target_total_items || 0),
         num_choices: Number(answerSheetForm.num_choices),
-        has_essay: Boolean(answerSheetForm.has_essay),
-        essay_lines: Number(answerSheetForm.essay_lines),
+        has_essay: false,
+        essay_lines: 0,
         layout_metadata: {
           num_id_columns: Number(answerSheetForm.num_id_columns),
         },
@@ -7379,28 +7371,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 helperText="Allowed range: 4 to 15"
               />
             </Stack>
-            <TextField
-              size="small"
-              select
-              fullWidth
-              label="Essay section"
-              value={answerSheetForm.has_essay ? '1' : '0'}
-              onChange={e => setAnswerSheetForm(p => ({ ...p, has_essay: e.target.value === '1' }))}
-            >
-              <MenuItem value="0">No essay section</MenuItem>
-              <MenuItem value="1">Include essay section</MenuItem>
-            </TextField>
-            {answerSheetForm.has_essay && (
-              <TextField
-                size="small"
-                type="number"
-                fullWidth
-                label="Essay lines"
-                value={answerSheetForm.essay_lines}
-                onChange={e => setAnswerSheetForm(p => ({ ...p, essay_lines: Number(e.target.value) }))}
-                inputProps={{ min: 2, max: 50 }}
-              />
-            )}
           </Stack>
         </DialogContent>
         <DialogActions>

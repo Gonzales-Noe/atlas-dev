@@ -335,7 +335,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
           <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.5 }}>
             <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
             <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
-            {t.has_essay && <Chip label="Essay" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(10,132,255,0.16)', color: '#93C5FD', border: '1px solid rgba(10,132,255,0.28)' }} />}
             <Chip
               label={t.has_answer_key ? 'Key set' : 'No key'}
               size="small"
@@ -476,8 +475,6 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
     total_items: 30,
     num_choices: 4,
     num_id_columns: 8,
-    has_essay: false,
-    essay_lines: 10,
     parts: [{ label: 'Part I', start_item: 1, end_item: 30 }],
   })
   const [saving, setSaving] = useState(false)
@@ -551,8 +548,8 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
           start_item: Number(p.start_item),
           end_item: Number(p.end_item),
         })),
-        has_essay: form.has_essay,
-        essay_lines: Number(form.essay_lines),
+        has_essay: false,
+        essay_lines: 0,
         layout_metadata: { num_id_columns: Number(form.num_id_columns) },
       })
       onCreated()
@@ -644,20 +641,6 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
             onChange={e => setField('num_id_columns', Number(e.target.value))}
             inputProps={{ min: 4, max: 15 }}
             helperText="Number of digit columns for the Student ID shading matrix (4–15)" />
-
-          {/* Essay */}
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <LF select label="Essay / open-ended section" value={form.has_essay ? '1' : '0'}
-              onChange={e => setField('has_essay', e.target.value === '1')} sx={{ flex: 2 }}>
-              <MenuItem value="0">No essay section</MenuItem>
-              <MenuItem value="1">Include essay lines</MenuItem>
-            </LF>
-            {form.has_essay && (
-              <LF label="Lines" type="number" value={form.essay_lines}
-                onChange={e => setField('essay_lines', e.target.value)}
-                inputProps={{ min: 2, max: 50 }} sx={{ flex: 1 }} />
-            )}
-          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
