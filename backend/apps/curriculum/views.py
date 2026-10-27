@@ -4796,6 +4796,72 @@ def export_module_docx(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def prepare_syllabus_tabs(request):
+    """
+    Read one syllabus file and split it into tab texts. No language model.
+
+    Endpoint: POST /api/curriculum/prepare-syllabus-tabs/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    _course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        data = file_obj.read()
+        suffix = filename.rsplit('.', 1)[-1]
+        if suffix in {'pdf', 'docx'}:
+            from apps.integrations.syllabus_tab_split import tabs_from_layout_bytes
+            prepared = tabs_from_layout_bytes(data, suffix)
+        else:
+            from io import BytesIO
+            from apps.integrations.syllabus_tab_split import split_markdown_into_tabs
+            text = _extract_text_from_file(BytesIO(data), filename)
+            prepared = {'parser': 'text', 'tabs': split_markdown_into_tabs(text)}
+    except Exception as exc:
+        logger.exception('prepare_syllabus_tabs failed')
+        return Response(
+            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not prepared.get('tabs'):
+        return Response(
+            {"success": False, "error": "Could not find syllabus sections in this file."},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    return Response(
+        {"success": True, "parser": prepared.get('parser') or '', "tabs": prepared['tabs']},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def parse_syllabus_upload(request):
     """
     Upload a syllabus file (xlsx / pdf / docx / txt), extract its text,
@@ -5144,9 +5210,11 @@ def parse_syllabus_segment(request):
             {"success": True, "parsed_data": {}},
             status=status.HTTP_200_OK,
         )
-    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
-    if trial_response:
-        return trial_response
+    count_trial = request.data.get("count_trial", True)
+    if count_trial not in (False, 0, "0", "false", "False"):
+        trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+        if trial_response:
+            return trial_response
 
     try:
         import json
@@ -5163,6 +5231,7 @@ def parse_syllabus_segment(request):
         try:
             raw_response = llm.generate_response_with_fallback(
                 [{"role": "user", "content": user_prompt}],
+                preferred_provider="ollama",
                 system=system_prompt,
                 max_tokens=4096,
             )
@@ -5197,7 +5266,7 @@ def parse_syllabus_segment(request):
                 repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
                 repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    preferred_provider="groq",
+                    preferred_provider="ollama",
                     system=repair_system,
                     max_tokens=4096,
                 )
