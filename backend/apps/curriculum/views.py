@@ -4916,14 +4916,14 @@ def import_syllabus_json(request):
     try:
         from io import BytesIO
         from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
-        from apps.integrations.syllabus_parse import extract_layout, fast_markdown
+        from apps.integrations.syllabus_parse import _markdown_via_legacy, extract_layout
 
         data = file_obj.read()
         suffix = filename.rsplit('.', 1)[-1]
         if suffix == 'docx':
-            markdown = fast_markdown(data, 'docx')
+            markdown = _markdown_via_legacy(BytesIO(data), 'docx')
         elif suffix == 'pdf':
-            markdown = fast_markdown(data, 'pdf')
+            markdown = _markdown_via_legacy(BytesIO(data), 'pdf')
             if len(markdown) < 400:
                 markdown = (extract_layout(data, 'pdf').get('markdown') or markdown)
         else:
