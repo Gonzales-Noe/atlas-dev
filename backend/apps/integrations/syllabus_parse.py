@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 # Soft ceiling so admin UI does not spin forever on small PDFs.
 _DOCLING_TIMEOUT_SEC = int(os.environ.get('SYLLABUS_DOCLING_TIMEOUT', '35'))
+_OCR_TIMEOUT_SEC = int(os.environ.get('SYLLABUS_OCR_TIMEOUT', '60'))
+_SCAN_TEXT_FLOOR = 400
 
 
 def _docling_available():
@@ -41,20 +43,21 @@ def _parser_mode():
     return (os.environ.get('SYLLABUS_PARSER') or 'auto').strip().lower()
 
 
-def _convert_with_docling(path, file_type):
-    """Convert a file path with a fast Docling PDF pipeline (no OCR)."""
+def _convert_with_docling(path, file_type, ocr=False):
+    """Convert a file path with Docling. OCR stays off unless the PDF is a scan."""
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
 
     pdf_options = PdfPipelineOptions()
-    pdf_options.do_ocr = False
+    pdf_options.do_ocr = bool(ocr)
     pdf_options.do_code_enrichment = False
     pdf_options.do_formula_enrichment = False
     # Keep tables — needed for syllabus structure; still much faster without OCR.
     pdf_options.do_table_structure = True
     if hasattr(pdf_options, 'document_timeout'):
-        pdf_options.document_timeout = float(max(5, _DOCLING_TIMEOUT_SEC - 5))
+        ceiling = _OCR_TIMEOUT_SEC if ocr else _DOCLING_TIMEOUT_SEC
+        pdf_options.document_timeout = float(max(5, ceiling - 5))
     if hasattr(pdf_options, 'generate_page_images'):
         pdf_options.generate_page_images = False
     if hasattr(pdf_options, 'generate_picture_images'):
@@ -77,7 +80,7 @@ def _convert_with_docling(path, file_type):
     return document, markdown
 
 
-def _docling_with_timeout(data, file_type, timeout_sec):
+def _docling_with_timeout(data, file_type, timeout_sec, ocr=False):
     """Run Docling in a worker thread; raise TimeoutError on wall-clock limit."""
     fd, tmp_path = tempfile.mkstemp(suffix=f'.{file_type}')
     try:
@@ -87,7 +90,7 @@ def _docling_with_timeout(data, file_type, timeout_sec):
             os.close(fd)
 
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(_convert_with_docling, tmp_path, file_type)
+            future = pool.submit(_convert_with_docling, tmp_path, file_type, ocr)
             return future.result(timeout=timeout_sec)
     finally:
         if tmp_path and os.path.exists(tmp_path):
@@ -176,6 +179,43 @@ def parse_upload(file_obj, file_type):
         'markdown': masked,
         'document': document,
         'docling_error': docling_error,
+    }
+
+
+def extract_layout(data, file_type):
+    """
+    Layout read for faculty upload.
+
+    Digital PDF and DOCX use the existing Docling/LiteParse path, which keeps
+    headings and tables. A PDF with almost no text is treated as a scan and
+    retried once with OCR. Other types are not handled here.
+    """
+    from io import BytesIO
+
+    parsed = parse_upload(BytesIO(data), file_type)
+    text = (parsed.get('markdown') or '').strip()
+    if file_type != 'pdf' or len(text) >= _SCAN_TEXT_FLOOR or not _docling_available():
+        return parsed
+
+    try:
+        logger.info('Syllabus PDF looks like a scan; retrying Docling with OCR')
+        document, markdown = _docling_with_timeout(data, file_type, _OCR_TIMEOUT_SEC, ocr=True)
+    except Exception as exc:
+        note = f'OCR pass failed ({exc})'
+        logger.warning(note)
+        parsed['docling_error'] = '; '.join(part for part in (parsed.get('docling_error'), note) if part)
+        return parsed
+
+    ocr_text = (markdown or '').strip()
+    if len(ocr_text) <= len(text):
+        return parsed
+
+    masked = mask_and_verify(ocr_text, context='syllabus_template')
+    return {
+        'parser': 'docling-ocr',
+        'markdown': masked,
+        'document': document,
+        'docling_error': parsed.get('docling_error'),
     }
 
 

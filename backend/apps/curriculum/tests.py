@@ -10,6 +10,7 @@ from apps.curriculum.views import (
     _materialize_tos_exam,
     create_course,
 )
+from apps.integrations.syllabus_tab_split import split_markdown_into_tabs
 
 
 class FacultyCourseInstitutionScopeTests(SimpleTestCase):
@@ -186,3 +187,35 @@ class TosFormulaTests(SimpleTestCase):
         self.assertEqual([item['bloom_level'] for item in aligned['items']], ['Remember', 'Remember', 'Apply'])
         self.assertEqual([item['question_text'] for item in aligned['items']], ['Question one', 'Question two', 'Question three'])
         self.assertEqual(aligned['allocated_items'], 3)
+
+
+class SyllabusTabSplitTests(SimpleTestCase):
+    def test_headings_and_table_rows_stay_with_their_tab(self):
+        markdown = """
+Batangas State University
+College of Informatics and Computing Sciences
+
+# University Vision
+A premier national university.
+
+# Course Description
+This course covers systems administration.
+
+# Intended Learning Outcomes
+1. Install an operating system.
+
+# Table of Specifications
+| Topic | Hours | Remember |
+| Introduction | 2 | 40 |
+| Storage | 4 | 10 |
+
+# Course Policies
+Attendance is required.
+"""
+        tabs = {tab['key']: tab['text'] for tab in split_markdown_into_tabs(markdown)}
+        self.assertIn('premier national university', tabs['basic'].lower())
+        self.assertIn('systems administration', tabs['details'].lower())
+        self.assertIn('install an operating system', tabs['iloat'].lower())
+        self.assertIn('Introduction | 2 | 40', tabs['tos'])
+        self.assertIn('Attendance is required', tabs['policies'])
+        self.assertNotIn('Introduction | 2 | 40', tabs.get('schedule', ''))

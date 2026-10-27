@@ -109,6 +109,13 @@ const SYLLABUS_SECTIONS = [
   { key: 'policies',      label: 'Policies' },
 ]
 
+// One upload step per syllabus tab. Course Overview is a summary of the others.
+const SYLLABUS_UPLOAD_STEPS = [
+  ...SYLLABUS_SECTIONS.filter(section => section.key !== 'grading' && section.key !== 'policies'),
+  { key: 'tos', label: 'Table of Specifications' },
+  ...SYLLABUS_SECTIONS.filter(section => section.key === 'grading' || section.key === 'policies'),
+]
+
 const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
 const PROVIDER_LABELS = {
   auto: 'Auto (best available free model)',
@@ -907,6 +914,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Syllabus upload (parse) state ────────────────────────────────────────
   const syllabusUploadRef                   = useRef(null)
   const [syllabusUploading, setSyllabusUploading]     = useState(false)
+  const [syllabusUploadProgress, setSyllabusUploadProgress] = useState(null)
   const [syllabusUploadError, setSyllabusUploadError] = useState('')
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
   const [activeFwKey, setActiveFwKey] = useState('SO')
@@ -1480,30 +1488,76 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     handleGenerateSection()
   }
 
+  function mergeUploadedSyllabus(parsed) {
+    setSyllabusData(prev => {
+      const next = { ...prev }
+      Object.entries(parsed || {}).forEach(([key, value]) => {
+        if (value == null || value === '') return
+        if (Array.isArray(value) && value.length === 0) return
+        next[key] = value
+      })
+      return normalizeSyllabusData(next)
+    })
+    setIsDirty(true)
+    setSaveSuccess(false)
+  }
+
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    setSyllabusUploading(true); setSyllabusUploadError(''); setSyllabusUploadSuccess(false)
+    const steps = SYLLABUS_UPLOAD_STEPS
+    setSyllabusUploading(true)
+    setSyllabusUploadError('')
+    setSyllabusUploadSuccess(false)
+    setSyllabusUploadProgress(null)
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
+    const failed = []
+    let countedTrial = false
     try {
-      // Do NOT set Content-Type manually — let the browser set it with the correct boundary
-      const { data } = await api.post('/curriculum/parse-syllabus-upload/', formData, {
+      const { data } = await api.post('/curriculum/prepare-syllabus-tabs/', formData, {
         headers: { 'Content-Type': undefined },
-        timeout: 120000,
+        timeout: 180000,
       })
-      if (data.syllabus_data && typeof data.syllabus_data === 'object') {
-        setSyllabusData(prev => normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...prev, ...data.syllabus_data }))
-        setIsDirty(true)
-        setSyllabusUploadSuccess(true)
+      const tabs = Array.isArray(data?.tabs) ? data.tabs : []
+      const textByKey = Object.fromEntries(tabs.map(tab => [tab.key, String(tab.text || '')]))
+      for (let index = 0; index < steps.length; index += 1) {
+        const step = steps[index]
+        setSyllabusUploadProgress({ index: index + 1, total: steps.length, label: step.label })
+        if (SYLLABUS_SECTIONS.some(section => section.key === step.key)) {
+          setSyllabusSub(step.key)
+        }
+        if (step.key === 'overview') continue
+        const segmentText = (textByKey[step.key] || '').trim()
+        if (!segmentText) continue
+        try {
+          const res = await api.post('/curriculum/parse-syllabus-segment/', {
+            course_id: courseId,
+            section_key: step.key,
+            segment_text: segmentText,
+            count_trial: !countedTrial,
+          }, { timeout: 180000 })
+          countedTrial = true
+          if (res.data?.success && res.data.parsed_data) {
+            mergeUploadedSyllabus(res.data.parsed_data)
+          } else {
+            failed.push(step.label)
+          }
+        } catch {
+          failed.push(step.label)
+        }
+      }
+      if (failed.length) {
+        setSyllabusUploadError(`Filled the syllabus except: ${failed.join(', ')}.`)
       } else {
-        setSyllabusUploadError('Syllabus was uploaded but no data could be extracted. Try a different file.')
+        setSyllabusUploadSuccess(true)
       }
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
     } finally {
       setSyllabusUploading(false)
+      setSyllabusUploadProgress(null)
       if (syllabusUploadRef.current) syllabusUploadRef.current.value = ''
     }
   }
@@ -5068,7 +5122,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {syllabusData.course_title || course.course_title}
                   </Typography>
                 </Box>
-                <Tooltip title={syllabusUploading ? 'Parsing syllabus…' : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
+                <Tooltip title={syllabusUploading ? (syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus…') : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
                   <span>
                     <Button
                       size="small"
@@ -5088,7 +5142,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
                       }}
                     >
-                      {syllabusUploading ? 'Parsing…' : 'Upload Syllabus'}
+                      {syllabusUploading ? (syllabusUploadProgress ? `Step ${syllabusUploadProgress.index}/${syllabusUploadProgress.total}` : 'Reading…') : 'Upload Syllabus'}
                     </Button>
                   </span>
                 </Tooltip>
@@ -7114,7 +7168,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const activeProgress = uploading
     ? { label: 'Uploading course source', detail: uploadStatus || 'Sending the file to the course knowledge base…', value: uploadProgress }
     : syllabusUploading
-      ? { label: 'Parsing syllabus', detail: 'Extracting and organizing syllabus content…' }
+      ? {
+          label: syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus',
+          detail: syllabusUploadProgress
+            ? `Step ${syllabusUploadProgress.index} of ${syllabusUploadProgress.total}. This stays on screen until the last tab finishes.`
+            : 'Extracting headings and tables…',
+          value: syllabusUploadProgress
+            ? (syllabusUploadProgress.index / syllabusUploadProgress.total) * 100
+            : 6,
+        }
       : aiGenerating
         ? { label: 'Generating syllabus content', detail: aiPipelineProgress?.label || 'Working through the selected fields…', value: aiPipelineProgress?.total ? (aiPipelineProgress.completed / aiPipelineProgress.total) * 100 : undefined }
         : moduleGeneratingAll

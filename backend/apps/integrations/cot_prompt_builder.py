@@ -982,10 +982,17 @@ OUTPUT — Return the assessment using exactly this structure:
         """
         Build a prompt to parse a single raw segment into its corresponding section JSON schema.
         """
+        matrix_keys = {'iloatmatrix', 'ilofwmatrix', 'fwmap', 'tos', 'schedule'}
+        matrix_rule = ''
+        if section_key in matrix_keys:
+            matrix_rule = (
+                ' Rows are already extracted and separated with " | ". Copy the cell text into the JSON. '
+                'Do not invent rows, and do not paraphrase a cell.'
+            )
         system = (
             f"You are an expert parser specializing in BatStateU Course Information Syllabus (CIS) documents. "
             f"Your task is to parse the raw text segment for the '{section_key}' section into the exact JSON schema requested. "
-            f"Extract the complete and exact text from the segment — do not summarize or omit. "
+            f"Extract the complete and exact text from the segment — do not summarize or omit.{matrix_rule} "
             f"Return ONLY a valid JSON object. No markdown fences, no comments, no extra text."
         )
 
@@ -1079,8 +1086,8 @@ OUTPUT — Return the assessment using exactly this structure:
             ),
             "policies": (
                 "{\n"
-                '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
-                '  "passing_grade": 75,\n'
+                '  "grading_rows": [],\n'
+                '  "passing_grade": null,\n'
                 '  "use_plus_minus": false,\n'
                 '  "remedial_enabled": true,\n'
                 '  "round_grades": false,\n'
@@ -1105,9 +1112,111 @@ OUTPUT — Return the assessment using exactly this structure:
                 '  "cdio_sdg_rows": [{"cdio_vals": ["", "ME, LA, FP"], "sdg_vals": ["ME, LA, FP", ""]}]\n'
                 "}"
             ),
+            "basic": (
+                "{\n"
+                '  "university_name": "",\n'
+                '  "college": "",\n'
+                '  "program": "",\n'
+                '  "document_title": "",\n'
+                '  "institution_contact": "",\n'
+                '  "vision": "",\n'
+                '  "mission": "",\n'
+                '  "course_title": "",\n'
+                '  "course_code": "",\n'
+                '  "course_category": "",\n'
+                '  "prerequisites": "",\n'
+                '  "year_level": "",\n'
+                '  "semester_year": "",\n'
+                '  "credit_hours": "",\n'
+                '  "instructor_name": "",\n'
+                '  "employee_id": "",\n'
+                '  "instructor_email": "",\n'
+                '  "contact_info": "",\n'
+                '  "education": "",\n'
+                '  "reference_cmo": "",\n'
+                '  "date_prepared": "",\n'
+                '  "revision_no": "",\n'
+                '  "revision_date": "",\n'
+                '  "period_of_study": ""\n'
+                "}"
+            ),
+            "details": (
+                "{\n"
+                '  "description": "",\n'
+                '  "rationale": "",\n'
+                '  "lecture_hours": "",\n'
+                '  "lab_hours": "",\n'
+                '  "total_hours": "",\n'
+                '  "technology_integration": "",\n'
+                '  "tlas": "",\n'
+                '  "assessment_criteria": "",\n'
+                '  "references": ["citation"]\n'
+                "}"
+            ),
+            "iloat": (
+                "{\n"
+                '  "ilos": ["ILO text"],\n'
+                '  "ilo_bloom": [{"level": "Apply", "verb": "implement"}],\n'
+                '  "assessment_tasks": [{"code": "ME", "task": "Major Examinations", "ird": "I", "category": "Summative", "weight": "60", "ilo_values": ["ME"], "subs": [], "c": "", "p": "", "a": ""}],\n'
+                '  "ats": [{"code": "C1", "label": "Major Examinations", "weight": 60, "subs": [{"code": "T1", "label": "Midterm", "weight": 30, "ilos": ["ILO1"], "scores": {}, "iloTotals": {}}]}]\n'
+                "}"
+            ),
+            "iloatmatrix": (
+                "{\n"
+                '  "ats": [{"code": "C1", "label": "Major Examinations", "weight": 60, "subs": [{"code": "T1", "label": "Midterm", "weight": 30, "ilos": ["ILO1"], "scores": {}, "iloTotals": {}}]}]\n'
+                "}"
+            ),
+            "fwmap": (
+                "{\n"
+                '  "references": ["citation"],\n'
+                '  "igas": [{"code": "IGA1", "title": "", "description": ""}],\n'
+                '  "student_outcomes": [{"code": "SO1", "title": "", "description": ""}],\n'
+                '  "cdio_skills": [{"code": "CDIO1", "title": "", "description": ""}],\n'
+                '  "sdg_skills": [{"code": "SDG1", "title": "", "description": ""}],\n'
+                '  "so_headers": ["1"],\n'
+                '  "so_cpa_rows": [{"so_vals": ["ME"], "c": "", "p": "", "a": ""}],\n'
+                '  "iga_headers": ["1"],\n'
+                '  "iga_rows": [{"vals": ["ME"]}],\n'
+                '  "cdio_headers": ["1"],\n'
+                '  "sdg_headers": ["1"],\n'
+                '  "cdio_sdg_rows": [{"cdio_vals": [""], "sdg_vals": [""]}]\n'
+                "}"
+            ),
+            "ilofwmatrix": (
+                "{\n"
+                '  "so_headers": ["1"],\n'
+                '  "so_cpa_rows": [{"so_vals": ["ME"], "c": "", "p": "", "a": ""}],\n'
+                '  "iga_headers": ["1"],\n'
+                '  "iga_rows": [{"vals": ["ME"]}],\n'
+                '  "cdio_headers": ["1"],\n'
+                '  "sdg_headers": ["1"],\n'
+                '  "cdio_sdg_rows": [{"cdio_vals": [""], "sdg_vals": [""]}]\n'
+                "}"
+            ),
+            "schedule": (
+                "{\n"
+                '  "tla_chapters": [{"chapter": "1", "topics": "", "weeks": "1", "outcomes": "", "ilo": "1", "ilo_refs": [1], "so": "", "delivery": ""}],\n'
+                '  "schedule_methods": [{"name": "Major Examinations", "values": ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]}]\n'
+                "}"
+            ),
+            "tos": (
+                "{\n"
+                '  "tos": [{"examLabel": "Prelim Examination", "topics": [{"topic": "", "hours_class": "", "bloom_pct": {"remember": "", "understand": "", "apply": "", "analyze": "", "evaluate": "", "create": ""}}]}]\n'
+                "}"
+            ),
+            "grading": (
+                "{\n"
+                '  "grading_rows": [{"rating": "Excellent", "grade": "1.00", "range": "98 - 100"}],\n'
+                '  "passing_grade": 75\n'
+                "}"
+            ),
         }
 
         section_instructions = {
+            "policies": (
+                "Fill policies and other_policies from this text. "
+                "Leave grading_rows as an empty list unless this text itself is a grade scale."
+            ),
             "header": (
                 "CRITICAL MAPPING INSTRUCTIONS FOR HEADER:\n"
                 "- Extract the full university name (e.g. Batangas State University) into 'university_name'.\n"
