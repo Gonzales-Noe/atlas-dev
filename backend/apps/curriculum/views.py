@@ -219,6 +219,13 @@ def faculty_course_workspace(request, course_id):
                 'assigned_sections': assigned_sections,
                 'instructor_name': request.user.full_name,
                 'instructor_email': request.user.email,
+                'module_topic_section_key': course.module_topic_section_key,
+                'module_topic_subsection_key': course.module_topic_subsection_key,
+                'module_topic_confirmed_at': (
+                    course.module_topic_confirmed_at.isoformat()
+                    if course.module_topic_confirmed_at
+                    else None
+                ),
             },
             'customization': {
                 'header_image_url': customization.header_image_url,
@@ -316,6 +323,60 @@ def save_syllabus_content(request, course_id):
             'success': True,
             'syllabus_id': str(syllabus.syllabus_id),
             'created': created,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["PATCH", "POST"])
+@permission_classes([IsAuthenticated])
+def save_course_module_topic(request, course_id):
+    """Lock in the syllabus section/subsection the Module tab reads topics from.
+
+    The choice is made once per course: once confirmed it cannot be changed,
+    so every module for the course is generated from the same source.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    if course.module_topic_confirmed_at:
+        return Response(
+            {
+                "success": False,
+                "error": "The module topic source is already confirmed for this course.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    section_key = (request.data.get("section_key") or "").strip()
+    subsection_key = (request.data.get("subsection_key") or "").strip()
+    if not section_key:
+        return Response(
+            {"success": False, "error": "A syllabus section is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course.module_topic_section_key = section_key
+    course.module_topic_subsection_key = subsection_key
+    course.module_topic_confirmed_at = timezone.now()
+    course.save(
+        update_fields=[
+            "module_topic_section_key",
+            "module_topic_subsection_key",
+            "module_topic_confirmed_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "module_topic_section_key": course.module_topic_section_key,
+            "module_topic_subsection_key": course.module_topic_subsection_key,
+            "module_topic_confirmed_at": course.module_topic_confirmed_at.isoformat(),
         },
         status=status.HTTP_200_OK,
     )
@@ -436,6 +497,77 @@ def generate_syllabus(request):
         )
 
 
+def _week_topic_from_chapters(chapters, week_number):
+    """Return the weekly-schedule topic that covers ``week_number``.
+
+    A schedule row keeps the week(s) it covers in ``weeks`` ("2", "2-3") and
+    its own row number in ``chapter`` ("1").  The UI sends the chapter number
+    as the week number, so both are matched before falling back to a range hit.
+    """
+    if not chapters:
+        return ""
+    target = str(week_number)
+    for entry in chapters:
+        if str(entry.get("chapter") or "").strip() == target:
+            topic = str(entry.get("topics") or "").strip()
+            if topic:
+                return topic
+    for entry in chapters:
+        weeks_val = str(entry.get("weeks") or "").strip()
+        if not weeks_val:
+            continue
+        if weeks_val == target:
+            topic = str(entry.get("topics") or "").strip()
+            if topic:
+                return topic
+        if "-" in weeks_val:
+            parts = weeks_val.split("-")
+            if len(parts) == 2:
+                try:
+                    start, end = int(parts[0]), int(parts[1])
+                except ValueError:
+                    continue
+                if start <= week_number <= end:
+                    topic = str(entry.get("topics") or "").strip()
+                    if topic:
+                        return topic
+    return ""
+
+
+def _section_context_from_syllabus(syllabus_content, section_key, subsection_key):
+    """Pull the raw text of a syllabus section / subsection out of saved content."""
+    if not syllabus_content or not section_key:
+        return ""
+    custom_subsections = syllabus_content.get("custom_subsections") or {}
+    custom_sections = syllabus_content.get("custom_sections") or {}
+    custom_tables = syllabus_content.get("custom_tables") or {}
+
+    parts = []
+    if subsection_key:
+        text = (custom_subsections.get(section_key) or {}).get(subsection_key)
+        if text:
+            parts.append(str(text).strip())
+        for row in (custom_tables.get(section_key) or {}).get(subsection_key) or []:
+            if isinstance(row, list):
+                cells = [str(cell).strip() for cell in row if str(cell).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+    else:
+        text = custom_sections.get(section_key)
+        if text:
+            parts.append(str(text).strip())
+        for sub_text in (custom_subsections.get(section_key) or {}).values():
+            if sub_text:
+                parts.append(str(sub_text).strip())
+        for rows in (custom_tables.get(section_key) or {}).values():
+            for row in rows or []:
+                if isinstance(row, list):
+                    cells = [str(cell).strip() for cell in row if str(cell).strip()]
+                    if cells:
+                        parts.append(" | ".join(cells))
+    return "\n".join(part for part in parts if part)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def generate_module(request):
@@ -477,6 +609,14 @@ def generate_module(request):
     provider = data.get("provider") or None
     extra_instructions = data.get("extra_instructions", "")
     selected_doc_ids = [str(uid) for uid in (data.get("selected_doc_ids") or [])]
+    # ── Syllabus section / subsection the topic came from ─────────────────
+    section_key = (data.get("section_key") or "").strip()
+    section_label = (data.get("section_label") or "").strip()
+    subsection_key = (data.get("subsection_key") or "").strip()
+    subsection_label = (data.get("subsection_label") or "").strip()
+    explicit_topic = (data.get("topic") or "").strip()
+    explicit_context = (data.get("syllabus_context") or "").strip()
+    structuring_level = (data.get("structuring_level") or "standard").strip()
     # Use module title (not course name) as the RAG anchor — course names like
     # "ATLAS Smoke Testing Fundamentals" are not real academic subjects and pollute search.
     _custom_search_query = data.get("search_query")
@@ -493,7 +633,8 @@ def generate_module(request):
     # ── Extract real course data for prompt enrichment ─────────────────────
     course_description: str = course.description or ""
     syllabus_ilos: list = []
-    week_topic: str = ""
+    week_topic: str = explicit_topic
+    section_context: str = explicit_context
     latest_syllabus_for_data = (
         Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
         .order_by("-syllabus_id")
@@ -504,20 +645,10 @@ def generate_module(request):
         if not course_description:
             course_description = sc.get("description") or ""
         syllabus_ilos = [str(i) for i in (sc.get("ilos") or []) if i]
-        for entry in (sc.get("tla_chapters") or []):
-            weeks_val = str(entry.get("weeks", "")).strip()
-            if weeks_val == str(week_number):
-                week_topic = entry.get("topics") or ""
-                break
-            if "-" in weeks_val:
-                parts = weeks_val.split("-")
-                if len(parts) == 2:
-                    try:
-                        if int(parts[0]) <= week_number <= int(parts[1]):
-                            week_topic = entry.get("topics") or ""
-                            break
-                    except ValueError:
-                        pass
+        if not week_topic:
+            week_topic = _week_topic_from_chapters(sc.get("tla_chapters") or [], week_number)
+        if not section_context:
+            section_context = _section_context_from_syllabus(sc, section_key, subsection_key)
 
     # Enhance the default search query with week topic once we have it
     if not _custom_search_query and week_topic:
@@ -565,6 +696,10 @@ def generate_module(request):
             ilos=syllabus_ilos,
             course_description=course_description,
             week_topic=week_topic,
+            section_label=section_label,
+            subsection_label=subsection_label,
+            section_context=section_context,
+            structuring_level=structuring_level,
         )
 
         # ── Step 4: LLM call with auto-fallback ────────────────────────────
@@ -1084,10 +1219,18 @@ def _sections_from_assessment_tasks(syllabus_content):
     return out
 
 
-def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items, ilos=None, ilo_bloom=None, assessment_label='Assessment'):
+# Bloom spread for topics that carry no TOS Bloom counts (remember → create).
+DEFAULT_BLOOM_WEIGHTS = [3, 3, 2, 2, 0, 0]
+
+
+def _build_sectioned_assessment_payload(
+    topic_rows, assessment_type, total_items, ilos=None, ilo_bloom=None,
+    assessment_label='Assessment', default_bloom_weights=None,
+):
     """
     Build sectioned assessment items using explicit topic rows from TOS or faculty input.
-    Returns sections with allocated items and Bloom labels.
+    Returns sections with allocated items and Bloom labels. Rows without Bloom
+    counts use `default_bloom_weights` when given, else every item is Remember.
     """
     sections = []
     for row in (topic_rows or []):
@@ -1161,6 +1304,8 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
         allocated = max(0, section_alloc[idx])
         blooms = section['bloom_counts']
         bloom_weights = [blooms.get(k, 0) for k in bloom_order]
+        if sum(bloom_weights) <= 0 and default_bloom_weights:
+            bloom_weights = list(default_bloom_weights)
         bloom_weight_total = sum(bloom_weights)
         # Only include Bloom levels that have non-zero item counts in the TOS
         nonzero_bloom_indices = [i for i, w in enumerate(bloom_weights) if w > 0]
@@ -1651,18 +1796,31 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
         exam_code = str(selected_exam.get('examCode') or '').strip()
         topic_rows = [row for row in (selected_exam.get('topics') or []) if isinstance(row, dict)]
 
-    if not topic_rows and faculty_topics:
-        topic_rows = [
-            {
-                'topic': str(topic).strip(),
-                'ilos': [],
-                'weight': '',
-                'bloom_items': {},
-                'total_points': '',
-            }
-            for topic in faculty_topics
-            if str(topic).strip()
+    normalized_faculty_topics = [
+        {
+            'topic': str(topic).strip(),
+            'ilos': [],
+            'weight': '',
+            'bloom_items': {},
+            'total_points': '',
+        }
+        for topic in faculty_topics
+        if str(topic).strip()
+    ]
+    if normalized_faculty_topics:
+        # Faculty selection narrows the selected TOS exam, but never replaces its
+        # Bloom distribution, ILO mapping, or item allocation. This keeps TOS as
+        # the assessment authority while allowing topic-level selection in the UI.
+        requested_topics = {
+            _normalize_topic_key(row.get('topic'))
+            for row in normalized_faculty_topics
+            if _normalize_topic_key(row.get('topic'))
+        }
+        tos_topic_rows = [
+            row for row in topic_rows
+            if _normalize_topic_key(row.get('topic') or row.get('label')) in requested_topics
         ]
+        topic_rows = tos_topic_rows or topic_rows
 
     total_items = 0
     if isinstance(selected_exam, dict):
@@ -1924,14 +2082,21 @@ def generate_assessment(request):
         source_exam_label=source_exam_label,
         faculty_topics=faculty_topics,
     )
-    if not isinstance(source.get('selected_exam'), dict):
-        return Response(
-            {
-                'success': False,
-                'detail': 'No major examination found in TOS. Please define a major exam (e.g., Midterm/Final) with total items first.',
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # Assessments are TOS-based. A major examination with topic rows is required;
+    # faculty_topics can only narrow that TOS selection.
+    has_tos_exam = isinstance(source.get('selected_exam'), dict)
+    if not has_tos_exam:
+        if not source['topic_rows']:
+            return Response(
+                {
+                    'success': False,
+                    'detail': 'No major examination with TOS topics found. Complete the TOS tab before creating an assessment.',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        requested_total_items = _to_int(request.data.get('total_items'), 0)
+        if requested_total_items > 0:
+            source['total_items'] = requested_total_items
 
     total_items = source['total_items'] or 1
     sections = _build_sectioned_assessment_payload(
@@ -1941,6 +2106,7 @@ def generate_assessment(request):
         ilos=syllabus_content.get('ilos') or [],
         ilo_bloom=syllabus_content.get('ilo_bloom') or [],
         assessment_label=source['assessment_name'],
+        default_bloom_weights=None,
     )
     section_module_matches = _match_sections_to_course_modules(course, sections)
     total_generated = sum(len(s['items']) for s in sections)
@@ -2661,12 +2827,17 @@ Requirements:
         return issues
 
     try:
-        raw_text = llm.generate_response_with_fallback(
-            messages=[{'role': 'user', 'content': user_prompt}],
-            preferred_provider=provider,
-            system=system_prompt,
-            max_tokens=4000,
-        )
+        try:
+            raw_text = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': user_prompt}],
+                preferred_provider=provider,
+                system=system_prompt,
+                max_tokens=4000,
+            )
+        except ValueError as e:
+            logger.error("Assessment generation failed: %s", e)
+            return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
         generated_payload, parse_error = _parse_assessment_json(raw_text)
 
         if not generated_payload:

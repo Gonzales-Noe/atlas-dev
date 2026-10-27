@@ -198,12 +198,12 @@ export default function SidebarUserMenu({
     fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 500,
     transition: 'background 150ms',
   }
-  const enter = e => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }
+  const enter = e => { e.currentTarget.style.background = 'var(--shell-hover-bg)' }
   const leave = e => { e.currentTarget.style.background = 'none' }
 
   return (
     <div style={{
-      borderTop: '1px solid rgba(255,255,255,0.06)',
+      borderTop: '1px solid var(--shell-divider)',
       padding: tight ? '12px 8px' : '12px 16px',
       flexShrink: 0,
       position: 'relative',
@@ -214,13 +214,13 @@ export default function SidebarUserMenu({
         aria-expanded={open}
         style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          width: '100%', background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+          width: '100%', background: 'var(--shell-chip-bg)',
+          border: '1px solid var(--shell-border)', borderRadius: 12,
           padding: tight ? '8px' : '8px 12px',
           cursor: 'pointer', transition: 'all 200ms', justifyContent: tight ? 'center' : 'flex-start',
         }}
-        onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+        onMouseEnter={e => e.currentTarget.style.background = 'var(--shell-chip-hover-bg)'}
+        onMouseLeave={e => e.currentTarget.style.background = 'var(--shell-chip-bg)'}
       >
         {/* Avatar */}
         <div style={{
@@ -252,14 +252,14 @@ export default function SidebarUserMenu({
           // A collapsed rail is far narrower than this menu needs, so let it
           // overhang instead of crushing the labels.
           minWidth: tight ? 200 : undefined,
-          background: '#16161E', border: '1px solid rgba(255,255,255,0.1)',
+          background: 'var(--shell-menu-bg)', border: '1px solid var(--shell-menu-border)',
           borderRadius: 14, overflow: 'hidden',
           boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
           zIndex: 10,
         }}>
           {[
             { label: 'Profile Settings', modal: 'profile', Icon: UserRound, iconColor: '#A78BFA' },
-            { label: 'Preferences', modal: 'preferences', Icon: Settings, iconColor: 'rgba(255,255,255,0.75)' },
+            { label: 'Preferences', modal: 'preferences', Icon: Settings, iconColor: 'var(--shell-icon-strong)' },
           ].map(({ label, modal, Icon, iconColor }) => (
             <button
               type="button"
@@ -297,11 +297,11 @@ export default function SidebarUserMenu({
               {label}
             </button>
           ))}
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.07)', margin: '4px 0' }} />
+          <div style={{ height: 1, background: 'var(--shell-divider)', margin: '4px 0' }} />
           <button
             type="button"
             onClick={onSignOut}
-            style={{ ...itemStyle, color: '#86EFAC', fontWeight: 600 }}
+            style={{ ...itemStyle, color: 'var(--brand-accent)', fontWeight: 600 }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.08)' }}
             onMouseLeave={leave}
           >
@@ -327,7 +327,7 @@ export default function SidebarUserMenu({
               <UserRound size={18} color="#A78BFA" />
               Profile Settings
             </DialogTitle>
-            <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+            <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
                 <div style={{
                   width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
@@ -383,7 +383,7 @@ export default function SidebarUserMenu({
                   variant="outlined"
                   startIcon={<KeyRound size={16} />}
                   onClick={() => setChangePasswordOpen(true)}
-                  sx={{ borderColor: 'rgba(255,255,255,0.16)', color: '#F0F0F2', textTransform: 'none', '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(22,163,74,0.08)' } }}
+                  sx={{ borderColor: 'var(--shell-btn-border)', color: 'var(--text-primary)', textTransform: 'none', '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: 'rgba(22,163,74,0.08)' } }}
                 >
                   Change password
                 </Button>
@@ -403,7 +403,7 @@ export default function SidebarUserMenu({
                         setShowConfirmPassword(false)
                         setProfileForm(form => ({ ...form, current_password: '', new_password: '', confirm_password: '' }))
                       }}
-                      sx={{ color: 'rgba(255,255,255,0.58)', textTransform: 'none' }}
+                      sx={{ color: 'var(--text-secondary)', textTransform: 'none' }}
                     >
                       Cancel
                     </Button>
@@ -496,7 +496,7 @@ export default function SidebarUserMenu({
               )}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-              <Button type="button" onClick={() => setActiveModal(null)} disabled={profileSaving} sx={{ color: 'rgba(255,255,255,0.68)', textTransform: 'none' }}>Cancel</Button>
+              <Button type="button" onClick={() => setActiveModal(null)} disabled={profileSaving} sx={{ color: 'var(--text-secondary)', textTransform: 'none' }}>Cancel</Button>
               <Button
                 type="submit"
                 variant="contained"
@@ -512,10 +512,10 @@ export default function SidebarUserMenu({
         ) : (
           <>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', fontWeight: 700 }}>
-              <Settings size={18} color="rgba(255,255,255,0.75)" />
+              <Settings size={18} />
               Preferences
             </DialogTitle>
-            <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+            <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
               <div style={{ padding: '4px 0 14px' }}>
                 <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 0.5 }}>
                   APPEARANCE
@@ -612,7 +612,7 @@ export default function SidebarUserMenu({
               )}
             </DialogContent>
             <DialogActions sx={{ p: 2 }}>
-              <Button onClick={() => setActiveModal(null)} sx={{ color: '#86EFAC', textTransform: 'none' }}>Done</Button>
+              <Button onClick={() => setActiveModal(null)} sx={{ color: 'var(--brand-accent)', textTransform: 'none' }}>Done</Button>
             </DialogActions>
           </>
         )}

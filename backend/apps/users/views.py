@@ -29,7 +29,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.document_processor import DocumentProcessor
-from apps.integrations.models import Assessment, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -41,6 +41,7 @@ from apps.integrations.trial import (
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
+    ContactFormSerializer,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
     FacultyCreateSerializer,
@@ -465,6 +466,18 @@ class FacultyCreateView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         profile = serializer.save()
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="faculty_account_created",
+            resource_type="UserProfile",
+            resource_id=profile.user_id,
+            details={
+                "faculty_email": profile.email,
+                "faculty_name": profile.full_name or '',
+                "role": profile.role,
+                "institution_id": str(profile.institution_id) if profile.institution_id else None,
+            },
+        )
         return Response(
             {
                 'detail': 'Faculty account created.',
@@ -484,24 +497,18 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data['email']
 
         profile = UserProfile.objects.filter(email__iexact=email, is_active=True).first()
+        otp = None
         if profile:
             otp = _generate_otp()
             cache.set(_otp_cache_key(email), otp, timeout=600)
-            try:
-                send_mail(
-                    subject='ATLAS password reset code',
-                    message=(
-                        f'Your ATLAS password reset code is {otp}.\n\n'
-                        'This code expires in 10 minutes.'
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[email],
-                    fail_silently=False,
-                )
-            except Exception:
-                pass
-        else:
-            otp = None
+            # Send the branded OTP email through the shared email service so the
+            # structure, logo and footer stay consistent with the rest of ATLAS.
+            from .email_service import send_password_reset_otp
+            send_password_reset_otp(
+                email=email,
+                otp=otp,
+                user_name=profile.name or '',
+            )
 
         response_payload = {'detail': 'If the account exists, a reset code has been generated.'}
         if settings.DEBUG and otp is not None:
@@ -795,6 +802,18 @@ class InstitutionManagementView(APIView):
                 institution.subscription_status = 'canceled'
 
         institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name', 'subscription_ends_at'])
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("institution_reactivated" if institution.is_active else "institution_deactivated"),
+                resource_type="Institution",
+                resource_id=institution.institution_id,
+                details={
+                    "institution_name": institution.name,
+                    "is_active": institution.is_active,
+                    "application_status": institution.application_status,
+                },
+            )
         return Response({'id': str(institution.institution_id), 'status': institution.application_status})
 
     def delete(self, request, institution_id):
@@ -810,10 +829,23 @@ class InstitutionManagementView(APIView):
         if not institution:
             return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        institution_name = institution.name
+        institution_id_str = str(institution.institution_id)
+
         try:
             result = delete_institution(institution)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="institution_deleted",
+            resource_type="Institution",
+            resource_id=institution_id_str,
+            details={
+                "deleted_institution_name": institution_name,
+                "institution_id": institution_id_str,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -869,6 +901,20 @@ class AccountDetailView(APIView):
             target.email = request.data['email'].strip().lower()
 
         target.save()
+        if 'is_active' in request.data:
+            AuditLog.objects.create(
+                user=request.user,
+                action_type=("account_reactivated" if target.is_active else "account_deactivated"),
+                resource_type="UserProfile",
+                resource_id=target.user_id,
+                details={
+                    "account_email": target.email,
+                    "account_name": target.full_name or '',
+                    "role": target.role,
+                    "is_active": target.is_active,
+                    "institution_id": str(target.institution_id) if target.institution_id else None,
+                },
+            )
         return Response(UserAccountSerializer(target).data)
 
     def delete(self, request, user_id):
@@ -898,10 +944,28 @@ class AccountDetailView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        target_email = target.email
+        target_name = target.full_name or ''
+        target_role = target.role
+        target_institution_id = str(target.institution_id) if target.institution_id else None
+
         try:
             result = delete_user_account(target)
         except AccountDeletionError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="account_deleted",
+            resource_type="UserProfile",
+            resource_id=user_id,
+            details={
+                "deleted_email": target_email,
+                "deleted_name": target_name,
+                "deleted_role": target_role,
+                "institution_deleted": result.get('institution_deleted', False),
+                "institution_id": target_institution_id,
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -1043,6 +1107,21 @@ class FacultyAssignmentsView(APIView):
             course=course,
             faculty=faculty,
             section=section,
+        )
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="course_assigned",
+            resource_type="CourseLoad",
+            resource_id=assignment.assignment_id,
+            details={
+                "faculty_id": str(faculty.user_id),
+                "faculty_email": faculty.email,
+                "course_id": str(course.course_id),
+                "course_code": course.course_code,
+                "course_title": course.course_title,
+                "section_id": str(section.section_id),
+                "section": section.section_name,
+            },
         )
         return Response({
             'assignment_id': str(assignment.assignment_id),
@@ -1411,3 +1490,56 @@ class UnenrollCourseView(APIView):
             'detail': 'Unenrolled successfully.',
             'courses_enrolled': updated_courses,
         })
+
+
+class ContactFormView(APIView):
+    """Public endpoint for the landing-page contact form.
+
+    Validates the submission, emails a branded notification to the ATLAS
+    support team, and sends a branded confirmation back to the user. The
+    endpoint is intentionally unauthenticated — anyone can reach out.
+    """
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from django.utils import timezone as tz
+        from .email_service import send_contact_confirmation, send_contact_notification
+
+        serializer = ContactFormSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        submitted_at = tz.now().strftime('%B %d, %Y at %I:%M %p UTC')
+
+        # Notify the ATLAS team (best-effort; never fail the submission).
+        try:
+            send_contact_notification(
+                name=data['name'],
+                email=data['email'],
+                institution=data['institution'],
+                message=data['message'],
+                submitted_at=submitted_at,
+            )
+        except Exception:
+            logger.exception('Failed to send contact notification for %s', data['email'])
+
+        # Send a confirmation back to the user (best-effort).
+        try:
+            send_contact_confirmation(name=data['name'], email=data['email'])
+        except Exception:
+            logger.exception('Failed to send contact confirmation to %s', data['email'])
+
+        return Response(
+            {
+                'detail': 'Message received. Our team will get back to you within 24 hours.',
+                'contact': {
+                    'name': data['name'],
+                    'email': data['email'],
+                    'institution': data['institution'],
+                    'submitted_at': submitted_at,
+                },
+            },
+            status=status.HTTP_201_CREATED,
+        )

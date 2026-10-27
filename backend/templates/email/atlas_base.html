@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}ATLAS{% endblock %}</title>
+  <style>
+    /* Client-specific styles */
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; height: auto; line-height: 100%; outline: none; text-decoration: none; }
+    table { border-collapse: collapse !important; }
+    body { height: 100% !important; margin: 0 !important; padding: 0 !important; width: 100% !important; }
+    /* iOS Blue Links */
+    a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; font-size: inherit !important; font-family: inherit !important; font-weight: inherit !important; line-height: inherit !important; }
+    /* Mobile styles */
+    @media screen and (max-width: 600px) {
+      .email-wrapper { width: 100% !important; }
+      .email-main { width: 100% !important; }
+      .content-cell { padding: 24px 20px !important; }
+      .hero-cell { padding: 28px 20px 20px !important; }
+      .otp-cell { padding: 18px !important; }
+      .otp-cell span { width: 44px !important; height: 44px !important; font-size: 22px !important; }
+      .btn-cell { padding: 10px !important; }
+      .btn-inner { padding: 14px 22px !important; font-size: 15px !important; }
+      .footer-cell { padding: 20px !important; }
+      .side-band { display: none !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0 !important; padding: 0 !important; background-color: #0A0A0B;">
+  <!-- Outer wrapper -->
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="email-wrapper" width="100%" style="background-color: #0A0A0B;">
+    <tr>
+      <td align="center" style="padding: 24px 12px;">
+        <!-- Main container -->
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="email-main" width="100%" style="max-width: 600px; background-color: #141416; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+          <!-- Gradient side bands -->
+          <tr>
+            <td class="side-band" width="22" style="width: 22px; min-width: 22px; background: linear-gradient(to bottom, #15803D 0%, #16A34A 45%, #86EFAC 50%, #16A34A 55%, #14532D 100%); border-radius: 16px 0 0 0; padding: 0;"></td>
+            <td style="padding: 0;">
+              <!-- Header / Hero -->
+              <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td class="hero-cell" style="padding: 36px 40px 28px; background: linear-gradient(135deg, #15803D 0%, #16A34A 50%, #14532D 100%); text-align: center;">
+                    {% block logo %}
+                      <span style="color: #FFFFFF; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 800; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 2px 12px rgba(0,0,0,0.3);">ATLAS</span>
+                    {% endblock %}
+                  </td>
+                </tr>
+                <!-- Body -->
+                <tr>
+                  <td class="content-cell" style="padding: 32px 40px; color: #F0F0F0; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6;">
+                    {% block content %}{% endblock %}
+                  </td>
+                </tr>
+                <!-- Footer -->
+                <tr>
+                  <td class="footer-cell" style="padding: 24px 40px 32px; background-color: #0A0A0B; border-top: 1px solid rgba(255,255,255,0.08); text-align: center;">
+                    <p style="margin: 0 0 8px; color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.5;">
+                      Built for Philippine Higher Education · CHED OBE-Compliant
+                    </p>
+                    <p style="margin: 0; color: rgba(255,255,255,0.3); font-size: 11px;">
+                      &copy; {{ year }} ATLAS. All rights reserved.<br />
+                          Lipa City, Batangas, Philippines
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            <td class="side-band" width="22" style="width: 22px; min-width: 22px; background: linear-gradient(to bottom, #15803D 0%, #16A34A 45%, #86EFAC 50%, #16A34A 55%, #14532D 100%); border-radius: 0 16px 0 0; padding: 0;"></td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

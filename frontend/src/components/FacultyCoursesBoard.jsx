@@ -1,5 +1,5 @@
 // src/components/FacultyCoursesBoard.jsx
-// Course landing page � light theme matching sign-in page.
+// Course landing page — light theme matching sign-in page.
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
@@ -107,10 +107,10 @@ export default function FacultyCoursesBoard() {
           <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 3 }}>{notice}</Alert>
         )}
 
-        <Typography variant="h5" sx={{ fontWeight: 800, color: '#1A1A1A', mb: 0.5 }}>
+        <Typography variant="h5" sx={{ fontWeight: 800, color: 'var(--text-primary)', mb: 0.5 }}>
           My Courses
         </Typography>
-        <Typography variant="body2" sx={{ color: '#666', mb: 3 }}>
+        <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 3 }}>
           Approved courses live here. New courses need admin approval first — use “Request new course”.
         </Typography>
 
@@ -122,7 +122,7 @@ export default function FacultyCoursesBoard() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#15803D' }} />
+            <CircularProgress sx={{ color: 'var(--brand-green-mid)' }} />
           </Box>
         ) : (
           <Box
@@ -136,22 +136,22 @@ export default function FacultyCoursesBoard() {
               elevation={0}
               onClick={openDialog}
               sx={{
-                bgcolor: '#fff', borderRadius: 3,
-                border: '2px dashed rgba(21,128,61,0.25)',
+                bgcolor: 'var(--bg-card)', borderRadius: 3,
+                border: '2px dashed var(--border-active)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: '#15803D', boxShadow: '0 4px 16px rgba(21,128,61,0.10)' },
+                '&:hover': { borderColor: 'var(--brand-green-mid)', boxShadow: 'var(--shadow-lg)' },
               }}
             >
               <CardActionArea sx={{ height: '100%' }}>
                 <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
-                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: '#F0FDF4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 28, color: '#15803D' }} />
+                  <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: 'var(--active-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <AddIcon sx={{ fontSize: 28, color: 'var(--brand-green-mid)' }} />
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: '#15803D', mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--brand-green-mid)', mt: 0.5 }}>
                     Request new course
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#666', textAlign: 'center' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
                     Needs admin approval
                   </Typography>
                 </CardContent>
@@ -166,10 +166,10 @@ export default function FacultyCoursesBoard() {
                   key={course.course_id}
                   elevation={0}
                   sx={{
-                    bgcolor: '#fff', borderRadius: 3,
-                    border: '1px solid rgba(0,0,0,0.08)',
+                    bgcolor: 'var(--bg-card)', borderRadius: 3,
+                    border: '1px solid var(--border-color)',
                     transition: 'transform 0.15s, box-shadow 0.15s',
-                    '&:hover': { transform: 'translateY(-3px)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' },
+                    '&:hover': { transform: 'translateY(-3px)', boxShadow: 'var(--shadow-lg)' },
                   }}
                 >
                   <CardActionArea
@@ -183,11 +183,11 @@ export default function FacultyCoursesBoard() {
                       <Typography variant="caption" sx={{ color: accentColor, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', fontSize: '0.65rem' }}>
                         {course.course_code}
                       </Typography>
-                      <Typography variant="body1" sx={{ fontWeight: 700, color: '#1A1A1A', lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
+                      <Typography variant="body1" sx={{ fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
                         {course.course_title}
                       </Typography>
-                      <Typography variant="caption" sx={{ color: '#888' }}>
-                        {course.syllabus_count ?? 0} syllabi � {course.assessment_count ?? 0} assessments
+                      <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                        {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
                       </Typography>
                     </CardContent>
                   </CardActionArea>
@@ -197,9 +197,9 @@ export default function FacultyCoursesBoard() {
 
             {courses.length === 0 && (
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
-                <SchoolIcon sx={{ fontSize: 72, color: '#ddd', mb: 2 }} />
-                <Typography variant="body1" sx={{ color: '#999' }}>No approved courses yet.</Typography>
-                <Typography variant="body2" sx={{ color: '#bbb', mt: 0.5 }}>Click “Request new course” — it appears here after admin approval.</Typography>
+                <SchoolIcon sx={{ fontSize: 72, color: 'var(--border-color)', mb: 2 }} />
+                <Typography variant="body1" sx={{ color: 'var(--text-tertiary)' }}>No approved courses yet.</Typography>
+                <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', mt: 0.5 }}>Click “Request new course” — it appears here after admin approval.</Typography>
               </Box>
             )}
           </Box>
@@ -208,7 +208,7 @@ export default function FacultyCoursesBoard() {
 
       {/* -- Request new course dialog -- */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, color: '#15803D' }}>Request new course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: 'var(--brand-green-mid)' }}>Request new course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
           <Alert severity="info" sx={{ mb: 0 }}>Your admin reviews every request before the course appears in your workspace.</Alert>
           {sendError && (
@@ -259,7 +259,7 @@ export default function FacultyCoursesBoard() {
           />
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
-          <Button onClick={closeDialog} disabled={sending} sx={{ color: '#666' }}>
+          <Button onClick={closeDialog} disabled={sending} sx={{ color: 'var(--text-secondary)' }}>
             Cancel
           </Button>
           <Button
@@ -267,7 +267,7 @@ export default function FacultyCoursesBoard() {
             onClick={handleSend}
             disabled={sending}
             startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
-            sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#14532D' }, fontWeight: 700, borderRadius: 2 }}
+            sx={{ bgcolor: 'var(--brand-green-mid)', '&:hover': { bgcolor: 'var(--brand-green-core)' }, fontWeight: 700, borderRadius: 2 }}
           >
             {sending ? 'Sending…' : 'Send for approval'}
           </Button>
