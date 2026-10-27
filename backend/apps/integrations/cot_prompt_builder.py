@@ -992,7 +992,7 @@ OUTPUT — Return the assessment using exactly this structure:
         system = (
             f"You are an expert parser specializing in BatStateU Course Information Syllabus (CIS) documents. "
             f"Your task is to parse the raw text segment for the '{section_key}' section into the exact JSON schema requested. "
-            f"Extract the complete and exact text from the segment — do not summarize or omit.{matrix_rule} "
+            f"Copy the complete text into the fields. Keep every sentence and every table row. Do not summarize, shorten, or omit.{matrix_rule} "
             f"Return ONLY a valid JSON object. No markdown fences, no comments, no extra text."
         )
 

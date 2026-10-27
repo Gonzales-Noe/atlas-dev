@@ -53,15 +53,27 @@ def _convert_with_docling(path, file_type, ocr=False):
     pdf_options.do_ocr = bool(ocr)
     pdf_options.do_code_enrichment = False
     pdf_options.do_formula_enrichment = False
-    # Keep tables — needed for syllabus structure; still much faster without OCR.
+    # Accurate table recognition. The default mode is already accurate; keep it.
     pdf_options.do_table_structure = True
+    if ocr and getattr(pdf_options, 'ocr_options', None) is not None:
+        try:
+            from docling.datamodel.pipeline_options import OcrMode
+            pdf_options.ocr_options.mode = OcrMode.FULL_PAGE
+        except Exception:
+            logger.debug('Full-page OCR mode is unavailable', exc_info=True)
+        pdf_options.ocr_options.force_full_page_ocr = True
+        if hasattr(pdf_options.ocr_options, 'scale'):
+            pdf_options.ocr_options.scale = 3.0
+        if hasattr(pdf_options, 'images_scale'):
+            pdf_options.images_scale = 2.0
     if hasattr(pdf_options, 'document_timeout'):
         ceiling = _OCR_TIMEOUT_SEC if ocr else _DOCLING_TIMEOUT_SEC
         pdf_options.document_timeout = float(max(5, ceiling - 5))
-    if hasattr(pdf_options, 'generate_page_images'):
-        pdf_options.generate_page_images = False
-    if hasattr(pdf_options, 'generate_picture_images'):
-        pdf_options.generate_picture_images = False
+    if not ocr:
+        if hasattr(pdf_options, 'generate_page_images'):
+            pdf_options.generate_page_images = False
+        if hasattr(pdf_options, 'generate_picture_images'):
+            pdf_options.generate_picture_images = False
 
     converter = DocumentConverter(
         format_options={
@@ -117,7 +129,7 @@ def _markdown_via_legacy(file_obj, file_type):
     return '\n\n'.join(text for text, _page in pages)
 
 
-def parse_upload(file_obj, file_type):
+def parse_upload(file_obj, file_type, docling_timeout=None):
     """
     Returns dict:
       parser: 'docling' | 'liteparse'
@@ -148,17 +160,18 @@ def parse_upload(file_obj, file_type):
         docling_error = 'Docling not installed'
 
     if use_docling:
+        timeout = int(docling_timeout or _DOCLING_TIMEOUT_SEC)
         try:
             logger.info(
                 'Trying Docling for syllabus template (%s), timeout=%ss',
-                file_type, _DOCLING_TIMEOUT_SEC,
+                file_type, timeout,
             )
-            document, docling_md = _docling_with_timeout(data, file_type, _DOCLING_TIMEOUT_SEC)
+            document, docling_md = _docling_with_timeout(data, file_type, timeout)
             parser = 'docling'
             raw = docling_md or legacy_raw
             logger.info('Syllabus template parsed with Docling tree (%s)', file_type)
         except FuturesTimeout:
-            docling_error = f'Docling timed out after {_DOCLING_TIMEOUT_SEC}s; used LiteParse'
+            docling_error = f'Docling timed out after {timeout}s; used LiteParse'
             logger.warning(docling_error)
             document = None
             parser = 'liteparse'
@@ -182,6 +195,21 @@ def parse_upload(file_obj, file_type):
     }
 
 
+def fast_markdown(data, file_type):
+    """Text-layer read. No Docling and no OCR, so a digital PDF or DOCX stays quick."""
+    from io import BytesIO
+
+    if file_type not in {'pdf', 'docx', 'txt', 'xlsx'}:
+        return ''
+    raw = _markdown_via_legacy(BytesIO(data), file_type) if file_type in {'pdf', 'docx'} else ''
+    if not raw and file_type in {'txt', 'xlsx'}:
+        return ''
+    text = (raw or '').strip()
+    if not text:
+        return ''
+    return mask_and_verify(text, context='syllabus_template')
+
+
 def extract_layout(data, file_type):
     """
     Layout read for faculty upload.
@@ -192,14 +220,14 @@ def extract_layout(data, file_type):
     """
     from io import BytesIO
 
-    parsed = parse_upload(BytesIO(data), file_type)
+    parsed = parse_upload(BytesIO(data), file_type, docling_timeout=80)
     text = (parsed.get('markdown') or '').strip()
     if file_type != 'pdf' or len(text) >= _SCAN_TEXT_FLOOR or not _docling_available():
         return parsed
 
     try:
         logger.info('Syllabus PDF looks like a scan; retrying Docling with OCR')
-        document, markdown = _docling_with_timeout(data, file_type, _OCR_TIMEOUT_SEC, ocr=True)
+        document, markdown = _docling_with_timeout(data, file_type, 100, ocr=True)
     except Exception as exc:
         note = f'OCR pass failed ({exc})'
         logger.warning(note)

@@ -14,7 +14,7 @@ from .syllabus_structure import _clean_label, _is_caps_line, _norm, build_outlin
 
 logger = logging.getLogger(__name__)
 
-_MAX_TAB_CHARS = 12000
+_MAX_TAB_CHARS = 20000
 
 # Longer phrases outrank short ones. A section title decides the tab;
 # subsection titles are used only when the title itself matches nothing.
@@ -26,7 +26,8 @@ _TAB_KEYWORDS = (
         'grading system', 'grade equivalence', 'grading',
     )),
     ('policies', 'Policies', (
-        'course policies', 'class policies', 'policies', 'policy',
+        'course policies', 'class policies', 'course requirements', 'classroom policy',
+        'policies', 'policy',
     )),
     ('ilofwmatrix', 'ILO–Framework Matrix', (
         'ilo-framework', 'ilo framework', 'ilo-so', 'ilo so', 'ilo-iga',
@@ -37,11 +38,12 @@ _TAB_KEYWORDS = (
     )),
     ('schedule', 'Weekly Schedule', (
         'course learning plan', 'learning plan', 'weekly schedule',
-        'teaching and learning activities', 'tla activities', 'weekly',
+        'teaching and learning activities', 'tla activities', 'course content',
+        'course outline', 'weekly',
     )),
     ('iloat', 'ILOs & Assessments', (
-        'intended learning outcomes', 'learning outcomes', 'course outcomes',
-        'assessment method', 'score distribution', 'assessment tasks',
+        'intended learning outcomes', 'course learning outcomes', 'learning outcomes',
+        'course outcomes', 'assessment method', 'score distribution', 'assessment tasks',
     )),
     ('fwmap', 'Framework Mapping', (
         'institutional graduate attributes', 'graduate attributes',
@@ -241,12 +243,111 @@ def split_markdown_into_tabs(markdown, outline=None):
     return _tabs_from_buckets(_merge_buckets(by_heading, by_outline))
 
 
-def tabs_from_layout_bytes(data, file_type):
-    """Read a PDF or DOCX once and split its headings and tables into tabs."""
-    from .syllabus_docling import build_outline_from_docling
-    from .syllabus_parse import extract_layout
+def _collapse(text):
+    return re.sub(r'\s+', ' ', str(text or '')).strip()
 
+
+def _covered(text, source_words):
+    words = [word for word in _norm(text).split() if len(word) >= 4]
+    if not words:
+        return True
+    return sum(1 for word in words if word in source_words) >= 0.85 * len(words)
+
+
+def supplement_markdown(layout_text, text_layer):
+    """Append text-layer paragraphs the layout read did not already contain."""
+    primary = layout_text or ''
+    source_words = set(_norm(primary).split())
+    missing = []
+    for block in re.split(r'\n\s*\n', text_layer or ''):
+        text = _collapse(block)
+        if len(text) < 40 or _covered(text, source_words):
+            continue
+        missing.append(text)
+        source_words.update(_norm(text).split())
+    if not missing:
+        return primary
+    return (primary.rstrip() + '\n\n' + '\n\n'.join(missing)).strip()
+
+
+def _faithful_string(value, source_lower, source_lines):
+    collapsed = _collapse(value)
+    if not collapsed:
+        return ''
+    lowered = collapsed.lower()
+    if lowered in source_lower:
+        return collapsed
+    if len(collapsed) <= 24:
+        return ''
+    sentences = [part.strip() for part in re.split(r'(?<=[.!?;])\s+', collapsed) if part.strip()]
+    kept = [part for part in sentences if part.lower() in source_lower]
+    if kept:
+        return ' '.join(kept)
+    words = [word for word in _norm(collapsed).split() if len(word) >= 3]
+    if len(words) < 4:
+        return ''
+    best = ''
+    best_score = 0
+    for line in source_lines:
+        line_words = set(_norm(line).split())
+        if not line_words:
+            continue
+        score = sum(1 for word in words if word in line_words) / len(words)
+        if score > best_score:
+            best_score = score
+            best = _collapse(line)
+    if best and best_score >= 0.72:
+        return best
+    return ''
+
+
+def faithful_parsed_data(parsed, source_text):
+    """Keep text that appears in the file. Drop sentences the model added or rewrote."""
+    source_lower = _collapse(source_text).lower()
+    source_lines = [line.strip() for line in str(source_text or '').splitlines() if line.strip()]
+
+    def walk(value, key=''):
+        if isinstance(value, dict):
+            cleaned = {name: walk(item, name) for name, item in value.items()}
+            level = _collapse(cleaned.get('level'))
+            verb = _collapse(cleaned.get('verb'))
+            if level and level.lower() not in source_lower:
+                if not verb or verb.lower() not in source_lower:
+                    cleaned['level'] = ''
+            return cleaned
+        if isinstance(value, list):
+            items = []
+            for item in value:
+                cleaned = walk(item, key)
+                if cleaned in ('', None, [], {}):
+                    continue
+                items.append(cleaned)
+            return items
+        if isinstance(value, str):
+            return _faithful_string(value, source_lower, source_lines)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            token = _collapse(value)
+            return value if token.lower() in source_lower else ''
+        return value
+
+    if not isinstance(parsed, dict):
+        return parsed
+    return walk(parsed)
+
+
+def tabs_from_layout_bytes(data, file_type):
+    """Read a PDF or DOCX with layout and tables, then fill any gap from the text layer.
+
+    A scanned PDF, one whose text layer is almost empty, is read again with
+    full-page OCR. The text layer of a digital file is still added where the
+    layout read left a paragraph out.
+    """
+    from .syllabus_docling import build_outline_from_docling
+    from .syllabus_parse import extract_layout, fast_markdown
+
+    quick = fast_markdown(data, file_type)
     parsed = extract_layout(data, file_type)
+    markdown = supplement_markdown(parsed.get('markdown') or '', quick)
     outline = None
     document = parsed.get('document')
     if document is not None:
@@ -254,7 +355,7 @@ def tabs_from_layout_bytes(data, file_type):
             outline = build_outline_from_docling(document)
         except Exception:
             logger.exception('Docling outline failed; using markdown headings')
-    return {
-        'parser': parsed.get('parser') or 'liteparse',
-        'tabs': split_markdown_into_tabs(parsed.get('markdown') or '', outline),
-    }
+    tabs = split_markdown_into_tabs(markdown, outline)
+    if tabs:
+        return {'parser': parsed.get('parser') or 'liteparse', 'tabs': tabs}
+    return {'parser': 'liteparse', 'tabs': split_markdown_into_tabs(quick)}
