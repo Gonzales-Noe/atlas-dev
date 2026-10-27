@@ -71,6 +71,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
+import { materializeTosExam, materializeTosList, tosMaterializedEqual, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
 import WorkspacePageHeader from './WorkspacePageHeader'
@@ -1020,10 +1021,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ilos: r.ilos || [],
       hours_class: r.hours_class ?? 0,
       hours_min:   r.hours_min ?? 0,
-      weight: r.weight || '',
-      bloom_items: BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_items || {})[k] || (r.bloom_dist || {})[k] || '' }), {}),
+      weight: r.weight === 0 || r.weight ? r.weight : '',
+      bloom_items: BLOOM_KEYS.reduce((a, k) => {
+        const stored = (r.bloom_items || {})[k]
+        const distributed = (r.bloom_dist || {})[k]
+        const count = stored === 0 || stored ? stored : (distributed === 0 || distributed ? distributed : '')
+        return { ...a, [k]: count }
+      }, {}),
       bloom_pct:   BLOOM_KEYS.reduce((a, k) => ({ ...a, [k]: (r.bloom_pct || {})[k] || '' }), {}),
-      total_points: r.total_points || '',
+      total_points: r.total_points === 0 || r.total_points ? r.total_points : '',
     })
     const normTos = (() => {
       const raw_tos = raw.tos || []
@@ -1041,6 +1047,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         checkedBy:  exam.checkedBy  || '',
         approvedBy: exam.approvedBy || '',
         totalTestItems: exam.totalTestItems || 0,
+        totalExamMinutes: exam.totalExamMinutes || 0,
         topics: (exam.topics || []).length ? exam.topics.map(normTopicRow) : [mkEmptyTopicRow()],
       }))
     })()
@@ -1534,6 +1541,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return message
   }
 
+  function syllabusForPersist(data = syllabusData) {
+    return { ...(data || {}), tos: materializeTosList(data?.tos) }
+  }
+
   async function handleExportDocx() {
     if (!courseId) {
       setSyllabusExportError('Select a course first before exporting.')
@@ -1544,7 +1555,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const formData = new FormData()
       formData.append('course_id', courseId)
-      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
       if (syllabusTemplateFile) {
         formData.append('template', syllabusTemplateFile)
       }
@@ -1574,7 +1585,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const formData = new FormData()
       formData.append('course_id', courseId)
-      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
       const response = await api.post('/curriculum/export-syllabus-pdf/', formData, {
         headers: { 'Content-Type': undefined },
         responseType: 'blob',
@@ -1601,7 +1612,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const formData = new FormData()
       formData.append('course_id', courseId)
-      formData.append('syllabus_data', JSON.stringify(syllabusData || {}))
+      formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
 
       const response = await api.post('/curriculum/export-tos-docx/', formData, {
         headers: { 'Content-Type': undefined },
@@ -1901,6 +1912,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           checkedBy: '',
           approvedBy: '',
           totalTestItems,
+          totalExamMinutes: 0,
           topics: [{
             id: `r-${now}-${Math.random().toString(36).slice(2, 5)}`,
             topic: '',
@@ -1920,6 +1932,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return { ...s, tos: finalTos }
     })
   }, [activeTab, activeSyllabusSectionKey])
+
+  // Keep saved TOS rows equal to the institutional formula: hours drive
+  // weight, points, and minutes; Bloom percentages drive item counts.
+  useEffect(() => {
+    setSyllabusData(prev => {
+      const nextTos = materializeTosList(prev.tos)
+      if (tosMaterializedEqual(prev.tos, nextTos)) return prev
+      return { ...prev, tos: nextTos }
+    })
+  }, [syllabusData.tos])
 
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
@@ -1946,7 +1968,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setSaveLoading(true)
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
-        syllabus_content: syllabusData,
+        syllabus_content: syllabusForPersist(),
       }, { timeout: 60000 })
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
@@ -2604,6 +2626,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
     }
     return levels.size > 0 ? Array.from(levels) : ['Remember']
+  }
+
+  function selectedTosBloomPlan(selectedTopics) {
+    const selected = new Set((selectedTopics || []).map(topic => String(topic || '').trim().toLowerCase()))
+    if (selected.size === 0) return { total: 0, counts: {} }
+    const exam = materializeTosExam(getAssessmentBlueprint().selectedExam || { topics: [] })
+    const counts = {}
+    let total = 0
+    for (const row of exam.topics || []) {
+      const name = String(row?.topic || row?.label || '').trim().toLowerCase()
+      if (!selected.has(name)) continue
+      for (const key of TOS_BLOOM_KEYS) {
+        const count = Number(row?.bloom_items?.[key] || 0)
+        if (count <= 0) continue
+        const label = key.charAt(0).toUpperCase() + key.slice(1)
+        counts[label] = (counts[label] || 0) + count
+        total += count
+      }
+    }
+    return { total, counts }
   }
 
   function formatAssessmentId(id) {
@@ -4442,7 +4484,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
 
       const addTosExam = () => {
-        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, topics: [newTopicRow()] }
+        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, totalExamMinutes: 0, topics: [newTopicRow()] }
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({ ...s, tos: [...s.tos, next] }))
         setActiveTosId(next.id)
@@ -4481,12 +4523,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setSyllabusData(s => ({ ...s, tos: s.tos.map(t => t.id !== examId ? t : { ...t, topics: t.topics.map(r => r.id !== rowId ? r : { ...r, ilos: checked ? [...(r.ilos || []), iloKey] : (r.ilos || []).filter(x => x !== iloKey) }) }) }))
       }
 
-      const totalHrs       = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0) : 0
-      const totalMins      = activeTos ? activeTos.topics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0) : 0
-      const totalTestItems = activeTos ? (Number(activeTos.totalTestItems) || 0) : 0
-      const computedWeight = (row) => totalHrs > 0 ? (Number(row.hours_class) || 0) / totalHrs * 100 : 0
-      const computedPts    = (row) => Math.round(computedWeight(row) / 100 * totalTestItems)
-      const computedBItems = (row, k) => { const pts = computedPts(row); return pts > 0 ? Math.round((parseFloat((row.bloom_pct || {})[k]) || 0) / 100 * pts) : 0 }
+      const solvedTos = activeTos ? materializeTosExam(activeTos) : null
+      const solvedTopics = solvedTos?.topics || []
+      const totalHrs = solvedTopics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0)
+      const totalMins = solvedTopics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0)
+      const totalPts = solvedTopics.reduce((s, r) => s + (Number(r.total_points) || 0), 0)
 
       // ── ILO-Bloom alignment helpers ────────────────────────────────────────
       const BLOOM_LEVEL_NUM = { remember: 1, understand: 2, apply: 3, analyze: 4, evaluate: 5, create: 6 }
@@ -4659,6 +4700,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <LField label="Checked and verified by" value={activeTos.checkedBy} onChange={e => updTosExam(activeTos.id, 'checkedBy', e.target.value)} />
                     <LField label="Approved by" value={activeTos.approvedBy} onChange={e => updTosExam(activeTos.id, 'approvedBy', e.target.value)} />
                     <LField label="Total test items" type="number" value={activeTos.totalTestItems || ''} onChange={e => updTosExam(activeTos.id, 'totalTestItems', Number(e.target.value) || 0)} />
+                    <LField label="Total exam minutes" type="number" value={activeTos.totalExamMinutes || ''} onChange={e => updTosExam(activeTos.id, 'totalExamMinutes', Number(e.target.value) || 0)} />
                   </Box>
                   {/* Table */}
                   <Box sx={{ p: 2.5 }}>
@@ -4690,8 +4732,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           </tr>
                         </thead>
                         <tbody>
-                           {activeTos.topics.map(row => {
+                           {solvedTopics.map(row => {
                              const matchedModule = findMatchingModuleForTopic(row.topic)
+                             const pctSum = BLOOM_KEYS.reduce((sum, key) => sum + (parseFloat((row.bloom_pct || {})[key]) || 0), 0)
+                             const pctOff = pctSum > 0 && Math.abs(pctSum - 100) > 0.5
                              return (
                             <tr key={row.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
                               <td style={{ ...TABLE_TD, textAlign: 'left' }}>
@@ -4776,10 +4820,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 })()}
                               </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_class ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value), 52)}</td>
-                              <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_min ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_min', e.target.value), 52)}</td>
+                              <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
+                                  {Number(activeTos.totalExamMinutes) > 0 ? (Number(row.hours_min) || 0) : '—'}
+                                </Typography>
+                              </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>
-                                  {totalHrs > 0 ? computedWeight(row).toFixed(1) + '%' : '—'}
+                                  {totalHrs > 0 ? `${Number(row.weight || 0).toFixed(1)}%` : '—'}
                                 </Typography>
                               </td>
                               {BLOOM_KEYS.map(k => {
@@ -4791,7 +4839,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   <React.Fragment key={k}>
                                     <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: bg, opacity: isAbove ? 0.45 : 1 }}>
                                       <Typography variant="caption" sx={{ fontWeight: 600, color: level === ceiling ? '#16a34a' : '#555' }}>
-                                        {computedBItems(row, k) > 0 ? computedBItems(row, k) : '—'}
+                                        {Number((row.bloom_items || {})[k] || 0) > 0 ? Number(row.bloom_items[k]) : '—'}
                                       </Typography>
                                     </td>
                                     <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: bg, opacity: isAbove ? 0.45 : 1 }}>
@@ -4802,8 +4850,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               })}
                               <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: MAROON_LIGHT }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: MAROON }}>
-                                  {computedPts(row) > 0 ? computedPts(row) : '—'}
+                                  {Number(row.total_points) > 0 ? row.total_points : '—'}
                                 </Typography>
+                                {pctOff && (
+                                  <div style={{ color: '#dc2626', fontSize: '0.6rem', fontWeight: 700, marginTop: 2 }}>
+                                    Bloom % is {pctSum.toFixed(0)}
+                                  </div>
+                                )}
                               </td>
                               <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                                 <RemoveBtn onClick={() => delTopicRow(activeTos.id, row.id)} disabled={activeTos.topics.length <= 1} />
@@ -4817,24 +4870,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'left' }}>Total</td>
                             <td style={TABLE_TD} />
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs}</td>
-                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalMins}</td>
-                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>100%</td>
+                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{Number(activeTos.totalExamMinutes) > 0 ? totalMins : '—'}</td>
+                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs > 0 ? '100%' : '—'}</td>
                             {BLOOM_KEYS.map(k => {
-                              const sumItems = activeTos.topics.reduce((acc, r) => acc + computedBItems(r, k), 0)
-                              const sumPct   = activeTos.topics.reduce((acc, r) => acc + (parseFloat((r.bloom_pct || {})[k]) || 0), 0)
+                              const sumItems = solvedTopics.reduce((acc, r) => acc + (Number((r.bloom_items || {})[k]) || 0), 0)
+                              const share = totalPts > 0 ? (sumItems / totalPts) * 100 : 0
                               return (
                                 <React.Fragment key={k}>
                                   <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
                                     {sumItems > 0 ? sumItems : ''}
                                   </td>
                                   <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
-                                    {sumPct > 0 ? `${sumPct.toFixed(1)}%` : ''}
+                                    {share > 0 ? `${share.toFixed(1)}%` : ''}
                                   </td>
                                 </React.Fragment>
                               )
                             })}
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: MAROON_LIGHT, color: MAROON }}>
-                              {totalTestItems > 0 ? totalTestItems : '—'}
+                              {totalPts > 0 ? totalPts : '—'}
                             </td>
                             <td style={{ ...TABLE_TD, borderRight: 'none' }} />
                           </tr>
@@ -4845,7 +4898,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <AddRowBtn label="Add topic row" onClick={() => addTopicRow(activeTos.id)} />
                     </Box>
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 1 }}>
-                      Weight % and Total Pts are auto-computed from hours and Total Test Items. Enter Bloom % per level per topic (must sum to 100%) — item counts are derived automatically.
+                      Weight, minutes, points, and Bloom item counts are computed for you. Class hours set the weight. That weight splits Total test items and Total exam minutes. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
                     </Typography>
                   </Box>
                 </>
@@ -6522,7 +6575,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <DialogContent>
                 <Stack spacing={2} sx={{ mt: 0.5 }}>
                   <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
-                    {'Select TOS topics to cover. Generated modules are shown as alignment references; TOS supplies the assessment structure, Bloom distribution, and item count.'}
+                    {'Select TOS topics to cover. The assessment uses each selected topic\'s Bloom item counts exactly.'}
                   </Alert>
                   <LField label="Assessment Title" value={assessmentGenTitle}
                     onChange={e => setAssessmentGenTitle(e.target.value)} />
@@ -6556,6 +6609,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       </Stack>
                     )}
                   </Box>
+                  {majorExams.length > 0 && (() => {
+                    const plan = selectedTosBloomPlan(assessmentGenSelectedTopics)
+                    const breakdown = Object.entries(plan.counts).map(([level, count]) => `${level} ${count}`).join(', ')
+                    return (
+                      <Typography variant="caption" sx={{ color: '#555', display: 'block' }}>
+                        {plan.total > 0
+                          ? `This assessment will have ${plan.total} item${plan.total === 1 ? '' : 's'}: ${breakdown}.`
+                          : 'Selected topics have no Bloom item counts yet. Set class hours, total test items, and Bloom % on the TOS first.'}
+                      </Typography>
+                    )
+                  })()}
                   {actionLoading && (
                     <Box sx={{ textAlign: 'center', py: 1 }}>
                       <CircularProgress size={22} sx={{ color: MAROON }} />
