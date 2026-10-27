@@ -103,7 +103,7 @@ const SYLLABUS_SECTIONS = [
   { key: 'iloatmatrix',   label: 'ILO–AT Matrix' },
   { key: 'fwmap',         label: 'Framework Mapping' },
   { key: 'ilofwmatrix',   label: 'ILO–Framework Matrix' },
-  { key: 'schedule',      label: 'Weekly Schedule' },
+  { key: 'schedule',      label: 'Teaching, Learning, and Assessment (TLA) Activities' },
   { key: 'grading',       label: 'Grading' },
   { key: 'policies',      label: 'Policies' },
 ]
@@ -139,17 +139,7 @@ const EMPTY_POLICY  = { title: '', content: '' }
 const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', ilo_refs: [], so: '', delivery: '' }
 
 // Weekly Schedule controls are shared across all courses. Only the Topic /
-// Activity field is AI-generatable; Task and Delivery are faculty-selected
-// pipeline values and must not vary with institution-specific ATS records.
-const WEEKLY_SCHEDULE_TASK_OPTIONS = [
-  'Lecture/Discussion',
-  'Learning Activity',
-  'Quiz',
-  'Assignment',
-  'Project',
-  'Midterm Examination',
-  'Final Examination',
-]
+// Activity field is AI-generatable; Delivery is a fixed faculty-selected value.
 const WEEKLY_SCHEDULE_DELIVERY_OPTIONS = ['F2F', 'Online', 'Hybrid', 'Exam', 'Lab']
 
 function normalizeWeeklyScheduleChoice(value, options, fallback = '') {
@@ -395,9 +385,26 @@ function detectFileType(file) {
   return ''
 }
 
-function inlineInput(value, onChange, minWidth = 80, onFocus) {
+function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
+  const { numeric = false, allowRange = false } = options
+  const numericPattern = allowRange ? /^\d*(?:-\d*)?$/ : /^\d*$/
+  const handleChange = event => {
+    if (!numeric || numericPattern.test(event.target.value)) onChange(event)
+  }
   return (
-    <TextField size="small" value={value} onChange={onChange} onFocus={onFocus}
+    <TextField
+      size="small"
+      value={value}
+      onChange={handleChange}
+      onFocus={onFocus}
+      // Keep these as text inputs so browsers do not render number spinners.
+      // Validation below still limits numeric cells to digits (or a numeric range for Wks).
+      type="text"
+      onKeyDown={numeric ? event => {
+        if (['e', 'E', '+', '.', ','].includes(event.key) || (!allowRange && event.key === '-')) {
+          event.preventDefault()
+        }
+      } : undefined}
       sx={{
         minWidth,
         '& .MuiOutlinedInput-root': {
@@ -406,7 +413,10 @@ function inlineInput(value, onChange, minWidth = 80, onFocus) {
           '&.Mui-focused fieldset': { borderColor: MAROON },
         },
       }}
-      inputProps={{ style: { padding: '5px 8px' } }}
+      inputProps={{
+        inputMode: 'numeric',
+        style: { padding: '5px 8px' },
+      }}
     />
   )
 }
@@ -968,7 +978,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         : { chapter: ch.chapter || '', topics: ch.description || '', weeks: '', outcomes: '', ilo: '', so: '', delivery: '' }
       return {
         ...normalized,
-        outcomes: normalizeWeeklyScheduleChoice(normalized.outcomes, WEEKLY_SCHEDULE_TASK_OPTIONS, 'Learning Activity'),
+        outcomes: normalized.outcomes || '',
         delivery: normalizeWeeklyScheduleChoice(normalized.delivery, WEEKLY_SCHEDULE_DELIVERY_OPTIONS, 'F2F'),
       }
     })
@@ -4317,49 +4327,37 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 8. Weekly Schedule ───────────────────────────────────────────────────
     if (sectionKey === 'schedule') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
-      const _allSubs = (syllabusData.ats || []).flatMap(at => at.subs || [])
       const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
       return (
-        <SectionCard title="Weekly schedule"
+        <SectionCard title="Teaching, Learning, and Assessment (TLA) Activities"
           action={<AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
           <Box sx={{ overflowX: 'auto', minWidth: '100%' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem', minWidth: '100%', tableLayout: 'auto' }}>
               <thead>
                 <tr>
-                  <th style={{ ...TABLE_TH, minWidth: 36, width: 36 }}>Week</th>
-                  <th style={{ ...TABLE_TH, minWidth: 380 }}>Topic / activity</th>
-                  <th style={{ ...TABLE_TH, minWidth: 200 }}>Task</th>
-                  <th style={{ ...TABLE_TH, minWidth: 110 }}>Delivery</th>
-                  <th style={{ ...TABLE_TH, minWidth: 130 }}>ILOs &amp; pts</th>
+                  <th style={{ ...TABLE_TH, minWidth: 44, width: 44 }}>Ch.</th>
+                  <th style={{ ...TABLE_TH, minWidth: 380 }}>Topics / Reading List</th>
+                  <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>Wks</th>
+                  <th style={{ ...TABLE_TH, minWidth: 300 }}>Topic Outcomes</th>
+                  <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>ILO</th>
+                  <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>SO</th>
+                  <th style={{ ...TABLE_TH, minWidth: 150 }}>Delivery Method</th>
                   <th style={{ ...TABLE_TH, minWidth: 44, width: 44, textAlign: 'center' }}>Action</th>
                   <th style={{ ...TABLE_TH, borderRight: 'none' }} />
                 </tr>
               </thead>
               <tbody>
                 {chapters.map((ch, i) => {
-                  const _weekNum = parseInt(ch.chapter, 10) || null
-                  const _isLecture = !ch.outcomes || ch.outcomes === 'Lecture/Discussion'
-                  const _subTask = !_isLecture ? _allSubs.find(s => s.code === ch.outcomes) : null
-                  const _existingMod = _isLecture && _weekNum
+                  const _weekNum = parseInt(ch.chapter || ch.weeks, 10) || null
+                  const _existingMod = _weekNum
                     ? (workspaceApi.data?.modules || []).find(m => m.week_number === _weekNum)
                     : null
-                  const _existingAssessment = !_isLecture
-                    ? (workspaceApi.data?.assessments || []).find(a =>
-                        a.title?.toLowerCase().includes((ch.outcomes || '').toLowerCase())
-                      )
-                    : null
-                  const _btnLabel = _isLecture
-                    ? (_existingMod ? 'View Module' : 'Generate Module')
-                    : (_existingAssessment ? 'View Assessment' : 'Generate Assessment')
-                  const _btnColor = _isLecture
-                    ? (_existingMod ? '#1565c0' : MAROON)
-                    : (_existingAssessment ? '#2e7d32' : '#e65100')
-                  const _btnHover = _isLecture
-                    ? (_existingMod ? '#e3f2fd' : MAROON_LIGHT)
-                    : (_existingAssessment ? '#e8f5e9' : '#fff3e0')
+                  const _btnLabel = _existingMod ? 'View Module' : 'Generate Module'
+                  const _btnColor = _existingMod ? '#1565c0' : MAROON
+                  const _btnHover = _existingMod ? '#e3f2fd' : MAROON_LIGHT
                   return (
                   <tr key={i}>
-                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 32)}</td>
+                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 40, undefined, { numeric: true })}</td>
                     <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.topics || ''}
@@ -4369,37 +4367,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
-                    <td style={TABLE_TD}>
-                      <select
+                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                      {inlineInput(ch.weeks, e => setSylArrObj('tla_chapters', i, 'weeks', e.target.value), 60, undefined, { numeric: true, allowRange: true })}
+                    </td>
+                    <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
+                      <textarea
                         value={ch.outcomes || ''}
-                        onChange={e => {
-                          const newOutcome = e.target.value
-                          const sub = _allSubs.find(s => s.code === newOutcome)
-                          const autoIlo = (sub?.ilos?.length) ? sub.ilos.join(', ') : undefined
-                          setIsDirty(true); setSaveSuccess(false)
-                          setSyllabusData(s => ({
-                            ...s,
-                            tla_chapters: s.tla_chapters.map((c, j) => {
-                              if (j !== i) return c
-                              const next = { ...c, outcomes: newOutcome }
-                              if (autoIlo !== undefined) next.ilo = autoIlo
-                              return next
-                            }),
-                          }))
-                        }}
-                        style={{ ...SELECT_STYLE, width: 200 }}
-                      >
-                        <option value="">—</option>
-                        {WEEKLY_SCHEDULE_TASK_OPTIONS.map(option => (
-                          <option key={option} value={option}>{option}</option>
-                        ))}
-                      </select>
+                        onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
+                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
+                        ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                      />
+                    </td>
+                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                      {inlineInput(ch.ilo, e => setSylArrObj('tla_chapters', i, 'ilo', e.target.value), 60, undefined, { numeric: true })}
+                    </td>
+                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                      {inlineInput(ch.so, e => setSylArrObj('tla_chapters', i, 'so', e.target.value), 60, undefined, { numeric: true })}
                     </td>
                     <td style={TABLE_TD}>
                       <select
                         value={ch.delivery || ''}
                         onChange={e => setSylArrObj('tla_chapters', i, 'delivery', e.target.value)}
-                        style={{ ...SELECT_STYLE, width: 105 }}
+                        style={{ ...SELECT_STYLE, width: 145 }}
                       >
                         <option value="">—</option>
                         {WEEKLY_SCHEDULE_DELIVERY_OPTIONS.map(option => (
@@ -4407,61 +4397,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         ))}
                       </select>
                     </td>
-                    <td style={{ ...TABLE_TD, minWidth: 130 }}>
-                      {_isLecture ? (
-                        <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
-                      ) : _subTask ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-                            {(_subTask.ilos || []).map(iloId => (
-                              <span key={iloId} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: MAROON_LIGHT, color: MAROON, whiteSpace: 'nowrap' }}>{iloId}</span>
-                            ))}
-                          </div>
-                          {(_subTask.ilos || []).length > 0 && (
-                            <span style={{ fontSize: '0.68rem', color: '#888' }}>
-                              {(_subTask.ilos || []).map(iloId => {
-                                const pts = (_subTask.iloTotals || {})[iloId] ?? (_subTask.total || 0)
-                                return `${iloId}:${pts}`
-                              }).join(' ')} pts
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span style={{ color: '#ccc', fontSize: '0.8rem' }}>—</span>
-                      )}
-                    </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
                       <button
                         type="button"
                         title={_btnLabel}
                         onClick={() => {
-                          if (_isLecture) {
-                            if (!_existingMod) {
-                              // Queue the topic — the Module tab opens the generate dialog for it.
-                              setPendingGenerate({
-                                topic: ch.topics || '',
-                                week: _weekNum || 1,
-                                topic_id: `schedule-${i}`,
-                              })
-                              setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '', topic_id: `schedule-${i}` }))
-                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
-                            } else {
-                              setSelectedModule(null); setModuleContent(null); setChatOpen(false)
-                            }
-                            setResultText('')
-                            setActiveTab('module')
+                          if (!_existingMod) {
+                            // Queue the topic — the Module tab opens the generate dialog for it.
+                            setPendingGenerate({
+                              topic: ch.topics || '',
+                              week: _weekNum || 1,
+                              topic_id: `schedule-${i}`,
+                            })
+                            setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '', topic_id: `schedule-${i}` }))
                           } else {
-                            setActiveTab('assessment')
+                            setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                           }
+                          setResultText('')
+                          setActiveTab('module')
                         }}
                         style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: `1.5px solid ${_btnColor}`, borderRadius: 6, background: 'transparent', color: _btnColor, cursor: 'pointer', padding: 0, flexShrink: 0 }}
                         onMouseEnter={e => { e.currentTarget.style.background = _btnHover }}
                         onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
                       >
-                        {_isLecture
-                          ? (_existingMod ? <BookOpen size={14} /> : <Zap size={14} />)
-                          : (_existingAssessment ? <ClipboardCheck size={14} /> : <ClipboardList size={14} />)
-                        }
+                        {_existingMod ? <BookOpen size={14} /> : <Zap size={14} />}
                       </button>
                     </td>
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
