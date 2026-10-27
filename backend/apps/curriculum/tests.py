@@ -288,6 +288,11 @@ Week 1 | Network models
         self.assertEqual(cleaned['ilos'], ['Install an operating system.'])
         self.assertEqual(cleaned['vision'], '')
         self.assertEqual(cleaned['passing_grade'], '')
+        wrapped = faithful_parsed_data(
+            {'description': 'This course covers systems administration.'},
+            'This course covers\nsystems administration.',
+        )
+        self.assertEqual(wrapped['description'], 'This course covers systems administration.')
 
         merged = supplement_markdown(
             'Course Description\nShort.',

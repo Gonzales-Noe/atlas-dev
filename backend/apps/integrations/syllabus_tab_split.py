@@ -270,69 +270,89 @@ def supplement_markdown(layout_text, text_layer):
     return (primary.rstrip() + '\n\n' + '\n\n'.join(missing)).strip()
 
 
-def _faithful_string(value, source_lower, source_lines):
+def _word_hits(text, source_words):
+    words = [word for word in _norm(text).split() if len(word) >= 2]
+    if not words:
+        return 1.0
+    return sum(1 for word in words if word in source_words) / len(words)
+
+
+def _faithful_string(value, source_lower, source_words):
+    """Keep a value whose words are in the file, even when a PDF line break split them.
+
+    A sentence that is mostly new words is dropped. Short labels stay when
+    their words appear anywhere in the tab, not only on one line.
+    """
     collapsed = _collapse(value)
     if not collapsed:
         return ''
-    lowered = collapsed.lower()
-    if lowered in source_lower:
-        return collapsed
-    if len(collapsed) <= 24:
-        return ''
     sentences = [part.strip() for part in re.split(r'(?<=[.!?;])\s+', collapsed) if part.strip()]
-    kept = [part for part in sentences if part.lower() in source_lower]
-    if kept:
+    if len(sentences) > 1:
+        kept = [
+            part for part in sentences
+            if part.lower() in source_lower or _word_hits(part, source_words) >= 0.6
+        ]
         return ' '.join(kept)
-    words = [word for word in _norm(collapsed).split() if len(word) >= 3]
-    if len(words) < 4:
-        return ''
-    best = ''
-    best_score = 0
-    for line in source_lines:
-        line_words = set(_norm(line).split())
-        if not line_words:
-            continue
-        score = sum(1 for word in words if word in line_words) / len(words)
-        if score > best_score:
-            best_score = score
-            best = _collapse(line)
-    if best and best_score >= 0.72:
-        return best
+    if collapsed.lower() in source_lower or _word_hits(collapsed, source_words) >= 0.6:
+        return collapsed
     return ''
 
 
-def faithful_parsed_data(parsed, source_text):
-    """Keep text that appears in the file. Drop sentences the model added or rewrote."""
-    source_lower = _collapse(source_text).lower()
-    source_lines = [line.strip() for line in str(source_text or '').splitlines() if line.strip()]
+def _has_extracted_text(value):
+    if value is None or value == '' or value == [] or value == {}:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return True
+    if isinstance(value, list):
+        return any(_has_extracted_text(item) for item in value)
+    if isinstance(value, dict):
+        return any(_has_extracted_text(item) for item in value.values())
+    return False
 
-    def walk(value, key=''):
+
+def faithful_parsed_data(parsed, source_text):
+    """Drop sentences the model added. Keep file text even when a line break split it."""
+    source_lower = _collapse(source_text).lower()
+    source_words = set(_norm(source_text).split())
+
+    def walk(value):
         if isinstance(value, dict):
-            cleaned = {name: walk(item, name) for name, item in value.items()}
-            level = _collapse(cleaned.get('level'))
-            verb = _collapse(cleaned.get('verb'))
-            if level and level.lower() not in source_lower:
-                if not verb or verb.lower() not in source_lower:
-                    cleaned['level'] = ''
-            return cleaned
+            return {name: walk(item) for name, item in value.items()}
         if isinstance(value, list):
-            items = []
-            for item in value:
-                cleaned = walk(item, key)
-                if cleaned in ('', None, [], {}):
-                    continue
-                items.append(cleaned)
-            return items
+            return [
+                item for item in (walk(entry) for entry in value)
+                if item not in ('', None, [], {})
+            ]
         if isinstance(value, str):
-            return _faithful_string(value, source_lower, source_lines)
+            return _faithful_string(value, source_lower, source_words)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             token = _collapse(value)
-            return value if token.lower() in source_lower else ''
+            return value if token.lower() in source_lower or token in source_words else ''
         return value
 
     if not isinstance(parsed, dict):
         return parsed
+    cleaned = walk(parsed)
+    if not _has_extracted_text(cleaned) and _has_extracted_text(parsed):
+        return parsed
+    return cleaned
+
+    if not isinstance(parsed, dict):
+        return parsed
     return walk(parsed)
+
+
+def _prefer_richer_tabs(primary, secondary):
+    """Keep every tab either read found, and the longer copy when both found it."""
+    by_key = {tab['key']: tab for tab in primary}
+    for tab in secondary:
+        current = by_key.get(tab['key'])
+        if current is None or len(tab.get('text') or '') > len(current.get('text') or '') * 1.25:
+            by_key[tab['key']] = tab
+    order = [key for key, _label, _keywords in _TAB_KEYWORDS]
+    return [by_key[key] for key in order if key in by_key]
 
 
 def tabs_from_layout_bytes(data, file_type):
@@ -355,7 +375,9 @@ def tabs_from_layout_bytes(data, file_type):
             outline = build_outline_from_docling(document)
         except Exception:
             logger.exception('Docling outline failed; using markdown headings')
-    tabs = split_markdown_into_tabs(markdown, outline)
-    if tabs:
-        return {'parser': parsed.get('parser') or 'liteparse', 'tabs': tabs}
-    return {'parser': 'liteparse', 'tabs': split_markdown_into_tabs(quick)}
+    layout_tabs = split_markdown_into_tabs(markdown, outline)
+    quick_tabs = split_markdown_into_tabs(quick) if quick else []
+    return {
+        'parser': parsed.get('parser') or 'liteparse',
+        'tabs': _prefer_richer_tabs(layout_tabs, quick_tabs),
+    }
