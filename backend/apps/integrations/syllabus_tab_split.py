@@ -8,8 +8,9 @@ decide where a section starts, and it is not asked to retype the document.
 from __future__ import annotations
 
 import logging
+import re
 
-from .syllabus_structure import _norm, build_outline
+from .syllabus_structure import _clean_label, _is_caps_line, _norm, build_outline
 
 logger = logging.getLogger(__name__)
 
@@ -98,67 +99,115 @@ def _best_tab(label, subsections=None):
     return best_key
 
 
-def _section_text(section):
+_MARKDOWN_HEADING_RE = re.compile(r'^#{1,6}\s+(.*\S)\s*$')
+_BOLD_HEADING_RE = re.compile(r'^\*\*([^*]+)\*\*:?$')
+_NUMBERED_HEADING_RE = re.compile(r'^(?:[IVXLC]{1,6}|\d{1,2})[.)]\s+(.+)$')
+
+
+def _heading_text(line):
+    """A line that starts a syllabus section, or None when it is body text."""
+    stripped = str(line or '').strip()
+    if not stripped or '|' in stripped or stripped.endswith(('.', '?', '!')):
+        return None
+    match = _MARKDOWN_HEADING_RE.match(stripped) or _BOLD_HEADING_RE.match(stripped)
+    if match:
+        return _clean_label(match.group(1))
+    numbered = _NUMBERED_HEADING_RE.match(stripped)
+    if numbered:
+        label = _clean_label(numbered.group(1))
+        if label and (_best_tab(label) or _is_caps_line(label)):
+            return label
+        return None
+    if _is_caps_line(stripped):
+        return _clean_label(stripped)
+    label = _clean_label(stripped)
+    if label and 1 <= len(label.split()) <= 12 and _best_tab(label):
+        return label
+    return None
+
+
+def _append_chunk(buckets, heading, lines, last_key):
+    text = '\n'.join(part for part in lines if str(part).strip()).strip()
+    if not text:
+        return last_key
+    key = _best_tab(heading or '') or last_key or 'basic'
+    buckets[key].append(text)
+    return key
+
+
+def _split_by_heading_lines(markdown):
+    buckets = {key: [] for key, _label, _keywords in _TAB_KEYWORDS}
+    heading = ''
     lines = []
-    label = str(section.get('label') or '').strip()
-    if label:
-        lines.append(label)
-    columns = [str(column).strip() for column in (section.get('table_columns') or []) if str(column).strip()]
-    if columns:
-        lines.append(' | '.join(columns))
-    for sub in section.get('subsections') or []:
-        if not isinstance(sub, dict):
+    last_key = None
+    for raw in (markdown or '').splitlines():
+        next_heading = _heading_text(raw)
+        if next_heading and lines:
+            last_key = _append_chunk(buckets, heading, lines, last_key)
+            heading = next_heading
+            lines = [next_heading]
             continue
-        sub_label = str(sub.get('label') or '').strip()
-        if sub_label:
-            lines.append(sub_label)
-        sub_columns = [str(column).strip() for column in (sub.get('table_columns') or []) if str(column).strip()]
-        if sub_columns:
-            lines.append(' | '.join(sub_columns))
+        if next_heading and not lines:
+            heading = next_heading
+            lines = [next_heading]
+            continue
+        lines.append(raw)
+    _append_chunk(buckets, heading, lines, last_key)
+    return buckets
+
+
+def _body_lines(section):
     body = section.get('body') or []
     if isinstance(body, list):
-        lines.extend(str(line).strip() for line in body if str(line).strip())
-    elif str(body).strip():
-        lines.append(str(body).strip())
-    return '\n'.join(lines).strip()
+        return [str(line).strip() for line in body if str(line).strip()]
+    text = str(body).strip()
+    return [text] if text else []
 
 
-def _preamble(markdown):
-    lines = []
-    for line in (markdown or '').splitlines():
-        if line.lstrip().startswith('#'):
-            break
-        lines.append(line)
-    return '\n'.join(lines).strip()
-
-
-def _outline_sections(markdown, outline):
-    sections = [section for section in (outline or []) if isinstance(section, dict)]
-    if sections:
-        return sections
-    built = build_outline(markdown or '')
-    if built:
-        return built
-    text = (markdown or '').strip()
-    if not text:
-        return []
-    return [{'label': 'Course Information', 'subsections': [], 'table_columns': [], 'body': text.splitlines()}]
-
-
-def split_markdown_into_tabs(markdown, outline=None):
-    """Return [{key, label, text}] for tabs that received source text."""
+def _split_by_outline(markdown, outline):
+    """Route each subsection's own lines, so a parent title cannot swallow later tabs."""
     buckets = {key: [] for key, _label, _keywords in _TAB_KEYWORDS}
-    preamble = _preamble(markdown)
-    if len(preamble) >= 40:
-        buckets['basic'].append(preamble)
+    sections = [section for section in (outline or []) if isinstance(section, dict)]
+    if not sections:
+        sections = build_outline(markdown or '')
+    for section in sections:
+        label = str(section.get('label') or '').strip()
+        parent_key = _best_tab(label)
+        subsections = [
+            sub for sub in (section.get('subsections') or [])
+            if isinstance(sub, dict) and str(sub.get('label') or '').strip()
+        ]
+        labels = {_norm(sub.get('label')): sub.get('label') for sub in subsections}
+        current_key = parent_key
+        current_lines = [label] if label else []
+        columns = [str(column).strip() for column in (section.get('table_columns') or []) if str(column).strip()]
+        if columns:
+            current_lines.append(' | '.join(columns))
 
-    for section in _outline_sections(markdown, outline):
-        key = _best_tab(section.get('label') or '', section.get('subsections'))
-        text = _section_text(section)
-        if not key or not text:
-            continue
-        buckets[key].append(text)
+        def flush():
+            nonlocal current_lines, current_key
+            text = '\n'.join(line for line in current_lines if line).strip()
+            if text and current_key:
+                buckets[current_key].append(text)
+            current_lines = []
 
+        for line in _body_lines(section):
+            probe = line[:-1].strip() if line.endswith(':') else line
+            matched = labels.get(_norm(probe)) or _heading_text(line)
+            matched_key = _best_tab(matched or '')
+            if matched and matched_key and matched_key != current_key:
+                flush()
+                current_key = matched_key
+                current_lines = [line]
+                continue
+            current_lines.append(line)
+        if not current_key and current_lines:
+            current_key = 'basic'
+        flush()
+    return buckets
+
+
+def _tabs_from_buckets(buckets):
     tabs = []
     for key, label, _keywords in _TAB_KEYWORDS:
         combined = '\n\n'.join(part for part in buckets[key] if part).strip()
@@ -170,6 +219,26 @@ def split_markdown_into_tabs(markdown, outline=None):
             'text': combined[:_MAX_TAB_CHARS],
         })
     return tabs
+
+
+def _merge_buckets(primary, secondary):
+    """Keep the split that found more tabs, and fill any tab it missed."""
+    primary_count = sum(1 for parts in primary.values() if any(parts))
+    secondary_count = sum(1 for parts in secondary.values() if any(parts))
+    if secondary_count > primary_count:
+        primary, secondary = secondary, primary
+    merged = {key: list(primary[key]) for key in primary}
+    for key, parts in secondary.items():
+        if parts and not any(merged[key]):
+            merged[key] = list(parts)
+    return merged
+
+
+def split_markdown_into_tabs(markdown, outline=None):
+    """Return [{key, label, text}] for tabs that received source text."""
+    by_heading = _split_by_heading_lines(markdown)
+    by_outline = _split_by_outline(markdown, outline)
+    return _tabs_from_buckets(_merge_buckets(by_heading, by_outline))
 
 
 def tabs_from_layout_bytes(data, file_type):

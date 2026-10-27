@@ -1514,6 +1514,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     formData.append('file', file)
     formData.append('course_id', courseId)
     const failed = []
+    const filled = []
     let countedTrial = false
     try {
       const { data } = await api.post('/curriculum/prepare-syllabus-tabs/', formData, {
@@ -1541,6 +1542,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           countedTrial = true
           if (res.data?.success && res.data.parsed_data) {
             mergeUploadedSyllabus(res.data.parsed_data)
+            filled.push(step.label)
           } else {
             failed.push(step.label)
           }
@@ -1548,8 +1550,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           failed.push(step.label)
         }
       }
-      if (failed.length) {
+      if (!filled.length) {
+        setSyllabusUploadError(failed.length
+          ? `Could not fill the syllabus tabs: ${failed.join(', ')}.`
+          : 'No syllabus sections were found in this file.')
+      } else if (failed.length) {
         setSyllabusUploadError(`Filled the syllabus except: ${failed.join(', ')}.`)
+      } else if (filled.length <= 1) {
+        setSyllabusUploadError(`Only ${filled[0]} was filled. The other sections were not found as their own headings, so those tabs were left unchanged.`)
       } else {
         setSyllabusUploadSuccess(true)
       }
@@ -1908,7 +1916,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [workspaceApi.data])
 
   // Auto-clear transient notifications
-  useEffect(() => { if (!saveError) return; const t = setTimeout(() => setSaveError(''), 3000); return () => clearTimeout(t) }, [saveError])
   useEffect(() => { if (!actionError) return; const t = setTimeout(() => setActionError(''), 3000); return () => clearTimeout(t) }, [actionError])
   useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
   useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
@@ -2023,6 +2030,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
         syllabus_content: syllabusForPersist(),
+        syllabus_id: syllabusId,
       }, { timeout: 60000 })
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
@@ -5097,12 +5105,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (activeTab === 'syllabus') {
       const aiSectionFields = getAiFieldsForCurrentSection()
       const showSaveFooter = isDirty
-      const aiFooterHeight = activeSyllabusSectionKey === 'iloat' ? 136 : 96
-      const totalFooterPb  = (showSaveFooter ? 72 : 0) + aiFooterHeight
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
-                <Box sx={{ flex: 1, overflow: 'auto', pb: totalFooterPb > 0 ? `${totalFooterPb}px` : 0 }}>
+                <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             {course && (
               <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
                 {/* hidden file input for syllabus upload */}
@@ -5256,24 +5262,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Paper>
           )}
 
-          {/* Sticky save footer — appears when any field has been edited */}
+          </Box>
           {showSaveFooter && (
             <Box sx={{
-              position: 'sticky', bottom: `${aiFooterHeight}px`,
+              flexShrink: 0,
               bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
-              boxShadow: '0 -2px 12px rgba(0,0,0,0.08)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
-              zIndex: 10,
+              zIndex: 30,
             }}>
               {saveError
                 ? <>
-                    <Typography variant="caption" sx={{ color: '#c62828', flex: 1 }}>{saveError}</Typography>
-                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#c62828', p: 0.25 }}>
+                    <Typography variant="caption" sx={{ color: '#FCA5A5', flex: 1 }}>{saveError}</Typography>
+                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#FCA5A5', p: 0.25 }}>
                       <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
                     </IconButton>
                   </>
-                : <Typography variant="caption" sx={{ color: '#666', flex: 1 }}>
+                : <Typography variant="caption" sx={{ color: '#E5E7EB', flex: 1 }}>
                     You have unsaved changes in this syllabus.
                   </Typography>
               }
@@ -5291,14 +5296,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* The AI pipeline stays visible in every syllabus section. */}
           <Box sx={{
-            position: 'sticky',
-            bottom: 0,
+            flexShrink: 0,
             bgcolor: '#15181A',
             borderTop: '2px solid rgba(134,239,172,0.65)',
-            boxShadow: '0 -4px 20px rgba(0,0,0,0.28)',
             px: 2,
             py: 1,
-            zIndex: 20,
+            zIndex: 30,
           }}>
             <Stack spacing={0.75}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -5579,7 +5582,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* Saved confirmation — auto-dismissed after 3 s */}
           {saveSuccess && !isDirty && (
-            <Box sx={{ position: 'sticky', bottom: 0 }}>
+            <Box sx={{ flexShrink: 0 }}>
               <AutoAlert
                 message="Syllabus saved successfully."
                 severity="success"

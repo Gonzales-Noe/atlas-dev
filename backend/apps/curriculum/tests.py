@@ -219,3 +219,32 @@ Attendance is required.
         self.assertIn('Introduction | 2 | 40', tabs['tos'])
         self.assertIn('Attendance is required', tabs['policies'])
         self.assertNotIn('Introduction | 2 | 40', tabs.get('schedule', ''))
+
+    def test_parent_section_does_not_keep_later_tabs(self):
+        markdown = """
+# Course Information
+Batangas State University
+College of Informatics and Computing Sciences
+
+## Course Description
+This course covers systems administration.
+
+## Intended Learning Outcomes
+Install an operating system.
+
+## Course Learning Plan
+Week 1 | Orientation
+
+## Grading System
+Excellent | 1.00 | 98 - 100
+
+## Course Policies
+Attendance is required.
+"""
+        tabs = {tab['key']: tab['text'] for tab in split_markdown_into_tabs(markdown)}
+        self.assertIn('systems administration', tabs['details'].lower())
+        self.assertIn('install an operating system', tabs['iloat'].lower())
+        self.assertIn('Week 1 | Orientation', tabs['schedule'])
+        self.assertIn('Excellent | 1.00', tabs['grading'])
+        self.assertIn('Attendance is required', tabs['policies'])
+        self.assertNotIn('systems administration', tabs['basic'].lower())
