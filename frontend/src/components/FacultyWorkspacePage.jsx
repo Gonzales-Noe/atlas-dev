@@ -364,22 +364,6 @@ function GenButton({ children, ...props }) {
   )
 }
 
-function WorkspaceProgressBanner({ label, detail, value }) {
-  const determinate = Number.isFinite(value)
-  const safeValue = determinate ? Math.max(0, Math.min(100, value)) : undefined
-  return (
-    <Box role="status" aria-live="polite" sx={{ flexShrink: 0, px: { xs: 1.5, md: 3 }, py: 0.75, bgcolor: '#15181A', borderBottom: '1px solid rgba(134,239,172,0.28)' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.45 }}>
-        <CircularProgress size={13} sx={{ color: '#86EFAC' }} />
-        <Typography variant="caption" sx={{ color: '#F0F0F2', fontWeight: 700 }}>{label}</Typography>
-        {determinate && <Typography variant="caption" sx={{ color: '#86EFAC', ml: 'auto', fontWeight: 700 }}>{Math.round(safeValue)}%</Typography>}
-      </Box>
-      {detail && <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.58)', display: 'block', mb: 0.5 }}>{detail}</Typography>}
-      <LinearProgress variant={determinate ? 'determinate' : 'indeterminate'} value={safeValue}
-        sx={{ height: 3, borderRadius: 99, bgcolor: 'rgba(255,255,255,0.12)', '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC', borderRadius: 99 } }} />
-    </Box>
-  )
-}
 function AddRowBtn({ onClick, label }) {
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
@@ -5245,7 +5229,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
                     {aiGenerating
-                      ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                      ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length} items in ${activeConfiguredSection?.label || 'the selected section'}`
                       : aiPipelineDrafts
                         ? 'Your drafts are ready. Review them before adding them to your syllabus.'
                         : aiSectionFields.length
@@ -5376,7 +5360,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.12)' }}>
               <DialogContentText sx={{ color: '#D1D5DB', mb: 2 }}>
                 {aiGenerating
-                  ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                  ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length} items in ${activeConfiguredSection?.label || 'the selected section'}`
                   : 'Check the suggestions below. You can add them to your syllabus, remove them, or try again.'}
               </DialogContentText>
               {aiGenerating ? (
@@ -7173,8 +7157,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       </Box>
 
       {/* Mobile nav Drawer — pipeline steps with completion checks */}
-      {activeProgress && <WorkspaceProgressBanner {...activeProgress} />}
-
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
         PaperProps={{ sx: { width: 260, display: 'flex', flexDirection: 'column', bgcolor: '#101014' } }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
