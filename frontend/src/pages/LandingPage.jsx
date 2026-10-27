@@ -1,5 +1,6 @@
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
+import api from '../config/api'
 import atlasLogo from '../assets/atlas-logo.png'
 import atlasHero from '../assets/atlas.png'
 import delacion from '../assets/Delacion.png'
@@ -10,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import SignInPage from './auth/signInPage'
 import SignUpPage from './auth/signUpPage'
 import PasswordResetPage from './auth/passwordReset'
+import InstallAppButton from '../components/InstallAppButton'
 
 // ── Scroll-triggered animation hook ─────────────────────────────────────────
 function useInView(threshold = 0.15) {
@@ -223,6 +225,7 @@ export default function LandingPage() {
   const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
   const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', message: '' })
   const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
+  const [contactSubmitting, setContactSubmitting] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {
@@ -297,11 +300,33 @@ export default function LandingPage() {
       return
     }
 
-    setContactStatus({
-      type: 'success',
-      message: `Thanks, ${trimmedName}! Your message has been queued for the ATLAS team.`,
-    })
-    setContactForm({ name: '', email: '', institution: '', message: '' })
+    setContactSubmitting(true)
+    setContactStatus({ type: '', message: '' })
+
+    api
+      .post('/users/contact/', {
+        name: trimmedName,
+        email: trimmedEmail,
+        institution: trimmedInstitution,
+        message: trimmedMessage,
+      })
+      .then(({ data }) => {
+        setContactStatus({
+          type: 'success',
+          message: data?.detail || `Thanks, ${trimmedName}! Your message has been sent to the ATLAS team.`,
+        })
+        setContactForm({ name: '', email: '', institution: '', message: '' })
+      })
+      .catch((err) => {
+        const detail = err?.response?.data?.detail
+          || err?.response?.data?.name?.[0]
+          || err?.response?.data?.email?.[0]
+          || err?.response?.data?.institution?.[0]
+          || err?.response?.data?.message?.[0]
+          || 'Could not send your message. Please try again or email us directly.'
+        setContactStatus({ type: 'error', message: detail })
+      })
+      .finally(() => setContactSubmitting(false))
   }
 
   const [featRef, featInView] = useInView()
@@ -758,6 +783,7 @@ export default function LandingPage() {
 
           {/* Auth Buttons */}
           <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <InstallAppButton style={{ padding: '0.55rem 1.1rem', fontSize: '0.85rem' }} />
             {isAuthenticated ? (
               <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
                 Dashboard
@@ -803,13 +829,16 @@ export default function LandingPage() {
             {label}
           </button>
         ))}
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
-          <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-            SIGN IN
-          </button>
-          <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-            SIGN UP
-          </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
+          <InstallAppButton fullWidth style={{ padding: '0.7rem', fontSize: '0.9rem' }} />
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+              SIGN IN
+            </button>
+            <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+              SIGN UP
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1193,15 +1222,23 @@ export default function LandingPage() {
                     padding: '0.7rem 0.9rem',
                     borderRadius: 10,
                     fontSize: '0.82rem',
-                    border: contactStatus.type === 'success' ? '1px solid rgba(88, 204, 135, 0.5)' : '1px solid rgba(134, 239, 172, 0.5)',
-                    background: contactStatus.type === 'success' ? 'rgba(88, 204, 135, 0.12)' : 'rgba(134, 239, 172, 0.09)',
+                    border: contactStatus.type === 'success'
+                      ? '1px solid rgba(88, 204, 135, 0.5)'
+                      : '1px solid rgba(239, 68, 68, 0.5)',
+                    background: contactStatus.type === 'success'
+                      ? 'rgba(22,163,74,0.12)'
+                      : 'rgba(239, 68, 68, 0.12)',
                     color: contactStatus.type === 'success' ? '#c9f7d6' : '#ffd1d1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
                   }}>
-                    {contactStatus.message}
+                    <span style={{ fontSize: '1rem' }}>{contactStatus.type === 'success' ? '✓' : '!'}</span>
+                    <span>{contactStatus.message}</span>
                   </div>
                 )}
-                <button type="submit" className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }}>
-                  Send Message
+                <button type="submit" className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }} disabled={contactSubmitting}>
+                  {contactSubmitting ? 'Sending...' : 'Send Message'}
                 </button>
               </form>
             </GlassCard>
@@ -1221,14 +1258,9 @@ export default function LandingPage() {
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
-            {['Privacy Policy', 'Terms and Conditions', 'Contact'].map(label => (
-              <span key={label} style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', cursor: 'pointer', transition: 'color 0.2s' }}
-                onMouseEnter={e => e.target.style.color = 'rgba(255,255,255,0.7)'}
-                onMouseLeave={e => e.target.style.color = 'rgba(255,255,255,0.3)'}
-              >
-                {label}
-              </span>
-            ))}
+            <Link to="/legal/privacy" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link to="/legal/terms" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
+            <Link to="/contact" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
           </div>
         </div>
       </footer>

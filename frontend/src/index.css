@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS Tokens ─────────────────────────────────────────── */
+/* ── CSS Tokens ─────── ──────────────────────────────────── */
 :root {
   /* Background layers */
   --bg-base:       #08080A;
@@ -40,6 +40,25 @@
   --active-color:       #86EFAC;
   --active-color-hover: #BBF7D0;
   --active-bg:          rgba(134, 239, 172, 0.12);
+
+  /* Shell (dashboard sidebar / topbar / its popup menus) */
+  --shell-bg:              rgba(10, 10, 14, 0.92);
+  --shell-topbar-bg:       rgba(8, 8, 10, 0.85);
+  --shell-border:          rgba(255, 255, 255, 0.07);
+  --shell-divider:         rgba(255, 255, 255, 0.06);
+  --shell-btn-bg:          rgba(255, 255, 255, 0.06);
+  --shell-btn-border:      rgba(255, 255, 255, 0.12);
+  --shell-btn-hover-bg:    rgba(255, 255, 255, 0.12);
+  --shell-icon:            rgba(255, 255, 255, 0.45);
+  --shell-icon-strong:     rgba(255, 255, 255, 0.75);
+  --shell-hover-bg:        rgba(255, 255, 255, 0.06);
+  --shell-hover-border:    rgba(255, 255, 255, 0.1);
+  --shell-menu-bg:         #16161E;
+  --shell-menu-border:     rgba(255, 255, 255, 0.1);
+  --shell-chip-bg:         rgba(255, 255, 255, 0.04);
+  --shell-chip-hover-bg:   rgba(255, 255, 255, 0.08);
+  --shell-nav-active-bg:       linear-gradient(135deg, rgba(21, 128, 61, 0.35), rgba(22, 163, 74, 0.20));
+  --shell-nav-active-border:   rgba(22, 163, 74, 0.35);
 
   /* Status */
   --green:  #34C759;
@@ -416,6 +435,26 @@ body.atlas-light {
   --active-color:       #166534;
   --active-color-hover: #14532D;
   --active-bg:          #F0FDF4;
+  /* Shell (dashboard sidebar / topbar / its popup menus) */
+  --shell-bg:              rgba(255, 255, 255, 0.94);
+  --shell-topbar-bg:       rgba(255, 255, 255, 0.88);
+  --shell-border:          rgba(0, 0, 0, 0.08);
+  --shell-divider:         rgba(0, 0, 0, 0.06);
+  --shell-btn-bg:          rgba(0, 0, 0, 0.04);
+  --shell-btn-border:      rgba(0, 0, 0, 0.12);
+  --shell-btn-hover-bg:    rgba(0, 0, 0, 0.08);
+  --shell-icon:            rgba(0, 0, 0, 0.45);
+  --shell-icon-strong:     rgba(0, 0, 0, 0.62);
+  --shell-hover-bg:        rgba(0, 0, 0, 0.04);
+  --shell-hover-border:    rgba(0, 0, 0, 0.08);
+  --shell-menu-bg:         #ffffff;
+  --shell-menu-border:     rgba(0, 0, 0, 0.1);
+  --shell-chip-bg:         rgba(0, 0, 0, 0.03);
+  --shell-chip-hover-bg:   rgba(0, 0, 0, 0.06);
+  --shell-nav-active-bg:       linear-gradient(135deg, rgba(21, 128, 61, 0.10), rgba(22, 163, 74, 0.06));
+  --shell-nav-active-border:   rgba(21, 128, 61, 0.35);
+  /* Role badge labels need a darker green to stay legible on the light shell. */
+  --shell-badge-text:          #15803D;
   color: var(--text-primary);
   background: var(--bg-base);
 }

@@ -14,7 +14,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000,           // 30s — LLM calls can be slow
+  timeout: 300000,          // 5 min — LLM generation can be slow
 })
 
 // ── Request interceptor: attach JWT access token ──────────────────────────

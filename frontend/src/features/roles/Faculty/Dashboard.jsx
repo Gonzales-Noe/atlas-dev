@@ -6,12 +6,8 @@ import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
 import CardActionArea from '@mui/material/CardActionArea'
 import CardContent from '@mui/material/CardContent'
+import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
-import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import AddIcon from '@mui/icons-material/Add'
 import AutoStoriesIcon from '@mui/icons-material/AutoStories'
@@ -20,68 +16,61 @@ import LayersIcon from '@mui/icons-material/Layers'
 import SchoolIcon from '@mui/icons-material/School'
 import ScienceIcon from '@mui/icons-material/Science'
 import { useNavigate } from 'react-router-dom'
-import api from '../../../config/api'
 import useApi from '../../../hooks/useApi'
+import { fetchMyCourseRequests } from './courseRequestApi'
+import CourseRequestDialog from './CourseRequestDialog'
 import { ROUTES } from '../../../config/route'
 import { PageHeader, PrimaryBtn } from '../../../components/ui'
 import FacultyLayout from './FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
 const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
-const COURSE_FIELD_SX = {
-  '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
-  '& .MuiInputLabel-root.Mui-focused': { color: '#86EFAC' },
-  '& .MuiOutlinedInput-root': {
-    color: 'var(--text-primary)',
-    '& fieldset': { borderColor: 'var(--border-color)' },
-    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
-    '&.Mui-focused fieldset': { borderColor: '#16A34A' },
-  },
-  '& .MuiInputBase-input::placeholder': { color: 'var(--text-tertiary)', opacity: 1 },
-}
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
   const [errorDismissed, setErrorDismissed] = useState(false)
-  const { data, loading, error } = useApi('/curriculum/faculty-courses/')
+  const { data, loading, error, refetch } = useApi('/curriculum/faculty-courses/')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [form, setForm] = useState({ course_title: '', course_code: '', description: '' })
+  const [notice, setNotice] = useState('')
+  const [requests, setRequests] = useState([])
+  const [requestsLoading, setRequestsLoading] = useState(true)
+  const [requestsError, setRequestsError] = useState('')
 
   useEffect(() => { setErrorDismissed(false) }, [error])
 
   const courses = data?.courses || []
+  const pendingRequests = requests.filter((r) => r.status === 'pending')
+  const decidedRequests = requests.filter((r) => r.status !== 'pending')
 
-  const openDialog = () => {
-    setForm({ course_title: '', course_code: '', description: '' })
-    setCreateError('')
-    setDialogOpen(true)
+  const loadRequests = async () => {
+    setRequestsLoading(true)
+    setRequestsError('')
+    try {
+      setRequests(await fetchMyCourseRequests())
+    } catch (err) {
+      setRequestsError(err.message || 'Could not load your course requests.')
+    } finally {
+      setRequestsLoading(false)
+    }
   }
 
-  const closeDialog = () => { if (!creating) setDialogOpen(false) }
+  useEffect(() => { loadRequests() }, [])
 
-  const handleFormChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }))
+  const handleSubmitted = (created) => {
+    setDialogOpen(false)
+    setNotice(
+      created
+        ? `Request for ${created.course_code} sent. Your admin will review it before it appears below.`
+        : 'Request sent. Your admin will review it before it appears below.',
+    )
+    loadRequests()
+    refetch?.()
+  }
 
-  const handleCreate = async () => {
-    if (!form.course_code.trim() || !form.course_title.trim()) {
-      setCreateError('Course code and title are required.')
-      return
-    }
-
-    setCreating(true)
-    setCreateError('')
-
-    try {
-      const { data: json } = await api.post('/curriculum/courses/', form)
-      setDialogOpen(false)
-      navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', json.course.course_id))
-    } catch (err) {
-      const detail = err.response?.data?.detail || 'Failed to create course.'
-      setCreateError(detail)
-    } finally {
-      setCreating(false)
-    }
+  const statusChip = (status) => {
+    if (status === 'pending') return <Chip size="small" label="Pending review" color="warning" variant="outlined" />
+    if (status === 'approved') return <Chip size="small" label="Approved" color="success" variant="outlined" />
+    return <Chip size="small" label="Needs changes" color="error" variant="outlined" />
   }
 
   return (
@@ -92,17 +81,42 @@ export default function FacultyDashboard() {
             {error}
           </Alert>
         )}
+        {notice && (
+          <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 3 }}>
+            {notice}
+          </Alert>
+        )}
 
         <PageHeader
           title="My Courses"
           subtitle="Open a course workspace for syllabi, modules, assessments, grading, and knowledge uploads."
           action={(
-            <PrimaryBtn onClick={openDialog}>
+            <PrimaryBtn onClick={() => setDialogOpen(true)}>
               <AddIcon sx={{ fontSize: 18 }} />
-              Create course
+              Request course
             </PrimaryBtn>
           )}
         />
+
+        {pendingRequests.length > 0 && (
+          <Box sx={{ mb: 4, border: '1px solid var(--border-color)', borderRadius: 3, p: 2.5, background: 'var(--bg-card)' }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 800, mb: 0.5 }}>
+              Waiting for admin approval ({pendingRequests.length})
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
+              These stay here until your admin approves them — approved courses move to your workspace list below.
+            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.2 }}>
+              {pendingRequests.map((req) => (
+                <Box key={req.request_id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                  {statusChip(req.status)}
+                  <Typography variant="body2" sx={{ fontWeight: 700 }}>{req.course_code}</Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>{req.course_title}</Typography>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        )}
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
@@ -161,80 +175,57 @@ export default function FacultyDashboard() {
             {courses.length === 0 && !loading && !error && (
               <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
                 <SchoolIcon sx={{ fontSize: 56, color: 'var(--text-tertiary)', mb: 2 }} />
-                <Typography variant="body1" sx={{ color: 'var(--text-secondary)' }}>No assigned courses yet.</Typography>
-                <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', mt: 0.5 }}>Create a course to get started.</Typography>
+                <Typography variant="body1" sx={{ color: 'var(--text-secondary)' }}>No approved courses yet.</Typography>
+                <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', mt: 0.5 }}>Request a course above — it appears here after admin approval.</Typography>
+              </Box>
+            )}
+          </Box>
+        )}
+
+        {(requestsLoading || requestsError || decidedRequests.length > 0) && (
+          <Box sx={{ mt: 5 }}>
+            <Typography variant="h6" sx={{ fontWeight: 800, mb: 0.5 }}>My requests</Typography>
+            <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
+              Track what you sent for approval, including admin feedback on rejected requests.
+            </Typography>
+            {requestsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                <CircularProgress size={24} sx={{ color: '#15803D' }} />
+              </Box>
+            ) : requestsError ? (
+              <Alert severity="error">{requestsError}</Alert>
+            ) : decidedRequests.length === 0 ? (
+              <Typography variant="body2" sx={{ color: 'var(--text-tertiary)' }}>
+                No decided requests yet — approved or rejected requests will show here.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                {decidedRequests.slice(0, 8).map((req) => (
+                  <Box key={req.request_id} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, p: 2, background: 'var(--bg-card)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                      {statusChip(req.status)}
+                      <Typography variant="body2" sx={{ fontWeight: 700 }}>{req.course_code}</Typography>
+                      <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>{req.course_title}</Typography>
+                    </Box>
+                    {req.status === 'rejected' && req.admin_note && (
+                      <Typography variant="body2" sx={{ mt: 1, color: 'var(--text-secondary)' }}>
+                        Admin feedback: {req.admin_note}
+                      </Typography>
+                    )}
+                    {req.status === 'approved' && req.created_course_id && (
+                      <Button size="small" sx={{ mt: 1, textTransform: 'none' }} onClick={() => navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', req.created_course_id))}>
+                        Open workspace
+                      </Button>
+                    )}
+                  </Box>
+                ))}
               </Box>
             )}
           </Box>
         )}
       </Box>
 
-      <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth
-        PaperProps={{
-          sx: {
-            backgroundColor: 'var(--bg-card)',
-            backgroundImage: 'none',
-            color: 'var(--text-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: 3,
-          }
-        }}
-      >
-        <DialogTitle sx={{ fontWeight: 800, color: 'var(--text-primary)' }}>New Course</DialogTitle>
-        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: '8px !important' }}>
-          {createError && (
-            <Alert severity="error" sx={{ mb: 0 }}>{createError}</Alert>
-          )}
-          <TextField
-            label="Course Title"
-            name="course_title"
-            value={form.course_title}
-            onChange={handleFormChange}
-            placeholder="Enter course title"
-            size="small"
-            autoFocus
-            disabled={creating}
-            inputProps={{ maxLength: 255 }}
-            sx={COURSE_FIELD_SX}
-          />
-          <TextField
-            label="Course Code"
-            name="course_code"
-            value={form.course_code}
-            onChange={handleFormChange}
-            placeholder="Enter course code"
-            size="small"
-            disabled={creating}
-            inputProps={{ maxLength: 100 }}
-            sx={COURSE_FIELD_SX}
-          />
-          <TextField
-            label="Course information (Description)"
-            name="description"
-            value={form.description}
-            onChange={handleFormChange}
-            placeholder="Optional description"
-            size="small"
-            multiline
-            rows={3}
-            disabled={creating}
-            sx={COURSE_FIELD_SX}
-          />
-        </DialogContent>
-        <DialogActions sx={{ p: 3, borderTop: '1px solid var(--border-color)' }}>
-          <Button onClick={closeDialog} disabled={creating} sx={{ color: 'text.secondary', textTransform: 'none', fontWeight: 600 }}>
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            disabled={creating}
-            onClick={handleCreate}
-            sx={{ background: '#15803D', '&:hover': { background: '#14532D' }, borderRadius: 1.5, textTransform: 'none', fontWeight: 700 }}
-          >
-            {creating ? 'Creating…' : 'Create Course'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <CourseRequestDialog open={dialogOpen} onClose={() => setDialogOpen(false)} onSubmitted={handleSubmitted} />
     </FacultyLayout>
   )
 }

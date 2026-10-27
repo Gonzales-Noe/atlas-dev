@@ -15,12 +15,16 @@ from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
     Assessment,
     AssessmentItem,
+    AuditLog,
     Course,
     CourseFile,
     CourseLoad,
+    CourseRequest,
+    CourseRequestStatus,
     InstitutionCustomization,
     Module,
     ParentChunk,
+    Section,
     StudentData,
     Syllabus,
     UserRole,
@@ -215,6 +219,13 @@ def faculty_course_workspace(request, course_id):
                 'assigned_sections': assigned_sections,
                 'instructor_name': request.user.full_name,
                 'instructor_email': request.user.email,
+                'module_topic_section_key': course.module_topic_section_key,
+                'module_topic_subsection_key': course.module_topic_subsection_key,
+                'module_topic_confirmed_at': (
+                    course.module_topic_confirmed_at.isoformat()
+                    if course.module_topic_confirmed_at
+                    else None
+                ),
             },
             'customization': {
                 'header_image_url': customization.header_image_url,
@@ -292,26 +303,94 @@ def save_syllabus_content(request, course_id):
         return error_response
 
     content = request.data.get('syllabus_content')
-    if content is None:
+    if not isinstance(content, dict):
         return Response(
             {'success': False, 'detail': 'syllabus_content is required.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Get or create a Draft syllabus (safe against MultipleObjectsReturned)
-    syllabus = Syllabus.objects.filter(course=course, status='Draft').order_by('-syllabus_id').first()
+    # Write the syllabus the workspace is showing. A Draft-only update can
+    # leave the edits on a row the screen never loads again.
+    syllabus = None
+    syllabus_id = request.data.get('syllabus_id')
+    if syllabus_id:
+        syllabus = Syllabus.objects.filter(course=course, syllabus_id=syllabus_id).first()
+    if syllabus is None:
+        syllabus = (
+            Syllabus.objects.filter(course=course)
+            .order_by('-generated_at', '-syllabus_id')
+            .first()
+        )
     created = False
     if not syllabus:
         syllabus = Syllabus.objects.create(course=course, status='Draft', term='', version=1)
         created = True
     syllabus.syllabus_content = content
-    syllabus.save(update_fields=['syllabus_content'])
+    update_fields = ['syllabus_content']
+    if syllabus.generated_at is None:
+        syllabus.generated_at = timezone.now()
+        update_fields.append('generated_at')
+    syllabus.save(update_fields=update_fields)
 
     return Response(
         {
             'success': True,
             'syllabus_id': str(syllabus.syllabus_id),
             'created': created,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["PATCH", "POST"])
+@permission_classes([IsAuthenticated])
+def save_course_module_topic(request, course_id):
+    """Lock in the syllabus section/subsection the Module tab reads topics from.
+
+    The choice is made once per course: once confirmed it cannot be changed,
+    so every module for the course is generated from the same source.
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    if course.module_topic_confirmed_at:
+        return Response(
+            {
+                "success": False,
+                "error": "The module topic source is already confirmed for this course.",
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    section_key = (request.data.get("section_key") or "").strip()
+    subsection_key = (request.data.get("subsection_key") or "").strip()
+    if not section_key:
+        return Response(
+            {"success": False, "error": "A syllabus section is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course.module_topic_section_key = section_key
+    course.module_topic_subsection_key = subsection_key
+    course.module_topic_confirmed_at = timezone.now()
+    course.save(
+        update_fields=[
+            "module_topic_section_key",
+            "module_topic_subsection_key",
+            "module_topic_confirmed_at",
+        ]
+    )
+
+    return Response(
+        {
+            "success": True,
+            "module_topic_section_key": course.module_topic_section_key,
+            "module_topic_subsection_key": course.module_topic_subsection_key,
+            "module_topic_confirmed_at": course.module_topic_confirmed_at.isoformat(),
         },
         status=status.HTTP_200_OK,
     )
@@ -432,6 +511,77 @@ def generate_syllabus(request):
         )
 
 
+def _week_topic_from_chapters(chapters, week_number):
+    """Return the weekly-schedule topic that covers ``week_number``.
+
+    A schedule row keeps the week(s) it covers in ``weeks`` ("2", "2-3") and
+    its own row number in ``chapter`` ("1").  The UI sends the chapter number
+    as the week number, so both are matched before falling back to a range hit.
+    """
+    if not chapters:
+        return ""
+    target = str(week_number)
+    for entry in chapters:
+        if str(entry.get("chapter") or "").strip() == target:
+            topic = str(entry.get("topics") or "").strip()
+            if topic:
+                return topic
+    for entry in chapters:
+        weeks_val = str(entry.get("weeks") or "").strip()
+        if not weeks_val:
+            continue
+        if weeks_val == target:
+            topic = str(entry.get("topics") or "").strip()
+            if topic:
+                return topic
+        if "-" in weeks_val:
+            parts = weeks_val.split("-")
+            if len(parts) == 2:
+                try:
+                    start, end = int(parts[0]), int(parts[1])
+                except ValueError:
+                    continue
+                if start <= week_number <= end:
+                    topic = str(entry.get("topics") or "").strip()
+                    if topic:
+                        return topic
+    return ""
+
+
+def _section_context_from_syllabus(syllabus_content, section_key, subsection_key):
+    """Pull the raw text of a syllabus section / subsection out of saved content."""
+    if not syllabus_content or not section_key:
+        return ""
+    custom_subsections = syllabus_content.get("custom_subsections") or {}
+    custom_sections = syllabus_content.get("custom_sections") or {}
+    custom_tables = syllabus_content.get("custom_tables") or {}
+
+    parts = []
+    if subsection_key:
+        text = (custom_subsections.get(section_key) or {}).get(subsection_key)
+        if text:
+            parts.append(str(text).strip())
+        for row in (custom_tables.get(section_key) or {}).get(subsection_key) or []:
+            if isinstance(row, list):
+                cells = [str(cell).strip() for cell in row if str(cell).strip()]
+                if cells:
+                    parts.append(" | ".join(cells))
+    else:
+        text = custom_sections.get(section_key)
+        if text:
+            parts.append(str(text).strip())
+        for sub_text in (custom_subsections.get(section_key) or {}).values():
+            if sub_text:
+                parts.append(str(sub_text).strip())
+        for rows in (custom_tables.get(section_key) or {}).values():
+            for row in rows or []:
+                if isinstance(row, list):
+                    cells = [str(cell).strip() for cell in row if str(cell).strip()]
+                    if cells:
+                        parts.append(" | ".join(cells))
+    return "\n".join(part for part in parts if part)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def generate_module(request):
@@ -473,6 +623,14 @@ def generate_module(request):
     provider = data.get("provider") or None
     extra_instructions = data.get("extra_instructions", "")
     selected_doc_ids = [str(uid) for uid in (data.get("selected_doc_ids") or [])]
+    # ── Syllabus section / subsection the topic came from ─────────────────
+    section_key = (data.get("section_key") or "").strip()
+    section_label = (data.get("section_label") or "").strip()
+    subsection_key = (data.get("subsection_key") or "").strip()
+    subsection_label = (data.get("subsection_label") or "").strip()
+    explicit_topic = (data.get("topic") or "").strip()
+    explicit_context = (data.get("syllabus_context") or "").strip()
+    structuring_level = (data.get("structuring_level") or "standard").strip()
     # Use module title (not course name) as the RAG anchor — course names like
     # "ATLAS Smoke Testing Fundamentals" are not real academic subjects and pollute search.
     _custom_search_query = data.get("search_query")
@@ -489,7 +647,8 @@ def generate_module(request):
     # ── Extract real course data for prompt enrichment ─────────────────────
     course_description: str = course.description or ""
     syllabus_ilos: list = []
-    week_topic: str = ""
+    week_topic: str = explicit_topic
+    section_context: str = explicit_context
     latest_syllabus_for_data = (
         Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
         .order_by("-syllabus_id")
@@ -500,20 +659,10 @@ def generate_module(request):
         if not course_description:
             course_description = sc.get("description") or ""
         syllabus_ilos = [str(i) for i in (sc.get("ilos") or []) if i]
-        for entry in (sc.get("tla_chapters") or []):
-            weeks_val = str(entry.get("weeks", "")).strip()
-            if weeks_val == str(week_number):
-                week_topic = entry.get("topics") or ""
-                break
-            if "-" in weeks_val:
-                parts = weeks_val.split("-")
-                if len(parts) == 2:
-                    try:
-                        if int(parts[0]) <= week_number <= int(parts[1]):
-                            week_topic = entry.get("topics") or ""
-                            break
-                    except ValueError:
-                        pass
+        if not week_topic:
+            week_topic = _week_topic_from_chapters(sc.get("tla_chapters") or [], week_number)
+        if not section_context:
+            section_context = _section_context_from_syllabus(sc, section_key, subsection_key)
 
     # Enhance the default search query with week topic once we have it
     if not _custom_search_query and week_topic:
@@ -561,6 +710,10 @@ def generate_module(request):
             ilos=syllabus_ilos,
             course_description=course_description,
             week_topic=week_topic,
+            section_label=section_label,
+            subsection_label=subsection_label,
+            section_context=section_context,
+            structuring_level=structuring_level,
         )
 
         # ── Step 4: LLM call with auto-fallback ────────────────────────────
@@ -1080,10 +1233,85 @@ def _sections_from_assessment_tasks(syllabus_content):
     return out
 
 
-def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items, ilos=None, ilo_bloom=None, assessment_label='Assessment'):
+# Bloom spread for topics that carry no TOS Bloom counts (remember → create).
+DEFAULT_BLOOM_WEIGHTS = [3, 3, 2, 2, 0, 0]
+BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+
+
+def _to_float(value, default=0.0):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number:
+        return default
+    return number
+
+
+def _materialize_tos_exam(exam):
+    """Fill weight, minutes, points, and Bloom item counts from the TOS formula.
+
+    Weight (%) = class hours / total class hours × 100.
+    Topic points and exam minutes use that same share, via largest-remainder
+    so the integers add up to the exam totals. Bloom items use each topic's
+    Bloom percentages against that topic's points. Stored Bloom counts are
+    kept when the row has no percentages yet.
     """
-    Build sectioned assessment items using explicit topic rows from TOS or faculty input.
-    Returns sections with allocated items and Bloom labels.
+    if not isinstance(exam, dict):
+        return exam
+
+    topics = [row if isinstance(row, dict) else {} for row in (exam.get('topics') or [])]
+    total_items = max(0, _to_int(exam.get('totalTestItems')))
+    total_minutes = max(0, _to_int(exam.get('totalExamMinutes')))
+    hours = [max(0.0, _to_float(row.get('hours_class'))) for row in topics]
+    hour_sum = sum(hours)
+    points = (
+        _largest_remainder_allocation(total_items, hours)
+        if hour_sum > 0 and total_items > 0
+        else None
+    )
+    minutes = (
+        _largest_remainder_allocation(total_minutes, hours)
+        if hour_sum > 0 and total_minutes > 0
+        else None
+    )
+
+    materialized = []
+    for index, row in enumerate(topics):
+        next_row = dict(row)
+        topic_points = points[index] if points is not None else max(0, _to_int(row.get('total_points')))
+        if points is not None:
+            next_row['total_points'] = topic_points
+            next_row['weight'] = round((hours[index] / hour_sum) * 100, 1) if hour_sum else 0
+        if minutes is not None:
+            next_row['hours_min'] = minutes[index]
+
+        bloom_pct = row.get('bloom_pct') if isinstance(row.get('bloom_pct'), dict) else {}
+        percentages = [max(0.0, _to_float(bloom_pct.get(key))) for key in BLOOM_ORDER]
+        if any(value > 0 for value in percentages):
+            bloom_alloc = _largest_remainder_allocation(topic_points, percentages)
+            next_row['bloom_items'] = {
+                key: bloom_alloc[bloom_index]
+                for bloom_index, key in enumerate(BLOOM_ORDER)
+            }
+        materialized.append(next_row)
+
+    next_exam = dict(exam)
+    next_exam['topics'] = materialized
+    return next_exam
+
+
+def _build_sectioned_assessment_payload(
+    topic_rows, assessment_type, total_items, ilos=None, ilo_bloom=None,
+    assessment_label='Assessment', default_bloom_weights=None,
+):
+    """
+    Build sectioned assessment items from TOS topic rows.
+
+    When a row has Bloom item counts, those counts are copied exactly. Item
+    totals are not spread across the other Bloom levels. Rows with no Bloom
+    counts are used only when the whole exam has none; those items are
+    Remember unless default_bloom_weights is provided.
     """
     sections = []
     for row in (topic_rows or []):
@@ -1133,8 +1361,12 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
             }
         ]
 
-    total_items = max(1, int(total_items or 1))
-    section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
+    any_explicit_bloom = any(sum(section['bloom_counts'].values()) > 0 for section in sections)
+    if any_explicit_bloom:
+        section_alloc = [sum(section['bloom_counts'].values()) for section in sections]
+    else:
+        total_items = max(1, int(total_items or 1))
+        section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
 
     ilo_bloom_map = {}
     ilos = ilos or []
@@ -1157,20 +1389,29 @@ def _build_sectioned_assessment_payload(topic_rows, assessment_type, total_items
         allocated = max(0, section_alloc[idx])
         blooms = section['bloom_counts']
         bloom_weights = [blooms.get(k, 0) for k in bloom_order]
-        bloom_weight_total = sum(bloom_weights)
-        # Only include Bloom levels that have non-zero item counts in the TOS
-        nonzero_bloom_indices = [i for i, w in enumerate(bloom_weights) if w > 0]
-        if bloom_weight_total > 0 and nonzero_bloom_indices:
-            nonzero_weights = [bloom_weights[i] for i in nonzero_bloom_indices]
-            nonzero_alloc = _largest_remainder_allocation(allocated, nonzero_weights)
+        if sum(bloom_weights) > 0:
+            # The TOS already states how many items belong to each Bloom level.
+            bloom_alloc = list(bloom_weights)
+            allocated = sum(bloom_weights)
+        elif not any_explicit_bloom and allocated > 0 and default_bloom_weights:
+            fallback_weights = list(default_bloom_weights)
+            nonzero_bloom_indices = [i for i, weight in enumerate(fallback_weights) if weight > 0]
+            nonzero_alloc = _largest_remainder_allocation(
+                allocated,
+                [fallback_weights[i] for i in nonzero_bloom_indices],
+            )
             bloom_alloc = [0] * len(bloom_order)
-            for ni, nw in zip(nonzero_bloom_indices, nonzero_alloc):
-                bloom_alloc[ni] = nw
-        elif allocated > 0:
+            for bloom_index, count in zip(nonzero_bloom_indices, nonzero_alloc):
+                bloom_alloc[bloom_index] = count
+        elif not any_explicit_bloom and allocated > 0:
             bloom_alloc = [0] * len(bloom_order)
             bloom_alloc[0] = allocated
         else:
             bloom_alloc = [0] * len(bloom_order)
+            allocated = 0
+
+        if allocated <= 0:
+            continue
 
         items = []
         for bloom_key, count in zip(bloom_order, bloom_alloc):
@@ -1450,6 +1691,55 @@ def _normalize_choices(choices):
     return normalized[:4]
 
 
+def _align_generated_section_to_blueprint(generated_section, blueprint_section):
+    """Keep the blueprint's item count and Bloom level on every generated item."""
+    blueprint_items = blueprint_section.get('items') or []
+    generated_items = generated_section.get('items') if isinstance(generated_section, dict) else []
+    if not isinstance(generated_items, list):
+        generated_items = []
+
+    by_number = {}
+    for item in generated_items:
+        if not isinstance(item, dict):
+            continue
+        number = _to_int(item.get('item_number'), 0)
+        if number > 0 and number not in by_number:
+            by_number[number] = item
+
+    aligned = []
+    for index, blueprint_item in enumerate(blueprint_items):
+        source = by_number.get(_to_int(blueprint_item.get('item_number'), 0))
+        if source is None and index < len(generated_items) and isinstance(generated_items[index], dict):
+            source = generated_items[index]
+        source = source or {}
+        question = str(source.get('question_text') or '').strip() or str(blueprint_item.get('question_text') or '').strip()
+        choices = _normalize_choices(source.get('choices')) or _normalize_choices(blueprint_item.get('choices'))
+        aligned.append(
+            {
+                'item_number': blueprint_item.get('item_number'),
+                'item_type': str(source.get('item_type') or blueprint_item.get('item_type') or 'Multiple Choice'),
+                'section_title': blueprint_section.get('section_title') or '',
+                'exam_label': blueprint_section.get('exam_label') or '',
+                'bloom_level': blueprint_item.get('bloom_level') or '',
+                'bloom_verb': blueprint_item.get('bloom_verb') or '',
+                'ilo_refs': blueprint_item.get('ilo_refs') or [],
+                'question_text': question,
+                'choices': choices,
+                'correct_answer': str(source.get('correct_answer') or blueprint_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                'answer_key': str(source.get('answer_key') or '').strip(),
+                'points': _to_int(source.get('points'), 0),
+            }
+        )
+
+    return {
+        'section_title': blueprint_section.get('section_title') or '',
+        'exam_label': blueprint_section.get('exam_label') or '',
+        'allocated_items': len(aligned),
+        'bloom_distribution': blueprint_section.get('bloom_distribution') or {},
+        'items': aligned,
+    }
+
+
 def _is_placeholder_choice(choice_text):
     text = str(choice_text or '').strip().lower()
     if not text:
@@ -1643,25 +1933,44 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
     exam_code = ''
     topic_rows = []
     if isinstance(selected_exam, dict):
+        selected_exam = _materialize_tos_exam(selected_exam)
         exam_label = str(selected_exam.get('examLabel') or selected_exam.get('examCode') or '').strip()
         exam_code = str(selected_exam.get('examCode') or '').strip()
         topic_rows = [row for row in (selected_exam.get('topics') or []) if isinstance(row, dict)]
 
-    if not topic_rows and faculty_topics:
-        topic_rows = [
-            {
-                'topic': str(topic).strip(),
-                'ilos': [],
-                'weight': '',
-                'bloom_items': {},
-                'total_points': '',
-            }
-            for topic in faculty_topics
-            if str(topic).strip()
+    normalized_faculty_topics = [
+        {
+            'topic': str(topic).strip(),
+            'ilos': [],
+            'weight': '',
+            'bloom_items': {},
+            'total_points': '',
+        }
+        for topic in faculty_topics
+        if str(topic).strip()
+    ]
+    if normalized_faculty_topics:
+        # Faculty selection narrows the selected TOS exam, but never replaces its
+        # Bloom distribution, ILO mapping, or item allocation. This keeps TOS as
+        # the assessment authority while allowing topic-level selection in the UI.
+        requested_topics = {
+            _normalize_topic_key(row.get('topic'))
+            for row in normalized_faculty_topics
+            if _normalize_topic_key(row.get('topic'))
+        }
+        tos_topic_rows = [
+            row for row in topic_rows
+            if _normalize_topic_key(row.get('topic') or row.get('label')) in requested_topics
         ]
+        topic_rows = tos_topic_rows or topic_rows
 
-    total_items = 0
-    if isinstance(selected_exam, dict):
+    bloom_total = 0
+    for row in topic_rows:
+        bloom_items = row.get('bloom_items') if isinstance(row.get('bloom_items'), dict) else {}
+        bloom_total += sum(_to_int(bloom_items.get(key)) for key in BLOOM_ORDER)
+
+    total_items = bloom_total
+    if total_items <= 0 and isinstance(selected_exam, dict):
         total_items = _tos_exam_total_items(selected_exam)
     if total_items <= 0:
         total_items = sum(
@@ -1920,14 +2229,21 @@ def generate_assessment(request):
         source_exam_label=source_exam_label,
         faculty_topics=faculty_topics,
     )
-    if not isinstance(source.get('selected_exam'), dict):
-        return Response(
-            {
-                'success': False,
-                'detail': 'No major examination found in TOS. Please define a major exam (e.g., Midterm/Final) with total items first.',
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # Assessments are TOS-based. A major examination with topic rows is required;
+    # faculty_topics can only narrow that TOS selection.
+    has_tos_exam = isinstance(source.get('selected_exam'), dict)
+    if not has_tos_exam:
+        if not source['topic_rows']:
+            return Response(
+                {
+                    'success': False,
+                    'detail': 'No major examination with TOS topics found. Complete the TOS tab before creating an assessment.',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        requested_total_items = _to_int(request.data.get('total_items'), 0)
+        if requested_total_items > 0:
+            source['total_items'] = requested_total_items
 
     total_items = source['total_items'] or 1
     sections = _build_sectioned_assessment_payload(
@@ -1937,6 +2253,7 @@ def generate_assessment(request):
         ilos=syllabus_content.get('ilos') or [],
         ilo_bloom=syllabus_content.get('ilo_bloom') or [],
         assessment_label=source['assessment_name'],
+        default_bloom_weights=None,
     )
     section_module_matches = _match_sections_to_course_modules(course, sections)
     total_generated = sum(len(s['items']) for s in sections)
@@ -2512,10 +2829,10 @@ REQUIREMENTS:
      - A "choices" array (e.g., ["A. ...", "B. ...", "C. ...", "D. ..."])
      - The correct answer letter in "correct_answer" (e.g., "B")
      - An explanation or answer key in "answer_key"
-3. Keep the same sections and item numbers as the blueprint.
+3. Keep the same sections, item numbers, and bloom_level values as the blueprint.
 4. For each section, ground item content primarily on that section's matched saved module context. If no module is matched, use the closest RAG evidence.
-5. Write original MCQs that match each section title, Bloom level, and ILO references.
-6. If a section has multiple items, vary the stems but keep them aligned to the section topic.
+5. Write each MCQ at that item's blueprint bloom_level. bloom_distribution is the exact number of items for each Bloom level. Do not move an item to another Bloom level, and do not add a Bloom level the blueprint does not list.
+6. If a section has multiple items, vary the stems but keep them aligned to the section topic and to that item's Bloom level.
 7. Use points that sum to 100 across the full assessment.
 8. Return strict JSON with this exact top-level shape:
      {{
@@ -2605,7 +2922,8 @@ Requirements:
 3. Every item must be an MCQ with exactly 4 choices (A-D).
 4. Every item must include: item_number, item_type, question_text, choices, correct_answer, bloom_level, bloom_verb, ilo_refs, points, answer_key.
 5. Write complete question stems and plausible distractors grounded in the section topic.
-6. Return ONLY valid JSON. No markdown, no prose.
+6. Keep each item's bloom_level exactly as written in the blueprint. The number of items at each Bloom level must match bloom_distribution.
+7. Return ONLY valid JSON. No markdown, no prose.
 """
 
     def _generate_sections_individually():
@@ -2657,12 +2975,17 @@ Requirements:
         return issues
 
     try:
-        raw_text = llm.generate_response_with_fallback(
-            messages=[{'role': 'user', 'content': user_prompt}],
-            preferred_provider=provider,
-            system=system_prompt,
-            max_tokens=4000,
-        )
+        try:
+            raw_text = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': user_prompt}],
+                preferred_provider=provider,
+                system=system_prompt,
+                max_tokens=4000,
+            )
+        except ValueError as e:
+            logger.error("Assessment generation failed: %s", e)
+            return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
         generated_payload, parse_error = _parse_assessment_json(raw_text)
 
         if not generated_payload:
@@ -2810,48 +3133,22 @@ Previous invalid response:
         )
 
     if isinstance(generated_payload, dict) and isinstance(generated_payload.get('sections'), list):
-        # Normalize the returned JSON against the blueprint so the UI can render it reliably.
-        sections_by_title = {str(s.get('section_title')): s for s in mcq_sections}
-        normalized_sections = []
-        running_total = 0
+        # The model may retag items with other Bloom levels. Put every saved
+        # item back on the blueprint slot so the TOS counts stay exact.
+        generated_by_topic = {}
         for section in generated_payload.get('sections', []):
             if not isinstance(section, dict):
                 continue
-            title_key = str(section.get('section_title') or '').strip()
-            blueprint_section = sections_by_title.get(title_key)
-            if not blueprint_section:
-                continue
-            items = []
-            for idx, item in enumerate(section.get('items') or [], start=1):
-                if not isinstance(item, dict):
-                    continue
-                points = _to_int(item.get('points'), 0)
-                running_total += points
-                items.append(
-                    {
-                        'item_number': _to_int(item.get('item_number'), idx),
-                        'item_type': str(item.get('item_type') or 'Multiple Choice'),
-                        'section_title': blueprint_section['section_title'],
-                        'exam_label': str(item.get('exam_label') or blueprint_section['exam_label']),
-                        'bloom_level': str(item.get('bloom_level') or '').strip(),
-                        'bloom_verb': str(item.get('bloom_verb') or '').strip(),
-                        'ilo_refs': [str(v) for v in (item.get('ilo_refs') or blueprint_section.get('ilos') or []) if str(v).strip()],
-                        'question_text': str(item.get('question_text') or '').strip(),
-                        'choices': _normalize_choices(item.get('choices')),
-                        'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
-                        'answer_key': str(item.get('answer_key') or '').strip(),
-                        'points': points,
-                    }
-                )
+            topic_key = _normalize_topic_key(section.get('section_title'))
+            if topic_key and topic_key not in generated_by_topic:
+                generated_by_topic[topic_key] = section
 
+        normalized_sections = []
+        for blueprint_section in mcq_sections:
+            topic_key = _normalize_topic_key(blueprint_section.get('section_title'))
+            generated_section = generated_by_topic.get(topic_key) or {}
             normalized_sections.append(
-                {
-                    'section_title': blueprint_section['section_title'],
-                    'exam_label': blueprint_section['exam_label'],
-                    'allocated_items': blueprint_section['allocated_items'],
-                    'bloom_distribution': blueprint_section['bloom_distribution'],
-                    'items': items or blueprint_section['items'],
-                }
+                _align_generated_section_to_blueprint(generated_section, blueprint_section)
             )
 
         if normalized_sections:
@@ -3174,10 +3471,76 @@ def export_assessment_docx(request):
         )
 
 
+def _serialize_course_request(item):
+    return {
+        "request_id": str(item.request_id),
+        "course_code": item.course_code,
+        "course_title": item.course_title,
+        "description": item.description,
+        "category": item.category,
+        "units": str(item.units) if item.units is not None else None,
+        "section": str(item.section_id) if item.section_id else None,
+        "section_code": item.section.code if item.section_id and item.section else None,
+        "justification": item.justification,
+        "status": item.status,
+        "admin_note": item.admin_note,
+        "requested_by_name": getattr(item.requested_by, "full_name", "") or "",
+        "requested_by_email": getattr(item.requested_by, "email", "") or "",
+        "reviewed_by_name": getattr(item.reviewed_by, "full_name", "") if item.reviewed_by_id else None,
+        "reviewed_at": item.reviewed_at.isoformat() if item.reviewed_at else None,
+        "created_course_id": str(item.created_course_id) if item.created_course_id else None,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def _course_request_section(request, section_id):
+    from django.db.models import Q
+
+    if not section_id:
+        return None, None
+    section = Section.objects.filter(section_id=section_id).filter(
+        Q(institution_id=request.user.institution_id)
+        | Q(program__institution_id=request.user.institution_id)
+        | Q(institution__isnull=True, program__isnull=True),
+    ).first()
+    if not section:
+        return None, Response(
+            {"success": False, "detail": "The selected section was not found."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    return section, None
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def course_requests_mine(request):
+    """Return the requesting faculty member's own course requests (newest first)."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    queryset = (
+        CourseRequest.objects.filter(
+            institution_id=request.user.institution_id,
+            requested_by=request.user,
+        )
+        .select_related("section", "requested_by", "reviewed_by", "created_course")
+        .order_by("-created_at")
+    )
+    return Response(
+        {"success": True, "requests": [_serialize_course_request(item) for item in queryset]},
+        status=status.HTTP_200_OK,
+    )
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_course(request):
-    """Create a new course and auto-assign it to the requesting faculty user."""
+    """File a new-course request for admin review (faculty cannot self-publish)."""
     if not _is_faculty_user(request):
         return _faculty_only_response()
     if not request.user.institution_id:
@@ -3186,10 +3549,17 @@ def create_course(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    course_code = (request.data.get("course_code") or "").strip()
+    course_code = (request.data.get("course_code") or "").strip().upper()
     course_title = (request.data.get("course_title") or "").strip()
     description = (request.data.get("description") or "").strip()
+    category = (request.data.get("category") or "professional").strip().lower() or "professional"
+    units_raw = request.data.get("units")
+    section_key = request.data.get("section") or request.data.get("section_id") or None
+    justification = (request.data.get("justification") or "").strip()
 
+    valid_categories = {choice for choice, _ in CourseRequest._meta.get_field("category").choices}
+    if category not in valid_categories:
+        category = "professional"
     if not course_code:
         return Response(
             {"success": False, "detail": "course_code is required."},
@@ -3201,8 +3571,38 @@ def create_course(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    if len(course_code) > 100:
+        return Response(
+            {"success": False, "detail": "Course code must be 100 characters or fewer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if len(course_title) > 255:
+        return Response(
+            {"success": False, "detail": "Course title must be 255 characters or fewer."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    units = None
+    if units_raw not in (None, ""):
+        try:
+            units = float(units_raw)
+        except (TypeError, ValueError):
+            return Response(
+                {"success": False, "detail": "Units must be a number."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if units < 0 or units > 30:
+            return Response(
+                {"success": False, "detail": "Units must be between 0 and 30."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+    section, section_error = _course_request_section(request, section_key)
+    if section_error:
+        return section_error
+
     if Course.objects.filter(
-        course_code=course_code,
+        course_code__iexact=course_code,
         institution_id=request.user.institution_id,
     ).exists():
         return Response(
@@ -3210,29 +3610,55 @@ def create_course(request):
             status=status.HTTP_409_CONFLICT,
         )
 
-    course = Course.objects.create(
+    if CourseRequest.objects.filter(
+        course_code__iexact=course_code,
         institution_id=request.user.institution_id,
+        status=CourseRequestStatus.PENDING,
+    ).exists():
+        return Response(
+            {
+                "success": False,
+                "detail": f"A request for '{course_code}' is already waiting for admin review.",
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
+    course_request = CourseRequest.objects.create(
+        institution_id=request.user.institution_id,
+        requested_by=request.user,
         course_code=course_code,
         course_title=course_title,
         description=description or None,
+        category=category,
+        units=units,
+        section=section,
+        justification=justification or None,
     )
-    CourseLoad.objects.create(course=course, faculty=request.user)
+    try:
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="course_request_submitted",
+            resource_type="course_request",
+            resource_id=course_request.request_id,
+            details={
+                "course_code": course_code,
+                "course_title": course_title,
+                "institution_id": str(request.user.institution_id),
+            },
+        )
+    except Exception:
+        logger.exception("Failed to log course request submission")
 
     logger.info(
-        "Faculty %s created course %s (%s)", request.user.email, course_code, course.course_id
+        "Faculty %s requested course %s (%s)",
+        request.user.email, course_code, course_request.request_id,
     )
 
     return Response(
         {
             "success": True,
-            "course": {
-                "course_id": str(course.course_id),
-                "course_code": course.course_code,
-                "course_title": course.course_title,
-                "description": course.description,
-                "syllabus_count": 0,
-                "assessment_count": 0,
-            },
+            "detail": "Request sent. Your admin will review it before the course appears in your workspace.",
+            "request": _serialize_course_request(course_request),
         },
         status=status.HTTP_201_CREATED,
     )
@@ -3497,12 +3923,30 @@ def _resolve_institution_branding(course):
     ).first()
     if not customization:
         return {}
+    template_bytes = b''
+    # Prefer working DOCX for fill; fall back to original when it is already a DOCX.
+    working = customization.syllabus_working_docx
+    source = working if working else customization.syllabus_template
+    if source:
+        try:
+            source.open('rb')
+            template_bytes = source.read()
+            source.close()
+        except Exception:
+            template_bytes = b''
     return {
         'header_text': customization.header_text or '',
         'footer_text': customization.footer_text or '',
         'header_image': customization.header_image_url or '',
         'footer_image': customization.footer_image_url or '',
+        'header_image_url': customization.header_image_url or '',
+        'footer_image_url': customization.footer_image_url or '',
         'syllabus_sections': customization.syllabus_sections or [],
+        'syllabus_style_profile': customization.syllabus_style_profile or {},
+        'syllabus_field_map': customization.syllabus_field_map or {},
+        'syllabus_preview_blocks': customization.syllabus_preview_blocks or [],
+        'syllabus_template_bytes': template_bytes,
+        'syllabus_template_name': customization.syllabus_template_name or '',
     }
 
 
@@ -4035,8 +4479,33 @@ def export_syllabus_docx(request):
             return http_response
 
         else:
-            # ── DOCX template or default plain build ─────────────────────
+            # ── DOCX: field-map fill (institution template) or plain/user template ─
             from docx import Document
+            field_map = (branding or {}).get('syllabus_field_map') or {}
+            institution_template = (branding or {}).get('syllabus_template_bytes') or b''
+            mapped_sections = field_map.get('sections') if isinstance(field_map, dict) else None
+
+            if (
+                not template_file
+                and institution_template
+                and isinstance(mapped_sections, list)
+                and mapped_sections
+            ):
+                from apps.integrations.syllabus_template_doc import fill_docx_from_field_map
+                filled = fill_docx_from_field_map(
+                    institution_template,
+                    field_map,
+                    syllabus,
+                    preview_blocks=(branding or {}).get('syllabus_preview_blocks') or [],
+                )
+                filename = f"{course_code}_syllabus.docx"
+                http_response = HttpResponse(
+                    filled,
+                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                )
+                http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
+                return http_response
+
             if template_file:
                 doc = Document(template_file)
                 _fill_docx_template(doc, syllabus)
@@ -4063,6 +4532,78 @@ def export_syllabus_docx(request):
         logger.exception('Error generating DOCX for syllabus export')
         return Response(
             {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def export_syllabus_pdf(request):
+    """
+    Export a filled syllabus as a styled PDF using the institution style profile.
+
+    Endpoint: POST /api/curriculum/export-syllabus-pdf/
+
+    Body (multipart/form-data or JSON):
+        course_id     — optional UUID; uses latest saved syllabus_content when set
+        syllabus_data — optional JSON fallback
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get('course_id')
+    course = None
+    syllabus = None
+    if course_id:
+        course, error_response = _get_assigned_course_or_403(request, course_id)
+        if error_response:
+            return error_response
+        latest_syllabus = (
+            Syllabus.objects.filter(course=course)
+            .order_by('-generated_at', '-syllabus_id')
+            .first()
+        )
+        if latest_syllabus and isinstance(latest_syllabus.syllabus_content, dict):
+            syllabus = latest_syllabus.syllabus_content
+
+    if syllabus is None:
+        raw_data = request.data.get('syllabus_data', '{}')
+        if isinstance(raw_data, str):
+            try:
+                syllabus = json.loads(raw_data)
+            except json.JSONDecodeError:
+                return Response(
+                    {'success': False, 'error': 'Invalid syllabus_data JSON.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            syllabus = raw_data
+
+    if not isinstance(syllabus, dict) or not syllabus:
+        return Response(
+            {'success': False, 'error': 'No syllabus data found to export.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    branding = _resolve_institution_branding(course)
+    try:
+        from apps.integrations.syllabus_export import export_syllabus_pdf as render_pdf
+        from django.http import HttpResponse
+
+        pdf_bytes, engine = render_pdf(
+            syllabus,
+            branding=branding,
+            style_profile=branding.get('syllabus_style_profile') or {},
+        )
+        course_code = (syllabus.get('course_code') or 'syllabus').replace('/', '-').replace(' ', '_')
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{course_code}_syllabus.pdf"'
+        response['X-ATLAS-PDF-Engine'] = engine
+        return response
+    except Exception as exc:
+        logger.exception('Error generating styled syllabus PDF')
+        return Response(
+            {'success': False, 'error': f'Failed to generate PDF: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -4265,6 +4806,146 @@ def export_module_docx(request):
             {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def prepare_syllabus_tabs(request):
+    """
+    Read one syllabus file and split it into tab texts. No language model.
+
+    Endpoint: POST /api/curriculum/prepare-syllabus-tabs/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    _course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        data = file_obj.read()
+        suffix = filename.rsplit('.', 1)[-1]
+        if suffix in {'pdf', 'docx'}:
+            from apps.integrations.syllabus_tab_split import tabs_from_layout_bytes
+            prepared = tabs_from_layout_bytes(data, suffix)
+        else:
+            from io import BytesIO
+            from apps.integrations.syllabus_tab_split import split_markdown_into_tabs
+            text = _extract_text_from_file(BytesIO(data), filename)
+            prepared = {'parser': 'text', 'tabs': split_markdown_into_tabs(text)}
+    except Exception as exc:
+        logger.exception('prepare_syllabus_tabs failed')
+        return Response(
+            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not prepared.get('tabs'):
+        return Response(
+            {"success": False, "error": "Could not find syllabus sections in this file."},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    return Response(
+        {"success": True, "parser": prepared.get('parser') or '', "tabs": prepared['tabs']},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def import_syllabus_json(request):
+    """
+    Read one syllabus file and return the JSON object the form stores.
+
+    Endpoint: POST /api/curriculum/import-syllabus-json/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    _course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from io import BytesIO
+        from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
+        from apps.integrations.syllabus_parse import extract_layout, fast_markdown
+
+        data = file_obj.read()
+        suffix = filename.rsplit('.', 1)[-1]
+        if suffix == 'docx':
+            markdown = fast_markdown(data, 'docx')
+        elif suffix == 'pdf':
+            markdown = fast_markdown(data, 'pdf')
+            if len(markdown) < 400:
+                markdown = (extract_layout(data, 'pdf').get('markdown') or markdown)
+        else:
+            markdown = _extract_text_from_file(BytesIO(data), filename)
+        content = syllabus_content_from_markdown(markdown)
+    except Exception as exc:
+        logger.exception('import_syllabus_json failed')
+        return Response(
+            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not content:
+        return Response(
+            {"success": False, "error": "Could not find syllabus text in this file."},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    return Response(
+        {"success": True, "syllabus_content": content},
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(["POST"])
@@ -4617,9 +5298,11 @@ def parse_syllabus_segment(request):
             {"success": True, "parsed_data": {}},
             status=status.HTTP_200_OK,
         )
-    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
-    if trial_response:
-        return trial_response
+    count_trial = request.data.get("count_trial", True)
+    if count_trial not in (False, 0, "0", "false", "False"):
+        trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+        if trial_response:
+            return trial_response
 
     try:
         import json
@@ -4633,9 +5316,15 @@ def parse_syllabus_segment(request):
         )
 
         llm = LLMService()
+        # The fast cloud chain goes first. Ollama stays the last resort inside
+        # the fallback, because the local 3B model is too slow for every tab.
+        chosen = str(request.data.get("provider") or "").strip().lower()
+        if chosen in {"", "auto"}:
+            chosen = None
         try:
             raw_response = llm.generate_response_with_fallback(
                 [{"role": "user", "content": user_prompt}],
+                preferred_provider=chosen,
                 system=system_prompt,
                 max_tokens=4096,
             )
@@ -4670,7 +5359,7 @@ def parse_syllabus_segment(request):
                 repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
                 repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    preferred_provider="groq",
+                    preferred_provider=chosen,
                     system=repair_system,
                     max_tokens=4096,
                 )
@@ -4681,6 +5370,10 @@ def parse_syllabus_segment(request):
                     rep_brace = re.search(r'\{.*\}', repaired, re.DOTALL)
                     repaired_json = rep_brace.group(0) if rep_brace else repaired.strip()
                 parsed_data = json.loads(repaired_json)
+
+        if isinstance(parsed_data, dict):
+            from apps.integrations.syllabus_tab_split import faithful_parsed_data
+            parsed_data = faithful_parsed_data(parsed_data, segment_text)
 
         return Response(
             {"success": True, "parsed_data": parsed_data},

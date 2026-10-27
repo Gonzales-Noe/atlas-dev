@@ -73,8 +73,17 @@ class InstitutionCustomization(models.Model):
     header_text = models.CharField(max_length=500, blank=True, default='')
     footer_text = models.CharField(max_length=500, blank=True, default='')
     syllabus_template_name = models.CharField(max_length=255, blank=True, default='')
+    # Exact uploaded sample (docx / pdf / xlsx) — what admins click in the preview
     syllabus_template = models.FileField(upload_to='syllabus_templates/', blank=True)
+    syllabus_template_kind = models.CharField(max_length=16, blank=True, default='')
+    # Working DOCX used when filling faculty exports (same bytes when upload was already DOCX)
+    syllabus_working_docx = models.FileField(upload_to='syllabus_templates/working/', blank=True)
     syllabus_sections = models.JSONField(default=list, blank=True)
+    syllabus_style_profile = models.JSONField(default=dict, blank=True)
+    # Click-mapped regions: sections with title_region_id + content_region_id (+ click_log)
+    syllabus_field_map = models.JSONField(default=dict, blank=True)
+    # Cached click targets for the uploaded file (admin click UI)
+    syllabus_preview_blocks = models.JSONField(default=list, blank=True)
     field_labels = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -241,6 +250,11 @@ class Course(models.Model):
     units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(default=timezone.now)
+    # Syllabus section (and optional subsection) the Module tab reads its
+    # topics from. Locked once `module_topic_confirmed_at` is set.
+    module_topic_section_key = models.CharField(max_length=120, blank=True, default='')
+    module_topic_subsection_key = models.CharField(max_length=120, blank=True, default='')
+    module_topic_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'course'
@@ -251,6 +265,49 @@ class Course(models.Model):
 
     def __str__(self):
         return f'{self.course_code} - {self.course_title}'
+
+
+class CourseRequestStatus(models.TextChoices):
+    PENDING = 'pending', 'Pending review'
+    APPROVED = 'approved', 'Approved'
+    REJECTED = 'rejected', 'Rejected'
+
+
+class CourseRequest(models.Model):
+    """A faculty-submitted proposal for a new course.
+
+    Faculty cannot create live Course rows directly — they file a request
+    here and an institution admin approves/rejects it. On approval the
+    backend materialises the real Course + CourseLoad rows.
+    """
+    request_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    institution = models.ForeignKey(Institution, on_delete=models.CASCADE, related_name='course_requests')
+    requested_by = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='course_requests')
+    course_code = models.CharField(max_length=100)
+    course_title = models.CharField(max_length=255)
+    description = models.TextField(null=True, blank=True)
+    category = models.CharField(max_length=20, choices=CourseCategory.choices, default=CourseCategory.PROFESSIONAL)
+    units = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    section = models.ForeignKey(Section, on_delete=models.SET_NULL, null=True, blank=True, related_name='course_requests')
+    justification = models.TextField(null=True, blank=True)
+    status = models.CharField(max_length=20, choices=CourseRequestStatus.choices, default=CourseRequestStatus.PENDING)
+    admin_note = models.TextField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='reviewed_course_requests',
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_course = models.ForeignKey(
+        Course, on_delete=models.SET_NULL, null=True, blank=True, related_name='creation_requests',
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'course_request'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.course_code} - {self.course_title} ({self.status})'
 
 
 class CourseLoad(models.Model):

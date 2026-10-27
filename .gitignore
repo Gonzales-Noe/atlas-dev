@@ -45,7 +45,9 @@ atlas_dev_utf8.sql
 ASSESSMENT QR (3).png
 BLACKBOX.md
 append_guide.py
+download_model.py
 _testj_AdminLayout.jsx
+_testj_KnowledgeBased.jsx
 _err.txt
 ATLAS_PLATFORM_GUIDE.md
 diff_stat.txt
@@ -61,6 +63,10 @@ OLLAMA_SETUP.md
 response.txt
 testj_admin_files.txt
 YLP_CAPSULE_PROPOSAL_ATLAS.md
+/package-lock.json
+backend/check_course_*.py
+backend/TODO.md
+backend/SUPABASE_DB_CONNECTION_ERROR.md
 
 # OMR scan uploads
 backend/media/bubble_sheets/scans/

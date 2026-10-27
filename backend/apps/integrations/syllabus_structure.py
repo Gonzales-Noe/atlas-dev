@@ -13,8 +13,6 @@ import json
 import logging
 import re
 
-from .document_processor import DocumentProcessor
-
 logger = logging.getLogger(__name__)
 
 MAX_SECTIONS = 25
@@ -416,14 +414,14 @@ def _grounded_columns(columns, source_norm, source_words):
     return [c for c in cleaned if c and _grounded(c, source_norm, source_words)][:MAX_COLUMNS]
 
 
-def refine_outline(outline, markdown, llm=None):
-    """Ask Groq/OpenRouter to clean the outline; drop anything not in the document."""
+def refine_outline(outline, markdown, llm=None, preferred_provider='ollama'):
+    """Optional LLM cleanup of the outline; drop anything not in the document."""
     from .llm_service import LLMService
 
     llm = llm or LLMService()
     raw = llm.generate_response_with_fallback(
         [{'role': 'user', 'content': _refine_prompt(outline, _skeleton(markdown))}],
-        preferred_provider='groq',
+        preferred_provider=preferred_provider or 'ollama',
         system=_SYSTEM_PROMPT,
         max_tokens=3000,
     )
@@ -581,36 +579,39 @@ def to_syllabus_sections(sections):
 
 
 def markdown_from_upload(file_obj, file_type):
-    """Markdown for a PDF/DOCX template, falling back to plain extracted text."""
-    pages = []
-    try:
-        if file_type == 'pdf':
-            pages = DocumentProcessor.extract_markdown_from_pdf(file_obj)
-        elif file_type == 'docx':
-            pages = DocumentProcessor.extract_markdown_from_docx(file_obj)
-    except Exception:
-        logger.exception('Markdown conversion failed; falling back to plain text')
-        pages = []
-    if not pages:
-        if hasattr(file_obj, 'seek'):
-            file_obj.seek(0)
-        pages = DocumentProcessor.extract_text(file_obj, file_type)
-    from .pii_masking import mask_and_verify
-    raw = '\n\n'.join(text for text, _page in pages)
-    return mask_and_verify(raw, context='syllabus_template')
+    """Markdown for a PDF/DOCX template (Docling when available, else LiteParse)."""
+    from .syllabus_parse import markdown_from_upload as _parse
+    markdown, _parser = _parse(file_obj, file_type)
+    return markdown
 
 
-def extract_syllabus_structure(markdown, refine=True, llm=None):
+def extract_syllabus_structure(
+    markdown,
+    refine=False,
+    llm=None,
+    preferred_provider='ollama',
+    outline=None,
+):
     """
     Returns (syllabus_sections, source) where source is 'ai' when the LLM
     refinement was used and 'outline' for the deterministic result.
+
+    Pass a pre-built outline (e.g. from Docling tree) to skip Markdown parsing.
+    Default refine=False (parser-first). When refine=True, prefers Ollama.
     """
-    outline = build_outline(markdown)
+    if outline is None:
+        outline = build_outline(markdown or '')
     if not outline:
         return [], 'outline'
     if refine:
         try:
-            return to_syllabus_sections(refine_outline(outline, markdown, llm=llm)), 'ai'
+            refined = refine_outline(
+                outline,
+                markdown or '',
+                llm=llm,
+                preferred_provider=preferred_provider or 'ollama',
+            )
+            return to_syllabus_sections(refined), 'ai'
         except Exception as exc:
-            logger.warning('Syllabus structure refinement failed, using outline: %s', exc)
+            logger.debug('Syllabus structure refinement skipped, using outline: %s', exc)
     return to_syllabus_sections(outline), 'outline'

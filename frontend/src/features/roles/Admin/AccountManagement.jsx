@@ -7,8 +7,8 @@ import { useEffect, useState } from 'react'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
-  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
-  InputLabel, Select, FormControl,
+  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert,
+  InputLabel, Select, FormControl, CircularProgress,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -20,11 +20,10 @@ import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import {
-  analyzeSyllabusTemplate,
-  BUILTIN_SYLLABUS_EDITORS,
-  describeDetectedStructure,
   fetchAcademicStructure,
+  previewSyllabusTemplate,
 } from './academicApi'
+import SyllabusFormatEditor from './SyllabusFormatEditor'
 import { ROUTES } from '../../../config/route'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
@@ -55,6 +54,7 @@ export default function AdminAccountManagement() {
   const [faculty, setFaculty] = useState([])
   const [courses, setCourses] = useState([])
   const [assignments, setAssignments] = useState([])
+  const [assignmentSections, setAssignmentSections] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -72,9 +72,14 @@ export default function AdminAccountManagement() {
   const [removingId, setRemovingId] = useState(null)
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(null)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [modalError, setModalError] = useState('')
+  const [modalSuccess, setModalSuccess] = useState('')
 
   const [selectedFaculty, setSelectedFaculty] = useState(null)
-  const [editForm, setEditForm] = useState({ email: '', status: 'active' })
+  const [anchorEl, setAnchorEl] = useState(null)
+  const [menuItem, setMenuItem] = useState(null)
+  const [sections, setSections] = useState([])
+  const [editForm, setEditForm] = useState({ full_name: '', email: '', status: 'active' })
   const [createForm, setCreateForm] = useState({
     full_name: '', email: '', password: '',
     assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
@@ -82,13 +87,16 @@ export default function AdminAccountManagement() {
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
-    footer_text: '', syllabus_sections: [],
+    footer_text: '', syllabus_sections: [], syllabus_style_profile: {},
+    syllabus_field_map: { sections: [], click_log: [] },
+    syllabus_preview_blocks: [],
+    syllabus_template_name: '',
+    syllabus_template_kind: '',
+    syllabus_template_url: '',
   })
   const [templateImport, setTemplateImport] = useState({ busy: false, message: '', severity: 'info' })
-
-  const [anchorEl, setAnchorEl] = useState(null)
-  const [menuItem, setMenuItem] = useState(null)
-  const [sections, setSections] = useState([])
+  const [templateLocalFile, setTemplateLocalFile] = useState(null)
+  const [formatTab, setFormatTab] = useState('map')
 
   useEffect(() => {
     loadAssignments()
@@ -98,6 +106,22 @@ export default function AdminAccountManagement() {
       .catch(() => setSections([]))
   }, [])
 
+  async function refreshAssignmentLists() {
+    // Silent refresh used while a modal is open: never touches `loading`,
+    // otherwise GlassCard swaps to the loading placeholder, the Edit modal
+    // loses its backdrop context, and the screen goes black.
+    try {
+      const { data } = await api.get('/users/faculty-assignments/')
+      setFaculty(data.faculty || [])
+      setCourses(data.courses || [])
+      setAssignments(data.assignments || [])
+      setAssignmentSections(data.sections || [])
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to load faculty assignments.')
+    }
+  }
+
   async function loadAssignments() {
     setLoading(true)
     setError('')
@@ -106,6 +130,7 @@ export default function AdminAccountManagement() {
       setFaculty(data.faculty || [])
       setCourses(data.courses || [])
       setAssignments(data.assignments || [])
+      setAssignmentSections(data.sections || [])
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to load faculty assignments.')
     } finally {
@@ -120,6 +145,15 @@ export default function AdminAccountManagement() {
         ...prev,
         ...data,
         syllabus_sections: Array.isArray(data.syllabus_sections) ? data.syllabus_sections : [],
+        syllabus_style_profile: data.syllabus_style_profile && typeof data.syllabus_style_profile === 'object'
+          ? data.syllabus_style_profile
+          : {},
+        syllabus_field_map: data.syllabus_field_map && typeof data.syllabus_field_map === 'object'
+          ? data.syllabus_field_map
+          : { sections: [], click_log: [] },
+        syllabus_preview_blocks: Array.isArray(data.syllabus_preview_blocks) ? data.syllabus_preview_blocks : [],
+        syllabus_template_kind: data.syllabus_template_kind || '',
+        syllabus_template_url: data.syllabus_template_url || '',
       }))
     } catch (err) {
       // Non-fatal: customization may not be configured yet.
@@ -149,6 +183,22 @@ export default function AdminAccountManagement() {
   const assignmentsFor = userId => assignments.filter(item => item.faculty_id === userId)
   // Courses currently assigned to the faculty member open in the Edit dialog.
   const facultyAssignments = selectedFaculty ? assignmentsFor(selectedFaculty.user_id) : []
+  // jasmin-rev merged sections from faculty-assignments with the academic
+  // structure so the Assign dialog never shows an empty dropdown.
+  const mergedSections = (() => {
+    const seen = new Set()
+    const merged = []
+    const push = raw => {
+      const value = (raw?.display_name || raw?.code || '').trim()
+      if (!value || seen.has(value.toLowerCase())) return
+      seen.add(value.toLowerCase())
+      merged.push(raw)
+    }
+    assignmentSections.forEach(push)
+    sections.forEach(push)
+    assignments.forEach(a => a.section && push({ section_id: a.section_id, code: a.section, display_name: a.section }))
+    return merged
+  })()
   const activeFaculty = faculty.filter(f => f.is_active).length
   const inactiveFaculty = faculty.filter(f => !f.is_active).length
   const totalCourses = assignments.length
@@ -160,22 +210,29 @@ export default function AdminAccountManagement() {
   // ── Edit account (PATCH /users/accounts/<user_id>/) ────────────────────────
   function handleEdit(fac) {
     setSelectedFaculty(fac)
-    setEditForm({ email: fac.email, status: fac.is_active ? 'active' : 'inactive' })
+    setEditForm({ full_name: fac.full_name || '', email: fac.email, status: fac.is_active ? 'active' : 'inactive' })
+    setModalError('')
+    setModalSuccess('')
+    setConfirmUnassign(null)
     setEditDialog(true)
     handleMenuClose()
   }
 
   async function handleSaveEdit() {
+    if (!selectedFaculty) return
+    setModalError('')
     try {
-      await api.patch(`/users/accounts/${selectedFaculty.user_id}/`, {
+      const { data } = await api.patch(`/users/accounts/${selectedFaculty.user_id}/`, {
+        full_name: editForm.full_name,
         email: editForm.email,
         is_active: editForm.status === 'active',
       })
       setEditDialog(false)
+      setSelectedFaculty(data || selectedFaculty)
       setNotice('Account updated.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to update faculty account.')
+      setModalError(err.response?.data?.detail || 'Failed to update faculty account.')
     }
   }
 
@@ -185,11 +242,13 @@ export default function AdminAccountManagement() {
       full_name: '', email: '', password: '',
       assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
     })
+    setModalError('')
     setCreateDialog(true)
     handleMenuClose()
   }
 
   async function handleSaveCreate() {
+    setModalError('')
     try {
       await api.post('/users/faculty/', {
         full_name: createForm.full_name,
@@ -199,7 +258,7 @@ export default function AdminAccountManagement() {
       })
       setCreateDialog(false)
       setNotice('Faculty account created.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
       const detail = err.response?.data?.detail
       const errors = err.response?.data
@@ -207,7 +266,7 @@ export default function AdminAccountManagement() {
       if (errors && typeof errors === 'object' && !detail) {
         msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      setError(msg || 'Failed to create faculty account.')
+      setModalError(msg || 'Failed to create faculty account.')
       console.error('Create faculty error:', err.response?.data)
     }
   }
@@ -218,20 +277,21 @@ export default function AdminAccountManagement() {
     try {
       await api.patch(`/users/accounts/${fac.user_id}/`, { is_active: !fac.is_active })
       setNotice(fac.is_active ? 'Account deactivated.' : 'Account reactivated.')
-      loadAssignments()
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to update account status.')
     }
   }
 
   // ── Assign course + section (POST /users/faculty-assignments/) ─────────────
+  // jasmin-rev behavior: always open blank so the admin picks a fresh
+  // course + section; merge sections from faculty-assignments + academic structure.
   function openAssignmentDialog(fac) {
-    const current = assignmentsFor(fac.user_id)[0]
     setSelectedFaculty(fac)
     setAssignmentForm({
-      course_id: current?.course_id || '',
-      course_code: '', course_title: '', description: '', section: current?.section || '',
+      course_id: '', course_code: '', course_title: '', description: '', section: '',
     })
+    setModalError('')
     setAssignmentDialog(true)
     handleMenuClose()
   }
@@ -250,14 +310,26 @@ export default function AdminAccountManagement() {
     const hasNewCourse = assignmentForm.course_code && assignmentForm.course_title
     if (!hasCourseId && !hasNewCourse) return
     if (!assignmentForm.section) return
+    setModalError('')
     try {
       await api.post('/users/faculty-assignments/', {
         faculty_id: selectedFaculty.user_id,
         ...assignmentForm,
       })
       setAssignmentDialog(false)
+      setAssignmentForm({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
       setNotice('Course assigned.')
-      loadAssignments()
+      await refreshAssignmentLists()
+      // Keep the detail/edit context fresh when assigning from the dialogs.
+      if (selectedFaculty?.user_id) {
+        try {
+          const { data } = await api.get('/users/faculty-assignments/')
+          const refreshed = (data.faculty || []).find(f => f.user_id === selectedFaculty.user_id)
+          if (refreshed) setSelectedFaculty(refreshed)
+        } catch {
+          // Non-fatal: list already reloaded above.
+        }
+      }
     } catch (err) {
       const detail = err.response?.data?.detail
       const errors = err.response?.data
@@ -265,7 +337,7 @@ export default function AdminAccountManagement() {
       if (errors && typeof errors === 'object' && !detail) {
         msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
       }
-      setError(msg || 'Failed to assign course.')
+      setModalError(msg || 'Failed to assign course.')
       console.error('Assign course error:', err.response?.data)
     }
   }
@@ -292,8 +364,9 @@ export default function AdminAccountManagement() {
       )
       setConfirmDeleteAccount(null)
       setDetailDialog(false)
+      setEditDialog(false)
       setSelectedFaculty(null)
-      await loadAssignments()
+      await refreshAssignmentLists()
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to delete the account.')
     } finally {
@@ -302,23 +375,30 @@ export default function AdminAccountManagement() {
   }
 
   // ── Remove course assignment (DELETE /users/faculty-assignments/) ──────────
+  // Flow: click trash in Edit modal → inline confirm row inside that same modal
+  // → confirm → success message stays visible in the modal (no black screen,
+  // no stacked MUI Dialogs fighting over the backdrop).
   async function handleConfirmUnassign() {
     if (!confirmUnassign) return
-    setRemovingId(confirmUnassign.assignment_id)
+    const removed = confirmUnassign
+    setRemovingId(removed.assignment_id)
+    setModalError('')
+    setConfirmUnassign(null)
     try {
       await api.delete('/users/faculty-assignments/', {
-        data: { assignment_id: confirmUnassign.assignment_id },
+        data: { assignment_id: removed.assignment_id },
       })
-      setNotice(
-        confirmUnassign.section
-          ? `${confirmUnassign.course_code} (${confirmUnassign.section}) removed from ${selectedFaculty?.email}.`
-          : `${confirmUnassign.course_code} removed from ${selectedFaculty?.email}.`
-      )
-      setConfirmUnassign(null)
-      await loadAssignments()
+      const successMsg = removed.section
+        ? `Course ${removed.course_code} (${removed.section}) has been deleted from this faculty.`
+        : `Course ${removed.course_code} has been deleted from this faculty.`
+      setModalSuccess(successMsg)
+      setNotice(successMsg)
+      // Refresh the list behind the open modal without unmounting it.
+      // Uses the silent refresh so `loading` never flips and the Edit modal
+      // keeps its backdrop (that flip is what turned the screen black).
+      refreshAssignmentLists().catch(() => {})
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to remove the course assignment.')
-      setConfirmUnassign(null)
+      setModalError(err.response?.data?.detail || 'Failed to remove the course assignment.')
     } finally {
       setRemovingId(null)
     }
@@ -326,18 +406,30 @@ export default function AdminAccountManagement() {
 
   // ── Syllabus format (PATCH /users/institution-customization/) ──────────────
   async function saveCustomization() {
-    const hasUnnamedSubsection = (customization.syllabus_sections || []).some(section =>
-      section.enabled !== false
-      && !section.is_static
-      && (Array.isArray(section.subsections) ? section.subsections : [])
-        .some(subsection => !subsection.label?.trim()),
-    )
-    if (hasUnnamedSubsection) {
-      setError('Add a name to each syllabus subsection before saving.')
+    const mapSections = customization.syllabus_field_map?.sections || []
+    if (!mapSections.length && !(customization.syllabus_preview_blocks || []).length) {
+      setError('Upload a DOCX and click sections before saving.')
+      return
+    }
+    const missingContent = mapSections.filter(section => section.enabled !== false && !section.content_region_id)
+    if (missingContent.length) {
+      setError(`Place content for: ${missingContent.map(s => s.label).join(', ')}`)
       return
     }
     try {
-      await api.patch('/users/institution-customization/', customization)
+      const payload = {
+        ...customization,
+        syllabus_field_map: customization.syllabus_field_map || { sections: [] },
+        syllabus_preview_blocks: customization.syllabus_preview_blocks || [],
+      }
+      const { data } = await api.patch('/users/institution-customization/', payload)
+      setCustomization(current => ({
+        ...current,
+        ...data,
+        syllabus_field_map: data.syllabus_field_map || payload.syllabus_field_map,
+        syllabus_sections: data.syllabus_sections || current.syllabus_sections,
+        syllabus_preview_blocks: data.syllabus_preview_blocks || payload.syllabus_preview_blocks,
+      }))
       setCustomizationDialog(false)
       setNotice('Syllabus format saved.')
     } catch (err) {
@@ -345,191 +437,61 @@ export default function AdminAccountManagement() {
     }
   }
 
-  // Replaces the sections in the dialog; they are persisted only by "Save Format".
-  async function importSyllabusTemplate(file) {
+  async function uploadDocxTemplate(file) {
     if (!file) return
-    setTemplateImport({ busy: true, message: 'Reading the syllabus template…', severity: 'info' })
+    const ext = (file.name.split('.').pop() || '').toLowerCase()
+    setTemplateLocalFile(file)
+    setTemplateImport({
+      busy: true,
+      message: `Loading your ${ext.toUpperCase() || 'file'} for click mapping…`,
+      severity: 'info',
+    })
     try {
-      const result = await analyzeSyllabusTemplate(file)
-      if (Array.isArray(result.sections) && result.sections.length) {
-        setCustomization(current => ({
-          ...current,
-          syllabus_template_name: result.template_name || file.name,
-          syllabus_sections: result.sections,
-        }))
-        setTemplateImport({ busy: false, message: describeDetectedStructure(result), severity: 'success' })
-      } else {
-        setTemplateImport({
-          busy: false,
-          message: result.detail || 'No sections were detected. Add them manually below.',
-          severity: 'warning',
-        })
-      }
-    } catch (err) {
+      const result = await previewSyllabusTemplate(file)
+      setCustomization(current => ({
+        ...current,
+        syllabus_template_name: result.template_name || file.name,
+        syllabus_template_kind: result.file_type || ext,
+        syllabus_template_url: result.template_file_url || '/api/users/institution-syllabus-template/file/',
+        syllabus_preview_blocks: Array.isArray(result.blocks) ? result.blocks : [],
+        syllabus_field_map: result.field_map || { sections: [], click_log: [], version: 1 },
+      }))
+      setFormatTab('map')
       setTemplateImport({
         busy: false,
-        message: err.response?.data?.detail || 'Could not analyze the syllabus template.',
+        message: result.detail || `Exact file loaded (${result.block_count || 0} clickable regions). Click to record sections.`,
+        severity: 'success',
+      })
+    } catch (err) {
+      setTemplateLocalFile(null)
+      setTemplateImport({
+        busy: false,
+        message: err.response?.data?.detail || 'Could not load the syllabus template.',
         severity: 'error',
       })
     }
   }
 
-  function updateSyllabusSection(index, changes) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === index ? { ...section, ...changes } : section
-      )),
-    }))
-  }
-
-  function addSyllabusSubsection(sectionIndex) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? {
-              ...section,
-              subsections: [
-                ...(Array.isArray(section.subsections) ? section.subsections : []),
-                {
-                  key: `subsection-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                  label: '',
-                  required: false,
-                },
-              ],
-            }
-          : section
-      )),
-    }))
-  }
-
-  function updateSyllabusSubsection(sectionIndex, subsectionIndex, changes) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? {
-              ...section,
-              subsections: (section.subsections || []).map((subsection, j) => (
-                j === subsectionIndex ? { ...subsection, ...changes } : subsection
-              )),
-            }
-          : section
-      )),
-    }))
-  }
-
-  function removeSyllabusSubsection(sectionIndex, subsectionIndex) {
-    setCustomization(current => ({
-      ...current,
-      syllabus_sections: current.syllabus_sections.map((section, i) => (
-        i === sectionIndex
-          ? { ...section, subsections: (section.subsections || []).filter((_, j) => j !== subsectionIndex) }
-          : section
-      )),
-    }))
-  }
-
-  function updateTableColumn(sectionIndex, subsectionIndex, columnIndex, value) {
-    const changeColumns = columns => columns.map((column, index) => (
-      index === columnIndex ? value : column
-    ))
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, {
-        table_columns: changeColumns(customization.syllabus_sections[sectionIndex].table_columns || []),
-      })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, {
-      table_columns: changeColumns(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []),
+  function updateStyleProfile(path, value) {
+    setCustomization(current => {
+      const profile = { ...(current.syllabus_style_profile || {}) }
+      if (path === 'typography.body.family') {
+        profile.typography = {
+          ...(profile.typography || {}),
+          body: { ...(profile.typography?.body || {}), family: value },
+        }
+      } else if (path === 'typography.body.size_pt') {
+        profile.typography = {
+          ...(profile.typography || {}),
+          body: { ...(profile.typography?.body || {}), size_pt: Number(value) || 11 },
+        }
+      } else if (path === 'colors.accent') {
+        profile.colors = { ...(profile.colors || {}), accent: value }
+      } else if (path === 'page.size') {
+        profile.page = { ...(profile.page || {}), size: value }
+      }
+      return { ...current, syllabus_style_profile: profile }
     })
-  }
-
-  function updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, value) {
-    const field = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex]
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex]
-    const groups = Array.isArray(field?.table_column_groups) ? field.table_column_groups : []
-    const nextGroups = Array.from(
-      { length: (field?.table_columns || []).length },
-      (_, index) => index === columnIndex ? value : (groups[index] || ''),
-    )
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, { table_column_groups: nextGroups })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, { table_column_groups: nextGroups })
-  }
-
-  function addTableColumn(sectionIndex, subsectionIndex) {
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, {
-        table_columns: [...(customization.syllabus_sections[sectionIndex].table_columns || []), ''],
-        table_column_groups: [...(customization.syllabus_sections[sectionIndex].table_column_groups || []), ''],
-      })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, {
-      table_columns: [
-        ...(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []),
-        '',
-      ],
-      table_column_groups: [
-        ...(customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_column_groups || []),
-        '',
-      ],
-    })
-  }
-
-  function removeTableColumn(sectionIndex, subsectionIndex, columnIndex) {
-    const columns = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex].table_columns || []
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_columns || []
-    const nextColumns = columns.filter((_, index) => index !== columnIndex)
-    const groups = subsectionIndex == null
-      ? customization.syllabus_sections[sectionIndex].table_column_groups || []
-      : customization.syllabus_sections[sectionIndex].subsections[subsectionIndex].table_column_groups || []
-    const table_column_groups = groups.filter((_, index) => index !== columnIndex)
-    if (subsectionIndex == null) {
-      updateSyllabusSection(sectionIndex, { table_columns: nextColumns, table_column_groups })
-      return
-    }
-    updateSyllabusSubsection(sectionIndex, subsectionIndex, { table_columns: nextColumns, table_column_groups })
-  }
-
-  function renderTableColumns(section, sectionIndex, subsectionIndex = null) {
-    const field = subsectionIndex == null
-      ? section
-      : (section.subsections || [])[subsectionIndex]
-    const columns = Array.isArray(field?.table_columns) ? field.table_columns : []
-    return (
-      <Stack spacing={1} sx={{ pl: 2 }}>
-        {columns.map((column, columnIndex) => (
-          <Stack key={columnIndex} direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems="center">
-            <TextField
-              size="small"
-              label={`Column ${columnIndex + 1} heading`}
-              value={column}
-              onChange={event => updateTableColumn(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-              fullWidth
-            />
-            <TextField
-              size="small"
-              label={`Group heading ${columnIndex + 1} (optional)`}
-              helperText="Repeat the same heading on adjacent columns to merge them."
-              value={field.table_column_groups?.[columnIndex] || ''}
-              onChange={event => updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
-              sx={inputSx}
-              fullWidth
-            />
-            <OutlineBtn small onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)}>Remove</OutlineBtn>
-          </Stack>
-        ))}
-        <OutlineBtn small onClick={() => addTableColumn(sectionIndex, subsectionIndex)}>Add Column</OutlineBtn>
-      </Stack>
-    )
   }
 
   return (
@@ -736,6 +698,8 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && editDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
+            <TextField label="Full Name" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField select label="Status" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
               SelectProps={{ native: true }} fullWidth size="small" sx={inputSx}>
@@ -748,6 +712,7 @@ export default function AdminAccountManagement() {
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 10 }}>
                 ASSIGNED COURSES ({facultyAssignments.length})
               </div>
+              {modalSuccess && <Alert severity="success" onClose={() => setModalSuccess('')} sx={{ mb: 1.5 }}>{modalSuccess}</Alert>}
               {facultyAssignments.length === 0 ? (
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
                   No courses assigned yet. Use “Assign Course” from the account menu to add one.
@@ -755,48 +720,74 @@ export default function AdminAccountManagement() {
               ) : (
                 <Stack spacing={1}>
                   {facultyAssignments.map(item => (
-                    <div
-                      key={item.assignment_id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: 12,
-                        padding: '8px 8px 8px 12px',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 2,
-                        background: 'var(--input-bg)',
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {item.course_code} — {item.course_title}
-                        </div>
-                        {item.section && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-                            Section: {item.section}
+                    <div key={item.assignment_id}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 12,
+                          padding: '8px 8px 8px 12px',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 2,
+                          background: 'var(--input-bg)',
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {item.course_code} — {item.course_title}
                           </div>
-                        )}
+                          {item.section && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                              Section: {item.section}
+                            </div>
+                          )}
+                        </div>
+                        <IconButton
+                          aria-label={`Remove ${item.course_code}`}
+                          title="Remove course assignment"
+                          size="small"
+                          disabled={removingId === item.assignment_id}
+                          onClick={() => { setModalSuccess(''); setModalError(''); setConfirmUnassign(item) }}
+                          sx={{
+                            color: 'var(--brand-green-bright, #4ADE80)',
+                            '&:hover': { background: 'rgba(231,76,60,0.12)' },
+                            '&.Mui-disabled': { color: 'var(--text-tertiary)' },
+                          }}
+                        >
+                          {removingId === item.assignment_id
+                            ? <CircularProgress size={16} sx={{ color: 'var(--brand-green-bright, #4ADE80)' }} />
+                            : <DeleteOutlinedIcon fontSize="small" />}
+                        </IconButton>
                       </div>
-                      <Tooltip title="Remove course assignment">
-                        <span>
-                          <IconButton
-                            aria-label={`Remove ${item.course_code}`}
-                            size="small"
-                            disabled={removingId === item.assignment_id}
-                            onClick={() => setConfirmUnassign(item)}
-                            sx={{
-                              color: 'var(--brand-green-bright, #4ADE80)',
-                              '&:hover': { background: 'rgba(231,76,60,0.12)' },
-                              '&.Mui-disabled': { color: 'var(--text-tertiary)' },
-                            }}
-                          >
-                            {removingId === item.assignment_id
-                              ? <CircularProgress size={16} sx={{ color: 'var(--brand-green-bright, #4ADE80)' }} />
-                              : <DeleteOutlinedIcon fontSize="small" />}
-                          </IconButton>
-                        </span>
-                      </Tooltip>
+                      {/* Inline confirmation — stays inside the same Edit modal so the
+                          backdrop never goes black from stacked MUI Dialogs. */}
+                      {confirmUnassign?.assignment_id === item.assignment_id && (
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: '10px 12px',
+                            border: '1px solid rgba(231,76,60,0.45)',
+                            borderRadius: 8,
+                            background: 'rgba(231,76,60,0.08)',
+                          }}
+                        >
+                          <div style={{ fontSize: '0.82rem', color: 'var(--text-primary)', marginBottom: 8 }}>
+                            Delete <strong>{item.course_code}</strong>
+                            {item.section ? ` (Section: ${item.section})` : ''} from{' '}
+                            <strong>{selectedFaculty?.email}</strong>? They will immediately lose
+                            access to that course workspace. The course itself stays in the catalog.
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                            <OutlineBtn small onClick={() => setConfirmUnassign(null)} disabled={Boolean(removingId)}>
+                              Cancel
+                            </OutlineBtn>
+                            <PrimaryBtn small onClick={handleConfirmUnassign} disabled={Boolean(removingId)}>
+                              {removingId ? 'Deleting…' : 'Delete Course'}
+                            </PrimaryBtn>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </Stack>
@@ -807,34 +798,6 @@ export default function AdminAccountManagement() {
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setEditDialog(false)}>Cancel</OutlineBtn>
           <PrimaryBtn onClick={handleSaveEdit}>Save Changes</PrimaryBtn>
-        </DialogActions>
-      </Dialog>
-
-      {/* Remove Course Assignment Confirmation */}
-      <Dialog
-        open={Boolean(confirmUnassign)}
-        onClose={() => { if (!removingId) setConfirmUnassign(null) }}
-        maxWidth="xs"
-        fullWidth
-        PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}
-      >
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Remove course assignment?</DialogTitle>
-        <Divider sx={{ borderColor: 'var(--border-color)' }} />
-        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
-          <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-            This removes{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>{confirmUnassign?.course_code}</strong>
-            {confirmUnassign?.section ? ` (Section: ${confirmUnassign.section})` : ''} from{' '}
-            <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>. They will
-            immediately lose access to that course workspace, its syllabus, assessments, and grading data.
-            The course itself stays in the catalog.
-          </Typography>
-        </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
-          <OutlineBtn onClick={() => setConfirmUnassign(null)} disabled={Boolean(removingId)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleConfirmUnassign} disabled={Boolean(removingId)}>
-            {removingId ? 'Removing…' : 'Remove Course'}
-          </PrimaryBtn>
         </DialogActions>
       </Dialog>
 
@@ -879,6 +842,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             <TextField label="Full Name" value={createForm.full_name} onChange={e => setCreateForm({ ...createForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={createForm.email} onChange={e => setCreateForm({ ...createForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField label="Temporary Password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} fullWidth size="small" type="password" sx={inputSx} />
@@ -966,6 +930,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
+            {modalError && assignmentDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Assigning access for <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>
             </div>
@@ -1027,15 +992,15 @@ export default function AdminAccountManagement() {
               onChange={e => setAssignmentForm({ ...assignmentForm, section: e.target.value })}
               fullWidth size="small" sx={inputSx}
               SelectProps={{ native: false }}
-              helperText={sections.length ? undefined : 'No sections registered yet — you can type a section code.'}
+              helperText={mergedSections.length ? undefined : 'No sections registered yet — you can type a section code.'}
             >
               <MenuItem value="">-- select section --</MenuItem>
-              {sections.map(section => (
-                <MenuItem key={section.section_id} value={section.display_name || section.code}>
+              {mergedSections.map(section => (
+                <MenuItem key={section.section_id || section.display_name || section.code} value={section.display_name || section.code}>
                   {section.display_name || section.code}
                 </MenuItem>
               ))}
-              {assignmentForm.section && !sections.some(s => (s.display_name || s.code) === assignmentForm.section) && (
+              {assignmentForm.section && !mergedSections.some(s => (s.display_name || s.code) === assignmentForm.section) && (
                 <MenuItem value={assignmentForm.section}>{assignmentForm.section} (custom)</MenuItem>
               )}
             </TextField>
@@ -1048,129 +1013,95 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Syllabus Format / Customization Dialog */}
-      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+      <Dialog open={customizationDialog} onClose={() => setCustomizationDialog(false)} maxWidth="lg" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>University Syllabus Format</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2}>
-            <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>HEADER IMAGE (OPTIONAL)</div>
-              <OutlineBtn small onClick={() => document.getElementById('custom-header-input')?.click()}>
-                {customization.header_image_url ? 'Replace header image' : 'Choose header image'}
+            <Stack direction="row" spacing={1}>
+              <OutlineBtn small onClick={() => setFormatTab('map')}
+                style={formatTab === 'map' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
+                Click map
               </OutlineBtn>
-              <input id="custom-header-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
-                onChange={e => readImageFile(e.target.files?.[0], 'header_image_url')} />
-              {customization.header_image_url && (
-                <img src={customization.header_image_url} alt="Header preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
-              )}
-            </div>
-            <TextField label="Header text fallback (optional)" value={customization.header_text || ''}
-              onChange={e => setCustomization({ ...customization, header_text: e.target.value })}
-              fullWidth multiline minRows={2} size="small" sx={inputSx} />
+              <OutlineBtn small onClick={() => setFormatTab('style')}
+                style={formatTab === 'style' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}>
+                Style & branding
+              </OutlineBtn>
+            </Stack>
 
-            <div>
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>FOOTER IMAGE (OPTIONAL)</div>
-              <OutlineBtn small onClick={() => document.getElementById('custom-footer-input')?.click()}>
-                {customization.footer_image_url ? 'Replace footer image' : 'Choose footer image'}
-              </OutlineBtn>
-              <input id="custom-footer-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
-                onChange={e => readImageFile(e.target.files?.[0], 'footer_image_url')} />
-              {customization.footer_image_url && (
-                <img src={customization.footer_image_url} alt="Footer preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
-              )}
-            </div>
-            <TextField label="Footer text fallback (optional)" value={customization.footer_text || ''}
-              onChange={e => setCustomization({ ...customization, footer_text: e.target.value })}
-              fullWidth multiline minRows={2} size="small" sx={inputSx} />
-
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Syllabus sections</div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
-              Import a syllabus template to detect sections, subsections and tables automatically, or add them yourself and define the answer fields faculty should complete as subsections.
-            </div>
-            <div>
-              <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
-                {templateImport.busy ? 'Analyzing template…' : 'Import from syllabus file (PDF/DOCX)'}
-              </OutlineBtn>
-              <input id="syllabus-template-import" hidden type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={e => { importSyllabusTemplate(e.target.files?.[0]); e.target.value = '' }} />
-            </div>
-            {templateImport.message && (
-              <Alert severity={templateImport.severity} onClose={templateImport.busy ? undefined : () => setTemplateImport(current => ({ ...current, message: '' }))}>
-                {templateImport.message}
-              </Alert>
+            {formatTab === 'map' && (
+              <SyllabusFormatEditor
+                blocks={customization.syllabus_preview_blocks || []}
+                fieldMap={customization.syllabus_field_map || { sections: [], click_log: [] }}
+                onFieldMapChange={nextMap => setCustomization(current => ({ ...current, syllabus_field_map: nextMap }))}
+                templateName={customization.syllabus_template_name || ''}
+                templateFileUrl={customization.syllabus_template_url || ''}
+                fileType={customization.syllabus_template_kind || ''}
+                localFile={templateLocalFile}
+                onUpload={uploadDocxTemplate}
+                uploading={templateImport.busy}
+                uploadMessage={templateImport.message}
+                uploadSeverity={templateImport.severity}
+              />
             )}
-            {(customization.syllabus_sections || []).map((section, index) => (
-              <Stack key={`${section.key}-${index}`} spacing={1}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>
-                  <TextField size="small" label="Key" value={section.key || ''}
-                    onChange={e => updateSyllabusSection(index, { key: e.target.value })} sx={inputSx} />
-                  <TextField size="small" label="Section title" value={section.label || ''}
-                    onChange={e => updateSyllabusSection(index, { label: e.target.value })} sx={inputSx}
-                    helperText={!section.is_static && BUILTIN_SYLLABUS_EDITORS[section.key]
-                      ? `Uses the built-in ${BUILTIN_SYLLABUS_EDITORS[section.key]} editor.`
-                      : undefined} />
-                  <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: current.syllabus_sections.filter((_, i) => i !== index) }))}>Remove</OutlineBtn>
+
+            {formatTab === 'style' && (
+              <Stack spacing={2}>
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>HEADER IMAGE (OPTIONAL)</div>
+                  <OutlineBtn small onClick={() => document.getElementById('custom-header-input')?.click()}>
+                    {customization.header_image_url ? 'Replace header image' : 'Choose header image'}
+                  </OutlineBtn>
+                  <input id="custom-header-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={e => readImageFile(e.target.files?.[0], 'header_image_url')} />
+                  {customization.header_image_url && (
+                    <img src={customization.header_image_url} alt="Header preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
+                  )}
                 </div>
-                <Stack direction="row" spacing={2}>
-                  <FormControlLabel
-                    control={<Switch checked={section.enabled !== false} onChange={e => updateSyllabusSection(index, { enabled: e.target.checked })} />}
-                    label="Show to faculty"
-                  />
-                  <FormControlLabel
-                    control={<Switch checked={Boolean(section.is_static)} onChange={e => updateSyllabusSection(index, { is_static: e.target.checked })} />}
-                    label="Fixed for all"
-                  />
-                </Stack>
-                {section.is_static && (
-                  <TextField size="small" label="Shared fixed content" value={section.static_content || ''} multiline minRows={2}
-                    onChange={e => updateSyllabusSection(index, { static_content: e.target.value })} sx={inputSx} />
-                )}
-                {!section.is_static && (
-                  <Stack spacing={1}>
-                    <FormControlLabel
-                      control={<Switch checked={Boolean(section.table_enabled)} onChange={e => updateSyllabusSection(index, { table_enabled: e.target.checked })} />}
-                      label="Include a table in this section"
-                    />
-                    {section.table_enabled && renderTableColumns(section, index)}
-                  </Stack>
-                )}
-                {!section.is_static && (
-                  <Stack spacing={1} sx={{ pl: 1.5, borderLeft: '2px solid var(--border-color)' }}>
-                    <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Subsections / answer fields</Typography>
-                    {(Array.isArray(section.subsections) ? section.subsections : []).map((subsection, subsectionIndex) => (
-                      <Stack key={subsection.key || subsectionIndex} spacing={1}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <TextField
-                            size="small"
-                            label="Subsection name"
-                            value={subsection.label || ''}
-                            onChange={e => updateSyllabusSubsection(index, subsectionIndex, { label: e.target.value })}
-                            sx={inputSx}
-                            fullWidth
-                          />
-                          <FormControlLabel
-                            control={<Switch checked={Boolean(subsection.required)} onChange={e => updateSyllabusSubsection(index, subsectionIndex, { required: e.target.checked })} />}
-                            label="Required"
-                            sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
-                          />
-                          <OutlineBtn small onClick={() => removeSyllabusSubsection(index, subsectionIndex)}>Remove</OutlineBtn>
-                        </Stack>
-                        <FormControlLabel
-                          control={<Switch checked={Boolean(subsection.table_enabled)} onChange={e => updateSyllabusSubsection(index, subsectionIndex, { table_enabled: e.target.checked })} />}
-                          label="Use a table for this subsection"
-                        />
-                        {subsection.table_enabled && renderTableColumns(section, index, subsectionIndex)}
-                      </Stack>
-                    ))}
-                    <OutlineBtn small onClick={() => addSyllabusSubsection(index)}>Add Subsection</OutlineBtn>
-                  </Stack>
-                )}
+                <TextField label="Header text (optional)" value={customization.header_text || ''}
+                  onChange={e => setCustomization({ ...customization, header_text: e.target.value })}
+                  fullWidth multiline minRows={2} size="small" sx={inputSx} />
+
+                <div>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: 6 }}>FOOTER IMAGE (OPTIONAL)</div>
+                  <OutlineBtn small onClick={() => document.getElementById('custom-footer-input')?.click()}>
+                    {customization.footer_image_url ? 'Replace footer image' : 'Choose footer image'}
+                  </OutlineBtn>
+                  <input id="custom-footer-input" hidden type="file" accept="image/png,image/jpeg,image/webp"
+                    onChange={e => readImageFile(e.target.files?.[0], 'footer_image_url')} />
+                  {customization.footer_image_url && (
+                    <img src={customization.footer_image_url} alt="Footer preview" style={{ display: 'block', maxWidth: '100%', maxHeight: 90, margin: '8px auto 0', objectFit: 'contain' }} />
+                  )}
+                </div>
+                <TextField label="Footer text (optional)" value={customization.footer_text || ''}
+                  onChange={e => setCustomization({ ...customization, footer_text: e.target.value })}
+                  fullWidth multiline minRows={2} size="small" sx={inputSx} />
+
+                <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>Detected style profile</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <TextField size="small" label="Body font" sx={inputSx}
+                    value={customization.syllabus_style_profile?.typography?.body?.family || ''}
+                    onChange={e => updateStyleProfile('typography.body.family', e.target.value)} />
+                  <TextField size="small" label="Body size (pt)" type="number" sx={inputSx}
+                    value={customization.syllabus_style_profile?.typography?.body?.size_pt ?? ''}
+                    onChange={e => updateStyleProfile('typography.body.size_pt', e.target.value)} />
+                  <TextField size="small" label="Accent color" sx={inputSx}
+                    value={customization.syllabus_style_profile?.colors?.accent || ''}
+                    onChange={e => updateStyleProfile('colors.accent', e.target.value)} />
+                  <TextField size="small" label="Page size" sx={inputSx}
+                    value={customization.syllabus_style_profile?.page?.size || ''}
+                    onChange={e => updateStyleProfile('page.size', e.target.value)} />
+                </div>
+                <Typography sx={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+                  Style confidence:{' '}
+                  {customization.syllabus_style_profile?.source?.confidence != null
+                    ? `${Math.round(Number(customization.syllabus_style_profile.source.confidence) * 100)}%`
+                    : '—'}
+                  {' · '}Parser: {customization.syllabus_style_profile?.source?.parser || '—'}
+                </Typography>
               </Stack>
-            ))}
-            <OutlineBtn small onClick={() => setCustomization(current => ({ ...current, syllabus_sections: [...(current.syllabus_sections || []), { key: '', label: '', enabled: true, is_static: false, static_content: '', table_enabled: false, table_columns: [], subsections: [] }] }))}>
-              Add Section
-            </OutlineBtn>
+            )}
+
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>

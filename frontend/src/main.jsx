@@ -4,8 +4,10 @@ import './index.css'
 import App from './App.jsx'
 import { AuthProvider } from './store/authStore.jsx'
 import { applyStoredThemePreference } from './utils/userPreferences.js'
+import { registerServiceWorker } from './utils/pwaInstall.js'
 
 applyStoredThemePreference()
+registerServiceWorker()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
