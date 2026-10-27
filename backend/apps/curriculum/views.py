@@ -1,5 +1,6 @@
 import json
 import logging
+import random
 import re
 from collections import defaultdict
 
@@ -1041,15 +1042,22 @@ def _match_assessment_entry(entries, code='', label=''):
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        entry_code = str(entry.get('code') or '').strip().lower()
-        entry_label = str(entry.get('task') or entry.get('label') or '').strip().lower()
+        # Assessment tasks use code/task/label, while TOS exams use
+        # examCode/examLabel. Support both schemas so an explicitly selected
+        # Final or Midterm exam never falls back to the first (usually Prelim) row.
+        entry_code = str(entry.get('code') or entry.get('examCode') or '').strip().lower()
+        entry_label = str(
+            entry.get('task') or entry.get('label') or entry.get('examLabel') or ''
+        ).strip().lower()
         sub_codes = [str(sub.get('code') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
         sub_labels = [str(sub.get('label') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
         if code and (code == entry_code or code in sub_codes):
             return entry
         if label and (label == entry_label or label in sub_labels):
             return entry
-    return entries[0] if entries else None
+    # Only use the first entry when no exam was requested. An explicit but
+    # unmatched selection must not silently become Preliminary.
+    return entries[0] if entries and not (code or label) else None
 
 
 def _is_major_exam_entry(entry):
@@ -1111,6 +1119,43 @@ def _tos_exam_total_items(exam_entry):
     return by_bloom
 
 
+def _bloom_counts_from_tos_row(row, total_override=0):
+    """Return Bloom counts, deriving item counts from saved Bloom percentages."""
+    bloom_keys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    bloom_items = row.get('bloom_items') or {}
+    counts = {key: max(0, _to_int(bloom_items.get(key))) for key in bloom_keys}
+    if sum(counts.values()) > 0:
+        return counts
+
+    percentages = row.get('bloom_pct') or {}
+    pct_values = []
+    for key in bloom_keys:
+        try:
+            pct_values.append(max(0.0, float(percentages.get(key) or 0)))
+        except (TypeError, ValueError):
+            pct_values.append(0.0)
+    pct_total = sum(pct_values)
+    if pct_total <= 0:
+        return counts
+
+    total = max(
+        0,
+        _to_int(total_override)
+        or _to_int(row.get('total_points'))
+        or _to_int(row.get('weight')),
+    )
+    if total <= 0:
+        return counts
+
+    # Largest-remainder rounding preserves the exact topic item total.
+    raw = [total * value / pct_total for value in pct_values]
+    rounded = [int(value) for value in raw]
+    remainder = total - sum(rounded)
+    for index in sorted(range(len(raw)), key=lambda i: raw[i] - rounded[i], reverse=True)[:remainder]:
+        rounded[index] += 1
+    return dict(zip(bloom_keys, rounded))
+
+
 def _flatten_tos_sections(tos_entry):
     """Build section candidates from a single syllabus TOS entry."""
     entries = [tos_entry] if isinstance(tos_entry, dict) else []
@@ -1127,15 +1172,7 @@ def _flatten_tos_sections(tos_entry):
             section_title = str(row.get('topic') or '').strip()
             if not section_title:
                 continue
-            bloom_items = row.get('bloom_items') or {}
-            bloom_counts = {
-                'remember': _to_int(bloom_items.get('remember')),
-                'understand': _to_int(bloom_items.get('understand')),
-                'apply': _to_int(bloom_items.get('apply')),
-                'analyze': _to_int(bloom_items.get('analyze')),
-                'evaluate': _to_int(bloom_items.get('evaluate')),
-                'create': _to_int(bloom_items.get('create')),
-            }
+            bloom_counts = _bloom_counts_from_tos_row(row)
             row_total = sum(bloom_counts.values())
             if row_total <= 0:
                 row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
@@ -1164,15 +1201,7 @@ def _flatten_tos_sections(tos_entry):
             section_title = str(row.get('topic') or '').strip()
             if not section_title:
                 continue
-            bloom_items = row.get('bloom_items') or {}
-            bloom_counts = {
-                'remember': _to_int(bloom_items.get('remember')),
-                'understand': _to_int(bloom_items.get('understand')),
-                'apply': _to_int(bloom_items.get('apply')),
-                'analyze': _to_int(bloom_items.get('analyze')),
-                'evaluate': _to_int(bloom_items.get('evaluate')),
-                'create': _to_int(bloom_items.get('create')),
-            }
+            bloom_counts = _bloom_counts_from_tos_row(row)
             row_total = sum(bloom_counts.values())
             if row_total <= 0:
                 row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
@@ -1239,15 +1268,7 @@ def _build_sectioned_assessment_payload(
         section_title = str(row.get('topic') or row.get('label') or '').strip()
         if not section_title:
             continue
-        bloom_items = row.get('bloom_items') or {}
-        bloom_counts = {
-            'remember': _to_int(bloom_items.get('remember')),
-            'understand': _to_int(bloom_items.get('understand')),
-            'apply': _to_int(bloom_items.get('apply')),
-            'analyze': _to_int(bloom_items.get('analyze')),
-            'evaluate': _to_int(bloom_items.get('evaluate')),
-            'create': _to_int(bloom_items.get('create')),
-        }
+        bloom_counts = _bloom_counts_from_tos_row(row)
         row_total = sum(bloom_counts.values())
         if row_total <= 0:
             row_total = _to_int(row.get('total_points')) or _to_int(row.get('weight'))
@@ -1258,7 +1279,8 @@ def _build_sectioned_assessment_payload(
                 'section_title': section_title,
                 'ilos': [str(v) for v in (row.get('ilos') or []) if str(v).strip()],
                 'bloom_counts': bloom_counts,
-                'weight': row_total if row_total > 0 else 1,
+                'bloom_pct': row.get('bloom_pct') or {},
+                'weight': row_total if row_total > 0 else (_to_int(row.get('hours_class')) or 1),
             }
         )
 
@@ -1304,6 +1326,14 @@ def _build_sectioned_assessment_payload(
         allocated = max(0, section_alloc[idx])
         blooms = section['bloom_counts']
         bloom_weights = [blooms.get(k, 0) for k in bloom_order]
+        if sum(bloom_weights) <= 0:
+            percentages = section.get('bloom_pct') or {}
+            bloom_weights = []
+            for key in bloom_order:
+                try:
+                    bloom_weights.append(max(0.0, float(percentages.get(key) or 0)))
+                except (TypeError, ValueError):
+                    bloom_weights.append(0.0)
         if sum(bloom_weights) <= 0 and default_bloom_weights:
             bloom_weights = list(default_bloom_weights)
         bloom_weight_total = sum(bloom_weights)
@@ -1389,11 +1419,7 @@ def _tos_topic_bloom_targets(topic_rows):
         if not topic:
             continue
 
-        bloom_items = row.get('bloom_items') or {}
-        bloom_targets = {
-            key: max(0, _to_int(bloom_items.get(key)))
-            for key in bloom_order
-        }
+        bloom_targets = _bloom_counts_from_tos_row(row)
 
         row_total = sum(bloom_targets.values())
         if row_total <= 0:
@@ -1597,6 +1623,64 @@ def _normalize_choices(choices):
         else:
             normalized.append(f'{prefix}. {text}')
     return normalized[:4]
+
+
+def _randomize_mcq_answers(item_payload):
+    """Shuffle four MCQ choices while keeping the answer key accurate.
+
+    LLMs and the structural fallback both tend to put the correct choice in
+    position A. Randomizing at the server boundary makes the persisted rubric
+    authoritative regardless of which generation path produced the item.
+    """
+    if not isinstance(item_payload, dict):
+        return item_payload
+
+    choices = _normalize_choices(item_payload.get('choices'))
+    if len(choices) != 4:
+        return item_payload
+
+    correct_answer = str(item_payload.get('correct_answer') or '').strip()[:1].upper()
+    if correct_answer not in 'ABCD':
+        return item_payload
+
+    def _choice_text(choice):
+        return re.sub(r'^[A-D][.)]\s*', '', str(choice or '').strip()).strip()
+
+    correct_index = 'ABCD'.index(correct_answer)
+    choice_pairs = [
+        (_choice_text(choice), index == correct_index)
+        for index, choice in enumerate(choices)
+    ]
+    random.SystemRandom().shuffle(choice_pairs)
+
+    randomized = dict(item_payload)
+    randomized['choices'] = [
+        f'{letter}. {choice_text}'
+        for letter, (choice_text, _is_correct) in zip('ABCD', choice_pairs)
+    ]
+    randomized['correct_answer'] = 'ABCD'[next(
+        index for index, (_choice_text_value, is_correct) in enumerate(choice_pairs)
+        if is_correct
+    )]
+    return randomized
+
+
+def _question_fingerprint(question_text):
+    """Return a stable comparison key for detecting repeated question stems."""
+    text = str(question_text or '').strip().lower()
+    text = re.sub(r'^\s*(?:question|item)?\s*#?\d+[\s:.)-]*', '', text)
+    return re.sub(r'[^a-z0-9]+', '', text)
+
+
+def _choices_fingerprint(choices):
+    normalized_choices = _normalize_choices(choices)
+    if len(normalized_choices) != 4:
+        return None
+    choice_texts = [
+        re.sub(r'^[A-D][.)]\s*', '', str(choice).strip()).lower()
+        for choice in normalized_choices
+    ]
+    return tuple(sorted(re.sub(r'[^a-z0-9]+', '', text) for text in choice_texts))
 
 
 def _is_placeholder_choice(choice_text):
@@ -2086,6 +2170,14 @@ def generate_assessment(request):
     # faculty_topics can only narrow that TOS selection.
     has_tos_exam = isinstance(source.get('selected_exam'), dict)
     if not has_tos_exam:
+        if source_exam_code or source_exam_label:
+            return Response(
+                {
+                    'success': False,
+                    'detail': f"Selected TOS exam was not found: {source_exam_label or source_exam_code}.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not source['topic_rows']:
             return Response(
                 {
@@ -2339,8 +2431,9 @@ Requirements:
 2. Keep the same item_number.
 3. Include keys: item_number, item_type, section_title, exam_label, bloom_level, bloom_verb, ilo_refs, question_text, choices, correct_answer, points, answer_key.
 4. choices must have exactly 4 options (A, B, C, D only) and correct_answer must be A, B, C, or D.
-5. bloom_level MUST exactly match the blueprint bloom_level ({target_item_blueprint.get('bloom_level') or 'as specified'}). Do not use any other Bloom level.
-6. If relation context is provided, the item should be meaningfully related but not a duplicate.
+5. Randomize the correct-answer position across items; do not always place the correct choice at A.
+6. bloom_level MUST exactly match the blueprint bloom_level ({target_item_blueprint.get('bloom_level') or 'as specified'}). Do not use any other Bloom level.
+7. If relation context is provided, the item should be meaningfully related but not a duplicate.
 """
 
         llm = LLMService()
@@ -2385,7 +2478,7 @@ Requirements:
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        normalized_item = {
+        normalized_item = _randomize_mcq_answers({
             'item_number': target_item_number,
             'item_type': str(parsed_item.get('item_type') or 'Multiple Choice'),
             'section_title': target_section.get('section_title') or target_item_blueprint.get('section_title'),
@@ -2406,7 +2499,7 @@ Requirements:
             'correct_answer': str(parsed_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
             'answer_key': str(parsed_item.get('answer_key') or '').strip(),
             'points': max(0, _to_int(parsed_item.get('points'), _to_int(target_item_blueprint.get('points'), 0))),
-        }
+        })
 
         if not manual_mode:
             quality_errors = _generated_item_quality_errors(normalized_item)
@@ -2781,16 +2874,32 @@ Requirements:
     def _generate_sections_individually():
         generated_sections = []
         for section in mcq_sections:
-            section_prompt = _build_section_generation_prompt(section)
-            section_raw = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': section_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=2500,
-            )
-            parsed_section, section_error = _parse_assessment_json(section_raw)
-            if not isinstance(parsed_section, dict):
-                raise ValueError(f"Section generation failed for {section.get('section_title')}: {section_error}")
+            parsed_section = None
+            section_error = None
+            try:
+                section_prompt = _build_section_generation_prompt(section)
+                section_raw = llm.generate_response_with_fallback(
+                    messages=[{'role': 'user', 'content': section_prompt}],
+                    preferred_provider=provider,
+                    system=system_prompt,
+                    max_tokens=2500,
+                )
+                parsed_section, section_error = _parse_assessment_json(section_raw)
+                section_items = parsed_section.get('items') if isinstance(parsed_section, dict) else None
+                section_has_issues = (
+                    not isinstance(parsed_section, dict)
+                    or not isinstance(section_items, list)
+                    or len(section_items) != len(section.get('items', []))
+                    or bool(_payload_quality_issues({'sections': [parsed_section]}))
+                )
+            except Exception as exc:
+                section_has_issues = True
+                section_error = str(exc)
+
+            if section_has_issues:
+                raise ValueError(
+                    f'Section generation failed for {section.get("section_title")}: {section_error or "invalid MCQ payload"}'
+                )
             generated_sections.append(parsed_section)
         return {
             'title': assessment_title,
@@ -2808,6 +2917,8 @@ Requirements:
         if not isinstance(sections_payload, list):
             return ['sections is missing or not a list.']
 
+        seen_questions = {}
+        seen_choice_sets = {}
         for section in sections_payload:
             if not isinstance(section, dict):
                 issues.append('section entry is not an object.')
@@ -2824,6 +2935,26 @@ Requirements:
                     issues.append(
                         f'{section_title} item #{item_no or "?"}: ' + '; '.join(item_errors)
                     )
+                question_key = _question_fingerprint(item.get('question_text'))
+                if question_key:
+                    previous = seen_questions.get(question_key)
+                    if previous:
+                        issues.append(
+                            f'{section_title} item #{item_no or "?"} duplicates '
+                            f'{previous[0]} item #{previous[1]}. Questions must be unique.'
+                        )
+                    else:
+                        seen_questions[question_key] = (section_title, item_no or '?')
+                choice_key = _choices_fingerprint(item.get('choices'))
+                if choice_key:
+                    previous = seen_choice_sets.get(choice_key)
+                    if previous:
+                        issues.append(
+                            f'{section_title} item #{item_no or "?"} repeats the choice set from '
+                            f'{previous[0]} item #{previous[1]}. Choices must be unique.'
+                        )
+                    else:
+                        seen_choice_sets[choice_key] = (section_title, item_no or '?')
         return issues
 
     try:
@@ -2835,8 +2966,11 @@ Requirements:
                 max_tokens=4000,
             )
         except ValueError as e:
-            logger.error("Assessment generation failed: %s", e)
-            return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            # Preserve the provider error and let the retry path produce a
+            # user-facing failure instead of saving fabricated assessment data.
+            logger.warning("Assessment primary LLM request failed; attempting JSON repair: %s", e)
+            raw_text = ''
+            parse_error = str(e)
 
         generated_payload, parse_error = _parse_assessment_json(raw_text)
 
@@ -2889,18 +3023,29 @@ Previous invalid response:
 {raw_text}
 """
 
-            repaired_text = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': repair_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=4000,
-            )
-            generated_payload, retry_error = _parse_assessment_json(repaired_text)
+            try:
+                repaired_text = llm.generate_response_with_fallback(
+                    messages=[{'role': 'user', 'content': repair_prompt}],
+                    preferred_provider=provider,
+                    system=system_prompt,
+                    max_tokens=4000,
+                )
+            except Exception as repair_exc:
+                repaired_text = ''
+                retry_error = str(repair_exc)
+                logger.warning(
+                    'Assessment JSON repair request failed; attempting per-section generation. error=%s',
+                    repair_exc,
+                )
+            else:
+                retry_error = None
+            generated_payload, parsed_retry_error = _parse_assessment_json(repaired_text)
+            retry_error = parsed_retry_error or retry_error
             if generated_payload:
                 llm_json_retry_success = True
             else:
                 logger.warning(
-                    'Assessment LLM retry also returned invalid JSON; attempting per-section MCQ generation. error=%s',
+                    'Assessment LLM retry also returned invalid JSON; attempting per-section generation. error=%s',
                     retry_error,
                 )
                 section_retry_used = True
@@ -2950,36 +3095,16 @@ Previous invalid response:
     )
 
     if llm_json_blueprint_fallback_used:
-        fallback_assessment = Assessment.objects.create(
-            course=course,
-            title=assessment_title,
-            assessment_type=source['assessment_type'],
-            term=term,
-            status='Draft',
-            generated_at=timezone.now(),
+        logger.error(
+            'Assessment generation failed without a valid unique MCQ payload; no assessment was saved. course_id=%s assessment=%s',
+            str(course.course_id),
+            source['assessment_name'],
         )
         return Response(
             {
                 'success': False,
-                'detail': 'Assessment generation did not return valid MCQ JSON. Please retry with fewer items or narrower topics.',
-                'manual_entry_allowed': True,
-                'assessment_id': str(fallback_assessment.assessment_id),
-                'tos_counters': _build_tos_counters(source['topic_rows'], {}),
-                'manual_item_schema': {
-                    'manual_items': [
-                        {
-                            'section_title': 'Topic from TOS',
-                            'bloom_level': 'Remember|Understand|Apply|Analyze|Evaluate|Create',
-                            'question_text': 'Question stem',
-                            'choices': ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
-                            'correct_answer': 'A',
-                            'answer_key': 'Explanation of the answer',
-                            'ilo_refs': ['ILO 1'],
-                            'points': 1,
-                        }
-                    ],
-                    'assessment_id': str(fallback_assessment.assessment_id),
-                },
+                'detail': 'Sorry, assessment generation failed because a valid unique question set could not be produced. Please try again later.',
+                'retryable': True,
             },
             status=status.HTTP_502_BAD_GATEWAY,
         )
@@ -2989,35 +3114,75 @@ Previous invalid response:
         sections_by_title = {str(s.get('section_title')): s for s in mcq_sections}
         normalized_sections = []
         running_total = 0
+        normalization_error = None
         for section in generated_payload.get('sections', []):
             if not isinstance(section, dict):
+                normalization_error = 'A generated section was not a valid object.'
                 continue
             title_key = str(section.get('section_title') or '').strip()
             blueprint_section = sections_by_title.get(title_key)
             if not blueprint_section:
+                normalization_error = f'Generated section "{title_key or "Untitled"}" was not in the assessment blueprint.'
                 continue
             items = []
             for idx, item in enumerate(section.get('items') or [], start=1):
                 if not isinstance(item, dict):
                     continue
-                points = _to_int(item.get('points'), 0)
+                item_number = _to_int(item.get('item_number'), idx)
+                blueprint_items = blueprint_section.get('items') or []
+                blueprint_item = next(
+                    (
+                        candidate for candidate in blueprint_items
+                        if _to_int(candidate.get('item_number'), 0) == item_number
+                    ),
+                    None,
+                ) or (blueprint_items[idx - 1] if idx <= len(blueprint_items) else {})
+                points = _to_int(
+                    blueprint_item.get('points') if blueprint_item else item.get('points'),
+                    _to_int(item.get('points'), 0),
+                )
                 running_total += points
                 items.append(
-                    {
-                        'item_number': _to_int(item.get('item_number'), idx),
+                    _randomize_mcq_answers({
+                        'item_number': item_number,
                         'item_type': str(item.get('item_type') or 'Multiple Choice'),
                         'section_title': blueprint_section['section_title'],
                         'exam_label': str(item.get('exam_label') or blueprint_section['exam_label']),
-                        'bloom_level': str(item.get('bloom_level') or '').strip(),
-                        'bloom_verb': str(item.get('bloom_verb') or '').strip(),
-                        'ilo_refs': [str(v) for v in (item.get('ilo_refs') or blueprint_section.get('ilos') or []) if str(v).strip()],
+                        # TOS is authoritative; never let the model collapse
+                        # all generated items to Remember.
+                        'bloom_level': str(
+                            (blueprint_item or {}).get('bloom_level')
+                            or item.get('bloom_level')
+                            or ''
+                        ).strip(),
+                        'bloom_verb': str(
+                            (blueprint_item or {}).get('bloom_verb')
+                            or item.get('bloom_verb')
+                            or ''
+                        ).strip(),
+                        'ilo_refs': [
+                            str(v) for v in (
+                                (blueprint_item or {}).get('ilo_refs')
+                                or item.get('ilo_refs')
+                                or blueprint_section.get('ilos')
+                                or []
+                            ) if str(v).strip()
+                        ],
                         'question_text': str(item.get('question_text') or '').strip(),
                         'choices': _normalize_choices(item.get('choices')),
                         'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
                         'answer_key': str(item.get('answer_key') or '').strip(),
                         'points': points,
-                    }
+                    })
                 )
+
+            expected_item_count = len(blueprint_section.get('items') or [])
+            if len(items) != expected_item_count:
+                normalization_error = (
+                    f'Section "{blueprint_section["section_title"]}" returned '
+                    f'{len(items)} item(s), expected {expected_item_count}.'
+                )
+                continue
 
             normalized_sections.append(
                 {
@@ -3025,13 +3190,22 @@ Previous invalid response:
                     'exam_label': blueprint_section['exam_label'],
                     'allocated_items': blueprint_section['allocated_items'],
                     'bloom_distribution': blueprint_section['bloom_distribution'],
-                    'items': items or blueprint_section['items'],
+                    'items': items,
                 }
             )
 
-        if normalized_sections:
-            sections = normalized_sections
-            total_generated = sum(len(s['items']) for s in sections)
+        if normalization_error or len(normalized_sections) != len(mcq_sections):
+            return Response(
+                {
+                    'success': False,
+                    'detail': 'Sorry, assessment generation failed because the generated question set was incomplete or invalid. Please try again later.',
+                    'retryable': True,
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        sections = normalized_sections
+        total_generated = sum(len(s['items']) for s in sections)
 
     assessment = Assessment.objects.create(
         course=course,

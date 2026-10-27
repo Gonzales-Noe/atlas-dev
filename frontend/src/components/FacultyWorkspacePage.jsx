@@ -138,6 +138,26 @@ const EMPTY_ATTR    = { code: '', title: '', description: '' }
 const EMPTY_POLICY  = { title: '', content: '' }
 const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', ilo_refs: [], so: '', delivery: '' }
 
+// Weekly Schedule controls are shared across all courses. Only the Topic /
+// Activity field is AI-generatable; Task and Delivery are faculty-selected
+// pipeline values and must not vary with institution-specific ATS records.
+const WEEKLY_SCHEDULE_TASK_OPTIONS = [
+  'Lecture/Discussion',
+  'Learning Activity',
+  'Quiz',
+  'Assignment',
+  'Project',
+  'Midterm Examination',
+  'Final Examination',
+]
+const WEEKLY_SCHEDULE_DELIVERY_OPTIONS = ['F2F', 'Online', 'Hybrid', 'Exam', 'Lab']
+
+function normalizeWeeklyScheduleChoice(value, options, fallback = '') {
+  const choice = String(value || '').trim()
+  if (!choice) return ''
+  return options.includes(choice) ? choice : fallback
+}
+
 function normalizeSectionToken(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
 }
@@ -858,6 +878,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // Assessment generation popup (Create Assessment = multi-topic scope, Generate Assessment = single topic)
   const [assessmentGenDialogOpen, setAssessmentGenDialogOpen] = useState(false)
   const [assessmentGenMode, setAssessmentGenMode] = useState('single') // 'single' | 'multi'
+  const [assessmentGenExamKey, setAssessmentGenExamKey] = useState('')
   const [assessmentGenTitle, setAssessmentGenTitle] = useState('Major Examination')
   const [assessmentGenSelectedTopics, setAssessmentGenSelectedTopics] = useState([])
   const [assessmentGenItemCount, setAssessmentGenItemCount] = useState(50)
@@ -958,8 +979,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
     // 2. tla_chapters: old {chapter,description} → new column model
     const normChapters = (chapters) => (chapters || []).map(ch => {
-      if ('topics' in ch) return ch
-      return { chapter: ch.chapter || '', topics: ch.description || '', weeks: '', outcomes: '', ilo: '', so: '', delivery: '' }
+      const normalized = 'topics' in ch
+        ? { ...ch }
+        : { chapter: ch.chapter || '', topics: ch.description || '', weeks: '', outcomes: '', ilo: '', so: '', delivery: '' }
+      return {
+        ...normalized,
+        outcomes: normalizeWeeklyScheduleChoice(normalized.outcomes, WEEKLY_SCHEDULE_TASK_OPTIONS, 'Learning Activity'),
+        delivery: normalizeWeeklyScheduleChoice(normalized.delivery, WEEKLY_SCHEDULE_DELIVERY_OPTIONS, 'F2F'),
+      }
     })
 
     // 3. SO/CPA mapping rows (one per ILO)
@@ -1237,7 +1264,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })))
     }
     if (activeSyllabusSectionKey === 'schedule') {
-      const SCHEDULE_AI_FIELDS = ['chapter', 'topics', 'weeks', 'outcomes', 'delivery', 'ilo', 'so']
+      const SCHEDULE_AI_FIELDS = ['topics']
       const SCHEDULE_FIELD_LABELS = {
         chapter: 'Week Number',
         topics: 'Topic / Activity',
@@ -1833,24 +1860,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const tosLabelMap = new Map(existingTos.map(t => [t.examLabel?.toLowerCase(), t]))
 
       let updated = false
-      // Update examLabel + totalTestItems for existing TOS entries that match a task
+      // Keep an existing TOS total authoritative. The total test item count is
+      // faculty-edited TOS data and must not be overwritten by the linked task's
+      // ILO score sum when the workspace refreshes.
       const syncedTos = existingTos.map(t => {
         const matchingTask = majExam.subs.find(
           sub => sub.label?.toLowerCase() === t.examLabel?.toLowerCase()
         )
         if (!matchingTask) return t
-        const newTotal = Object.values(matchingTask.iloTotals || {}).reduce(
-          (acc, v) => acc + (Number(v) || 0), 0
-        )
         const labelChanged = t.examLabel !== matchingTask.label
-        const totalChanged = newTotal > 0 && newTotal !== (t.totalTestItems || 0)
-        if (!labelChanged && !totalChanged) return t
+        if (!labelChanged) return t
         updated = true
         return {
           ...t,
           examLabel: matchingTask.label,
           examCode: matchingTask.code || t.examCode,
-          totalTestItems: totalChanged ? newTotal : t.totalTestItems,
         }
       })
 
@@ -2042,11 +2066,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ;(syllabusData.tla_chapters || []).forEach((ch, index) => {
       const topic = String(ch.topics || '').trim()
       if (!topic) return
-      // Rows tied to an assessment task belong to the Assessments tab.
-      if (ch.outcomes && ch.outcomes !== 'Lecture/Discussion') return
+      // Weekly Schedule is the module source. Keep rows even when they also
+      // contain a task, ILO, or delivery value; those fields are useful
+      // context for module generation and must not hide the topic.
+      const weekSource = String(ch.chapter || ch.weeks || '').trim()
+      const weekMatch = weekSource.match(/\d+/)
       scheduleTopics.push({
         id: `schedule-${index}`,
-        week: parseInt(ch.chapter, 10) || index + 1,
+        week: weekMatch ? parseInt(weekMatch[0], 10) : index + 1,
         topic,
         context: [ch.outcomes, ch.delivery, ch.ilo]
           .map(value => String(value || '').trim())
@@ -2145,6 +2172,64 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  // Build the exact syllabus content used as the module-generation basis.
+  // Keep this in one place so the preview and API request cannot disagree.
+  function getModuleSyllabusBasis() {
+    const section = configuredSections.find(item => item.key === moduleTopicSectionKey)
+    if (!section) return ''
+    const parts = []
+    const subsection = (section.subsections || []).find(sub => sub.key === moduleTopicSubsectionKey)
+    const addTableRows = (rows, columns = []) => {
+      ;(rows || []).forEach(row => {
+        if (!Array.isArray(row)) return
+        const cells = row.map(cell => String(cell ?? '').trim()).filter(Boolean)
+        if (!cells.length) return
+        const formatted = columns.length
+          ? columns.map((column, index) => `${column || `Column ${index + 1}`}: ${cells[index] || '—'}`).join(' | ')
+          : cells.join(' | ')
+        parts.push(formatted)
+      })
+    }
+
+    if (section.editorKey === 'schedule') {
+      ;(syllabusData.tla_chapters || []).forEach((chapter, index) => {
+        const values = [
+          chapter.chapter ? `Week ${chapter.chapter}` : `Schedule row ${index + 1}`,
+          chapter.topics,
+          chapter.outcomes,
+          chapter.delivery,
+          chapter.ilo,
+        ].map(value => String(value || '').trim()).filter(Boolean)
+        if (values.length) parts.push(values.join(' | '))
+      })
+    } else if (subsection) {
+      const text = syllabusData.custom_subsections?.[section.key]?.[subsection.key]
+      if (text) parts.push(String(text).trim())
+      addTableRows(
+        syllabusData.custom_tables?.[section.key]?.[subsection.key] || [],
+        subsection.table_columns || [],
+      )
+    } else {
+      const sectionText = syllabusData.custom_sections?.[section.key]
+      if (sectionText) parts.push(String(sectionText).trim())
+      ;(section.subsections || []).forEach(sub => {
+        const text = syllabusData.custom_subsections?.[section.key]?.[sub.key]
+        if (text) parts.push(`${sub.label}:\n${String(text).trim()}`)
+        addTableRows(
+          syllabusData.custom_tables?.[section.key]?.[sub.key] || [],
+          sub.table_columns || [],
+        )
+      })
+      if (section.table_enabled) {
+        addTableRows(
+          syllabusData.custom_tables?.[section.key]?.__section__ || [],
+          section.table_columns || [],
+        )
+      }
+    }
+    return [...new Set(parts.map(part => part.trim()).filter(Boolean))].join('\n').slice(0, 8000)
+  }
+
   // ── Topic source (locked once confirmed) ─────────────────────────────────
   async function handleConfirmTopicSource() {
     if (!courseId) return
@@ -2199,6 +2284,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         item => item.id === moduleParams.topic_id || item.topic === moduleParams.module_title,
       ) || collectScheduleTopics().find(item => item.topic === moduleParams.module_title)
       const source = activeTopicSource()
+      const syllabusBasis = getModuleSyllabusBasis()
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
@@ -2209,7 +2295,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         subsection_key: source.subsection_key,
         subsection_label: source.subsection_label,
         topic: topic?.topic || moduleParams.module_title,
-        syllabus_context: topic?.context || '',
+        syllabus_context: [
+          syllabusBasis ? `Selected syllabus content:\n${syllabusBasis}` : '',
+          topic?.context ? `Selected topic context:\n${topic.context}` : '',
+        ].filter(Boolean).join('\n\n').slice(0, 8000),
         structuring_level: moduleParams.structuring_level || 'standard',
         provider: moduleParams.provider,
         top_k: Number(moduleParams.top_k),
@@ -2247,6 +2336,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setActionError('')
     try {
       const source = activeTopicSource()
+      const syllabusBasis = getModuleSyllabusBasis()
       const existingModules = workspaceApi.data?.modules || []
       const topicsWithoutModules = topics.filter(topic => {
         const existing = existingModules.find(mod => mod.week_number === topic.week)
@@ -2273,7 +2363,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             subsection_key: source.subsection_key,
             subsection_label: source.subsection_label,
             topic: topic.topic,
-            syllabus_context: topic.context || '',
+            syllabus_context: [
+              syllabusBasis ? `Selected syllabus content:\n${syllabusBasis}` : '',
+              topic.context ? `Selected topic context:\n${topic.context}` : '',
+            ].filter(Boolean).join('\n\n').slice(0, 8000),
             structuring_level: moduleParams.structuring_level || 'standard',
             provider: moduleParams.provider || 'auto',
             top_k: Number(moduleParams.top_k) || 5,
@@ -2465,7 +2558,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const examLabel = String(entry?.examLabel || entry?.label || '').toLowerCase().trim()
       const text = `${examCode} ${examLabel}`
       if (typeof entry?.isMajor === 'boolean') return entry.isMajor
-      if (/(major|midterm|prelim|pre[-\s]?final|final)/i.test(text)) return true
+      if (/(major|midterm|prelim(?:inary)?|semi[-\s]?finals?|finals?)/i.test(text)) return true
       const compact = examCode.replace(/[^a-z0-9]/g, '')
       return ['me', 'mt', 'fe', 'prelim', 'prelims'].includes(compact)
     }
@@ -2630,8 +2723,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // TOS is the assessment authority. Generated modules are used to confirm and display
   // which weekly module covers each TOS topic.
   function assessmentGenAvailableTopics() {
-    const blueprint = getAssessmentBlueprint()
-    const topics = blueprint.selectedExam?.topics || []
+    const exams = getMajorTosExams()
+    const selectedExam = exams.find(exam => (exam.examCode || exam.examLabel) === assessmentGenExamKey) || exams[0]
+    const topics = selectedExam?.topics || []
     return topics
       .map(row => {
         const topic = String(row?.topic || row?.label || '').trim()
@@ -2652,10 +2746,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function openAssessmentGenDialog(mode, prefillTopic) {
-    const blueprint = getAssessmentBlueprint()
+    const exams = getMajorTosExams()
+    const selectedExam = exams.find(exam => exam.examCode === assessmentParams.source_exam_code)
+      || exams.find(exam => exam.examLabel === assessmentParams.source_exam_label)
+      || exams[0]
     setAssessmentGenMode(mode)
-    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Assessment')
-    setAssessmentGenItemCount(Math.max(1, Number(blueprint.totalItems || 50)))
+    setAssessmentGenExamKey(selectedExam?.examCode || selectedExam?.examLabel || '')
+    setAssessmentGenTitle(selectedExam?.examLabel || 'Assessment')
+    setAssessmentGenItemCount(Math.max(1, Number(selectedExam?.totalItems || 50)))
     if (mode === 'single' && prefillTopic) {
       setAssessmentGenSelectedTopics([prefillTopic])
     } else {
@@ -2666,7 +2764,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   async function handleAssessmentGenSubmit() {
     if (!course) return
-    const blueprint = getAssessmentBlueprint()
+    const exams = getMajorTosExams()
+    const selectedExam = exams.find(exam => (exam.examCode || exam.examLabel) === assessmentGenExamKey) || exams[0]
+    if (!selectedExam) {
+      setActionError('Create a Preliminary, Midterm, Semi-Finals, or Finals exam in TOS first.')
+      return
+    }
     if (assessmentGenSelectedTopics.length === 0) {
       setActionError('Select at least one TOS topic for the assessment.')
       return
@@ -2679,14 +2782,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
        // allocations remain authoritative; selected topics only narrow the TOS scope.
       const { data } = await api.post('/curriculum/generate-assessment/', {
         course_id: course.course_id,
-        assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
+        assessment_type: 'Major Examination',
         provider: 'auto',
         extra_instructions: '',
         selected_doc_ids: selectedIds,
-        source_exam_code: blueprint.examCode,
-        source_exam_label: assessmentGenTitle || blueprint.assessmentName,
+        source_exam_code: selectedExam.examCode,
+        source_exam_label: selectedExam.examLabel,
         faculty_topics: assessmentGenSelectedTopics,
-        total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
+        total_items: undefined,
       }, { timeout: 300000 })
       if (!data?.success) throw new Error(data?.detail || 'Generation failed.')
       const newId = data?.assessment?.assessment_id
@@ -4303,15 +4406,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         style={{ ...SELECT_STYLE, width: 200 }}
                       >
                         <option value="">—</option>
-                        <option value="Lecture/Discussion">Lecture/Discussion</option>
-                        {(syllabusData.ats || []).flatMap(comp =>
-                          (comp.subs || []).map(s => (
-                            <option key={s.code} value={s.code}>{s.code} – {s.label || s.code}</option>
-                          ))
-                        )}
-                        {ch.outcomes && ch.outcomes !== 'Lecture/Discussion' && (
-                          <option value={ch.outcomes}>{ch.outcomes}</option>
-                        )}
+                        {WEEKLY_SCHEDULE_TASK_OPTIONS.map(option => (
+                          <option key={option} value={option}>{option}</option>
+                        ))}
                       </select>
                     </td>
                     <td style={TABLE_TD}>
@@ -4321,10 +4418,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         style={{ ...SELECT_STYLE, width: 105 }}
                       >
                         <option value="">—</option>
-                        <option>F2F</option><option>Online</option><option>Hybrid</option><option>Exam</option><option>Lab</option>
-                        {ch.delivery && !['F2F', 'Online', 'Hybrid', 'Exam', 'Lab'].includes(ch.delivery) && (
-                          <option value={ch.delivery}>{ch.delivery}</option>
-                        )}
+                        {WEEKLY_SCHEDULE_DELIVERY_OPTIONS.map(option => (
+                          <option key={option}>{option}</option>
+                        ))}
                       </select>
                     </td>
                     <td style={{ ...TABLE_TD, minWidth: 130 }}>
@@ -6469,15 +6565,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <DialogContent>
                 <Stack spacing={2} sx={{ mt: 0.5 }}>
                   <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
-                    {'Select TOS topics to cover. Generated modules are shown as alignment references; TOS supplies the assessment structure, Bloom distribution, and item count.'}
+                    {'Choose an exam generated in TOS, then select the topics to cover. TOS supplies the assessment structure, Bloom distribution, and item count.'}
                   </Alert>
-                  <LField label="Assessment Title" value={assessmentGenTitle}
-                    onChange={e => setAssessmentGenTitle(e.target.value)} />
-                  {!majorExams.length && (
-                    <LField label="Number of Items" type="number" value={assessmentGenItemCount}
-                      onChange={e => setAssessmentGenItemCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
-                      inputProps={{ min: 1, max: 100 }} />
-                  )}
+                  <LField
+                    select
+                    label="Exam from TOS"
+                    value={assessmentGenExamKey || (majorExams[0]?.examCode || majorExams[0]?.examLabel || '')}
+                    onChange={e => {
+                      const key = e.target.value
+                      const selectedExam = majorExams.find(exam => (exam.examCode || exam.examLabel) === key)
+                      setAssessmentGenExamKey(key)
+                      setAssessmentGenTitle(selectedExam?.examLabel || 'Assessment')
+                      setAssessmentGenSelectedTopics([])
+                    }}
+                  >
+                    {majorExams.map(exam => (
+                      <MenuItem key={exam.examCode || exam.examLabel} value={exam.examCode || exam.examLabel}>
+                        {exam.examLabel}
+                      </MenuItem>
+                    ))}
+                  </LField>
+                  <LField label="Assessment Title" value={assessmentGenTitle} inputProps={{ readOnly: true }} />
+                  <Typography variant="caption" sx={{ color: '#888', mt: '-0.9rem !important' }}>
+                    {majorExams.find(exam => (exam.examCode || exam.examLabel) === assessmentGenExamKey)?.totalItems || majorExams[0]?.totalItems || 0} items allocated by TOS
+                  </Typography>
                   <Box>
                     <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, display: 'block', mb: 0.5 }}>
                       Topics to cover
