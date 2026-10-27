@@ -5242,10 +5242,15 @@ def parse_syllabus_segment(request):
         )
 
         llm = LLMService()
+        # The fast cloud chain goes first. Ollama stays the last resort inside
+        # the fallback, because the local 3B model is too slow for every tab.
+        chosen = str(request.data.get("provider") or "").strip().lower()
+        if chosen in {"", "auto"}:
+            chosen = None
         try:
             raw_response = llm.generate_response_with_fallback(
                 [{"role": "user", "content": user_prompt}],
-                preferred_provider="ollama",
+                preferred_provider=chosen,
                 system=system_prompt,
                 max_tokens=4096,
             )
@@ -5280,7 +5285,7 @@ def parse_syllabus_segment(request):
                 repair_prompt = f"Repair this JSON so it parses:\n\n{raw_json}"
                 repaired = llm.generate_response_with_fallback(
                     messages=[{"role": "user", "content": repair_prompt}],
-                    preferred_provider="ollama",
+                    preferred_provider=chosen,
                     system=repair_system,
                     max_tokens=4096,
                 )
@@ -5291,6 +5296,10 @@ def parse_syllabus_segment(request):
                     rep_brace = re.search(r'\{.*\}', repaired, re.DOTALL)
                     repaired_json = rep_brace.group(0) if rep_brace else repaired.strip()
                 parsed_data = json.loads(repaired_json)
+
+        if isinstance(parsed_data, dict):
+            from apps.integrations.syllabus_tab_split import faithful_parsed_data
+            parsed_data = faithful_parsed_data(parsed_data, segment_text)
 
         return Response(
             {"success": True, "parsed_data": parsed_data},

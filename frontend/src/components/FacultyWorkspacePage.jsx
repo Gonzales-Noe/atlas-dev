@@ -1488,20 +1488,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     handleGenerateSection()
   }
 
-  function mergeUploadedSyllabus(parsed) {
-    setSyllabusData(prev => {
-      const next = { ...prev }
-      Object.entries(parsed || {}).forEach(([key, value]) => {
-        if (value == null || value === '') return
-        if (Array.isArray(value) && value.length === 0) return
-        next[key] = value
-      })
-      return normalizeSyllabusData(next)
-    })
-    setIsDirty(true)
-    setSaveSuccess(false)
-  }
-
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1515,7 +1501,32 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     formData.append('course_id', courseId)
     const failed = []
     const filled = []
-    let countedTrial = false
+    // Start from a blank syllabus so extracted text replaces what is on screen.
+    let uploaded = normalizeSyllabusData({
+      ...EMPTY_SYLLABUS,
+      university_name: course?.institution_name || '',
+      college: course?.college_name || '',
+      program: course?.program_name || '',
+      course_title: course?.course_title || '',
+      course_code: course?.course_code || '',
+      credit_hours: course?.credit_hours != null ? String(course.credit_hours) : '',
+      instructor_name: course?.instructor_name || '',
+      instructor_email: course?.instructor_email || '',
+      year_level: course?.year_level || '',
+      course_category: course?.course_category || '',
+    })
+    const applyParsed = (parsed) => {
+      const next = { ...uploaded }
+      Object.entries(parsed || {}).forEach(([key, value]) => {
+        if (value == null || value === '') return
+        if (Array.isArray(value) && value.length === 0) return
+        next[key] = value
+      })
+      uploaded = normalizeSyllabusData(next)
+      setSyllabusData(uploaded)
+      setIsDirty(true)
+      setSaveSuccess(false)
+    }
     try {
       const { data } = await api.post('/curriculum/prepare-syllabus-tabs/', formData, {
         headers: { 'Content-Type': undefined },
@@ -1523,32 +1534,46 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
       const tabs = Array.isArray(data?.tabs) ? data.tabs : []
       const textByKey = Object.fromEntries(tabs.map(tab => [tab.key, String(tab.text || '')]))
-      for (let index = 0; index < steps.length; index += 1) {
-        const step = steps[index]
-        setSyllabusUploadProgress({ index: index + 1, total: steps.length, label: step.label })
-        if (SYLLABUS_SECTIONS.some(section => section.key === step.key)) {
-          setSyllabusSub(step.key)
-        }
-        if (step.key === 'overview') continue
+      const jobs = steps.flatMap(step => {
+        if (step.key === 'overview') return []
         const segmentText = (textByKey[step.key] || '').trim()
-        if (!segmentText) continue
-        try {
-          const res = await api.post('/curriculum/parse-syllabus-segment/', {
-            course_id: courseId,
-            section_key: step.key,
-            segment_text: segmentText,
-            count_trial: !countedTrial,
-          }, { timeout: 180000 })
-          countedTrial = true
-          if (res.data?.success && res.data.parsed_data) {
-            mergeUploadedSyllabus(res.data.parsed_data)
-            filled.push(step.label)
-          } else {
-            failed.push(step.label)
+        return segmentText ? [{ step, segmentText }] : []
+      })
+      const provider = syllabusParams.provider && syllabusParams.provider !== 'auto'
+        ? syllabusParams.provider
+        : undefined
+      const batchSize = 3
+      for (let index = 0; index < jobs.length; index += batchSize) {
+        const batch = jobs.slice(index, index + batchSize)
+        setSyllabusUploadProgress({
+          index: Math.min(index + batch.length, jobs.length),
+          total: jobs.length,
+          label: batch.map(job => job.step.label).join(', '),
+        })
+        const visible = batch.find(job => SYLLABUS_SECTIONS.some(section => section.key === job.step.key))
+        if (visible) setSyllabusSub(visible.step.key)
+        const results = await Promise.all(batch.map(async (job, offset) => {
+          try {
+            const res = await api.post('/curriculum/parse-syllabus-segment/', {
+              course_id: courseId,
+              section_key: job.step.key,
+              segment_text: job.segmentText,
+              count_trial: index === 0 && offset === 0,
+              ...(provider ? { provider } : {}),
+            }, { timeout: 90000 })
+            return { job, res }
+          } catch {
+            return { job, res: null }
           }
-        } catch {
-          failed.push(step.label)
-        }
+        }))
+        results.forEach(({ job, res }) => {
+          if (res?.data?.success && res.data.parsed_data) {
+            applyParsed(res.data.parsed_data)
+            filled.push(job.step.label)
+          } else {
+            failed.push(job.step.label)
+          }
+        })
       }
       if (!filled.length) {
         setSyllabusUploadError(failed.length
@@ -1557,7 +1582,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       } else if (failed.length) {
         setSyllabusUploadError(`Filled the syllabus except: ${failed.join(', ')}.`)
       } else if (filled.length <= 1) {
-        setSyllabusUploadError(`Only ${filled[0]} was filled. The other sections were not found as their own headings, so those tabs were left unchanged.`)
+        setSyllabusUploadError(`Only ${filled[0]} was filled. The other sections were not found as their own headings, so those fields were cleared.`)
       } else {
         setSyllabusUploadSuccess(true)
       }

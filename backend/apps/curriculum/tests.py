@@ -10,7 +10,11 @@ from apps.curriculum.views import (
     _materialize_tos_exam,
     create_course,
 )
-from apps.integrations.syllabus_tab_split import split_markdown_into_tabs
+from apps.integrations.syllabus_tab_split import (
+    faithful_parsed_data,
+    split_markdown_into_tabs,
+    supplement_markdown,
+)
 
 
 class FacultyCourseInstitutionScopeTests(SimpleTestCase):
@@ -248,3 +252,45 @@ Attendance is required.
         self.assertIn('Excellent | 1.00', tabs['grading'])
         self.assertIn('Attendance is required', tabs['policies'])
         self.assertNotIn('systems administration', tabs['basic'].lower())
+
+    def test_course_content_and_outcomes_are_not_left_in_basic(self):
+        markdown = """
+# Course Information
+Batangas State University
+
+# Course Learning Outcomes
+Configure a network service.
+
+# Course Content
+Week 1 | Network models
+"""
+        tabs = {tab['key']: tab['text'] for tab in split_markdown_into_tabs(markdown)}
+        self.assertIn('configure a network service', tabs['iloat'].lower())
+        self.assertIn('Week 1 | Network models', tabs['schedule'])
+        self.assertNotIn('network service', tabs['basic'].lower())
+
+    def test_rewritten_sentences_are_dropped_and_missing_text_is_kept(self):
+        source = (
+            'This course covers systems administration.\n'
+            'Install an operating system.'
+        )
+        parsed = {
+            'description': 'This course covers systems administration. It also teaches cooking.',
+            'ilos': [
+                'Install an operating system.',
+                'Invented outcome that is not written in the file.',
+            ],
+            'vision': 'A completely different vision statement for the university.',
+            'passing_grade': 99,
+        }
+        cleaned = faithful_parsed_data(parsed, source)
+        self.assertEqual(cleaned['description'], 'This course covers systems administration.')
+        self.assertEqual(cleaned['ilos'], ['Install an operating system.'])
+        self.assertEqual(cleaned['vision'], '')
+        self.assertEqual(cleaned['passing_grade'], '')
+
+        merged = supplement_markdown(
+            'Course Description\nShort.',
+            'Course Description\nShort.\n\nStudents configure servers in the laboratory each week.',
+        )
+        self.assertIn('laboratory', merged)
