@@ -1488,6 +1488,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     handleGenerateSection()
   }
 
+  function parsedHasContent(value) {
+    if (value == null || value === '') return false
+    if (Array.isArray(value)) return value.some(parsedHasContent)
+    if (typeof value === 'object') return Object.values(value).some(parsedHasContent)
+    return true
+  }
+
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1567,8 +1574,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           }
         }))
         results.forEach(({ job, res }) => {
-          if (res?.data?.success && res.data.parsed_data) {
-            applyParsed(res.data.parsed_data)
+          const parsed = res?.data?.parsed_data
+          if (res?.data?.success && parsedHasContent(parsed)) {
+            applyParsed(parsed)
             filled.push(job.step.label)
           } else {
             failed.push(job.step.label)
