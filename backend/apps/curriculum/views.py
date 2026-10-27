@@ -303,20 +303,34 @@ def save_syllabus_content(request, course_id):
         return error_response
 
     content = request.data.get('syllabus_content')
-    if content is None:
+    if not isinstance(content, dict):
         return Response(
             {'success': False, 'detail': 'syllabus_content is required.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # Get or create a Draft syllabus (safe against MultipleObjectsReturned)
-    syllabus = Syllabus.objects.filter(course=course, status='Draft').order_by('-syllabus_id').first()
+    # Write the syllabus the workspace is showing. A Draft-only update can
+    # leave the edits on a row the screen never loads again.
+    syllabus = None
+    syllabus_id = request.data.get('syllabus_id')
+    if syllabus_id:
+        syllabus = Syllabus.objects.filter(course=course, syllabus_id=syllabus_id).first()
+    if syllabus is None:
+        syllabus = (
+            Syllabus.objects.filter(course=course)
+            .order_by('-generated_at', '-syllabus_id')
+            .first()
+        )
     created = False
     if not syllabus:
         syllabus = Syllabus.objects.create(course=course, status='Draft', term='', version=1)
         created = True
     syllabus.syllabus_content = content
-    syllabus.save(update_fields=['syllabus_content'])
+    update_fields = ['syllabus_content']
+    if syllabus.generated_at is None:
+        syllabus.generated_at = timezone.now()
+        update_fields.append('generated_at')
+    syllabus.save(update_fields=update_fields)
 
     return Response(
         {
