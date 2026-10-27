@@ -1,0 +1,8 @@
+const fs = require("fs")
+const code = fs.readFileSync("src/components/FacultyWorkspacePage.jsx", "utf8")
+console.log("File length:", code.length)
+console.log("SCHEDULE_AI_FIELDS:", code.includes("SCHEDULE_AI_FIELDS"))
+console.log("Generate All Modules:", code.includes("Generate All Modules"))
+console.log("Generate Assessment:", code.includes("Generate Assessment"))
+console.log("onInput auto-grow:", code.includes("onInput="))
+console.log("overflowX auto removed:", !code.includes("overflowX: auto"))

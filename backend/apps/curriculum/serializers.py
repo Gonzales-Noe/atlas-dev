@@ -35,6 +35,29 @@ class GenerateModuleSerializer(serializers.Serializer):
     selected_doc_ids = serializers.ListField(
         child=serializers.UUIDField(), required=False, allow_empty=True, default=list
     )
+    # ── Where the topic came from (Syllabus section / subsection) ──────────
+    # The frontend resolves the topic inside the selected syllabus section and
+    # sends it along, so the model always grounds on the faculty's own text
+    # instead of guessing from the week number alone.
+    section_key = serializers.CharField(required=False, allow_blank=True, default="", max_length=120)
+    section_label = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+    subsection_key = serializers.CharField(required=False, allow_blank=True, default="", max_length=120)
+    subsection_label = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
+    topic = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+    syllabus_context = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=8000
+    )
+    structuring_level = serializers.ChoiceField(
+        choices=(
+            ("standard", "Standard"),
+            ("detailed", "Detailed"),
+            ("concise", "Concise"),
+            ("activity", "Activity-led"),
+        ),
+        required=False,
+        allow_null=True,
+        default="standard",
+    )
 
 
 class CurriculumMetricsSerializer(serializers.Serializer):

@@ -49,6 +49,7 @@ export default function useWorkspaceProgress(courseId, workspaceData) {
   )
   const modules = workspaceData?.modules ?? []
   const assessments = workspaceData?.assessments ?? []
+  const tosEntries = workspaceData?.syllabus?.syllabus_content?.tos ?? workspaceData?.syllabus_content?.tos ?? []
   const hasGrading = Boolean(
     (workspaceData?.grading_summary && Object.keys(workspaceData.grading_summary).length > 0) ||
     (workspaceData?.exam_sessions && workspaceData.exam_sessions.length > 0) ||
@@ -62,6 +63,7 @@ export default function useWorkspaceProgress(courseId, workspaceData) {
   const auto = {
     syllabus: hasSyllabusContent,
     module: Array.isArray(modules) && modules.length > 0,
+    tos: Array.isArray(tosEntries) && tosEntries.length > 0,
     assessment: Array.isArray(assessments) && assessments.length > 0,
     grading: hasGrading,
     analytics: hasAnalytics,
@@ -71,10 +73,10 @@ export default function useWorkspaceProgress(courseId, workspaceData) {
     if (manual[stepKey] === false) return false // faculty explicitly un-checked
     if (manual[stepKey] === true) return true
     return Boolean(auto[stepKey])
-  }, [manual, auto.syllabus, auto.module, auto.assessment, auto.grading, auto.analytics])
+  }, [manual, auto.syllabus, auto.module, auto.tos, auto.assessment, auto.grading, auto.analytics])
 
-  const doneCount = ['syllabus', 'module', 'assessment', 'grading', 'analytics']
+  const doneCount = ['syllabus', 'module', 'tos', 'assessment', 'grading', 'analytics']
     .filter((k) => (manual[k] === false ? false : manual[k] === true ? true : auto[k])).length
 
-  return { isStepDone, markStepDone, resetProgress, doneCount, totalSteps: 5, auto }
+  return { isStepDone, markStepDone, resetProgress, doneCount, totalSteps: 6, auto }
 }

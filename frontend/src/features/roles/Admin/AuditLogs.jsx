@@ -20,7 +20,38 @@ const actionIcon = a => {
   if (action.includes('export'))   return '⬇️'
   if (action.includes('backup'))   return '☁️'
   if (action.includes('ai'))       return '🤖'
+  if (action.includes('faculty_account_created')) return '👤'
+  if (action.includes('course_assigned'))         return '📚'
+  if (action.includes('account_deactivated'))     return '⏸️'
+  if (action.includes('account_reactivated'))     return '▶️'
+  if (action.includes('account_deleted'))         return '🗑️'
+  if (action.includes('institution_deactivated')) return '⏸️'
+  if (action.includes('institution_reactivated')) return '▶️'
+  if (action.includes('institution_deleted'))     return '🗑️'
+  if (action.includes('admin_document_upload'))   return '📄'
   return '📌'
+}
+
+const actionLabel = a => {
+  const action = (a || '').toLowerCase()
+  const labels = {
+    'faculty_account_created': 'Faculty Account Created',
+    'course_assigned': 'Course Assigned',
+    'account_deactivated': 'Account Deactivated',
+    'account_reactivated': 'Account Reactivated',
+    'account_deleted': 'Account Deleted',
+    'institution_deactivated': 'Institution Deactivated',
+    'institution_reactivated': 'Institution Reactivated',
+    'institution_deleted': 'Institution Deleted',
+    'admin_document_upload': 'Admin Document Upload',
+    'course_request_approved': 'Course Request Approved',
+    'course_request_submitted': 'Course Request Submitted',
+  }
+  if (labels[action]) return labels[action]
+  return action
+    .split('_')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 const detailText = details => (
@@ -69,7 +100,6 @@ export default function AdminAuditLogs() {
       log.action,
       log.resource_type,
       log.resource_id,
-      detailText(log.details),
     ].join(' ').toLowerCase()
     return searchable.includes(searchTerm.toLowerCase())
   })
@@ -98,7 +128,7 @@ export default function AdminAuditLogs() {
           <Table>
             <TableHead>
               <TableRow>
-                {['Timestamp', 'User', 'Action', 'Resource', 'Details', ''].map(h => (
+                {['Timestamp', 'User', 'Action', 'Resource', ''].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--text-secondary) !important', textTransform: 'uppercase', py: 1.5, borderBottom: '1px solid var(--border-color)' }}>
                     {h}
                   </TableCell>
@@ -107,7 +137,7 @@ export default function AdminAuditLogs() {
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={6} align="center">Loading audit records…</TableCell></TableRow>
+                <TableRow><TableCell colSpan={5} align="center">Loading audit records…</TableCell></TableRow>
               )}
               {!loading && filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(log => (
                 <TableRow key={log.log_id} sx={{ '&:last-child td': { borderBottom: 'none !important' } }}>
@@ -118,18 +148,10 @@ export default function AdminAuditLogs() {
                     {log.user || 'Unknown user'}
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: '0.9rem' }}>{actionIcon(log.action)}</span>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{log.action || '—'}</span>
-                    </div>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{actionLabel(log.action) || '—'}</span>
                   </TableCell>
                   <TableCell sx={{ color: 'var(--text-secondary) !important', fontSize: '0.82rem !important', borderBottom: '1px solid var(--border-color)' }}>
                     {log.resource_type || '—'}
-                  </TableCell>
-                  <TableCell sx={{ color: 'var(--text-secondary) !important', fontSize: '0.82rem !important', maxWidth: 280, borderBottom: '1px solid var(--border-color)' }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {detailText(log.details)}
-                    </div>
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <button

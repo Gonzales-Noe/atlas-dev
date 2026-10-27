@@ -141,6 +141,20 @@ def _handle_global_rag_upload(request):
             doc_type=doc_type,
             status=GlobalDocument.IndexStatus.PROCESSING,
         )
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="admin_document_upload",
+            resource_type="GlobalDocument",
+            resource_id=document.document_id,
+            details={
+                "document_title": document.title,
+                "file_name": file_name,
+                "discipline": discipline,
+                "program": program,
+                "doc_type": doc_type,
+                "institution_id": str(request.user.institution_id) if request.user.institution_id else None,
+            },
+        )
         transaction.on_commit(
             lambda: indexing.enqueue_global_document(
                 document.document_id, file_bytes, file_type, file_name
