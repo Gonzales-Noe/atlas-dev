@@ -4876,6 +4876,80 @@ def prepare_syllabus_tabs(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def import_syllabus_json(request):
+    """
+    Read one syllabus file and return the JSON object the form stores.
+
+    Endpoint: POST /api/curriculum/import-syllabus-json/
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    file_obj = request.FILES.get("file")
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not file_obj:
+        return Response(
+            {"success": False, "detail": "No file was provided."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    _course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
+
+    filename = file_obj.name.lower()
+    allowed = (".txt", ".docx", ".pdf", ".xlsx")
+    if not any(filename.endswith(ext) for ext in allowed):
+        return Response(
+            {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from io import BytesIO
+        from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
+        from apps.integrations.syllabus_parse import extract_layout, fast_markdown
+
+        data = file_obj.read()
+        suffix = filename.rsplit('.', 1)[-1]
+        if suffix == 'docx':
+            markdown = fast_markdown(data, 'docx')
+        elif suffix == 'pdf':
+            markdown = fast_markdown(data, 'pdf')
+            if len(markdown) < 400:
+                markdown = (extract_layout(data, 'pdf').get('markdown') or markdown)
+        else:
+            markdown = _extract_text_from_file(BytesIO(data), filename)
+        content = syllabus_content_from_markdown(markdown)
+    except Exception as exc:
+        logger.exception('import_syllabus_json failed')
+        return Response(
+            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not content:
+        return Response(
+            {"success": False, "error": "Could not find syllabus text in this file."},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    return Response(
+        {"success": True, "syllabus_content": content},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def parse_syllabus_upload(request):
     """
     Upload a syllabus file (xlsx / pdf / docx / txt), extract its text,

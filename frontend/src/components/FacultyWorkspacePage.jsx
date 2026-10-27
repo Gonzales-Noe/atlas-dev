@@ -109,13 +109,6 @@ const SYLLABUS_SECTIONS = [
   { key: 'policies',      label: 'Policies' },
 ]
 
-// One upload step per syllabus tab. Course Overview is a summary of the others.
-const SYLLABUS_UPLOAD_STEPS = [
-  ...SYLLABUS_SECTIONS.filter(section => section.key !== 'grading' && section.key !== 'policies'),
-  { key: 'tos', label: 'Table of Specifications' },
-  ...SYLLABUS_SECTIONS.filter(section => section.key === 'grading' || section.key === 'policies'),
-]
-
 const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
 const PROVIDER_LABELS = {
   auto: 'Auto (best available free model)',
@@ -288,6 +281,7 @@ const EMPTY_SYLLABUS = {
   custom_sections:   {},
   custom_subsections: {},
   custom_tables: {},
+  imported_sections: [],
 }
 
 function PanelRightIcon(props) {
@@ -1078,6 +1072,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       custom_sections: raw.custom_sections || {},
       custom_subsections: raw.custom_subsections || {},
       custom_tables: raw.custom_tables || {},
+      imported_sections: Array.isArray(raw.imported_sections) ? raw.imported_sections : [],
     }
   }
 
@@ -1495,10 +1490,34 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return true
   }
 
+  function addImportedField() {
+    const key = `field-${Date.now()}`
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setSyllabusData(current => ({
+      ...current,
+      imported_sections: [
+        ...(current.imported_sections || []),
+        { key, title: 'New field', body: '' },
+      ],
+    }))
+    setSyllabusSub(`file:${key}`)
+  }
+
+  function updateImportedSection(index, patch) {
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setSyllabusData(current => ({
+      ...current,
+      imported_sections: (current.imported_sections || []).map((section, i) => (
+        i === index ? { ...section, ...patch } : section
+      )),
+    }))
+  }
+
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
-    const steps = SYLLABUS_UPLOAD_STEPS
     setSyllabusUploading(true)
     setSyllabusUploadError('')
     setSyllabusUploadSuccess(false)
@@ -1506,94 +1525,41 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const formData = new FormData()
     formData.append('file', file)
     formData.append('course_id', courseId)
-    const failed = []
-    const filled = []
-    // Start from a blank syllabus so extracted text replaces what is on screen.
-    let uploaded = normalizeSyllabusData({
-      ...EMPTY_SYLLABUS,
-      university_name: course?.institution_name || '',
-      college: course?.college_name || '',
-      program: course?.program_name || '',
-      course_title: course?.course_title || '',
-      course_code: course?.course_code || '',
-      credit_hours: course?.credit_hours != null ? String(course.credit_hours) : '',
-      instructor_name: course?.instructor_name || '',
-      instructor_email: course?.instructor_email || '',
-      year_level: course?.year_level || '',
-      course_category: course?.course_category || '',
-    })
-    const applyParsed = (parsed) => {
-      const next = { ...uploaded }
-      Object.entries(parsed || {}).forEach(([key, value]) => {
-        if (value == null || value === '') return
-        if (Array.isArray(value) && value.length === 0) return
-        next[key] = value
-      })
-      uploaded = normalizeSyllabusData(next)
-      setSyllabusData(uploaded)
-      setIsDirty(true)
-      setSaveSuccess(false)
-    }
     try {
-      const { data } = await api.post('/curriculum/prepare-syllabus-tabs/', formData, {
+      const { data } = await api.post('/curriculum/import-syllabus-json/', formData, {
         headers: { 'Content-Type': undefined },
         timeout: 180000,
       })
-      const tabs = Array.isArray(data?.tabs) ? data.tabs : []
-      const textByKey = Object.fromEntries(tabs.map(tab => [tab.key, String(tab.text || '')]))
-      const jobs = steps.flatMap(step => {
-        if (step.key === 'overview') return []
-        const segmentText = (textByKey[step.key] || '').trim()
-        return segmentText ? [{ step, segmentText }] : []
+      const imported = data?.syllabus_content
+      if (!data?.success || !parsedHasContent(imported)) {
+        setSyllabusUploadError('Could not find syllabus text in this file.')
+        return
+      }
+      const base = {
+        ...EMPTY_SYLLABUS,
+        university_name: course?.institution_name || '',
+        college: course?.college_name || '',
+        program: course?.program_name || '',
+        course_title: course?.course_title || '',
+        course_code: course?.course_code || '',
+        credit_hours: course?.credit_hours != null ? String(course.credit_hours) : '',
+        instructor_name: course?.instructor_name || '',
+        instructor_email: course?.instructor_email || '',
+        year_level: course?.year_level || '',
+        course_category: course?.course_category || '',
+      }
+      Object.entries(imported).forEach(([key, value]) => {
+        if (value == null || value === '') return
+        if (Array.isArray(value) && value.length === 0) return
+        base[key] = value
       })
-      const provider = syllabusParams.provider && syllabusParams.provider !== 'auto'
-        ? syllabusParams.provider
-        : undefined
-      const batchSize = 3
-      for (let index = 0; index < jobs.length; index += batchSize) {
-        const batch = jobs.slice(index, index + batchSize)
-        setSyllabusUploadProgress({
-          index: Math.min(index + batch.length, jobs.length),
-          total: jobs.length,
-          label: batch.map(job => job.step.label).join(', '),
-        })
-        const visible = batch.find(job => SYLLABUS_SECTIONS.some(section => section.key === job.step.key))
-        if (visible) setSyllabusSub(visible.step.key)
-        const results = await Promise.all(batch.map(async (job, offset) => {
-          try {
-            const res = await api.post('/curriculum/parse-syllabus-segment/', {
-              course_id: courseId,
-              section_key: job.step.key,
-              segment_text: job.segmentText,
-              count_trial: index === 0 && offset === 0,
-              ...(provider ? { provider } : {}),
-            }, { timeout: 90000 })
-            return { job, res }
-          } catch {
-            return { job, res: null }
-          }
-        }))
-        results.forEach(({ job, res }) => {
-          const parsed = res?.data?.parsed_data
-          if (res?.data?.success && parsedHasContent(parsed)) {
-            applyParsed(parsed)
-            filled.push(job.step.label)
-          } else {
-            failed.push(job.step.label)
-          }
-        })
-      }
-      if (!filled.length) {
-        setSyllabusUploadError(failed.length
-          ? `Could not fill the syllabus tabs: ${failed.join(', ')}.`
-          : 'No syllabus sections were found in this file.')
-      } else if (failed.length) {
-        setSyllabusUploadError(`Filled the syllabus except: ${failed.join(', ')}.`)
-      } else if (filled.length <= 1) {
-        setSyllabusUploadError(`Only ${filled[0]} was filled. The other sections were not found as their own headings, so those fields were cleared.`)
-      } else {
-        setSyllabusUploadSuccess(true)
-      }
+      setSyllabusData(normalizeSyllabusData(base))
+      setIsDirty(true)
+      setSaveSuccess(false)
+      const builtInKeys = ['description', 'rationale', 'ilos', 'tla_chapters', 'grading_rows', 'policies', 'references', 'tos', 'vision', 'mission', 'course_title']
+      const firstFile = (imported.imported_sections || [])[0]
+      setSyllabusSub(parsedHasContent(builtInKeys.map(key => imported[key])) ? 'basic' : (firstFile ? `file:${firstFile.key}` : 'basic'))
+      setSyllabusUploadSuccess(true)
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
     } finally {
@@ -1776,7 +1742,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   useEffect(() => {
     setSyllabusSub(current => (
-      configuredSections.some(section => section.key === current)
+      configuredSections.some(section => section.key === current) || String(current).startsWith('file:')
         ? current
         : configuredSections[0]?.key || ''
     ))
@@ -3870,7 +3836,36 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // ── Syllabus section renderer (all editable) ─────────────────────────────
+  function renderImportedSection(sectionKey) {
+    const sections = syllabusData.imported_sections || []
+    const index = sections.findIndex(section => `file:${section.key}` === sectionKey)
+    const section = sections[index]
+    if (!section) return null
+    return (
+      <SectionCard
+        title={section.title || 'Field'}
+        action={<AddRowBtn label="Add field" onClick={addImportedField} />}
+      >
+        <Stack spacing={1.5}>
+          <LField
+            label="Field name"
+            value={section.title || ''}
+            onChange={e => updateImportedSection(index, { title: e.target.value })}
+          />
+          <LField
+            label="Content"
+            multiline
+            minRows={8}
+            value={section.body || ''}
+            onChange={e => updateImportedSection(index, { body: e.target.value })}
+          />
+        </Stack>
+      </SectionCard>
+    )
+  }
+
   function renderSyllabusSection(sectionKey = activeSyllabusSectionKey) {
+    if (String(sectionKey).startsWith('file:')) return renderImportedSection(sectionKey)
     if (!courseId) return null
     if (workspaceApi.loading && !workspaceApi.data) {
       return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: MAROON }} /></Box>
@@ -3937,6 +3932,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               ))}
             </Box>
           </SectionCard>
+
+          {(syllabusData.imported_sections || []).length > 0 && (
+            <SectionCard
+              title="Fields from the file"
+              action={<AddRowBtn label="Add field" onClick={addImportedField} />}
+            >
+              <Stack spacing={1}>
+                {(syllabusData.imported_sections || []).map(section => (
+                  <Button
+                    key={section.key}
+                    onClick={() => setSyllabusSub(`file:${section.key}`)}
+                    sx={{ justifyContent: 'flex-start', textTransform: 'none', color: MAROON, fontWeight: 600 }}
+                  >
+                    {section.title || 'Field'}
+                  </Button>
+                ))}
+              </Stack>
+            </SectionCard>
+          )}
 
           <SectionCard title="Framework Alignment">
             <Box sx={{ overflowX: 'auto' }}>
@@ -5245,7 +5259,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
             <Box sx={{ borderBottom: '2px solid rgba(0,0,0,0.08)', mb: 2.5 }}>
               <Tabs
-                value={syllabusSub}
+                value={configuredSections.some(section => section.key === syllabusSub) || String(syllabusSub).startsWith('file:') ? syllabusSub : false}
                 onChange={(_, v) => setSyllabusSub(v)}
                 variant="scrollable"
                 scrollButtons="auto"
@@ -5258,9 +5272,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 }}
               >
                 {configuredSections.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
+                {(syllabusData.imported_sections || []).map(section => (
+                  <Tab key={`file:${section.key}`} value={`file:${section.key}`} label={section.title || 'Field'} />
+                ))}
               </Tabs>
             </Box>
-            {renderSyllabusSection()}
+            {renderSyllabusSection(String(syllabusSub).startsWith('file:') ? syllabusSub : activeSyllabusSectionKey)}
           </Box>
 
           {aiPipelineDrafts && (
@@ -7204,13 +7221,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ? { label: 'Uploading course source', detail: uploadStatus || 'Sending the file to the course knowledge base…', value: uploadProgress }
     : syllabusUploading
       ? {
-          label: syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus',
-          detail: syllabusUploadProgress
-            ? `Step ${syllabusUploadProgress.index} of ${syllabusUploadProgress.total}. This stays on screen until the last tab finishes.`
-            : 'Extracting headings and tables…',
-          value: syllabusUploadProgress
-            ? (syllabusUploadProgress.index / syllabusUploadProgress.total) * 100
-            : 6,
+          label: 'Reading the syllabus',
+          detail: 'Copying the file into the syllabus fields…',
         }
       : aiGenerating
         ? { label: 'Generating syllabus content', detail: aiPipelineProgress?.label || 'Working through the selected fields…', value: aiPipelineProgress?.total ? (aiPipelineProgress.completed / aiPipelineProgress.total) * 100 : undefined }

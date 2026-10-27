@@ -24,6 +24,7 @@ urlpatterns = [
     path("course-requests/mine/", views.course_requests_mine, name="course_requests_mine"),
     path("generate-syllabus-field/", views.generate_syllabus_field, name="generate_syllabus_field"),
     path("prepare-syllabus-tabs/", views.prepare_syllabus_tabs, name="prepare_syllabus_tabs"),
+    path("import-syllabus-json/", views.import_syllabus_json, name="import_syllabus_json"),
     path("parse-syllabus-upload/", views.parse_syllabus_upload, name="parse_syllabus_upload"),
     path("segment-syllabus-upload/", views.segment_syllabus_upload, name="segment_syllabus_upload"),
     path("parse-syllabus-segment/", views.parse_syllabus_segment, name="parse_syllabus_segment"),
