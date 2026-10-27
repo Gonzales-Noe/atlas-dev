@@ -5262,7 +5262,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Paper>
           )}
 
-          </Box>
           {showSaveFooter && (
             <Box sx={{
               flexShrink: 0,
