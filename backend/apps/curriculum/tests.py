@@ -343,3 +343,27 @@ Wear closed shoes in the laboratory.
         self.assertNotIn('imported_sections', content)
         self.assertEqual(content['policies'][0]['title'], 'Laboratory Safety')
         self.assertIn('closed shoes', content['policies'][0]['content'])
+
+    def test_table_cells_fill_the_existing_sections(self):
+        markdown = """
+| Course Code | Course Code | IT 101 |
+| --- | --- | --- |
+| Course Title | Systems Administration |
+| Course Description | This course covers systems administration. |
+| Intended Learning Outcomes |  |
+| 1. Install an operating system. |  |
+| 2. Configure a network service. |  |
+| Week | Topic | Outcomes |
+| --- | --- | --- |
+| 1 | Orientation | Install an OS |
+"""
+        content = syllabus_content_from_markdown(markdown)
+        self.assertEqual(content['course_code'], 'IT 101')
+        self.assertEqual(content['course_title'], 'Systems Administration')
+        self.assertIn('systems administration', content['description'].lower())
+        self.assertEqual(content['ilos'], [
+            'Install an operating system.',
+            'Configure a network service.',
+        ])
+        self.assertEqual(content['tla_chapters'][0]['topics'], 'Orientation')
+        self.assertEqual(content['tla_chapters'][0]['ilo'], 'Install an OS')
