@@ -281,7 +281,6 @@ const EMPTY_SYLLABUS = {
   custom_sections:   {},
   custom_subsections: {},
   custom_tables: {},
-  imported_sections: [],
 }
 
 function PanelRightIcon(props) {
@@ -1072,7 +1071,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       custom_sections: raw.custom_sections || {},
       custom_subsections: raw.custom_subsections || {},
       custom_tables: raw.custom_tables || {},
-      imported_sections: Array.isArray(raw.imported_sections) ? raw.imported_sections : [],
     }
   }
 
@@ -1490,31 +1488,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return true
   }
 
-  function addImportedField() {
-    const key = `field-${Date.now()}`
-    setIsDirty(true)
-    setSaveSuccess(false)
-    setSyllabusData(current => ({
-      ...current,
-      imported_sections: [
-        ...(current.imported_sections || []),
-        { key, title: 'New field', body: '' },
-      ],
-    }))
-    setSyllabusSub(`file:${key}`)
-  }
-
-  function updateImportedSection(index, patch) {
-    setIsDirty(true)
-    setSaveSuccess(false)
-    setSyllabusData(current => ({
-      ...current,
-      imported_sections: (current.imported_sections || []).map((section, i) => (
-        i === index ? { ...section, ...patch } : section
-      )),
-    }))
-  }
-
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -1556,9 +1529,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSyllabusData(normalizeSyllabusData(base))
       setIsDirty(true)
       setSaveSuccess(false)
-      const builtInKeys = ['description', 'rationale', 'ilos', 'tla_chapters', 'grading_rows', 'policies', 'references', 'tos', 'vision', 'mission', 'course_title']
-      const firstFile = (imported.imported_sections || [])[0]
-      setSyllabusSub(parsedHasContent(builtInKeys.map(key => imported[key])) ? 'basic' : (firstFile ? `file:${firstFile.key}` : 'basic'))
+      setSyllabusSub('basic')
       setSyllabusUploadSuccess(true)
     } catch (err) {
       setSyllabusUploadError(extractApiError(err))
@@ -1742,7 +1713,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   useEffect(() => {
     setSyllabusSub(current => (
-      configuredSections.some(section => section.key === current) || String(current).startsWith('file:')
+      configuredSections.some(section => section.key === current)
         ? current
         : configuredSections[0]?.key || ''
     ))
@@ -3836,36 +3807,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // ── Syllabus section renderer (all editable) ─────────────────────────────
-  function renderImportedSection(sectionKey) {
-    const sections = syllabusData.imported_sections || []
-    const index = sections.findIndex(section => `file:${section.key}` === sectionKey)
-    const section = sections[index]
-    if (!section) return null
-    return (
-      <SectionCard
-        title={section.title || 'Field'}
-        action={<AddRowBtn label="Add field" onClick={addImportedField} />}
-      >
-        <Stack spacing={1.5}>
-          <LField
-            label="Field name"
-            value={section.title || ''}
-            onChange={e => updateImportedSection(index, { title: e.target.value })}
-          />
-          <LField
-            label="Content"
-            multiline
-            minRows={8}
-            value={section.body || ''}
-            onChange={e => updateImportedSection(index, { body: e.target.value })}
-          />
-        </Stack>
-      </SectionCard>
-    )
-  }
-
   function renderSyllabusSection(sectionKey = activeSyllabusSectionKey) {
-    if (String(sectionKey).startsWith('file:')) return renderImportedSection(sectionKey)
     if (!courseId) return null
     if (workspaceApi.loading && !workspaceApi.data) {
       return <Box sx={{ display: 'flex', justifyContent: 'center', mt: 6 }}><CircularProgress sx={{ color: MAROON }} /></Box>
@@ -3932,25 +3874,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               ))}
             </Box>
           </SectionCard>
-
-          {(syllabusData.imported_sections || []).length > 0 && (
-            <SectionCard
-              title="Fields from the file"
-              action={<AddRowBtn label="Add field" onClick={addImportedField} />}
-            >
-              <Stack spacing={1}>
-                {(syllabusData.imported_sections || []).map(section => (
-                  <Button
-                    key={section.key}
-                    onClick={() => setSyllabusSub(`file:${section.key}`)}
-                    sx={{ justifyContent: 'flex-start', textTransform: 'none', color: MAROON, fontWeight: 600 }}
-                  >
-                    {section.title || 'Field'}
-                  </Button>
-                ))}
-              </Stack>
-            </SectionCard>
-          )}
 
           <SectionCard title="Framework Alignment">
             <Box sx={{ overflowX: 'auto' }}>
@@ -5259,7 +5182,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
             <Box sx={{ borderBottom: '2px solid rgba(0,0,0,0.08)', mb: 2.5 }}>
               <Tabs
-                value={configuredSections.some(section => section.key === syllabusSub) || String(syllabusSub).startsWith('file:') ? syllabusSub : false}
+                value={syllabusSub}
                 onChange={(_, v) => setSyllabusSub(v)}
                 variant="scrollable"
                 scrollButtons="auto"
@@ -5272,12 +5195,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 }}
               >
                 {configuredSections.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
-                {(syllabusData.imported_sections || []).map(section => (
-                  <Tab key={`file:${section.key}`} value={`file:${section.key}`} label={section.title || 'Field'} />
-                ))}
               </Tabs>
             </Box>
-            {renderSyllabusSection(String(syllabusSub).startsWith('file:') ? syllabusSub : activeSyllabusSectionKey)}
+            {renderSyllabusSection()}
           </Box>
 
           {aiPipelineDrafts && (

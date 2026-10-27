@@ -1,9 +1,8 @@
 """
-Turn an uploaded syllabus into the JSON object the faculty form already stores.
+Copy an uploaded syllabus into the JSON object stored on the syllabus row.
 
-The file's own sentences and table cells are copied. A language model is not
-asked to retype them. A section that is not one of the built-in fields is
-kept as its own field so the screen can add it.
+Each heading is placed in the field its section already reads. Lists grow to
+the number of items in the file. No extra section is created.
 """
 
 from __future__ import annotations
@@ -16,10 +15,11 @@ from .syllabus_tab_split import _best_tab, _heading_text
 _SHEET_RE = re.compile(r'^===\s*Sheet:\s*(.+?)\s*===$', re.I)
 _LABEL_RE = re.compile(r'^([^:]{2,60}):\s*(.+)$')
 _ITEM_RE = re.compile(
-    r'^(?:(?:\d+|[A-Za-z])[.)]|[-*•]|(?:ILO|SO|CO)\s*\d+[.:)]?)\s+',
+    r'^(?:(?:\d+|[A-Za-z])[.)]|[-*•]|(?:ILO|SO|CO|IGA)\s*\d+[.:)]?)\s+',
     re.I,
 )
 
+# Keys the faculty sections already display.
 _LABEL_FIELDS = (
     ('course_title', ('course title', 'course name')),
     ('course_code', ('course code',)),
@@ -28,31 +28,35 @@ _LABEL_FIELDS = (
     ('year_level', ('year level',)),
     ('semester_year', ('semester', 'academic year')),
     ('credit_hours', ('credit hours', 'credit unit', 'units')),
+    ('lecture_hours', ('lecture hours',)),
+    ('lab_hours', ('laboratory hours', 'lab hours')),
+    ('total_hours', ('total hours',)),
     ('instructor_name', ('instructor', 'faculty name', 'prepared by')),
     ('instructor_email', ('email',)),
     ('employee_id', ('employee',)),
-    ('lecture_hours', ('lecture hours', 'lecture')),
-    ('lab_hours', ('laboratory hours', 'lab hours', 'laboratory')),
+    ('contact_info', ('contact number', 'phone', 'mobile')),
+    ('education', ('qualification', 'education')),
     ('university_name', ('university',)),
-    ('college', ('college',)),
+    ('college', ('college', 'department')),
     ('program', ('program', 'campus')),
+    ('document_title', ('document title', 'syllabus title')),
+    ('institution_contact', ('institution contact', 'address')),
+    ('reference_cmo', ('cmo', 'reference cmo')),
+    ('date_prepared', ('date prepared', 'date of preparation')),
+    ('revision_no', ('revision no', 'revision number')),
+    ('revision_date', ('revision date',)),
+    ('period_of_study', ('period of study',)),
+    ('passing_grade', ('passing grade',)),
     ('vision', ('vision',)),
     ('mission', ('mission',)),
 )
-
-
-def _slug(text):
-    slug = re.sub(r'[^a-z0-9]+', '-', _norm(text)).strip('-')
-    return slug or 'section'
 
 
 def _table_rows(text):
     rows = []
     for raw in str(text or '').splitlines():
         line = raw.strip()
-        if line.count('|') < 1:
-            continue
-        if re.fullmatch(r'[\s|:-]+', line):
+        if line.count('|') < 1 or re.fullmatch(r'[\s|:-]+', line):
             continue
         cells = [cell.strip() for cell in line.strip('|').split('|')]
         if any(cells):
@@ -64,9 +68,8 @@ def _plain_lines(text):
     lines = []
     for raw in str(text or '').splitlines():
         line = raw.strip()
-        if not line or '|' in line or line.startswith('#'):
-            continue
-        lines.append(line)
+        if line and '|' not in line and not line.startswith('#'):
+            lines.append(line)
     return lines
 
 
@@ -74,7 +77,7 @@ def _list_items(text):
     items = []
     for line in _plain_lines(text):
         cleaned = _ITEM_RE.sub('', line).strip()
-        if cleaned and _norm(cleaned) != _norm(''):
+        if cleaned:
             items.append(cleaned)
     return items
 
@@ -109,22 +112,12 @@ def _label_matches(label, name):
     return label == name or label.startswith(f'{name} ') or label.endswith(f' {name}')
 
 
-def _mapped_label(label):
-    return any(
-        _label_matches(label, name)
-        for _field, names in _LABEL_FIELDS
-        for name in names
-    )
-
-
-def _without_mapped_labels(text):
-    kept = []
-    for line in str(text or '').splitlines():
-        match = _LABEL_RE.match(line.strip())
-        mapped = match and _mapped_label(_norm(match.group(1)))
-        if not mapped:
-            kept.append(line)
-    return '\n'.join(kept).strip()
+def _append_text(content, key, body):
+    body = str(body or '').strip()
+    if not body:
+        return
+    current = str(content.get(key) or '').strip()
+    content[key] = f'{current}\n\n{body}'.strip() if current else body
 
 
 def _apply_labels(text, content):
@@ -142,37 +135,84 @@ def _apply_labels(text, content):
                 break
 
 
+def _apply_identity_lines(text, content):
+    """Plain lines such as a university or college name, with no colon."""
+    for line in _plain_lines(text):
+        if _LABEL_RE.match(line):
+            continue
+        title = _norm(line)
+        if 'university' in title and not content.get('university_name'):
+            content['university_name'] = line
+        elif 'college' in title and not content.get('college'):
+            content['college'] = line
+        elif ('program' in title or title.startswith('bachelor') or title.startswith('bs ')) and not content.get('program'):
+            content['program'] = line
+
+
+def _cell(row, index):
+    if index is None or index >= len(row):
+        return ''
+    return row[index]
+
+
+def _header_index(header, *needles):
+    for index, cell in enumerate(header):
+        if any(needle in cell for needle in needles):
+            return index
+    return None
+
+
 def _chapters(text):
     rows = _table_rows(text)
     if rows:
         header = [_norm(cell) for cell in rows[0]]
-        data = rows[1:] if any(token in ' '.join(header) for token in ('week', 'topic', 'outcome')) else rows
+        joined = ' '.join(header)
+        has_header = any(token in joined for token in ('week', 'topic', 'outcome', 'delivery', 'activity'))
+        data = rows[1:] if has_header else rows
+        week_i = _header_index(header, 'week') if has_header else 0
+        topic_i = _header_index(header, 'topic', 'activity', 'content') if has_header else (1 if data and len(data[0]) > 1 else 0)
+        ilo_i = _header_index(header, 'outcome', 'ilo') if has_header else None
+        delivery_i = _header_index(header, 'delivery', 'mode') if has_header else None
         chapters = []
         for index, row in enumerate(data, 1):
-            chapters.append({
-                'chapter': str(index),
-                'weeks': row[0] if row else str(index),
-                'topics': row[1] if len(row) > 1 else (row[0] if row else ''),
-                'outcomes': row[2] if len(row) > 2 else '',
-                'ilo': row[3] if len(row) > 3 else '',
-                'delivery': row[4] if len(row) > 4 else '',
-            })
-        return [row for row in chapters if row['topics'] or row['outcomes']]
+            topic = _cell(row, topic_i)
+            ilo = _cell(row, ilo_i)
+            if ilo == topic:
+                ilo = ''
+            if topic or ilo:
+                chapters.append({
+                    'chapter': _cell(row, week_i) or str(index),
+                    'topics': topic,
+                    'outcomes': '',
+                    'ilo': ilo,
+                    'delivery': _cell(row, delivery_i),
+                })
+        return chapters
     return [
-        {'chapter': str(index), 'weeks': str(index), 'topics': line, 'outcomes': '', 'ilo': '', 'delivery': ''}
+        {'chapter': str(index), 'topics': line, 'outcomes': '', 'ilo': '', 'delivery': ''}
         for index, line in enumerate(_list_items(text), 1)
     ]
 
 
 def _grades(text):
     rows = _table_rows(text)
+    if not rows:
+        return []
+    header = [_norm(cell) for cell in rows[0]]
+    has_header = any(token in ' '.join(header) for token in ('grade', 'rating', 'range', 'equivalent'))
+    data = rows[1:] if has_header else rows
+    rating_i = _header_index(header, 'rating', 'description') if has_header else 0
+    grade_i = _header_index(header, 'grade', 'equivalent') if has_header else (1 if data and len(data[0]) > 1 else 0)
+    range_i = _header_index(header, 'range', 'interval') if has_header else (2 if data and len(data[0]) > 2 else None)
     grades = []
-    data = rows[1:] if rows and any(_norm(cell) in ('grade', 'rating', 'range', 'equivalent') for cell in rows[0]) else rows
     for row in data:
-        if len(row) >= 3:
-            grades.append({'rating': row[0], 'grade': row[1], 'range': row[2]})
-        elif len(row) == 2:
-            grades.append({'rating': '', 'grade': row[0], 'range': row[1]})
+        grade = {
+            'rating': _cell(row, rating_i),
+            'grade': _cell(row, grade_i),
+            'range': _cell(row, range_i),
+        }
+        if any(grade.values()):
+            grades.append(grade)
     return grades
 
 
@@ -190,78 +230,91 @@ def _tos(heading, text):
     return [{'examLabel': heading or 'Examination', 'topics': topics}]
 
 
-def syllabus_content_from_markdown(markdown):
-    """Return a partial syllabus_content object copied from the file."""
-    content = {}
-    imported = []
-    seen_slugs = set()
+def _tasks(heading, text):
+    labels = _list_items(text)
+    if not labels:
+        rows = _table_rows(text)
+        data = rows[1:] if rows else []
+        labels = [' '.join(cell for cell in row if cell) for row in data]
+        labels = [label for label in labels if label]
+    if not labels and str(text or '').strip():
+        labels = [str(text).strip()]
+    if not labels:
+        return []
+    subs = [
+        {'code': f'T{index}', 'label': label, 'weight': 0, 'ilos': [], 'scores': {}, 'iloTotals': {}}
+        for index, label in enumerate(labels, 1)
+    ]
+    return [{'code': 'C1', 'label': heading or 'Assessment', 'weight': 0, 'subs': subs}]
 
-    def keep(title_text, section_body):
-        if not section_body:
-            return
-        slug = _slug(title_text or 'section')
-        base = slug
-        number = 2
-        while slug in seen_slugs:
-            slug = f'{base}-{number}'
-            number += 1
-        seen_slugs.add(slug)
-        imported.append({'key': slug, 'title': title_text or 'Section', 'body': section_body})
+
+def _attributes(text):
+    items = _list_items(text) or ([text.strip()] if str(text or '').strip() else [])
+    return [{'code': '', 'title': item, 'description': ''} for item in items if item]
+
+
+def _framework_field(title):
+    if 'graduate attribute' in title or title == 'iga' or title.startswith('iga '):
+        return 'igas'
+    if 'cdio' in title:
+        return 'cdio_skills'
+    if 'sdg' in title or 'sustainable development' in title:
+        return 'sdg_skills'
+    if 'student outcome' in title:
+        return 'student_outcomes'
+    return None
+
+
+def _extend(content, key, items):
+    if not items:
+        return
+    content.setdefault(key, [])
+    content[key].extend(items)
+
+
+def syllabus_content_from_markdown(markdown):
+    """Return syllabus_content keys the existing sections already render."""
+    content = {}
 
     for heading, body in _chunks(markdown):
         if not body and not heading:
             continue
         _apply_labels(body, content)
+        _apply_identity_lines(body, content)
         key = _best_tab(heading) or ''
         title = _norm(heading)
-        if 'rationale' in title:
-            content['rationale'] = body
-        elif 'description' in title:
-            content['description'] = body
-        elif key == 'iloat' and 'outcome' in title:
-            items = _list_items(body)
-            if items:
-                content['ilos'] = items
-            else:
-                keep(heading, body)
-        elif key == 'schedule':
-            chapters = _chapters(body)
-            if chapters:
-                content['tla_chapters'] = chapters
-            else:
-                keep(heading, body)
-        elif key == 'grading':
-            grades = _grades(body)
-            if grades:
-                content['grading_rows'] = grades
-            else:
-                keep(heading, body)
-        elif key == 'policies':
-            content.setdefault('policies', []).append({
-                'title': heading or 'Policy',
-                'content': body,
-            })
-        elif key == 'fwmap' and ('reference' in title or 'bibliograph' in title):
-            items = _list_items(body)
-            if items:
-                content['references'] = items
-            else:
-                keep(heading, body)
-        elif key == 'tos':
-            tos = _tos(heading, body)
-            if tos:
-                content['tos'] = tos
-            else:
-                keep(heading, body)
-        elif 'vision' in title:
-            content['vision'] = body
-        elif 'mission' in title:
-            content['mission'] = body
-        elif body:
-            stored = _without_mapped_labels(body) if key == 'basic' else body
-            if stored.strip():
-                keep(heading or 'Opening', stored)
+        framework = _framework_field(title)
 
-    if imported:
-        content['imported_sections'] = imported
+        if 'rationale' in title:
+            _append_text(content, 'rationale', body)
+        elif 'description' in title:
+            _append_text(content, 'description', body)
+        elif key == 'details' and ('strateg' in title or title.startswith('tla')):
+            _append_text(content, 'tlas', body)
+        elif key == 'details' and 'technolog' in title:
+            _append_text(content, 'technology_integration', body)
+        elif key == 'iloat' and 'outcome' in title:
+            _extend(content, 'ilos', _list_items(body))
+        elif key == 'iloat':
+            _extend(content, 'ats', _tasks(heading, body))
+        elif key == 'schedule':
+            _extend(content, 'tla_chapters', _chapters(body))
+        elif key == 'grading':
+            _extend(content, 'grading_rows', _grades(body))
+        elif key == 'policies':
+            content.setdefault('policies', []).append({'title': heading or 'Policy', 'content': body})
+        elif framework:
+            _extend(content, framework, _attributes(body))
+        elif key == 'fwmap' and ('reference' in title or 'bibliograph' in title):
+            _extend(content, 'references', _list_items(body))
+        elif key == 'tos':
+            _extend(content, 'tos', _tos(heading, body))
+        elif 'vision' in title:
+            _append_text(content, 'vision', body)
+        elif 'mission' in title:
+            _append_text(content, 'mission', body)
+        elif body and heading and key not in {'basic', 'iloatmatrix', 'ilofwmatrix'}:
+            # Still an existing section: Policies already shows titled blocks.
+            content.setdefault('policies', []).append({'title': heading, 'content': body})
+
     return content
