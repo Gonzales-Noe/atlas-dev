@@ -10,6 +10,7 @@ from apps.curriculum.views import (
     _materialize_tos_exam,
     create_course,
 )
+from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
 from apps.integrations.syllabus_tab_split import (
     faithful_parsed_data,
     split_markdown_into_tabs,
@@ -299,3 +300,44 @@ Week 1 | Network models
             'Course Description\nShort.\n\nStudents configure servers in the laboratory each week.',
         )
         self.assertIn('laboratory', merged)
+
+
+class SyllabusJsonImportTests(SimpleTestCase):
+    def test_file_text_becomes_fields_and_extra_sections(self):
+        markdown = """
+# Course Information
+Course Code: IT 101
+Course Title: Systems Administration
+
+# Course Description
+This course covers systems administration.
+
+# Intended Learning Outcomes
+1. Install an operating system.
+2. Configure a network service.
+
+# Course Learning Plan
+| Week | Topic | Outcomes |
+| 1 | Orientation | Install an OS |
+| 2 | Storage | Partition a disk |
+
+# Grading System
+| Rating | Grade | Range |
+| Excellent | 1.00 | 98-100 |
+
+# Laboratory Safety
+Wear closed shoes in the laboratory.
+"""
+        content = syllabus_content_from_markdown(markdown)
+        self.assertEqual(content['course_code'], 'IT 101')
+        self.assertEqual(content['course_title'], 'Systems Administration')
+        self.assertIn('systems administration', content['description'].lower())
+        self.assertEqual(content['ilos'], [
+            'Install an operating system.',
+            'Configure a network service.',
+        ])
+        self.assertEqual(len(content['tla_chapters']), 2)
+        self.assertEqual(content['tla_chapters'][0]['topics'], 'Orientation')
+        self.assertEqual(content['grading_rows'], [{'rating': 'Excellent', 'grade': '1.00', 'range': '98-100'}])
+        self.assertEqual(content['imported_sections'][0]['title'], 'Laboratory Safety')
+        self.assertIn('closed shoes', content['imported_sections'][0]['body'])
