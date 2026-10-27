@@ -1221,6 +1221,70 @@ def _sections_from_assessment_tasks(syllabus_content):
 
 # Bloom spread for topics that carry no TOS Bloom counts (remember → create).
 DEFAULT_BLOOM_WEIGHTS = [3, 3, 2, 2, 0, 0]
+BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+
+
+def _to_float(value, default=0.0):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if number != number:
+        return default
+    return number
+
+
+def _materialize_tos_exam(exam):
+    """Fill weight, minutes, points, and Bloom item counts from the TOS formula.
+
+    Weight (%) = class hours / total class hours × 100.
+    Topic points and exam minutes use that same share, via largest-remainder
+    so the integers add up to the exam totals. Bloom items use each topic's
+    Bloom percentages against that topic's points. Stored Bloom counts are
+    kept when the row has no percentages yet.
+    """
+    if not isinstance(exam, dict):
+        return exam
+
+    topics = [row if isinstance(row, dict) else {} for row in (exam.get('topics') or [])]
+    total_items = max(0, _to_int(exam.get('totalTestItems')))
+    total_minutes = max(0, _to_int(exam.get('totalExamMinutes')))
+    hours = [max(0.0, _to_float(row.get('hours_class'))) for row in topics]
+    hour_sum = sum(hours)
+    points = (
+        _largest_remainder_allocation(total_items, hours)
+        if hour_sum > 0 and total_items > 0
+        else None
+    )
+    minutes = (
+        _largest_remainder_allocation(total_minutes, hours)
+        if hour_sum > 0 and total_minutes > 0
+        else None
+    )
+
+    materialized = []
+    for index, row in enumerate(topics):
+        next_row = dict(row)
+        topic_points = points[index] if points is not None else max(0, _to_int(row.get('total_points')))
+        if points is not None:
+            next_row['total_points'] = topic_points
+            next_row['weight'] = round((hours[index] / hour_sum) * 100, 1) if hour_sum else 0
+        if minutes is not None:
+            next_row['hours_min'] = minutes[index]
+
+        bloom_pct = row.get('bloom_pct') if isinstance(row.get('bloom_pct'), dict) else {}
+        percentages = [max(0.0, _to_float(bloom_pct.get(key))) for key in BLOOM_ORDER]
+        if any(value > 0 for value in percentages):
+            bloom_alloc = _largest_remainder_allocation(topic_points, percentages)
+            next_row['bloom_items'] = {
+                key: bloom_alloc[bloom_index]
+                for bloom_index, key in enumerate(BLOOM_ORDER)
+            }
+        materialized.append(next_row)
+
+    next_exam = dict(exam)
+    next_exam['topics'] = materialized
+    return next_exam
 
 
 def _build_sectioned_assessment_payload(
@@ -1228,9 +1292,12 @@ def _build_sectioned_assessment_payload(
     assessment_label='Assessment', default_bloom_weights=None,
 ):
     """
-    Build sectioned assessment items using explicit topic rows from TOS or faculty input.
-    Returns sections with allocated items and Bloom labels. Rows without Bloom
-    counts use `default_bloom_weights` when given, else every item is Remember.
+    Build sectioned assessment items from TOS topic rows.
+
+    When a row has Bloom item counts, those counts are copied exactly. Item
+    totals are not spread across the other Bloom levels. Rows with no Bloom
+    counts are used only when the whole exam has none; those items are
+    Remember unless default_bloom_weights is provided.
     """
     sections = []
     for row in (topic_rows or []):
@@ -1280,8 +1347,12 @@ def _build_sectioned_assessment_payload(
             }
         ]
 
-    total_items = max(1, int(total_items or 1))
-    section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
+    any_explicit_bloom = any(sum(section['bloom_counts'].values()) > 0 for section in sections)
+    if any_explicit_bloom:
+        section_alloc = [sum(section['bloom_counts'].values()) for section in sections]
+    else:
+        total_items = max(1, int(total_items or 1))
+        section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
 
     ilo_bloom_map = {}
     ilos = ilos or []
@@ -1304,22 +1375,29 @@ def _build_sectioned_assessment_payload(
         allocated = max(0, section_alloc[idx])
         blooms = section['bloom_counts']
         bloom_weights = [blooms.get(k, 0) for k in bloom_order]
-        if sum(bloom_weights) <= 0 and default_bloom_weights:
-            bloom_weights = list(default_bloom_weights)
-        bloom_weight_total = sum(bloom_weights)
-        # Only include Bloom levels that have non-zero item counts in the TOS
-        nonzero_bloom_indices = [i for i, w in enumerate(bloom_weights) if w > 0]
-        if bloom_weight_total > 0 and nonzero_bloom_indices:
-            nonzero_weights = [bloom_weights[i] for i in nonzero_bloom_indices]
-            nonzero_alloc = _largest_remainder_allocation(allocated, nonzero_weights)
+        if sum(bloom_weights) > 0:
+            # The TOS already states how many items belong to each Bloom level.
+            bloom_alloc = list(bloom_weights)
+            allocated = sum(bloom_weights)
+        elif not any_explicit_bloom and allocated > 0 and default_bloom_weights:
+            fallback_weights = list(default_bloom_weights)
+            nonzero_bloom_indices = [i for i, weight in enumerate(fallback_weights) if weight > 0]
+            nonzero_alloc = _largest_remainder_allocation(
+                allocated,
+                [fallback_weights[i] for i in nonzero_bloom_indices],
+            )
             bloom_alloc = [0] * len(bloom_order)
-            for ni, nw in zip(nonzero_bloom_indices, nonzero_alloc):
-                bloom_alloc[ni] = nw
-        elif allocated > 0:
+            for bloom_index, count in zip(nonzero_bloom_indices, nonzero_alloc):
+                bloom_alloc[bloom_index] = count
+        elif not any_explicit_bloom and allocated > 0:
             bloom_alloc = [0] * len(bloom_order)
             bloom_alloc[0] = allocated
         else:
             bloom_alloc = [0] * len(bloom_order)
+            allocated = 0
+
+        if allocated <= 0:
+            continue
 
         items = []
         for bloom_key, count in zip(bloom_order, bloom_alloc):
@@ -1599,6 +1677,55 @@ def _normalize_choices(choices):
     return normalized[:4]
 
 
+def _align_generated_section_to_blueprint(generated_section, blueprint_section):
+    """Keep the blueprint's item count and Bloom level on every generated item."""
+    blueprint_items = blueprint_section.get('items') or []
+    generated_items = generated_section.get('items') if isinstance(generated_section, dict) else []
+    if not isinstance(generated_items, list):
+        generated_items = []
+
+    by_number = {}
+    for item in generated_items:
+        if not isinstance(item, dict):
+            continue
+        number = _to_int(item.get('item_number'), 0)
+        if number > 0 and number not in by_number:
+            by_number[number] = item
+
+    aligned = []
+    for index, blueprint_item in enumerate(blueprint_items):
+        source = by_number.get(_to_int(blueprint_item.get('item_number'), 0))
+        if source is None and index < len(generated_items) and isinstance(generated_items[index], dict):
+            source = generated_items[index]
+        source = source or {}
+        question = str(source.get('question_text') or '').strip() or str(blueprint_item.get('question_text') or '').strip()
+        choices = _normalize_choices(source.get('choices')) or _normalize_choices(blueprint_item.get('choices'))
+        aligned.append(
+            {
+                'item_number': blueprint_item.get('item_number'),
+                'item_type': str(source.get('item_type') or blueprint_item.get('item_type') or 'Multiple Choice'),
+                'section_title': blueprint_section.get('section_title') or '',
+                'exam_label': blueprint_section.get('exam_label') or '',
+                'bloom_level': blueprint_item.get('bloom_level') or '',
+                'bloom_verb': blueprint_item.get('bloom_verb') or '',
+                'ilo_refs': blueprint_item.get('ilo_refs') or [],
+                'question_text': question,
+                'choices': choices,
+                'correct_answer': str(source.get('correct_answer') or blueprint_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                'answer_key': str(source.get('answer_key') or '').strip(),
+                'points': _to_int(source.get('points'), 0),
+            }
+        )
+
+    return {
+        'section_title': blueprint_section.get('section_title') or '',
+        'exam_label': blueprint_section.get('exam_label') or '',
+        'allocated_items': len(aligned),
+        'bloom_distribution': blueprint_section.get('bloom_distribution') or {},
+        'items': aligned,
+    }
+
+
 def _is_placeholder_choice(choice_text):
     text = str(choice_text or '').strip().lower()
     if not text:
@@ -1792,6 +1919,7 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
     exam_code = ''
     topic_rows = []
     if isinstance(selected_exam, dict):
+        selected_exam = _materialize_tos_exam(selected_exam)
         exam_label = str(selected_exam.get('examLabel') or selected_exam.get('examCode') or '').strip()
         exam_code = str(selected_exam.get('examCode') or '').strip()
         topic_rows = [row for row in (selected_exam.get('topics') or []) if isinstance(row, dict)]
@@ -1822,8 +1950,13 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
         ]
         topic_rows = tos_topic_rows or topic_rows
 
-    total_items = 0
-    if isinstance(selected_exam, dict):
+    bloom_total = 0
+    for row in topic_rows:
+        bloom_items = row.get('bloom_items') if isinstance(row.get('bloom_items'), dict) else {}
+        bloom_total += sum(_to_int(bloom_items.get(key)) for key in BLOOM_ORDER)
+
+    total_items = bloom_total
+    if total_items <= 0 and isinstance(selected_exam, dict):
         total_items = _tos_exam_total_items(selected_exam)
     if total_items <= 0:
         total_items = sum(
@@ -2682,10 +2815,10 @@ REQUIREMENTS:
      - A "choices" array (e.g., ["A. ...", "B. ...", "C. ...", "D. ..."])
      - The correct answer letter in "correct_answer" (e.g., "B")
      - An explanation or answer key in "answer_key"
-3. Keep the same sections and item numbers as the blueprint.
+3. Keep the same sections, item numbers, and bloom_level values as the blueprint.
 4. For each section, ground item content primarily on that section's matched saved module context. If no module is matched, use the closest RAG evidence.
-5. Write original MCQs that match each section title, Bloom level, and ILO references.
-6. If a section has multiple items, vary the stems but keep them aligned to the section topic.
+5. Write each MCQ at that item's blueprint bloom_level. bloom_distribution is the exact number of items for each Bloom level. Do not move an item to another Bloom level, and do not add a Bloom level the blueprint does not list.
+6. If a section has multiple items, vary the stems but keep them aligned to the section topic and to that item's Bloom level.
 7. Use points that sum to 100 across the full assessment.
 8. Return strict JSON with this exact top-level shape:
      {{
@@ -2775,7 +2908,8 @@ Requirements:
 3. Every item must be an MCQ with exactly 4 choices (A-D).
 4. Every item must include: item_number, item_type, question_text, choices, correct_answer, bloom_level, bloom_verb, ilo_refs, points, answer_key.
 5. Write complete question stems and plausible distractors grounded in the section topic.
-6. Return ONLY valid JSON. No markdown, no prose.
+6. Keep each item's bloom_level exactly as written in the blueprint. The number of items at each Bloom level must match bloom_distribution.
+7. Return ONLY valid JSON. No markdown, no prose.
 """
 
     def _generate_sections_individually():
@@ -2985,48 +3119,22 @@ Previous invalid response:
         )
 
     if isinstance(generated_payload, dict) and isinstance(generated_payload.get('sections'), list):
-        # Normalize the returned JSON against the blueprint so the UI can render it reliably.
-        sections_by_title = {str(s.get('section_title')): s for s in mcq_sections}
-        normalized_sections = []
-        running_total = 0
+        # The model may retag items with other Bloom levels. Put every saved
+        # item back on the blueprint slot so the TOS counts stay exact.
+        generated_by_topic = {}
         for section in generated_payload.get('sections', []):
             if not isinstance(section, dict):
                 continue
-            title_key = str(section.get('section_title') or '').strip()
-            blueprint_section = sections_by_title.get(title_key)
-            if not blueprint_section:
-                continue
-            items = []
-            for idx, item in enumerate(section.get('items') or [], start=1):
-                if not isinstance(item, dict):
-                    continue
-                points = _to_int(item.get('points'), 0)
-                running_total += points
-                items.append(
-                    {
-                        'item_number': _to_int(item.get('item_number'), idx),
-                        'item_type': str(item.get('item_type') or 'Multiple Choice'),
-                        'section_title': blueprint_section['section_title'],
-                        'exam_label': str(item.get('exam_label') or blueprint_section['exam_label']),
-                        'bloom_level': str(item.get('bloom_level') or '').strip(),
-                        'bloom_verb': str(item.get('bloom_verb') or '').strip(),
-                        'ilo_refs': [str(v) for v in (item.get('ilo_refs') or blueprint_section.get('ilos') or []) if str(v).strip()],
-                        'question_text': str(item.get('question_text') or '').strip(),
-                        'choices': _normalize_choices(item.get('choices')),
-                        'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
-                        'answer_key': str(item.get('answer_key') or '').strip(),
-                        'points': points,
-                    }
-                )
+            topic_key = _normalize_topic_key(section.get('section_title'))
+            if topic_key and topic_key not in generated_by_topic:
+                generated_by_topic[topic_key] = section
 
+        normalized_sections = []
+        for blueprint_section in mcq_sections:
+            topic_key = _normalize_topic_key(blueprint_section.get('section_title'))
+            generated_section = generated_by_topic.get(topic_key) or {}
             normalized_sections.append(
-                {
-                    'section_title': blueprint_section['section_title'],
-                    'exam_label': blueprint_section['exam_label'],
-                    'allocated_items': blueprint_section['allocated_items'],
-                    'bloom_distribution': blueprint_section['bloom_distribution'],
-                    'items': items or blueprint_section['items'],
-                }
+                _align_generated_section_to_blueprint(generated_section, blueprint_section)
             )
 
         if normalized_sections:
