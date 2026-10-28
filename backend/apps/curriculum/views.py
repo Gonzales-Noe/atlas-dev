@@ -511,13 +511,23 @@ def generate_syllabus(request):
         )
 
 
-def _week_topic_from_chapters(chapters, week_number):
-    """Return the weekly-schedule topic that covers ``week_number``.
+def _is_lecture_discussion_delivery(value):
+    compact = "".join(ch for ch in str(value or "").lower() if ch.isalnum())
+    return compact == "lecturediscussion" or ("lecture" in compact and "discussion" in compact)
 
-    A schedule row keeps the week(s) it covers in ``weeks`` ("2", "2-3") and
-    its own row number in ``chapter`` ("1").  The UI sends the chapter number
-    as the week number, so both are matched before falling back to a range hit.
+
+def _week_topic_from_chapters(chapters, week_number):
+    """Return the TLA Activities topic for ``week_number``.
+
+    Only rows whose delivery method is Lecture/Discussion are used. A row
+    keeps the week(s) it covers in ``weeks`` ("2", "2-3") and its own row
+    number in ``chapter`` ("1"). The UI sends the chapter number as the week
+    number, so both are matched before falling back to a range hit.
     """
+    chapters = [
+        entry for entry in (chapters or [])
+        if _is_lecture_discussion_delivery(entry.get("delivery"))
+    ]
     if not chapters:
         return ""
     target = str(week_number)
