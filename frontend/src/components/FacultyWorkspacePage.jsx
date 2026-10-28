@@ -1038,6 +1038,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Module creation flow state ───────────────────────────────────────────
   const [moduleGeneratingAll, setModuleGeneratingAll] = useState(false)
   const [moduleGeneratingTopic, setModuleGeneratingTopic] = useState(new Set())
+  const [moduleGenProgress, setModuleGenProgress] = useState(null)
   const [deletedModuleIds, setDeletedModuleIds] = useState(new Set())
 
   // ── Syllabus section / subsection the Module topics are read from ────────
@@ -2522,78 +2523,166 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setGenerateDialogOpen(true)
   }
 
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  async function presentGeneratedModule(data) {
+    const content = data.module_content || {}
+    const subtopics = Array.isArray(content.subtopics) ? content.subtopics : []
+    const hasActivity = Boolean(content.short_activity && (content.short_activity.title || content.short_activity.description))
+    const total = 2 + subtopics.length + (hasActivity ? 1 : 0)
+    const shown = {
+      module_number: content.module_number,
+      module_title: content.module_title || data.module_title,
+      introduction: content.introduction || '',
+      learning_objectives: [],
+      subtopics: [],
+      short_activity: null,
+    }
+    setSelectedModule({
+      module_id: data.module_id,
+      module_title: data.module_title,
+      week_number: data.week_number,
+      status: 'Generated',
+    })
+    setModuleContent(shown)
+    setModuleContentDirty(false)
+    setExpandedSubtopics(new Set())
+    setChatMessages([])
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: 'Introduction',
+      completed: 1,
+      total,
+    })
+    await wait(320)
+    shown.learning_objectives = Array.isArray(content.learning_objectives) ? content.learning_objectives : []
+    setModuleContent({ ...shown, learning_objectives: [...shown.learning_objectives] })
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: 'Learning objectives',
+      completed: 2,
+      total,
+    })
+    let completed = 2
+    for (const subtopic of subtopics) {
+      await wait(320)
+      shown.subtopics = [...shown.subtopics, subtopic]
+      setModuleContent({ ...shown, subtopics: [...shown.subtopics] })
+      if (subtopic?.id) setExpandedSubtopics(prev => new Set(prev).add(subtopic.id))
+      completed += 1
+      setModuleGenProgress({
+        label: 'Building the module',
+        detail: subtopic?.title || 'Subtopic',
+        completed,
+        total,
+      })
+    }
+    if (hasActivity) {
+      await wait(320)
+      shown.short_activity = content.short_activity
+      setModuleContent({ ...shown })
+      setModuleGenProgress({
+        label: 'Building the module',
+        detail: content.short_activity.title || 'Short activity',
+        completed: total,
+        total,
+      })
+    }
+  }
+
   async function handleGenerateModule() {
-    if (!course) return
-    setActionError(''); setActionLoading(true); setResultText('')
+    if (!course || actionLoading) return
+    const params = { ...moduleParams }
+    const week = Number(params.week_number) || 1
+    setGenerateDialogOpen(false)
+    setActionError('')
+    setActionLoading(true)
+    setResultText('')
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: params.module_title || 'Preparing the first section…',
+      completed: 0,
+      total: 0,
+    })
+    setModuleGeneratingTopic(prev => new Set(prev).add(week))
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
       const topics = collectScheduleTopics()
       const topic = topics.find(
-        item => item.id === moduleParams.topic_id || item.topic === moduleParams.module_title,
+        item => item.id === params.topic_id || item.topic === params.module_title,
       )
       const source = lectureTopicSource()
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
-        module_title: moduleParams.module_title,
-        week_number: Number(moduleParams.week_number) || 1,
+        module_title: params.module_title,
+        week_number: week,
         section_key: source.section_key,
         section_label: source.section_label,
         subsection_key: source.subsection_key,
         subsection_label: source.subsection_label,
-        topic: topic?.topic || moduleParams.module_title,
+        topic: topic?.topic || params.module_title,
         syllabus_context: topic?.context || '',
-        structuring_level: moduleParams.structuring_level || 'standard',
-        provider: moduleParams.provider,
-        top_k: Number(moduleParams.top_k),
-        extra_instructions: moduleParams.extra_instructions,
+        structuring_level: params.structuring_level || 'standard',
+        provider: params.provider,
+        top_k: Number(params.top_k),
+        extra_instructions: params.extra_instructions,
         selected_doc_ids: selectedIds,
       }, { timeout: 300000 })
       if (data.success && data.module_content) {
-        // Open module viewer with the generated content
-        setSelectedModule({
-          module_id: data.module_id,
-          module_title: data.module_title,
-          week_number: data.week_number,
-          status: 'Generated',
-        })
-        setModuleContent(data.module_content)
-        setModuleContentDirty(false)
-        setExpandedSubtopics(new Set())
-        setChatMessages([])
-        setGenerateDialogOpen(false)
+        await presentGeneratedModule(data)
         workspaceApi.execute()
-        notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
+        notifyGenerationComplete('Module', data.module_title || params.module_title)
       }
     } catch (err) { setActionError(extractApiError(err)) }
-    finally { setActionLoading(false) }
+    finally {
+      setActionLoading(false)
+      setModuleGenProgress(null)
+      setModuleGeneratingTopic(prev => { const next = new Set(prev); next.delete(week); return next })
+    }
   }
 
   async function handleGenerateAllModules() {
-    if (!course) return
+    if (!course || moduleGeneratingAll) return
     const topics = collectScheduleTopics()
     if (!topics.length) {
+      setGenerateDialogOpen(false)
       setActionError('No Lecture/Discussion topics in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion and add a topic list. Reading lists are not topics.')
+      return
+    }
+    const source = lectureTopicSource()
+    const existingModules = workspaceApi.data?.modules || []
+    const topicsWithoutModules = topics.filter(topic => {
+      const existing = existingModules.find(mod => mod.week_number === topic.week)
+      if (!existing) return true
+      return deletedModuleIds.has(String(existing.module_id))
+    })
+    setGenerateDialogOpen(false)
+    if (!topicsWithoutModules.length) {
+      setActionError('Every Lecture/Discussion week already has a module.')
       return
     }
     setModuleGeneratingAll(true)
     setActionError('')
+    setModuleGenProgress({
+      label: 'Generating modules',
+      detail: 'Starting…',
+      completed: 0,
+      total: topicsWithoutModules.length,
+    })
     try {
-      const source = lectureTopicSource()
-      const existingModules = workspaceApi.data?.modules || []
-      const topicsWithoutModules = topics.filter(topic => {
-        const existing = existingModules.find(mod => mod.week_number === topic.week)
-        // Skip weeks that already have a module, unless the faculty deleted it.
-        if (!existing) return true
-        return deletedModuleIds.has(String(existing.module_id))
-      })
-      if (!topicsWithoutModules.length) {
-        setActionError('Every Lecture/Discussion week already has a module.')
-        return
-      }
+      let completed = 0
       for (const topic of topicsWithoutModules) {
         const week = topic.week
         setModuleGeneratingTopic(prev => new Set(prev).add(week))
+        setModuleGenProgress({
+          label: 'Generating modules',
+          detail: `Week ${week}: ${topic.topic}`,
+          completed,
+          total: topicsWithoutModules.length,
+        })
         try {
           const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
           await api.post('/curriculum/generate-module/', {
@@ -2613,17 +2702,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             extra_instructions: moduleParams.extra_instructions || '',
             selected_doc_ids: selectedIds,
           }, { timeout: 300000 })
+          completed += 1
+          setModuleGenProgress({
+            label: 'Generating modules',
+            detail: `Week ${week} added`,
+            completed,
+            total: topicsWithoutModules.length,
+          })
+          await workspaceApi.execute()
         } catch (err) {
           setActionError(extractApiError(err))
         } finally {
           setModuleGeneratingTopic(prev => { const next = new Set(prev); next.delete(week); return next })
         }
       }
-      workspaceApi.execute()
-      setGenerateDialogOpen(false)
       notifyGenerationComplete('Modules', `${topicsWithoutModules.length} module${topicsWithoutModules.length === 1 ? '' : 's'} generated`)
     } finally {
       setModuleGeneratingAll(false)
+      setModuleGenProgress(null)
     }
   }
 
@@ -5318,6 +5414,97 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return null
   }
 
+  function renderModuleGenFooter({ showCreate = false } = {}) {
+    const topicCount = showCreate ? collectScheduleTopics().length : 0
+    if (!showCreate && !moduleGenProgress) return null
+    const total = Number(moduleGenProgress?.total) || 0
+    const completed = Number(moduleGenProgress?.completed) || 0
+    return (
+      <Box sx={{
+        flexShrink: 0,
+        bgcolor: '#15181A',
+        borderTop: '2px solid rgba(134,239,172,0.65)',
+        px: 2,
+        py: 1,
+      }}>
+        <Stack spacing={0.75}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            {moduleGenProgress
+              ? <CircularProgress size={16} sx={{ color: '#86EFAC', flexShrink: 0 }} />
+              : <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />}
+            <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
+              <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                {moduleGenProgress?.label || 'Module generation'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                {moduleGenProgress?.detail || 'Create a module from a Lecture/Discussion topic. You can choose the week before generating.'}
+              </Typography>
+            </Box>
+            {total > 0 && (
+              <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+                {Math.min(completed, total)}/{total}
+              </Typography>
+            )}
+            {showCreate && (
+              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!topicCount || actionLoading || moduleGeneratingAll}
+                  startIcon={<AddIcon />}
+                  onClick={() => openGenerateDialog('single', null)}
+                  sx={{
+                    borderColor: '#86EFAC',
+                    color: '#86EFAC',
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: 'rgba(134,239,172,0.12)', borderColor: '#86EFAC' },
+                    '&.Mui-disabled': { borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  Create Module
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!topicCount || actionLoading || moduleGeneratingAll}
+                  startIcon={moduleGeneratingAll
+                    ? <CircularProgress size={15} color="inherit" />
+                    : <Zap sx={{ fontSize: '1rem !important' }} />}
+                  onClick={() => openGenerateDialog('all', null)}
+                  sx={{
+                    bgcolor: '#16A34A',
+                    color: '#fff',
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: '#15803D' },
+                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
+                </Button>
+              </Box>
+            )}
+          </Box>
+          {moduleGenProgress && (
+            <LinearProgress
+              variant={total > 0 ? 'determinate' : 'indeterminate'}
+              value={total > 0 ? (completed / Math.max(total, 1)) * 100 : undefined}
+              sx={{
+                height: 4,
+                borderRadius: 4,
+                bgcolor: 'rgba(255,255,255,0.12)',
+                '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+              }}
+            />
+          )}
+        </Stack>
+      </Box>
+    )
+  }
+
   // ── Middle panel ─────────────────────────────────────────────────────────
   function renderCenterPanel() {
     if (!courseId) {
@@ -5879,6 +6066,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (selectedModule && moduleContent) {
         const mc = moduleContent
         return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Box sx={{ position: 'relative' }}>
             <Stack spacing={2}>
               <AutoAlert message={actionError} onClose={() => setActionError('')} />
@@ -6135,6 +6324,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Box>
             )}
           </Box>
+          </Box>
+          {renderModuleGenFooter()}
+          </Box>
         )
       }
 
@@ -6147,6 +6339,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ].filter(Boolean).join(' › ')
 
       return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <Stack spacing={2}>
           <AutoAlert message={actionError} onClose={() => setActionError('')} />
           <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 1.75 }}>
@@ -6155,23 +6349,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Modules
               </Typography>
-              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                <Button size="small" variant="outlined" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={!moduleTopics.length}
-                  onClick={() => openGenerateDialog('single', null)}
-                  sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.45, '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
-                  Create Module
-                </Button>
-                <Button size="small" variant="contained" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={moduleGeneratingAll || !moduleTopics.length}
-                  onClick={() => openGenerateDialog('all', null)}
-                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.75, py: 0.45, '&:hover': { bgcolor: '#14532D' },
-                       '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
-                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
-                </Button>
-              </Box>
             </Box>
 
             <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center',
@@ -6373,7 +6550,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* ── Generate module dialog ── */}
           <Dialog open={generateDialogOpen}
-            onClose={() => { if (!actionLoading && !moduleGeneratingAll) setGenerateDialogOpen(false) }}
+            onClose={() => setGenerateDialogOpen(false)}
             maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
             <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
               {generateDialogMode === 'all' ? 'Generate all modules' : 'Generate module'}
@@ -6447,18 +6624,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
                 {(actionLoading || moduleGeneratingAll) && (
                   <Box sx={{ textAlign: 'center', py: 1 }}>
-                    <CircularProgress size={22} sx={{ color: MAROON }} />
-                    <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
-                      {moduleGeneratingAll
-                        ? 'Building your modules — this usually takes less than a minute.'
-                        : 'Building your module — this usually takes less than a minute.'}
+                    <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
+                      Generation continues in the module view. You can close this card.
                     </Typography>
                   </Box>
                 )}
               </Stack>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-              <Button onClick={() => setGenerateDialogOpen(false)} disabled={actionLoading || moduleGeneratingAll}
+              <Button onClick={() => setGenerateDialogOpen(false)}
                 sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
                 Cancel
               </Button>
@@ -6476,6 +6650,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </DialogActions>
           </Dialog>
         </Stack>
+        </Box>
+        {renderModuleGenFooter({ showCreate: true })}
+        </Box>
       )
     }
 
@@ -7586,9 +7763,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* MIDDLE */}
         <Box sx={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          ...(activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment) ? {} : { overflow: 'auto', p: 2.5 }),
+          ...(activeTab === 'syllabus' || activeTab === 'module' || (activeTab === 'assessment' && !selectedAssessment) ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
-          {activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment)
+          {activeTab === 'syllabus' || activeTab === 'module' || (activeTab === 'assessment' && !selectedAssessment)
             ? <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
             : renderCenterPanel()
           }
