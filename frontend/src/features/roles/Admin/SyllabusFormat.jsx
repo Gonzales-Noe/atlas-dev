@@ -602,7 +602,14 @@ export default function SyllabusFormat() {
     setSaving(true)
     savingRef.current = true
     try {
-      const response = await api.patch('/users/institution-customization/', { ...customization, syllabus_sections: payload })
+      // Do not echo syllabus_field_map. The save endpoint used to rebuild
+      // sections from that map and drop the table cells just written above.
+      const customizationFields = { ...customization }
+      delete customizationFields.syllabus_field_map
+      const response = await api.patch('/users/institution-customization/', {
+        ...customizationFields,
+        syllabus_sections: payload,
+      })
       const storedSections = Array.isArray(response.data?.syllabus_sections) && response.data.syllabus_sections.length
         ? mergeSyllabusSections(response.data.syllabus_sections)
         : payload

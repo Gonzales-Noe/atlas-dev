@@ -1228,8 +1228,13 @@ class InstitutionCustomizationView(APIView):
         if 'syllabus_field_map' in request.data:
             field_map = syllabus_template_doc.normalize_field_map(request.data.get('syllabus_field_map'))
             customization.syllabus_field_map = field_map
-            # Keep faculty workspace sections in sync with the click map.
-            customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
+            # The syllabus format screen echoes the stored click map on every
+            # save. Rebuilding sections from that map drops blueprint table
+            # cells and fixed field content (Framework Mapping statements
+            # vanish after Save table). Derive sections only when the client
+            # is updating the map by itself.
+            if 'syllabus_sections' not in request.data:
+                customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
         customization.save()
         return self.get(request)
 
