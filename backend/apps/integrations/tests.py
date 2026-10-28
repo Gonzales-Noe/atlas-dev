@@ -12,7 +12,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
 from apps.integrations.syllabus_pipeline import _parse_refine_flag
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
-from apps.integrations.llm_service import LLMService
+from apps.integrations.llm_service import LLMService, message_text
 from apps.integrations.models import GlobalDocument
 from apps.integrations.views import (
     list_audit_logs,
@@ -78,6 +78,16 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(service.get_provider_and_model('groq'), ('groq', service.groq_model))
         service.default_provider = 'groq'
         self.assertEqual(service.get_provider_and_model('auto'), ('groq', service.groq_model))
+
+    def test_empty_content_uses_reasoning_text(self):
+        self.assertEqual(
+            message_text({'content': '', 'reasoning': '{"question_text": "What is RAM?"}'}),
+            '{"question_text": "What is RAM?"}',
+        )
+        self.assertEqual(
+            message_text({'content': 'visible answer', 'reasoning': 'hidden reasoning'}),
+            'visible answer',
+        )
 
     def test_legacy_alias_does_not_retry_openrouter_twice(self):
         service = _service('openrouter')

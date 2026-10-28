@@ -28,6 +28,7 @@ export const ROUTES = {
   // Admin (Tenant Admin — per HEI)
   ADMIN: {
     DASHBOARD:          '/admin/dashboard',
+    SYLLABUS_FORMAT:    '/admin/syllabus-format',
     ACCOUNT_MANAGEMENT: '/admin/account-management',
     ACADEMIC_STRUCTURE: '/admin/academic-structure',
     KNOWLEDGE_BASE:     '/admin/knowledge-base',

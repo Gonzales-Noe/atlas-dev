@@ -110,7 +110,7 @@ export default function CourseRequestDialog({ open, onClose, onSubmitted }) {
           <>
             <Alert severity="info" sx={{ fontSize: '0.82rem' }}>Requests usually take 1-2 working days. You can keep working on approved courses meanwhile.</Alert>
             <TextField label="Course code" value={form.course_code} onChange={set('course_code')} placeholder="e.g. BA401" size="small" autoFocus disabled={submitting} error={Boolean(fieldErrors.course_code)} helperText={fieldErrors.course_code || 'Short unique code used across syllabus, modules, grading.'} inputProps={{ maxLength: 20 }} sx={FIELD_SX} />
-            <TextField label="Course title" value={form.course_title} onChange={set('course_title')} placeholder="e.g. Business Analytics" size="small" disabled={submitting} error={Boolean(fieldErrors.course_title)} helperText={fieldErrors.course_title || 'Full title students will see.'} inputProps={{ maxLength: 255 }} sx={FIELD_SX} />
+            <TextField label="Course title" value={form.course_title} onChange={set('course_title')} placeholder="e.g. Business Analytics" size="small" disabled={submitting} error={Boolean(fieldErrors.course_title)} helperText={fieldErrors.course_title || 'Full official title for this course.'} inputProps={{ maxLength: 255 }} sx={FIELD_SX} />
           </>
         )}
         {step === 1 && (
@@ -124,7 +124,7 @@ export default function CourseRequestDialog({ open, onClose, onSubmitted }) {
               </TextField>
               <TextField label="Units" type="number" value={form.units} onChange={set('units')} placeholder="3" size="small" disabled={submitting} error={Boolean(fieldErrors.units)} helperText={fieldErrors.units || 'Optional'} inputProps={{ min: 0, max: 30, step: 0.5 }} sx={FIELD_SX} />
             </Box>
-            <TextField label="Course description" value={form.description} onChange={set('description')} placeholder="What will students learn?" size="small" multiline rows={3} disabled={submitting} sx={FIELD_SX} />
+            <TextField label="Course description" value={form.description} onChange={set('description')} placeholder="What this course covers." size="small" multiline rows={3} disabled={submitting} sx={FIELD_SX} />
             <TextField label="Why do you need this course?" value={form.justification} onChange={set('justification')} placeholder="e.g. Required for 2nd-year BSBA next term." size="small" multiline rows={2} disabled={submitting} sx={FIELD_SX} />
           </>
         )}

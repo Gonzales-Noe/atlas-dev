@@ -2,9 +2,15 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.contrib.auth.hashers import check_password, make_password
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.core.exceptions import ValidationError
+from django.db.utils import OperationalError
+from django.http import HttpResponse
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.tokens import AccessToken
+
+from apps.users.middleware import DatabaseReconnectMiddleware
 
 from apps.integrations.models import UserProfile
 from apps.users.serializers import (
@@ -258,3 +264,56 @@ class BillingCheckoutTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(institution.paymongo_reference_number, '')
         institution.save.assert_called_once()
+
+
+class InvalidAccessTokenTests(SimpleTestCase):
+    @override_settings(ALLOWED_HOSTS=['testserver'], SECURE_SSL_REDIRECT=False)
+    @patch('apps.users.authentication.UserProfile.objects')
+    def test_malformed_user_id_is_unauthorized(self, objects):
+        objects.select_related.return_value.get.side_effect = ValidationError('bad uuid')
+        access = AccessToken()
+        access['user_id'] = 'not-a-uuid'
+
+        response = APIClient().get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f'Bearer {access}',
+        )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data['detail'], 'User not found or inactive.')
+
+
+class DatabaseReconnectMiddlewareTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_login_retries_once_after_idle_disconnect(self):
+        calls = {'count': 0}
+
+        def get_response(request):
+            calls['count'] += 1
+            return HttpResponse('ok')
+
+        middleware = DatabaseReconnectMiddleware(get_response)
+        request = self.factory.post('/api/auth/token/')
+        disconnect = OperationalError('server closed the connection unexpectedly')
+        response = middleware.process_exception(request, disconnect)
+        second = middleware.process_exception(request, disconnect)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(second)
+        self.assertEqual(calls['count'], 1)
+        self.assertTrue(request._atlas_db_retried)
+
+    def test_non_auth_post_is_not_retried(self):
+        def get_response(request):
+            raise AssertionError('unsafe request was retried')
+
+        middleware = DatabaseReconnectMiddleware(get_response)
+        request = self.factory.post('/api/curriculum/generate/')
+        response = middleware.process_exception(
+            request,
+            OperationalError('server closed the connection unexpectedly'),
+        )
+
+        self.assertIsNone(response)

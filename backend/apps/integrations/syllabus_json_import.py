@@ -64,12 +64,35 @@ def _table_rows(text):
     return rows
 
 
+def _dedupe_cells(cells):
+    cleaned = []
+    for cell in cells:
+        text = re.sub(r'\s+', ' ', str(cell or '')).strip()
+        if not text or (cleaned and cleaned[-1] == text):
+            continue
+        cleaned.append(text)
+    return cleaned
+
+
+def _split_row(line):
+    stripped = str(line or '').strip()
+    if stripped.count('|') < 1 or re.fullmatch(r'[\s|:-]+', stripped):
+        return None
+    return _dedupe_cells(stripped.strip('|').split('|'))
+
+
 def _plain_lines(text):
     lines = []
     for raw in str(text or '').splitlines():
         line = raw.strip()
-        if line and '|' not in line and not line.startswith('#'):
-            lines.append(line)
+        if not line or line.startswith('#'):
+            continue
+        if '|' in line:
+            cells = _split_row(line)
+            if cells:
+                lines.extend(cells)
+            continue
+        lines.append(line)
     return lines
 
 
@@ -80,6 +103,107 @@ def _list_items(text):
         if cleaned:
             items.append(cleaned)
     return items
+
+
+def _scalar_field(label):
+    title = _norm(label)
+    if not title:
+        return None
+    for field, names in _LABEL_FIELDS:
+        if any(_label_matches(title, name) for name in names):
+            return field
+    return None
+
+
+def _is_section_label(label):
+    title = _norm(label)
+    if not title or len(title.split()) > 14:
+        return False
+    return bool(
+        _best_tab(label)
+        or _framework_field(title)
+        or any(token in title for token in (
+            'description', 'rationale', 'vision', 'mission', 'reference',
+            'grading', 'policy', 'outcome',
+        ))
+    )
+
+
+def _grid_heading(cells):
+    joined = ' '.join(_norm(cell) for cell in cells)
+    if 'week' in joined and any(token in joined for token in ('topic', 'activity', 'content')):
+        return 'Course Learning Plan'
+    if any(token in joined for token in ('grade', 'rating')) and any(token in joined for token in ('range', 'equivalent')):
+        return 'Grading System'
+    if 'topic' in joined and 'hour' in joined:
+        return 'Table of Specifications'
+    return None
+
+
+def _prose(text):
+    kept = []
+    for line in _plain_lines(text):
+        match = _LABEL_RE.match(line)
+        if match and _scalar_field(match.group(1)):
+            continue
+        kept.append(line)
+    return '\n'.join(kept).strip()
+
+
+def _blocks(markdown):
+    """Headings and the first cell of a table row both start a section."""
+    heading = ''
+    lines = []
+    blocks = []
+
+    def flush():
+        body = '\n'.join(lines).strip()
+        if heading or body:
+            blocks.append((heading, body))
+
+    for raw in str(markdown or '').splitlines():
+        stripped = raw.strip()
+        sheet = _SHEET_RE.match(stripped)
+        if sheet:
+            flush()
+            lines = []
+            heading = sheet.group(1).strip()
+            continue
+        if '|' in stripped:
+            cells = _split_row(stripped)
+            if not cells:
+                continue
+            grid = _grid_heading(cells)
+            field = _scalar_field(cells[0]) if len(cells) >= 2 else None
+            if grid:
+                flush()
+                lines = ['| ' + ' | '.join(cells) + ' |']
+                heading = grid
+                continue
+            if field and field not in {'vision', 'mission'}:
+                lines.append(f'{cells[0]}: {" ".join(cells[1:])}')
+                continue
+            if _is_section_label(cells[0]):
+                flush()
+                lines = []
+                heading = cells[0]
+                value = ' '.join(cells[1:]).strip()
+                if value:
+                    lines.append(value)
+                continue
+            if cells:
+                lines.append('| ' + ' | '.join(cells) + ' |')
+            continue
+        nxt = _heading_text(raw)
+        if nxt:
+            flush()
+            lines = []
+            heading = nxt
+            continue
+        if stripped:
+            lines.append(stripped)
+    flush()
+    return blocks
 
 
 def _chunks(markdown):
@@ -276,7 +400,7 @@ def syllabus_content_from_markdown(markdown):
     """Return syllabus_content keys the existing sections already render."""
     content = {}
 
-    for heading, body in _chunks(markdown):
+    for heading, body in _blocks(markdown):
         if not body and not heading:
             continue
         _apply_labels(body, content)
@@ -286,13 +410,13 @@ def syllabus_content_from_markdown(markdown):
         framework = _framework_field(title)
 
         if 'rationale' in title:
-            _append_text(content, 'rationale', body)
+            _append_text(content, 'rationale', _prose(body))
         elif 'description' in title:
-            _append_text(content, 'description', body)
+            _append_text(content, 'description', _prose(body))
         elif key == 'details' and ('strateg' in title or title.startswith('tla')):
-            _append_text(content, 'tlas', body)
+            _append_text(content, 'tlas', _prose(body))
         elif key == 'details' and 'technolog' in title:
-            _append_text(content, 'technology_integration', body)
+            _append_text(content, 'technology_integration', _prose(body))
         elif key == 'iloat' and 'outcome' in title:
             _extend(content, 'ilos', _list_items(body))
         elif key == 'iloat':
@@ -302,7 +426,7 @@ def syllabus_content_from_markdown(markdown):
         elif key == 'grading':
             _extend(content, 'grading_rows', _grades(body))
         elif key == 'policies':
-            content.setdefault('policies', []).append({'title': heading or 'Policy', 'content': body})
+            content.setdefault('policies', []).append({'title': heading or 'Policy', 'content': _prose(body)})
         elif framework:
             _extend(content, framework, _attributes(body))
         elif key == 'fwmap' and ('reference' in title or 'bibliograph' in title):
@@ -310,11 +434,11 @@ def syllabus_content_from_markdown(markdown):
         elif key == 'tos':
             _extend(content, 'tos', _tos(heading, body))
         elif 'vision' in title:
-            _append_text(content, 'vision', body)
+            _append_text(content, 'vision', _prose(body))
         elif 'mission' in title:
-            _append_text(content, 'mission', body)
+            _append_text(content, 'mission', _prose(body))
         elif body and heading and key not in {'basic', 'iloatmatrix', 'ilofwmatrix'}:
-            # Still an existing section: Policies already shows titled blocks.
-            content.setdefault('policies', []).append({'title': heading, 'content': body})
+            # Policies already shows a titled block, so the text stays on that tab.
+            content.setdefault('policies', []).append({'title': heading, 'content': _prose(body)})
 
     return content
