@@ -15,6 +15,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
+import SettingsIcon from '@mui/icons-material/Settings'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
@@ -546,6 +547,9 @@ export default function AdminAccountManagement() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </TextField>
+          <OutlineBtn onClick={() => { setTemplateImport({ busy: false, message: '', severity: 'info' }); setCustomizationDialog(true) }}>
+            <SettingsIcon fontSize="small" /> Syllabus Format
+          </OutlineBtn>
         </div>
       </GlassCard>
 
