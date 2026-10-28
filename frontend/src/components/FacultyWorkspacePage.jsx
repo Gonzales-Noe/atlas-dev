@@ -234,23 +234,89 @@ function shapeRationale(text) {
   return sentences.slice(0, 3).join(' ')
 }
 
+function isInstructionEcho(text) {
+  return /\b(8\s*[–-]\s*16|7\s*[–-]\s*12|hard cap|bloom'?s?\s+verb|one short sentence|one brief sentence|we need|no second clause|word count|these rules|verb list|do not mention|imperative verb|topic outcomes?\s*\d|output a single|field name)\b/i.test(text)
+}
+
 function shapeIlo(text) {
   let clean = String(text || '')
     .replace(/```/g, '')
     .replace(/students (?:should|will) be able to:?/ig, '')
     .replace(/upon completion of this course,?\s*(?:the students should be able to:?)?/ig, '')
+    .replace(/^outcome for\b[^:\n]{0,80}:\s*/i, '')
     .trim()
   const line = clean
     .split(/\n+/)
     .map(part => part.replace(/^\s*(?:ILO\s*\d+\s*[:.\-)]\s*|\d+[.)]\s*|[-*•]\s*)/i, '').trim())
     .find(Boolean) || clean
-  return firstSentence(line)
+  const sentence = firstSentence(line)
+  if (!sentence || isInstructionEcho(sentence)) return ''
+  return sentence
 }
 
 function shapeOutcome(text) {
-  const clean = String(text || '').replace(/```/g, '').trim()
+  const clean = String(text || '')
+    .replace(/```/g, '')
+    .replace(/^outcome for\b[^:\n]{0,80}:\s*/i, '')
+    .trim()
   const line = clean.split(/\n+/).map(part => part.trim()).find(Boolean) || ''
-  return firstSentence(line)
+  const sentence = firstSentence(line)
+  if (!sentence || isInstructionEcho(sentence)) return ''
+  return sentence
+}
+
+function isClassOrientationTitle(title) {
+  const lowered = String(title || '').trim().toLowerCase()
+  return lowered === 'class orientation'
+    || lowered === 'introduction to the course'
+    || lowered === 'orientation'
+    || lowered.startsWith('class orientation')
+}
+
+const ORIENTATION_TOPICS = 'Class Orientation'
+const ORIENTATION_OUTCOME = 'Presentation of Syllabus, Class Rules'
+const ORIENTATION_DELIVERY = 'Discussion'
+
+function iloChoices(ilos) {
+  const rows = (Array.isArray(ilos) ? ilos : []).map((text, index) => ({
+    number: String(index + 1),
+    text: String(text || '').trim(),
+  })).filter(item => item.text)
+  if (rows.length) return rows
+  return [1, 2, 3].map(number => ({ number: String(number), text: `Intended learning outcome ${number}` }))
+}
+
+function soChoices(outcomes, soHeaders) {
+  const headerNumbers = (soHeaders || []).map(value => String(value).replace(/\D/g, '')).filter(Boolean)
+  const headerSet = new Set(headerNumbers)
+  const rows = (Array.isArray(outcomes) ? outcomes : []).map((item, index) => {
+    const number = (String(item?.code || '').match(/\d+/) || [String(index + 1)])[0]
+    const text = String(item?.description || item?.title || '').trim()
+    return { number, text }
+  }).filter(item => item.text && (headerSet.size === 0 || headerSet.has(item.number)))
+  if (rows.length) return rows
+  const fallback = headerNumbers.length ? headerNumbers : ['1', '2', '3', '4', '5', '6']
+  return fallback.map(number => ({ number, text: `Student outcome ${number}` }))
+}
+
+function parseTopicMap(text, count, iloNumbers, soNumbers) {
+  const allowedIlo = new Set(iloNumbers)
+  const allowedSo = new Set(soNumbers)
+  const pairs = []
+  String(text || '').split('\n').forEach(line => {
+    const nums = line.trim().split(/[\t, ]+/).filter(part => /^\d+$/.test(part))
+    if (nums.length < 2) return
+    const ilo = nums[nums.length - 2]
+    const so = nums[nums.length - 1]
+    if (allowedIlo.has(ilo) && allowedSo.has(so)) pairs.push({ ilo, so })
+  })
+  const iloList = iloNumbers.length ? iloNumbers : ['1']
+  const soList = soNumbers.length ? soNumbers : ['1']
+  while (pairs.length < count) {
+    const index = pairs.length
+    pairs.push({ ilo: iloList[index % iloList.length], so: soList[index % soList.length] })
+  }
+  return pairs.slice(0, count)
 }
 
 function shapeTopicsBlock(block) {
@@ -1820,6 +1886,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           ...EMPTY_CHAPTER,
           chapter: String(index + 1),
           weeks: row.weeks,
+          ...(isClassOrientationTitle(row.title) ? {
+            topics: ORIENTATION_TOPICS,
+            outcomes: ORIENTATION_OUTCOME,
+            delivery: ORIENTATION_DELIVERY,
+          } : {}),
         })),
       }))
       setIsDirty(true)
@@ -1827,20 +1898,58 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       const drafts = plan.map((row, index) => ({
         section: 'weeks',
-        label: `Weeks ${row.weeks}`,
+        label: isClassOrientationTitle(row.title)
+          ? 'Weeks 1 · Class Orientation'
+          : `Weeks ${row.weeks}${row.title ? ` · ${row.title}` : ''}`,
         fieldType: 'arrayObj',
         arrField: 'tla_chapters',
         arrIndex: index,
         arrObjKey: 'weeks',
         text: row.weeks,
       }))
-      const total = plan.length * 2
+      const topicLabels = []
+      const contentCount = plan.filter(row => !isClassOrientationTitle(row.title)).length
+      const total = contentCount * 2 + 1
+      let completed = 0
       for (let index = 0; index < plan.length; index += 1) {
         const row = plan[index]
+        if (isClassOrientationTitle(row.title)) {
+          topicLabels.push(ORIENTATION_TOPICS)
+          drafts.push(
+            {
+              section: 'topics',
+              label: 'Topics / Reading List (1 · Class Orientation)',
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: 'topics',
+              text: ORIENTATION_TOPICS,
+            },
+            {
+              section: 'topic_outcome',
+              label: 'Topic Outcomes (1 · Class Orientation)',
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: 'outcomes',
+              text: ORIENTATION_OUTCOME,
+            },
+            {
+              section: 'delivery',
+              label: 'Delivery (1 · Class Orientation)',
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: 'delivery',
+              text: ORIENTATION_DELIVERY,
+            },
+          )
+          continue
+        }
         const topicHint = row.title
-          ? `Topic title: ${row.title}. The first line must be this title. This row covers ${row.weeks}. Do not write the week numbers in this cell.`
-          : `This row covers ${row.weeks}. Continue the course sequence. Do not write the week numbers in this cell.`
-        setAiPipelineProgress({ completed: index * 2, total, label: `Topics / Reading List ${row.weeks}` })
+          ? `Topic title: ${row.title}. The first line must be this title. This row covers week ${row.weeks}. Do not write the week numbers in this cell.`
+          : `This row covers week ${row.weeks}. Continue the course sequence. Do not write the week numbers in this cell.`
+        setAiPipelineProgress({ completed, total, label: `Topics / Reading List ${row.weeks}` })
         const topicsResponse = await api.post('/curriculum/generate-syllabus-field/', {
           course_id: courseId,
           section: 'topics',
@@ -1856,6 +1965,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         if (!topicsText) {
           throw new Error(`The AI did not return topics for weeks ${row.weeks}. Try again.`)
         }
+        topicLabels.push(topicsText.split('\n').map(line => line.trim()).find(Boolean) || row.title || 'Topic')
         drafts.push({
           section: 'topics',
           label: `Topics / Reading List (${row.weeks})`,
@@ -1865,16 +1975,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           arrObjKey: 'topics',
           text: topicsText,
         })
+        completed += 1
 
-        setAiPipelineProgress({ completed: index * 2 + 1, total, label: `Topic Outcomes ${row.weeks}` })
+        const topicName = row.title || topicLabels[index]
+        setAiPipelineProgress({ completed, total, label: `Topic Outcomes ${row.weeks}` })
         const outcomeResponse = await api.post('/curriculum/generate-syllabus-field/', {
           course_id: courseId,
           section: 'topic_outcome',
-          field_label: `Topic Outcomes ${index + 1}`,
+          field_label: 'Topic outcome',
           existing_content: '',
           mode: 'generate',
           top_k: 5,
-          extra_instructions: `One outcome for the topic in weeks ${row.weeks}.`,
+          extra_instructions: `Topic: ${topicName}.`,
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
         }, { timeout: 120000 })
@@ -1891,7 +2003,69 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           arrObjKey: 'outcomes',
           text: outcomeText,
         })
+        completed += 1
       }
+
+      const ilos = iloChoices(source.ilos)
+      const sos = soChoices(source.student_outcomes, source.so_headers)
+      const mapInstructions = [
+        'Intended learning outcomes:',
+        ...ilos.map(row => `${row.number}. ${row.text}`),
+        '',
+        'Student outcomes:',
+        ...sos.map(row => `${row.number}. ${row.text}`),
+        '',
+        'Topics, in order:',
+        ...topicLabels.map((title, index) => `${index + 1}. ${title}`),
+      ].join('\n')
+      setAiPipelineProgress({ completed, total, label: 'ILO and SO mapping' })
+      let mapText = ''
+      try {
+        const mapResponse = await api.post('/curriculum/generate-syllabus-field/', {
+          course_id: courseId,
+          section: 'topic_map',
+          field_label: 'ILO and SO mapping',
+          existing_content: '',
+          mode: 'generate',
+          top_k: 5,
+          extra_instructions: mapInstructions,
+          assessment_criteria: source.assessment_criteria || '',
+          selected_doc_ids: selectedIds,
+        }, { timeout: 120000 })
+        mapText = mapResponse.data?.generated_text || ''
+      } catch {
+        mapText = ''
+      }
+      const pairs = parseTopicMap(
+        mapText,
+        plan.length,
+        ilos.map(row => row.number),
+        sos.map(row => row.number),
+      )
+      pairs.forEach((pair, index) => {
+        const row = plan[index]
+        const topicName = topicLabels[index] || row.title || `row ${index + 1}`
+        drafts.push(
+          {
+            section: 'ilo',
+            label: `ILO · ${topicName}`,
+            fieldType: 'arrayObj',
+            arrField: 'tla_chapters',
+            arrIndex: index,
+            arrObjKey: 'ilo',
+            text: pair.ilo,
+          },
+          {
+            section: 'so',
+            label: `SO · ${topicName}`,
+            fieldType: 'arrayObj',
+            arrField: 'tla_chapters',
+            arrIndex: index,
+            arrObjKey: 'so',
+            text: pair.so,
+          },
+        )
+      })
       setAiPipelineDrafts(drafts)
       setAiPipelineProgress({ completed: total, total, label: '' })
       setAiReviewOpen(true)
@@ -1930,13 +2104,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
       const drafts = []
+      const usedIloVerbs = []
       for (let index = 0; index < fields.length; index += 1) {
         const field = fields[index]
         setAiPipelineProgress({ completed: index, total: fields.length, label: field.label })
         const extraHints = []
         if (field.section === 'ilo') {
-          if (iloBloomVerb) extraHints.push(`Use the Bloom's Taxonomy verb "${iloBloomVerb}".`)
-          if (iloFocusText.trim()) extraHints.push(`Focus the intended learning outcome on: ${iloFocusText.trim()}.`)
+          if (iloBloomVerb) extraHints.push(`Start with the verb "${iloBloomVerb}".`)
+          else if (usedIloVerbs.length) extraHints.push(`Do not start with ${usedIloVerbs.join(' or ')}. Use a different verb.`)
+          if (iloFocusText.trim()) extraHints.push(`The outcome is about: ${iloFocusText.trim()}.`)
         }
         const { data } = await api.post('/curriculum/generate-syllabus-field/', {
           course_id: courseId,
@@ -1952,6 +2128,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         const generatedText = shapeGeneratedField(field.section, data.generated_text)
         if (!generatedText) {
           throw new Error(`The AI did not return text for "${field.label}". Try generating the section again.`)
+        }
+        if (field.section === 'ilo') {
+          const opening = generatedText.replace(/^[^\w]+/, '').split(/\s+/)[0] || ''
+          if (opening) usedIloVerbs.push(opening.replace(/[.,:;]$/, ''))
         }
         if (field.fieldType === 'customTable') {
           drafts.push({ ...field, rows: parseGeneratedTableRows(generatedText, field.columns) })

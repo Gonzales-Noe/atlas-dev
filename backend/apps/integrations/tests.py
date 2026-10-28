@@ -235,14 +235,48 @@ class SyllabusFieldPromptTests(SimpleTestCase):
             context_chunks=[],
             course_category='common',
         )
-        self.assertIn('One short sentence for Information Management', ilo)
+        self.assertIn('Write one intended learning outcome for this course.', ilo)
         self.assertIn('Do not write "students should be able to"', ilo)
-        self.assertIn('Hard cap 18 words', ilo)
+        self.assertIn('Do not mention these rules.', ilo)
+        self.assertIn('Define, Apply, Implement, Analyze', ilo)
+        self.assertNotIn('TASK:', ilo)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('ilo'), 50)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('rationale'), 160)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('tlas'), 220)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('topics'), 180)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('topic_outcome'), 50)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('topic_map'), 200)
+
+        _, outcome = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Information Management',
+            course_code='IT 221',
+            field_label='Topic Outcomes 3',
+            section='topic_outcome',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            course_category='common',
+            extra_instructions='Topic: Relational schema.',
+        )
+        self.assertIn('Write what the student does with this topic.', outcome)
+        self.assertIn('Do not mention these rules.', outcome)
+        self.assertIn('Topic: Relational schema.', outcome)
+        self.assertNotIn('TASK:', outcome)
+        self.assertNotIn('Topic Outcomes 3', outcome)
+
+        _, mapped = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Information Management',
+            course_code='IT 221',
+            field_label='ILO and SO mapping',
+            section='topic_map',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            extra_instructions='Intended learning outcomes:\n1. Define a relational schema.',
+        )
+        self.assertIn('ILO number, tab, SO number', mapped)
+        self.assertIn('1. Define a relational schema.', mapped)
+        self.assertNotIn('TASK:', mapped)
 
         _, topics = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name='Analytics Techniques and Tools',
@@ -276,26 +310,38 @@ class TopicWeekPlanTests(SimpleTestCase):
     def test_single_weeks_run_through_week_18(self):
         raw = "\n".join(f"1 Topic {number}" for number in range(1, 19))
         lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
-        self.assertEqual(len(lines), 18)
-        self.assertTrue(lines[0].startswith("1\tTopic 1"))
-        self.assertTrue(lines[9].startswith("10\t"))
-        self.assertTrue(lines[13].startswith("14\t"))
-        self.assertTrue(lines[17].startswith("18\t"))
+        self.assertEqual(len(lines), 19)
+        self.assertEqual(lines[0], "1\tClass Orientation")
+        self.assertTrue(lines[1].startswith("1\tTopic 1"))
+        self.assertTrue(lines[10].startswith("10\t"))
+        self.assertTrue(lines[14].startswith("14\t"))
+        self.assertTrue(lines[18].startswith("18\t"))
+
+    def test_model_orientation_is_not_counted_as_a_content_week(self):
+        raw = "1 Class Orientation\n" + "\n".join(f"1 Topic {number}" for number in range(1, 19))
+        lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
+        self.assertEqual(lines[0], "1\tClass Orientation")
+        self.assertTrue(lines[1].startswith("1\tTopic 1"))
+        self.assertTrue(lines[-1].startswith("18\t"))
+        self.assertEqual(len(lines), 19)
 
     def test_heavier_topic_is_one_merged_row(self):
         raw = "1 Opening\n2 Customer Analytics\n" + "\n".join(["1 Later"] * 15)
         lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
         labels = [line.split("\t", 1)[0] for line in lines]
         self.assertEqual(labels[0], "1")
-        self.assertEqual(labels[1], "2-3")
-        self.assertIn("Customer Analytics", lines[1])
+        self.assertEqual(lines[0], "1\tClass Orientation")
+        self.assertEqual(labels[1], "1")
+        self.assertEqual(labels[2], "2-3")
+        self.assertIn("Customer Analytics", lines[2])
         self.assertEqual(labels[-1], "18")
-        self.assertEqual(len(lines), 17)
+        self.assertEqual(len(lines), 18)
 
     def test_short_plan_widens_until_the_term_is_covered(self):
         text = assign_topic_weeks("1 Alpha\n2 Beta\n1 Gamma", term_weeks=6)
         labels = [line.split("\t", 1)[0] for line in text.splitlines()]
-        self.assertEqual(labels, ["1-2", "3-4", "5-6"])
+        self.assertEqual(labels, ["1", "1-2", "3-4", "5-6"])
+        self.assertTrue(text.splitlines()[0].endswith("Class Orientation"))
 
     def test_internship_plan_is_not_stretched_to_18_weeks(self):
         text = assign_topic_weeks(
@@ -304,7 +350,9 @@ class TopicWeekPlanTests(SimpleTestCase):
             pad_to_term=False,
         )
         labels = [line.split("\t", 1)[0] for line in text.splitlines()]
-        self.assertEqual(labels, ["1-2", "3"])
+        self.assertEqual(labels, ["1", "1-2", "3"])
+        self.assertIn("Class Orientation", text.splitlines()[0])
+        self.assertIn("Deployment", text.splitlines()[1])
 
 
 class InstitutionScopedAdminDataTests(SimpleTestCase):
