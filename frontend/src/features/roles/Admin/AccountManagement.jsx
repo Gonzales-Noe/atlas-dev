@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
-  InputLabel, Select, FormControl, CircularProgress,
+  InputLabel, Select, FormControl, CircularProgress, Button, Box,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
+import CloseIcon from '@mui/icons-material/Close'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import {
@@ -680,7 +681,7 @@ export default function AdminAccountManagement() {
       )}
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard title="Total Faculty"    value={faculty.length}    icon="👨‍🏫" accent="#86EFAC" />
         <StatCard title="Active Faculty"   value={activeFaculty}     icon="✅" accent="#5EDA7E" />
         <StatCard title="Inactive"         value={inactiveFaculty}   icon="⏸️" accent="#FFB74D" />
@@ -752,10 +753,10 @@ export default function AdminAccountManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <StatusChip label={fac.role} type={fac.role === 'admin' ? 'warning' : 'info'} />
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <StatusChip label={fac.is_active ? 'active' : 'inactive'} type={fac.is_active ? 'active' : 'inactive'} />
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -769,16 +770,19 @@ export default function AdminAccountManagement() {
                       ))
                     )}
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <IconButton size="small" onClick={() => handleEdit(fac)}
+                      aria-label={`Edit ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                     <IconButton size="small" onClick={() => openAssignmentDialog(fac)}
+                      aria-label={`Assign a course to ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <AddLinkIcon fontSize="small" />
                     </IconButton>
                     <IconButton size="small" onClick={e => handleMenuOpen(e, fac)}
+                      aria-label={`More actions for ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
@@ -1004,48 +1008,95 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Create Dialog */}
-      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>
-          {createForms.length > 1 ? `Add ${createForms.length} New Faculty` : 'Add New Faculty'}
+      <Dialog
+        open={createDialog}
+        onClose={() => setCreateDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'var(--bg-card) !important',
+            backgroundImage: 'none',
+            border: '1px solid var(--border-color)',
+            borderRadius: '18px',
+            maxHeight: 'calc(100vh - 56px)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pt: 2.5, pb: 1.25 }}>
+          <Typography sx={{ fontSize: '1.12rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+            {createForms.length > 1 ? `Add ${createForms.length} New Faculty` : 'Add New Faculty'}
+          </Typography>
+          <Typography sx={{ mt: 0.5, fontSize: '0.79rem', color: 'var(--text-secondary)' }}>
+            Create accounts now — sections and courses can be assigned later.
+          </Typography>
         </DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
-        <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
-          <Stack spacing={2.2}>
+        <DialogContent sx={{ py: 2, bgcolor: 'var(--bg-card)' }}>
+          <Stack spacing={1.75}>
             {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             {createForms.map((form, formIndex) => (
-              <div key={formIndex} style={{ padding: 14, border: '1px solid var(--border-color)', borderRadius: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Faculty {formIndex + 1}</div>
+              <Box key={formIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: '14px', p: 2, bgcolor: 'rgba(255,255,255,0.02)' }}>
+                <Stack direction="row" alignItems="center" sx={{ mb: 1.5, justifyContent: 'space-between' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(34,197,94,0.15)', color: '#4ADE80', fontSize: '0.72rem', fontWeight: 800, display: 'grid', placeItems: 'center' }}>
+                      {formIndex + 1}
+                    </Box>
+                    <Typography sx={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Faculty {formIndex + 1}
+                    </Typography>
+                  </Stack>
                   {createForms.length > 1 && (
-                    <OutlineBtn small disabled={creatingFaculty}
-                      onClick={() => setCreateForms(current => current.filter((_, index) => index !== formIndex))}>
-                      Remove faculty
-                    </OutlineBtn>
+                    <Button
+                      size="small"
+                      disabled={creatingFaculty}
+                      onClick={() => setCreateForms(current => current.filter((_, index) => index !== formIndex))}
+                      sx={{ minWidth: 0, px: 1, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                    >
+                      Remove
+                    </Button>
                   )}
-                </div>
-                <Stack spacing={2}>
-                  <TextField label="Full Name" value={form.full_name}
+                </Stack>
+
+                <Stack spacing={1.5}>
+                  <TextField
+                    label="Full name" value={form.full_name}
                     onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, full_name: event.target.value } : item))}
-                    fullWidth size="small" sx={inputSx} />
-                  <TextField label="Email" value={form.email}
-                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, email: event.target.value } : item))}
-                    fullWidth size="small" type="email" sx={inputSx} />
-                  <TextField label="Temporary Password" value={form.password}
-                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, password: event.target.value } : item))}
-                    fullWidth size="small" type="password" sx={inputSx} />
+                    fullWidth size="small" sx={inputSx}
+                  />
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.15fr 1fr' }, gap: 1.5 }}>
+                    <TextField
+                      label="Email" value={form.email}
+                      onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, email: event.target.value } : item))}
+                      fullWidth size="small" type="email" sx={inputSx}
+                    />
+                    <TextField
+                      label="Temporary password" value={form.password}
+                      onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, password: event.target.value } : item))}
+                      fullWidth size="small" type="password"
+                      helperText="At least 8 characters"
+                      sx={{ ...inputSx, '& .MuiFormHelperText-root': { ml: 0, mt: 0.5, fontSize: '0.7rem' } }}
+                    />
+                  </Box>
+
                   <Divider sx={{ borderColor: 'var(--border-color)' }} />
-                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
-                    Sections and courses <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>(optional)</span>
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                    Leave this blank to add the account now and assign sections later.
-                  </div>
-                  {form.assignments.map((group, groupIndex) => (
-                    <div key={groupIndex} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 12 }}>
-                      <Stack spacing={1.5}>
+
+                  <Box>
+                    <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Sections and courses{' '}
+                      <Box component="span" sx={{ fontWeight: 500, color: 'var(--text-secondary)' }}>· optional</Box>
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', mt: 0.25 }}>
+                      Leave blank to add the account now and assign sections later.
+                    </Typography>
+                  </Box>
+
+                  <Stack spacing={1.25}>
+                    {form.assignments.map((group, groupIndex) => (
+                      <Box key={groupIndex} sx={{ border: '1px dashed var(--border-color)', borderRadius: '12px', p: 1.5 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <TextField
-                            label="Section (optional)"
+                            label="Section" placeholder="e.g. BSIT 1101"
                             value={group.section}
                             onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                               ...item,
@@ -1053,75 +1104,116 @@ export default function AdminAccountManagement() {
                             } : item))}
                             fullWidth size="small" sx={inputSx}
                           />
-                          <OutlineBtn
-                            small
+                          <IconButton
+                            size="small"
+                            aria-label={`Remove section ${groupIndex + 1}`}
                             disabled={form.assignments.length === 1 || creatingFaculty}
                             onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                               ...item,
                               assignments: item.assignments.filter((_, groupNo) => groupNo !== groupIndex),
                             } : item))}
-                          >Remove section</OutlineBtn>
+                            sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                          >
+                            <DeleteOutlinedIcon fontSize="small" />
+                          </IconButton>
                         </Stack>
-                        {group.courses.map((course, courseIndex) => (
-                          <div key={courseIndex} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8 }}>
-                            <TextField label="Course code" value={course.course_code}
-                              onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                                ...item,
-                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                  ...entry,
-                                  courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_code: event.target.value } : courseEntry),
-                                } : entry),
-                              } : item))}
-                              size="small" sx={inputSx} />
-                            <TextField label="Course name" value={course.course_title}
-                              onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                                ...item,
-                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                  ...entry,
-                                  courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_title: event.target.value } : courseEntry),
-                                } : entry),
-                              } : item))}
-                              size="small" sx={inputSx} />
-                            <OutlineBtn
-                              small
-                              disabled={group.courses.length === 1 || creatingFaculty}
-                              onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                                ...item,
-                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                  ...entry,
-                                  courses: entry.courses.filter((_, courseNo) => courseNo !== courseIndex),
-                                } : entry),
-                              } : item))}
-                            >Remove</OutlineBtn>
-                          </div>
-                        ))}
-                        <OutlineBtn small disabled={creatingFaculty} onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                        <Stack spacing={1} sx={{ mt: 1.25 }}>
+                          {group.courses.map((course, courseIndex) => (
+                            <Stack key={courseIndex} direction="row" spacing={1} alignItems="center">
+                              <TextField
+                                label="Course code" value={course.course_code}
+                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_code: event.target.value } : courseEntry),
+                                  } : entry),
+                                } : item))}
+                                size="small" sx={{ width: 140, flexShrink: 0, ...inputSx }}
+                              />
+                              <TextField
+                                label="Course name" value={course.course_title}
+                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_title: event.target.value } : courseEntry),
+                                  } : entry),
+                                } : item))}
+                                size="small" sx={{ flex: 1, minWidth: 0, ...inputSx }}
+                              />
+                              <IconButton
+                                size="small"
+                                aria-label="Remove course"
+                                disabled={group.courses.length === 1 || creatingFaculty}
+                                onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.filter((_, courseNo) => courseNo !== courseIndex),
+                                  } : entry),
+                                } : item))}
+                                sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          ))}
+                        </Stack>
+                        <Button
+                          size="small" startIcon={<AddIcon fontSize="small" />}
+                          disabled={creatingFaculty}
+                          onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                            ...item,
+                            assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                              ...entry,
+                              courses: [...entry.courses, { course_code: '', course_title: '' }],
+                            } : entry),
+                          } : item))}
+                          sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
+                        >
+                          Add course
+                        </Button>
+                      </Box>
+                    ))}
+                    <Box>
+                      <Button
+                        size="small" startIcon={<AddIcon fontSize="small" />}
+                        disabled={creatingFaculty}
+                        onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                           ...item,
-                          assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                            ...entry,
-                            courses: [...entry.courses, { course_code: '', course_title: '' }],
-                          } : entry),
-                        } : item))}>
-                          <AddIcon fontSize="small" /> Add course to section
-                        </OutlineBtn>
-                      </Stack>
-                    </div>
-                  ))}
-                  <OutlineBtn small disabled={creatingFaculty} onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                    ...item,
-                    assignments: [...item.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
-                  } : item))}>
-                    <AddIcon fontSize="small" /> Add another section
-                  </OutlineBtn>
+                          assignments: [...item.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
+                        } : item))}
+                        sx={{ textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
+                      >
+                        Add another section
+                      </Button>
+                    </Box>
+                  </Stack>
                 </Stack>
-              </div>
+              </Box>
             ))}
-            <OutlineBtn disabled={creatingFaculty} onClick={() => setCreateForms(current => [...current, emptyFacultyForm()])}>
-              <AddIcon fontSize="small" /> Add another faculty
-            </OutlineBtn>
+            <Button
+              fullWidth
+              disabled={creatingFaculty}
+              startIcon={<AddIcon fontSize="small" />}
+              onClick={() => setCreateForms(current => [...current, emptyFacultyForm()])}
+              sx={{
+                py: 1,
+                textTransform: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                border: '1px dashed var(--border-color)',
+                borderRadius: '12px',
+                '&:hover': { borderColor: '#22C55E', color: '#4ADE80', bgcolor: 'rgba(34,197,94,0.06)' },
+              }}
+            >
+              Add another faculty
+            </Button>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1, bgcolor: 'var(--bg-card)', borderTop: '1px solid var(--border-color)' }}>
           <OutlineBtn onClick={() => setCreateDialog(false)} disabled={creatingFaculty}>Cancel</OutlineBtn>
           <PrimaryBtn
             onClick={handleSaveCreate}

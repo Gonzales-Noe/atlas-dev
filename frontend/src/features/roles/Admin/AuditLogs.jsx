@@ -58,6 +58,24 @@ const detailText = details => (
   typeof details === 'string' ? details : JSON.stringify(details || {})
 )
 
+function detailEntries(details) {
+  if (!details) return []
+  let parsed = details
+  if (typeof details === 'string') {
+    try {
+      parsed = JSON.parse(details)
+    } catch {
+      return []
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
+  return Object.entries(parsed).filter(([, value]) => value !== null && value !== '')
+}
+
+function detailLabel(key) {
+  return String(key).replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+}
+
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
   '& .MuiInputLabel-root': { fontSize: '0.875rem' },
@@ -188,24 +206,58 @@ export default function AdminAuditLogs() {
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ bgcolor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Log Details</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
-        <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
-          {selectedLog && (
-            <Stack spacing={2.5}>
-              {[
-                { label: 'TIMESTAMP', value: selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—' },
-                { label: 'USER',      value: selectedLog.user || 'Unknown user' },
-                { label: 'ACTION',    value: `${actionIcon(selectedLog.action)} ${selectedLog.action || '—'}` },
-                { label: 'RESOURCE',  value: selectedLog.resource_type || '—' },
-                { label: 'RESOURCE ID', value: selectedLog.resource_id || '—' },
-                { label: 'DETAILS',   value: detailText(selectedLog.details) },
-              ].map(({ label, value }) => (
-                <div key={label}>
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
-                  <div style={{ fontSize: '0.92rem', color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{value}</div>
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
+          {selectedLog && (() => {
+            const entries = detailEntries(selectedLog.details)
+            return (
+              <Stack spacing={2}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                  {[
+                    { label: 'TIMESTAMP', value: selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—' },
+                    { label: 'USER',      value: selectedLog.user || 'Unknown user' },
+                    { label: 'ACTION',    value: `${actionIcon(selectedLog.action)} ${actionLabel(selectedLog.action) || '—'}` },
+                    { label: 'RESOURCE',  value: selectedLog.resource_type ? detailLabel(selectedLog.resource_type) : '—' },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
+                      <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', wordBreak: 'break-word' }}>{value}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </Stack>
-          )}
+                {selectedLog.resource_id && (
+                  <div>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>RESOURCE ID</div>
+                    <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.76rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+                      {selectedLog.resource_id}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>DETAILS</div>
+                  {entries.length ? (
+                    <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+                      {entries.map(([key, value], index) => (
+                        <div key={key} style={{
+                          display: 'grid', gridTemplateColumns: 'minmax(110px, 0.8fr) 1.6fr', gap: 12,
+                          padding: '8px 12px', fontSize: '0.82rem',
+                          borderTop: index ? '1px solid var(--border-color)' : 'none',
+                        }}>
+                          <span style={{ color: 'var(--text-tertiary)' }}>{detailLabel(key)}</span>
+                          <span style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                      {detailText(selectedLog.details) || '—'}
+                    </div>
+                  )}
+                </div>
+              </Stack>
+            )
+          })()}
         </DialogContent>
         <DialogActions sx={{ p: 2, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setDetailOpen(false)}>Close</OutlineBtn>

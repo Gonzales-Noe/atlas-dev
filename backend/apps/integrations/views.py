@@ -448,6 +448,40 @@ def list_rag_documents(request):
         )
 
 
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_global_rag_document(request, document_id):
+    """Delete one institution knowledge-base document and its chunks (cascade)."""
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not linked to an institution."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    document = GlobalDocument.objects.filter(
+        document_id=document_id,
+        institution_id=request.user.institution_id,
+    ).first()
+    if not document:
+        return Response(
+            {"success": False, "detail": "Document not found or you do not have permission to delete it."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    try:
+        document.delete()
+        return Response({"success": True}, status=status.HTTP_200_OK)
+    except Exception as exc:
+        logger.exception("Error deleting global RAG document")
+        return Response(
+            {"success": False, "error": f"Failed to delete document: {exc}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_audit_logs(request):

@@ -9,13 +9,14 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Divider, Stack, LinearProgress, Alert,
+  TextField, Divider, Stack, LinearProgress, Alert, IconButton,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import CloseIcon from '@mui/icons-material/Close'
+import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import { PageHeader, GlassCard, StatCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
@@ -103,6 +104,8 @@ export default function AdminKnowledgeBase() {
   const [createOpen, setCreateOpen]   = useState(false)
   const [viewOpen, setViewOpen]       = useState(false)
   const [selected, setSelected]       = useState(null)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting]       = useState(false)
   const [error, setError]             = useState('')
   const [notice, setNotice]           = useState('')
 
@@ -150,6 +153,27 @@ export default function AdminKnowledgeBase() {
       if (doc.status === 'FAILED') setError(`Indexing failed for "${doc.title}": ${doc.error_message || 'unknown error'}`)
     }
     prevStatusRef.current = Object.fromEntries(docs.map(doc => [doc.document_id, doc.status]))
+  }
+
+  async function handleDeleteDocument() {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setError('')
+    setNotice('')
+    try {
+      await api.delete(`/integrations/rag-documents/${deleteTarget.document_id}/delete/`)
+      setDocuments(current => current.filter(doc => doc.document_id !== deleteTarget.document_id))
+      setNotice(`"${deleteTarget.title}" was removed from the knowledge base.`)
+      if (selected?.document_id === deleteTarget.document_id) {
+        setViewOpen(false)
+        setSelected(null)
+      }
+      setDeleteTarget(null)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to delete document.'))
+    } finally {
+      setDeleting(false)
+    }
   }
 
   const categories = ['All', ...new Set(documents.map(doc => normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)).filter(Boolean))]
@@ -249,9 +273,9 @@ export default function AdminKnowledgeBase() {
       </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField placeholder="Search documents…" size="small" value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)} sx={{ ...inputSx }}
+            onChange={e => setSearchTerm(e.target.value)} sx={{ flex: '1 1 260px', ...inputSx }}
             InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(cat => (
@@ -286,7 +310,9 @@ export default function AdminKnowledgeBase() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>
             {filtered.map(doc => (
-              <DocumentCard key={doc.document_id} doc={doc} onView={() => { setSelected(doc); setViewOpen(true) }} />
+              <DocumentCard key={doc.document_id} doc={doc}
+                onView={() => { setSelected(doc); setViewOpen(true) }}
+                onDelete={() => setDeleteTarget(doc)} />
             ))}
           </div>
         )}
@@ -320,8 +346,33 @@ export default function AdminKnowledgeBase() {
             </Stack>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2, bgcolor: 'var(--bg-card)' }}>
+        <DialogActions sx={{ p: 2, bgcolor: 'var(--bg-card)', justifyContent: 'space-between' }}>
+          <OutlineBtn onClick={() => setDeleteTarget(selected)} disabled={!selected}
+            style={{ color: '#F87171', borderColor: 'rgba(248,113,113,0.45)' }}>
+            <DeleteOutlinedIcon sx={{ fontSize: 17 }} /> Delete
+          </OutlineBtn>
           <OutlineBtn onClick={() => setViewOpen(false)}>Close</OutlineBtn>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={Boolean(deleteTarget)} onClose={() => { if (!deleting) setDeleteTarget(null) }}
+        maxWidth="xs" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Delete document?</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
+          <div style={{ fontSize: '0.9rem', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
+            This permanently removes{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.title}</strong>{' '}
+            and all of its indexed chunks from the knowledge base. Retrieval and syllabi that
+            reference it will no longer find its content. This cannot be undone.
+          </div>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</OutlineBtn>
+          <OutlineBtn onClick={handleDeleteDocument} disabled={deleting}
+            style={{ color: '#F87171', borderColor: 'rgba(248,113,113,0.45)', background: 'rgba(248,113,113,0.08)' }}>
+            {deleting ? 'Deleting…' : 'Delete Document'}
+          </OutlineBtn>
         </DialogActions>
       </Dialog>
 
@@ -430,7 +481,7 @@ function IndexStatus({ doc }) {
   return <span style={{ ...base, fontWeight: 400, color: 'var(--text-tertiary)' }}>{doc.total_chunks || 0} chunks</span>
 }
 
-function DocumentCard({ doc, onView }) {
+function DocumentCard({ doc, onView, onDelete }) {
   const [hovered, setHovered] = useState(false)
   return (
     <div
@@ -448,7 +499,17 @@ function DocumentCard({ doc, onView }) {
     >
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
         <CategoryBadge cat={doc.doc_type_label || doc.doc_type} />
-        <IndexStatus doc={doc} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          <IndexStatus doc={doc} />
+          <IconButton
+            aria-label={`Delete ${doc.title}`}
+            size="small"
+            onClick={event => { event.stopPropagation(); onDelete() }}
+            sx={{ p: 0.5, color: 'var(--text-tertiary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+          >
+            <DeleteOutlinedIcon sx={{ fontSize: 17 }} />
+          </IconButton>
+        </div>
       </div>
       <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.4, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
         {doc.title}
