@@ -7,6 +7,7 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
+import LlmHealthPanel from './LlmHealthPanel'
 
 const performanceData = [
   { time: '00:00', cpu: 45, memory: 62, disk: 78 },
@@ -43,6 +44,8 @@ export default function SystemManagement() {
         title="System Management"
         subtitle="Monitor system health, manage resources, and perform maintenance"
       />
+
+      <LlmHealthPanel />
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>

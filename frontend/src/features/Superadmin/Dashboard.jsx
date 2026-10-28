@@ -4,6 +4,7 @@ import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, MetricRow } from '../../components/ui'
 import api from '../../config/api'
+import LlmHealthPanel from './LlmHealthPanel'
 
 const COLORS = ['#16A34A', '#86EFAC', 'rgba(134,239,172,0.35)']
 
@@ -63,6 +64,8 @@ export default function SuperAdminDashboard() {
         title="Super Admin Dashboard"
         subtitle="System-wide metrics, performance monitoring, and institutional management"
       />
+
+      <LlmHealthPanel />
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>

@@ -10,8 +10,10 @@ key are skipped. Ollama (self-hosted) is used only when explicitly chosen.
 
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 
 import requests
 from django.core.cache import cache
@@ -168,6 +170,121 @@ def estimate_tokens(*texts):
     return sum(len(text or '') for text in texts) // 4
 
 
+_QUOTA_CACHE_SECONDS = 6 * 3600
+_RESET_DELAY = re.compile(r'(\d+(?:\.\d+)?)(ms|h|m|s)')
+
+
+def _quota_cache_key(provider):
+    return f'llm:quota:{provider}'
+
+
+def parse_reset_delay(value):
+    """Seconds until a limit returns. Accepts Groq durations and unix timestamps."""
+    if value is None or value == '':
+        return None
+    text = str(value).strip()
+    if re.fullmatch(r'\d+(?:\.\d+)?', text):
+        number = float(text)
+        if number > 1_000_000_000_000:
+            return max(0.0, number / 1000 - time.time())
+        if number > 1_000_000_000:
+            return max(0.0, number - time.time())
+        return number
+    total = 0.0
+    found = False
+    for amount, unit in _RESET_DELAY.findall(text):
+        found = True
+        number = float(amount)
+        total += {'ms': number / 1000, 'h': number * 3600, 'm': number * 60, 's': number}[unit]
+    return total if found else None
+
+
+def _header(headers, name):
+    if not headers:
+        return None
+    getter = getattr(headers, 'get', None)
+    if not getter:
+        return None
+    return getter(name)
+
+
+def _as_int(value):
+    if value is None or value == '':
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _iso_after(seconds):
+    if seconds is None:
+        return None
+    return (datetime.now(timezone.utc) + timedelta(seconds=max(0, seconds))).isoformat()
+
+
+def quota_from_headers(provider, headers, status_code=200):
+    """Read unused tokens or requests from a provider response."""
+    tokens_limit = _as_int(_header(headers, 'x-ratelimit-limit-tokens'))
+    tokens_remaining = _as_int(_header(headers, 'x-ratelimit-remaining-tokens'))
+    requests_limit = _as_int(_header(headers, 'x-ratelimit-limit-requests') or _header(headers, 'x-ratelimit-limit'))
+    requests_remaining = _as_int(
+        _header(headers, 'x-ratelimit-remaining-requests') or _header(headers, 'x-ratelimit-remaining')
+    )
+    token_reset = parse_reset_delay(_header(headers, 'x-ratelimit-reset-tokens'))
+    request_reset = parse_reset_delay(
+        _header(headers, 'x-ratelimit-reset-requests')
+        or _header(headers, 'x-ratelimit-reset')
+        or _header(headers, 'retry-after')
+    )
+    limited = status_code == 429 or tokens_remaining == 0 or requests_remaining == 0
+    resets_at = None
+    if tokens_remaining == 0 and token_reset is not None:
+        resets_at = _iso_after(token_reset)
+    elif (requests_remaining == 0 or status_code == 429) and request_reset is not None:
+        resets_at = _iso_after(request_reset)
+    elif token_reset is not None:
+        resets_at = _iso_after(token_reset)
+    quota_kind = 'tokens' if tokens_limit is not None or tokens_remaining is not None else (
+        'requests' if requests_limit is not None or requests_remaining is not None else 'none'
+    )
+    if status_code in (401, 403):
+        status_name = 'blocked'
+        detail = 'Generation is blocked for this key. It does not return on a timer.'
+    elif limited:
+        status_name = 'limited'
+        detail = 'The limit is reached.'
+    elif status_code and status_code >= 500:
+        status_name = 'unreachable'
+        detail = 'The provider did not answer.'
+    else:
+        status_name = 'healthy'
+        detail = '' if quota_kind != 'none' else 'This provider does not publish a token balance.'
+    return {
+        'provider': provider,
+        'status': status_name,
+        'quota_kind': quota_kind,
+        'tokens_limit': tokens_limit,
+        'tokens_remaining': tokens_remaining,
+        'requests_limit': requests_limit,
+        'requests_remaining': requests_remaining,
+        'reset_in_seconds': token_reset if tokens_remaining == 0 and token_reset is not None else request_reset,
+        'resets_at': resets_at,
+        'detail': detail,
+    }
+
+
+def remember_provider_quota(provider, payload):
+    stored = dict(payload)
+    stored['checked_at'] = datetime.now(timezone.utc).isoformat()
+    cache.set(_quota_cache_key(provider), stored, timeout=_QUOTA_CACHE_SECONDS)
+    return stored
+
+
+def stored_provider_quota(provider):
+    return cache.get(_quota_cache_key(provider))
+
+
 class ProviderError(ValueError):
     """A provider call failed; `kind` decides whether it cools down."""
 
@@ -276,6 +393,155 @@ class LLMService:
             for name, spec in PROVIDER_SPECS.items()
         }
 
+    def _blank_health(self, provider, status_name, detail):
+        spec = PROVIDER_SPECS.get(provider)
+        return {
+            'id': provider,
+            'label': spec.label if spec else 'Ollama',
+            'model': self.models.get(provider) if provider in self.models else self.ollama_default_model,
+            'configured': bool(self.configured.get(provider)) if provider in PROVIDER_SPECS else self.ollama_configured,
+            'status': status_name,
+            'quota_kind': 'none',
+            'tokens_limit': None,
+            'tokens_remaining': None,
+            'requests_limit': None,
+            'requests_remaining': None,
+            'resets_at': None,
+            'reset_in_seconds': None,
+            'detail': detail,
+            'checked_at': None,
+            'cooldown_seconds': provider_cooldown_remaining(provider) if provider in PROVIDER_SPECS else 0,
+        }
+
+    def _apply_cooldown(self, row):
+        remaining = row.get('cooldown_seconds') or 0
+        if remaining and row['status'] == 'healthy':
+            row['status'] = 'limited'
+        if remaining and not row.get('resets_at'):
+            row['resets_at'] = _iso_after(remaining)
+            row['reset_in_seconds'] = remaining
+        return row
+
+    def _probe_chat_quota(self, provider):
+        """One short call so the rate-limit headers can be read."""
+        try:
+            self.generate_response(
+                [{'role': 'user', 'content': 'Reply with OK.'}],
+                provider_choice=provider,
+                max_tokens=16,
+            )
+        except ProviderError:
+            pass
+        except Exception as exc:
+            logger.warning("LLM health probe for '%s' failed: %s", provider, exc)
+        return stored_provider_quota(provider)
+
+    def _openrouter_health(self):
+        row = self._blank_health('openrouter', 'healthy', '')
+        if not self.configured.get('openrouter'):
+            row['status'] = 'not_configured'
+            row['detail'] = 'API key is not set.'
+            return row
+        try:
+            response = requests.get(
+                'https://openrouter.ai/api/v1/key',
+                headers={'Authorization': f"Bearer {self.api_keys['openrouter']}"},
+                timeout=20,
+            )
+        except requests.exceptions.RequestException as exc:
+            row['status'] = 'unreachable'
+            row['detail'] = f'Could not read the key quota: {exc.__class__.__name__}'
+            return self._apply_cooldown(row)
+        if not response.ok:
+            snapshot = quota_from_headers('openrouter', response.headers, response.status_code)
+            row.update(snapshot)
+            row['detail'] = 'The key quota could not be read.'
+            remember_provider_quota('openrouter', row)
+            return self._apply_cooldown(row)
+        daily = (response.json().get('data') or {}).get('free_model_daily_requests') or {}
+        remaining = _as_int(daily.get('remaining'))
+        limit = _as_int(daily.get('limit'))
+        row['quota_kind'] = 'requests'
+        row['requests_limit'] = limit
+        row['requests_remaining'] = remaining
+        row['detail'] = 'Daily free-model requests. This key does not publish a token balance.'
+        if remaining == 0:
+            row['status'] = 'limited'
+            tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
+            row['resets_at'] = tomorrow.isoformat()
+            row['reset_in_seconds'] = max(0, int((tomorrow - datetime.now(timezone.utc)).total_seconds()))
+        remember_provider_quota('openrouter', row)
+        return self._apply_cooldown(row)
+
+    def _ollama_health(self):
+        row = self._blank_health('ollama', 'unreachable', '')
+        row['label'] = 'Ollama'
+        row['model'] = self.ollama_default_model or ''
+        row['configured'] = self.ollama_configured
+        row['quota_kind'] = 'none'
+        row['detail'] = 'Local model on the server. No token limit.'
+        if not self.ollama_configured:
+            row['status'] = 'not_configured'
+            row['detail'] = 'OLLAMA_BASE_URL is not set.'
+            return row
+        try:
+            response = requests.get(f"{self.ollama_base_url.rstrip('/')}/api/tags", timeout=5)
+        except requests.exceptions.RequestException:
+            row['status'] = 'unreachable'
+            row['detail'] = 'The server container cannot be reached from this backend.'
+            return row
+        if not response.ok:
+            row['status'] = 'unreachable'
+            row['detail'] = f'The model list returned HTTP {response.status_code}.'
+            return row
+        names = [item.get('name') or '' for item in (response.json().get('models') or [])]
+        wanted = self.ollama_default_model or ''
+        installed = wanted in names or any(name.split(':', 1)[0] == wanted.split(':', 1)[0] for name in names if wanted)
+        row['status'] = 'healthy' if installed else 'unavailable'
+        if not installed:
+            row['detail'] = f'{wanted} is not installed in the server container.'
+        row['checked_at'] = datetime.now(timezone.utc).isoformat()
+        return row
+
+    def llm_health(self, refresh=False):
+        """Health, unused quota, and the time a reached limit returns."""
+        rows = []
+        for name in list(PROVIDER_SPECS) + ['ollama']:
+            if name == 'ollama':
+                rows.append(self._ollama_health())
+                continue
+            if name == 'openrouter':
+                cached = stored_provider_quota(name)
+                if cached and not refresh:
+                    cached['cooldown_seconds'] = provider_cooldown_remaining(name)
+                    rows.append(self._apply_cooldown(cached))
+                else:
+                    rows.append(self._openrouter_health())
+                continue
+            if not self.configured.get(name):
+                rows.append(self._blank_health(name, 'not_configured', 'API key is not set.'))
+                continue
+            cached = stored_provider_quota(name)
+            if refresh or not cached:
+                self._probe_chat_quota(name)
+                cached = stored_provider_quota(name)
+            if not cached:
+                row = self._blank_health(name, 'healthy', 'No token balance has been published yet.')
+                row['checked_at'] = datetime.now(timezone.utc).isoformat()
+                rows.append(self._apply_cooldown(row))
+                continue
+            cached['id'] = name
+            cached['label'] = PROVIDER_SPECS[name].label
+            cached['model'] = self.models[name]
+            cached['configured'] = True
+            cached['cooldown_seconds'] = provider_cooldown_remaining(name)
+            if cached.get('quota_kind') == 'none':
+                cached['detail'] = cached.get('detail') or 'This provider does not publish a token balance.'
+            rows.append(self._apply_cooldown(cached))
+        return rows
+
     def _check_ollama_availability(self):
         if not self.ollama_base_url:
             return False
@@ -382,6 +648,9 @@ class LLMService:
             )
         except requests.exceptions.RequestException as exc:
             raise ProviderError(provider, f'request failed: {exc}', kind='unavailable') from exc
+
+        snapshot = quota_from_headers(provider, response.headers, response.status_code)
+        remember_provider_quota(provider, snapshot)
 
         if not response.ok:
             retry_after = response.headers.get('retry-after')
