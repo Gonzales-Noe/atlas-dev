@@ -134,9 +134,11 @@ export default function SyllabusFormat() {
     setError('')
     try {
       const { data } = await api.get('/users/institution-customization/')
+      if (dirtyRef.current || savingRef.current) return
       const sections = Array.isArray(data.syllabus_sections) && data.syllabus_sections.length
         ? mergeSyllabusSections(data.syllabus_sections)
         : cloneDefaultSyllabusSections()
+      if (dirtyRef.current || savingRef.current) return
       setCustomization(current => ({ ...current, ...data, syllabus_sections: sections }))
       setActiveIndex(index => Math.max(0, Math.min(index, sections.length - 1)))
       dirtyRef.current = false
@@ -196,6 +198,22 @@ export default function SyllabusFormat() {
         field.key === fieldKey ? { ...field, ...changes } : field
       )),
     })
+  }
+
+  function setFieldFixed(fieldKey, fixed) {
+    const nextSections = sections.map((section, index) => (
+      index === activeIndex
+        ? {
+            ...section,
+            fields: (section.fields || []).map(field => (
+              field.key === fieldKey ? { ...field, fixed } : field
+            )),
+          }
+        : section
+    ))
+    dirtyRef.current = true
+    setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
+    save(nextSections)
   }
 
   function updateSubsection(sectionIndex, subsectionIndex, changes) {
@@ -272,7 +290,7 @@ export default function SyllabusFormat() {
     setTableTarget({ sectionIndex, subsectionIndex })
   }
 
-  function saveTable() {
+  async function saveTable() {
     if (!tableTarget) return
     const columns = tableDraft.columns.map(column => column.trim())
     if (!columns.length || columns.some(column => !column)) {
@@ -300,10 +318,10 @@ export default function SyllabusFormat() {
       }
     })
     setError('')
-    setTableTarget(null)
     dirtyRef.current = true
     setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
-    save(nextSections)
+    const saved = await save(nextSections)
+    if (saved) setTableTarget(null)
   }
 
   function toggleTable(sectionIndex, subsectionIndex, enabled) {
@@ -456,7 +474,7 @@ export default function SyllabusFormat() {
     setFieldDraft(subsection.static_content || '')
   }
 
-  function saveFieldEditor() {
+  async function saveFieldEditor() {
     if (!fieldEditor) return
     let nextSections
     if (fieldEditor.type === 'subsection') {
@@ -484,9 +502,10 @@ export default function SyllabusFormat() {
     }
     dirtyRef.current = true
     setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
+    const saved = await save(nextSections)
+    if (!saved) return
     setFieldEditor(null)
     setFieldDraft('')
-    save(nextSections)
   }
 
   function openLabelEditor(field) {
@@ -518,7 +537,6 @@ export default function SyllabusFormat() {
     setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
     setLabelEditor(null)
     setLabelDraft('')
-    save(nextSections)
   }
 
   async function importTemplate(file) {
@@ -551,6 +569,7 @@ export default function SyllabusFormat() {
   async function save(nextSections = sections) {
     // onClick={save} would pass the click event; always resolve a real array.
     const source = Array.isArray(nextSections) ? nextSections : sections
+    if (savingRef.current) return false
     setError('')
     setNotice('')
     const payload = source.map(section => {
@@ -592,11 +611,11 @@ export default function SyllabusFormat() {
 
     if (payload.some(section => section.enabled !== false && !section.label)) {
       setError('Add a name to every enabled section.')
-      return
+      return false
     }
     if (payload.some(section => section.enabled !== false && section.subsections.some(sub => !sub.label))) {
       setError('Add a name to each additional field before saving.')
-      return
+      return false
     }
 
     setSaving(true)
@@ -616,8 +635,10 @@ export default function SyllabusFormat() {
       setCustomization(current => ({ ...current, ...response.data, syllabus_sections: storedSections }))
       dirtyRef.current = false
       setNotice('Syllabus format saved to the database and applied to every Faculty syllabus in your institution.')
+      return true
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save syllabus format to the database.')
+      return false
     } finally {
       setSaving(false)
       savingRef.current = false
@@ -628,12 +649,13 @@ export default function SyllabusFormat() {
     if (!tableTarget) return null
     const setDraft = changes => setTableDraft(current => ({ ...current, ...changes }))
     return (
-      <Dialog open onClose={() => setTableTarget(null)} maxWidth="md" fullWidth>
+      <Dialog open onClose={() => { if (!saving) setTableTarget(null) }} maxWidth="md" fullWidth>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>Table settings</DialogTitle>
         <DialogContent sx={{ bgcolor: 'var(--bg-card)' }}>
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
             Define the table shape. Fixed rows are supplied by the Admin; other rows remain editable for Faculty.
           </Typography>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <Stack spacing={1.5}>
             {tableDraft.columns.map((column, index) => (
               <Stack key={index} direction="row" spacing={1} alignItems="center">
@@ -677,7 +699,10 @@ export default function SyllabusFormat() {
             <OutlineBtn small onClick={() => setDraft({ rows: [...tableDraft.rows, emptyTableRow(tableDraft.columns.length)] })}>Add row</OutlineBtn>
           </Stack>
         </DialogContent>
-        <DialogActions><OutlineBtn onClick={() => setTableTarget(null)}>Cancel</OutlineBtn><PrimaryBtn onClick={saveTable}>Save table</PrimaryBtn></DialogActions>
+        <DialogActions>
+          <OutlineBtn onClick={() => setTableTarget(null)} disabled={saving}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={saveTable} disabled={saving}>{saving ? 'Saving…' : 'Save table'}</PrimaryBtn>
+        </DialogActions>
       </Dialog>
     )
   }
@@ -685,12 +710,13 @@ export default function SyllabusFormat() {
   function renderFieldEditor() {
     if (!fieldEditor) return null
     return (
-      <Dialog open onClose={() => setFieldEditor(null)} maxWidth="sm" fullWidth>
+      <Dialog open onClose={() => { if (!saving) setFieldEditor(null) }} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>Fixed content</DialogTitle>
         <DialogContent sx={{ bgcolor: 'var(--bg-card)' }}>
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
             {fieldEditor.label} — Faculty see this content and cannot edit the field. Saving applies it to every Faculty syllabus in your institution.
           </Typography>
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <TextField
             autoFocus
             fullWidth
@@ -704,7 +730,7 @@ export default function SyllabusFormat() {
           />
         </DialogContent>
         <DialogActions>
-          <OutlineBtn onClick={() => setFieldEditor(null)}>Cancel</OutlineBtn>
+          <OutlineBtn onClick={() => setFieldEditor(null)} disabled={saving}>Cancel</OutlineBtn>
           <PrimaryBtn onClick={saveFieldEditor} disabled={saving}>
             {saving ? 'Saving…' : 'Save & apply'}
           </PrimaryBtn>
@@ -721,7 +747,7 @@ export default function SyllabusFormat() {
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>Rename field</DialogTitle>
         <DialogContent sx={{ bgcolor: 'var(--bg-card)' }}>
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
-            Faculty see this name on the field in their Syllabus workspace. Saving applies it to every Faculty syllabus in your institution.
+            Faculty see this name on the field in their Syllabus workspace. Use Save Format to store it.
           </Typography>
           <TextField
             autoFocus
@@ -745,9 +771,7 @@ export default function SyllabusFormat() {
         </DialogContent>
         <DialogActions>
           <OutlineBtn onClick={() => setLabelEditor(null)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={saveLabelEditor} disabled={saving}>
-            {saving ? 'Saving…' : 'Save name'}
-          </PrimaryBtn>
+          <PrimaryBtn onClick={saveLabelEditor}>Done</PrimaryBtn>
         </DialogActions>
       </Dialog>
     )
@@ -869,16 +893,22 @@ export default function SyllabusFormat() {
               </Box>
             )}
           </Box>
-          {locked ? (
+          {canLock || locked ? (
             <Stack direction="row" spacing={0.5} alignItems="center">
               {canLock && (
                 <FormControlLabel
                   sx={{ m: 0, whiteSpace: 'nowrap' }}
-                  control={<Switch size="small" checked={Boolean(entry.fixed)} onChange={event => updateField(activeIndex, field.key, { fixed: event.target.checked })} />}
+                  control={(
+                    <Switch
+                      size="small"
+                      checked={Boolean(entry.fixed)}
+                      onChange={event => setFieldFixed(field.key, event.target.checked)}
+                    />
+                  )}
                   label={<Typography variant="caption" sx={{ fontWeight: 700, color: entry.fixed ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
                 />
               )}
-              {!tableDriven && (
+              {locked && !tableDriven && (
                 <Tooltip title="Edit fixed content">
                   <IconButton
                     size="small"
@@ -890,14 +920,6 @@ export default function SyllabusFormat() {
                   </IconButton>
                 </Tooltip>
               )}
-            </Stack>
-          ) : canLock ? (
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <FormControlLabel
-                sx={{ m: 0, whiteSpace: 'nowrap' }}
-                control={<Switch size="small" checked={false} onChange={event => updateField(activeIndex, field.key, { fixed: event.target.checked })} />}
-                label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Fixed</Typography>}
-              />
             </Stack>
           ) : (
             <Chip size="small" variant="outlined"
