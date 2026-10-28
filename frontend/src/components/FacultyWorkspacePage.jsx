@@ -4602,7 +4602,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const solvedTopics = solvedTos?.topics || []
       const lectureChoices = collectScheduleTopics()
       const totalHrs = solvedTopics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0)
-      const minuteValues = solvedTopics.map(row => displayedTopicMinutes(row, activeTos.totalExamMinutes))
+      const minuteValues = solvedTopics.map(row => displayedTopicMinutes(row))
       const totalMins = minuteValues.every(value => value == null)
         ? null
         : minuteValues.reduce((sum, value) => sum + (value || 0), 0)
@@ -4959,7 +4959,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_class ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value), 52)}</td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'inherit' }}>
-                                  {displayedTopicMinutes(row, activeTos.totalExamMinutes) ?? '—'}
+                                  {displayedTopicMinutes(row) ?? '—'}
                                 </Typography>
                               </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -5035,7 +5035,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <AddRowBtn label="Add topic row" onClick={() => addTopicRow(activeTos.id)} />
                     </Box>
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 1 }}>
-                      Weight, minutes, points, and Bloom item counts are computed for you. Class hours set the weight, and the Min column shows those hours in minutes. When Total exam minutes is set, that time is split across topics by the same weight. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
+                      Weight, minutes, points, and Bloom item counts are computed for you. The Min column converts Class hours to minutes as you type: 1 class hour is 60 minutes. Class hours also set the weight, and that weight splits Total test items. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
                     </Typography>
                   </Box>
                 </>

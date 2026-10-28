@@ -289,31 +289,15 @@ def _add_tos_meta_block(doc, exam, multi_exam):
     doc.add_paragraph()
 
 
-def _topic_minutes(exam, topic):
-    """Minutes shown in the No. of hrs / Min column.
-
-    Class hours become minutes until an exam duration is set. After that,
-    the cell is the topic's share of Total exam minutes.
-    """
-    def as_number(value):
-        try:
-            number = float(value)
-        except (TypeError, ValueError):
-            return 0.0
-        if number != number:
-            return 0.0
-        return number
-
-    total = as_number((exam or {}).get('totalExamMinutes'))
-    stored = as_number((topic or {}).get('hours_min'))
-    if total > 0:
-        return int(round(stored))
-    if stored > 0:
-        return int(round(stored))
-    hours = as_number((topic or {}).get('hours_class'))
-    if hours > 0:
-        return int(round(hours * 60))
-    return ''
+def _topic_minutes(topic):
+    """Minutes in the No. of hrs / Min column: class hours × 60."""
+    try:
+        hours = float((topic or {}).get('hours_class'))
+    except (TypeError, ValueError):
+        return ''
+    if hours != hours or hours <= 0:
+        return ''
+    return int(round(hours * 60))
 
 
 def _add_tos_grid(doc, exam):
@@ -379,7 +363,7 @@ def _add_tos_grid(doc, exam):
         _cell_text(cells[0], topic.get('topic'), size=_TINY_PT)
         _cell_text(cells[1], ', '.join(_text(i) for i in (topic.get('ilos') or []) if _text(i)), size=_TINY_PT)
         _cell_text(cells[2], topic.get('hours_class'), size=_TINY_PT)
-        _cell_text(cells[3], _topic_minutes(exam, topic), size=_TINY_PT)
+        _cell_text(cells[3], _topic_minutes(topic), size=_TINY_PT)
         _cell_text(cells[4], _with_percent(topic.get('weight')), size=_TINY_PT)
 
         col = 5
