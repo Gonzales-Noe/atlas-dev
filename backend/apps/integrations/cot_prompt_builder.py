@@ -184,6 +184,17 @@ _CATEGORY_FIELD_PREFIX = {
     "topic_outcome": "Topic Outcomes",
 }
 
+_ILO_VERBS = {
+    "ged": "Explain, Examine, Discuss, Critique",
+    "common": "Define, Apply, Implement, Analyze",
+    "professional": "Analyze, Apply, Design, Implement, Evaluate",
+    "professional_lecture": "Analyze, Apply, Design, Implement, Evaluate",
+    "capstone": "Analyze, Apply, Design, Implement, Evaluate",
+    "internship": "Apply, Implement, Evaluate",
+    "pathfit": "Demonstrate, Perform, Apply",
+    "nstp": "Apply, Perform, Explain",
+}
+
 
 def _normalize_syllabus_category(category: str) -> str:
     value = (category or "professional").strip().lower()
@@ -337,20 +348,34 @@ def _week_labels(spans: list) -> list:
     return labels
 
 
+_ORIENTATION_TITLE = "Class Orientation"
+
+
+def _is_orientation_title(title: str) -> bool:
+    lowered = (title or "").strip().lower()
+    return lowered in {"class orientation", "introduction to the course", "orientation"} or lowered.startswith("class orientation")
+
+
 def assign_topic_weeks(raw: str, term_weeks: int = 18, pad_to_term: bool = True) -> str:
     """Turn a topic plan into one row per topic.
 
-    Each line is ``{week label}\\t{title}``. A light topic is ``10``. A heavier
-    topic is ``3-4``. Together the labels cover week 1 through ``term_weeks``
+    The first row is always Class Orientation on week 1. Content topics start
+    again at week 1, so week 1 appears twice. Each later line is
+    ``{week label}\\t{title}``. A light topic is ``10``. A heavier topic is
+    ``3-4``. Together the content labels cover week 1 through ``term_weeks``
     when ``pad_to_term`` is set. Internship plans are not padded to 18.
     """
-    parsed = _parse_topic_plan(raw)
+    parsed = [
+        (span, title)
+        for span, title in _parse_topic_plan(raw)
+        if not _is_orientation_title(title)
+    ]
     spans = [span for span, _title in parsed]
     titles = [title for _span, title in parsed]
     fitted = _fit_topic_spans(spans, term_weeks) if pad_to_term else (
         [2 if span == 2 else 1 for span in spans] or [1]
     )
-    lines = []
+    lines = [f"1\t{_ORIENTATION_TITLE}"]
     for index, label in enumerate(_week_labels(fitted)):
         title = titles[index] if index < len(titles) else ""
         lines.append(f"{label}\t{title}".rstrip())
@@ -363,7 +388,7 @@ class CoTPromptBuilder:
     # Whole-syllabus call after vision, policy, TOS, and framework text are removed.
     SYLLABUS_MAX_TOKENS = 900
     GENERATABLE_SYLLABUS_SECTIONS = frozenset({
-        "rationale", "tlas", "ilo", "topics", "topic_outcome", "week_plan",
+        "rationale", "tlas", "ilo", "topics", "topic_outcome", "week_plan", "topic_map",
     })
     _FIELD_MAX_TOKENS = {
         "rationale": 160,
@@ -372,6 +397,7 @@ class CoTPromptBuilder:
         "topics": 180,
         "topic_outcome": 50,
         "week_plan": 400,
+        "topic_map": 200,
     }
 
     @classmethod
@@ -959,12 +985,16 @@ OUTPUT — Return the assessment using exactly this structure:
         'topic_outcome': (
             "One brief sentence. One imperative verb. No second sentence."
         ),
+        'topic_map': (
+            "Map each topic to one ILO number and one SO number."
+        ),
         'week_plan': (
-            "Weekly topic plan for {course_name}. One line per topic. "
+            "Weekly topic plan for {course_name}. One line per content topic. "
+            "Do not include Class Orientation. "
             "Each line is 1 or 2, then a tab, then the topic title. "
             "1 is one week. 2 is a heavier topic that merges two weeks. "
-            "The numbers must add up to 18. Titles only. No sentences. "
-            "Do not write week numbers or the word weeks."
+            "The numbers must add up to 18. The first content topic is still week 1. "
+            "Titles only. No sentences. Do not write week numbers or the word weeks."
         ),
         'contact': (
             "Do not generate. Criteria for Assessment is entered by the faculty."
@@ -1031,17 +1061,70 @@ OUTPUT — Return the assessment using exactly this structure:
             .replace("{course_name}", course_name)
             .replace("{criteria}", criteria)
         )
-        if section == "ilo":
-            hint += " 8–16 words. One period. Hard cap 18 words."
         if section == "week_plan" and kind == "internship":
             hint = (
                 f"Requirement plan for {course_name}. One line per requirement, "
-                "not one row per calendar week. Do not emit 18 lines. "
+                "not one row per calendar week. Do not include Class Orientation. Do not emit 18 lines. "
                 "Each line is 1 or 2, then a tab, then the requirement title. "
                 "1 is one block. 2 is a heavier block. Titles only. No sentences."
             )
         field_line = _category_field_line(kind, section)
         subject = f"\n\nSubject matter:\n{field_line}" if field_line else ""
+        verbs = _ILO_VERBS.get(kind, _ILO_VERBS["professional"])
+
+        if section == "ilo":
+            system = (
+                "You write one intended learning outcome for a university course. "
+                "Reply with that sentence only. Do not repeat the instructions, "
+                "the word count, or the verb list."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                f"Write one intended learning outcome for this course.\n"
+                f"Start with one verb from this list: {verbs}.\n"
+                "One clause. 8–16 words. One period.\n"
+                "Do not write \"students should be able to\".\n"
+                "Do not mention these rules. Do not copy the shape example.\n\n"
+                "Shape only, from a different course: Analyze network logs using a standard method.\n"
+                f"Outcome for {course_name}:"
+            )
+            if extra_instructions:
+                user += f"\n\n{extra_instructions}"
+            return system, user
+
+        if section == "topic_outcome":
+            system = (
+                "You write one topic outcome for a university course. "
+                "Reply with that sentence only. Do not repeat the instructions, "
+                "the word count, or the field name."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                "Write what the student does with this topic.\n"
+                "Start with an imperative verb. One clause. 7–12 words. One period.\n"
+                "Do not mention these rules. Do not copy the shape example.\n\n"
+                "Shape only, from a different course: Compare two sorting methods on a small data set.\n"
+                f"Outcome for {course_name}:"
+            )
+            if extra_instructions:
+                user += f"\n\n{extra_instructions}"
+            return system, user
+
+        if section == "topic_map":
+            system = (
+                "You map each course topic to one intended learning outcome and one student outcome. "
+                "Reply with one line per topic, in the same order. "
+                "Each line is the ILO number, a tab, and the SO number. Digits only. No words."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                f"{extra_instructions}\n\n"
+                "One line per topic. ILO number, tab, SO number. Use only the numbers listed above."
+            )
+            return system, user
 
         system = (
             "You are an expert curriculum designer at a Philippine university following "
