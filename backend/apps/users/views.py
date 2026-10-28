@@ -1188,6 +1188,7 @@ class InstitutionCustomizationView(APIView):
         if not customization.syllabus_sections:
             customization.syllabus_sections = default_syllabus_sections()
             customization.save(update_fields=['syllabus_sections', 'updated_at'])
+        has_file = bool(customization.syllabus_template)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,
