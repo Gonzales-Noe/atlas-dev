@@ -2757,6 +2757,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAssessmentGenDialogOpen(true)
   }
 
+  function plannedAssessmentItemCount(selectedTopics) {
+    const exam = getAssessmentBlueprint().selectedExam
+    if (!exam) return Math.max(0, Number(assessmentGenItemCount || 0))
+    const selected = new Set((selectedTopics || []).map(topic => String(topic || '').trim().toLowerCase()))
+    const bloomKeys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    let total = 0
+    for (const row of exam.topics || []) {
+      const name = String(row?.topic || row?.label || '').trim().toLowerCase()
+      if (selected.size > 0 && !selected.has(name)) continue
+      const bloom = row?.bloom_items || {}
+      const bloomSum = bloomKeys.reduce((sum, key) => sum + (Number(bloom?.[key]) || 0), 0)
+      if (bloomSum > 0) total += bloomSum
+      else total += Number(row?.total_points) || Number(row?.weight) || 0
+    }
+    if (total > 0) return total
+    return Number(exam.totalItems || 0)
+  }
+
   async function handleAssessmentGenSubmit() {
     if (!course) return
     const blueprint = getAssessmentBlueprint()
@@ -2764,39 +2782,81 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setActionError('Select at least one TOS topic for the assessment.')
       return
     }
+    const plannedHint = plannedAssessmentItemCount(assessmentGenSelectedTopics)
+    const selectedTopics = [...assessmentGenSelectedTopics]
+    const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+    setAssessmentGenDialogOpen(false)
     setActionLoading(true)
     setActionError('')
+    setAssessmentBatchProgress({ generated: 0, requested: plannedHint })
+    let assessmentId = null
+    let latestSummary = null
+    let generated = 0
+    let planned = plannedHint
+    let stalls = 0
     try {
-      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
-       // One request builds the whole assessment. TOS topics and Bloom/item
-       // allocations remain authoritative; selected topics only narrow the TOS scope.
-      const { data } = await api.post('/curriculum/generate-assessment/', {
-        course_id: course.course_id,
-        assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
-        provider: 'auto',
-        extra_instructions: '',
-        selected_doc_ids: selectedIds,
-        source_exam_code: blueprint.examCode,
-        source_exam_label: blueprint.assessmentName || assessmentGenTitle,
-        faculty_topics: assessmentGenSelectedTopics,
-        total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
-      }, { timeout: 300000 })
-      if (!data?.success) throw new Error(data?.detail || 'Generation failed.')
-      const newId = data?.assessment?.assessment_id
-      if (newId) setAssessmentSessionId(newId)
-      setAssessmentGenDialogOpen(false)
-      workspaceApi.execute()
-      markStepDone('assessment', true)
-      notifyGenerationComplete('Assessment', assessmentGenTitle || 'Assessment')
-      const missingSlots = Array.isArray(data?.missing_item_numbers) ? data.missing_item_numbers : []
-      if (missingSlots.length) {
-        setActionError(`Generated ${data?.total_items || 0} items. TOS slots ${missingSlots.join(', ')} still need another try.`)
+      for (let step = 0; step < 80 && stalls < 2; step += 1) {
+        const { data } = await api.post('/curriculum/generate-assessment/', {
+          course_id: course.course_id,
+          assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
+          provider: 'auto',
+          extra_instructions: '',
+          selected_doc_ids: selectedIds,
+          source_exam_code: blueprint.examCode,
+          source_exam_label: blueprint.assessmentName || assessmentGenTitle,
+          faculty_topics: selectedTopics,
+          total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
+          incremental: true,
+          assessment_id: assessmentId || undefined,
+        }, { timeout: 300000 })
+        assessmentId = data?.assessment?.assessment_id || assessmentId
+        latestSummary = data?.assessment || latestSummary
+        const returnedNow = Array.isArray(data?.items)
+          ? data.items.length
+          : Number(data?.returned_count ?? data?.batch_generated ?? 0)
+        const nextPlanned = Number(data?.total_items || planned || 0)
+        if (!Number.isFinite(returnedNow) || returnedNow <= 0) stalls += 1
+        else stalls = 0
+        generated += Number.isFinite(returnedNow) && returnedNow > 0 ? returnedNow : 0
+        planned = nextPlanned > 0 ? nextPlanned : planned
+        setAssessmentBatchProgress({ generated, requested: planned })
+        if (latestSummary?.assessment_id && generated > 0) {
+          await handleOpenAssessment(latestSummary)
+        }
+        if (data?.completed || (planned > 0 && generated >= planned)) break
+        if (!data?.success && generated === 0) {
+          throw new Error(data?.detail || 'Assessment generation failed.')
+        }
       }
-      if (newId) await handleOpenAssessment(data.assessment)
+      if (latestSummary?.assessment_id) {
+        setAssessmentSessionId(latestSummary.assessment_id)
+        await handleOpenAssessment(latestSummary)
+      }
+      workspaceApi.execute()
+      if (generated > 0) {
+        markStepDone('assessment', true)
+        notifyGenerationComplete('Assessment', assessmentGenTitle || 'Assessment')
+      }
+      if (planned > 0 && generated < planned) {
+        setActionError(`Generated ${generated} of ${planned} items. The remaining items still need another try.`)
+      } else if (generated === 0) {
+        setActionError('Assessment generation did not return any items. Please try again.')
+      }
     } catch (err) {
-      setActionError(extractApiError(err) || err?.message || 'Assessment generation failed.')
+      const payload = err?.response?.data
+      if (payload?.assessment?.assessment_id) {
+        await handleOpenAssessment(payload.assessment)
+      }
+      const got = Number(payload?.generated_count || generated || 0)
+      const total = Number(payload?.total_items || planned || 0)
+      setActionError(
+        got > 0 && total > 0
+          ? `Generated ${got} of ${total} items. ${payload?.detail || 'Generation stopped early.'}`
+          : (extractApiError(err) || err?.message || 'Assessment generation failed.')
+      )
     } finally {
       setActionLoading(false)
+      setAssessmentBatchProgress(null)
     }
   }
 
@@ -6379,23 +6439,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               </Box>
               {(() => {
-                const currentTotal = Number(assessmentDetail.total_items || 0)
+                const returnedCount = Array.isArray(assessmentDetail.items) ? assessmentDetail.items.length : 0
                 const explicitTarget = Number(assessmentDetail.target_total_items || 0)
                 const totalTarget = explicitTarget > 0 ? explicitTarget : null
-                const remaining = totalTarget !== null ? Math.max(0, totalTarget - currentTotal) : null
                 return (
-                  <>
-                    <Chip
-                      size="small"
-                      label={`${currentTotal}/${totalTarget !== null ? totalTarget : '—'}`}
-                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
-                    />
-                    <Chip
-                      size="small"
-                      label={totalTarget !== null ? `${remaining} left` : 'No target set'}
-                      sx={{ bgcolor: '#f3f5f8', color: '#555', fontWeight: 600, height: 22, fontSize: '0.68rem' }}
-                    />
-                  </>
+                  <Chip
+                    size="small"
+                    label={totalTarget !== null ? `${returnedCount}/${totalTarget} items` : `${returnedCount} items`}
+                    sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
+                  />
                 )
               })()}
               <Button
@@ -7271,8 +7323,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               ? { label: 'Generating subtopic content', detail: 'Drafting content for the selected subtopic…' }
               : chatLoading
                 ? { label: 'Generating assistant response', detail: 'Reviewing the current module content…' }
-                : actionLoading
-                  ? { label: activeTab === 'assessment' ? 'Generating assessment' : activeTab === 'module' ? 'Generating module' : 'Generating syllabus', detail: 'This may take a moment while the AI prepares the content…', value: assessmentBatchProgress?.requested ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100 : undefined }
+                : actionLoading && activeTab === 'assessment' && assessmentBatchProgress
+                  ? {
+                      label: 'Generating assessment',
+                      detail: assessmentBatchProgress.requested
+                        ? `${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items generated`
+                        : 'Preparing the assessment items…',
+                      value: assessmentBatchProgress.requested
+                        ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100
+                        : undefined,
+                    }
+                  : actionLoading
+                    ? { label: activeTab === 'module' ? 'Generating module' : 'Generating syllabus', detail: 'This may take a moment while the AI prepares the content…', value: assessmentBatchProgress?.requested ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100 : undefined }
                   : null
 
   return (

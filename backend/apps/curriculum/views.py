@@ -3138,6 +3138,96 @@ Return JSON only.
         raw = _call_model(_item_prompt(section, blueprint_item), 1800)
         return _accept_single_item(_parse_model_json(raw), blueprint_item, section)
 
+    incremental = _to_bool(request.data.get('incremental'), False)
+    planned_numbers = []
+    for section in sections:
+        for item in (section.get('items') or []):
+            number = _to_int(item.get('item_number'), 0)
+            if number > 0:
+                planned_numbers.append(number)
+    planned_total = len(planned_numbers) or total_generated
+    incremental_assessment = None
+    existing_numbers = set()
+    if incremental:
+        if assessment_id:
+            incremental_assessment = Assessment.objects.filter(
+                assessment_id=assessment_id,
+                course=course,
+            ).first()
+            if not incremental_assessment:
+                return Response(
+                    {'success': False, 'detail': 'assessment_id was not found for this course.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+        else:
+            incremental_assessment = Assessment.objects.create(
+                course=course,
+                title=assessment_title,
+                assessment_type=source['assessment_type'],
+                term=term,
+                status='Draft',
+                generated_at=timezone.now(),
+            )
+        for saved_item in AssessmentItem.objects.filter(assessment=incremental_assessment):
+            metadata = saved_item.rubric if isinstance(saved_item.rubric, dict) else {}
+            item_no = _to_int(metadata.get('item_number'), 0)
+            if item_no > 0:
+                existing_numbers.add(item_no)
+
+        def _incremental_payload(batch_generated, saved_count, missing, detail=''):
+            completed = not missing
+            next_status = 'Generated' if completed else 'Draft'
+            if incremental_assessment.status != next_status:
+                incremental_assessment.status = next_status
+                incremental_assessment.generated_at = timezone.now()
+                incremental_assessment.save(update_fields=['status', 'generated_at'])
+            return {
+                'success': batch_generated > 0 or completed,
+                'incremental': True,
+                'completed': completed,
+                'batch_generated': batch_generated,
+                'returned_count': batch_generated,
+                'generated_count': saved_count,
+                'total_items': planned_total,
+                'missing_item_numbers': missing,
+                'detail': detail,
+                'assessment': {
+                    'assessment_id': str(incremental_assessment.assessment_id),
+                    'title': incremental_assessment.title,
+                    'assessment_type': incremental_assessment.assessment_type,
+                    'term': incremental_assessment.term,
+                    'status': incremental_assessment.status,
+                    'generated_at': incremental_assessment.generated_at,
+                    'target_total_items': planned_total,
+                    'total_items': saved_count,
+                },
+            }
+
+        already_done = bool(planned_numbers) and set(planned_numbers).issubset(existing_numbers)
+        if already_done or not planned_numbers:
+            saved_count = AssessmentItem.objects.filter(assessment=incremental_assessment).count()
+            return Response(
+                _incremental_payload(0, saved_count, [] if already_done else planned_numbers),
+                status=status.HTTP_200_OK,
+            )
+
+        remaining = ASSESSMENT_SLOT_BATCH
+        narrowed = []
+        for section in sections:
+            if remaining <= 0:
+                break
+            kept = []
+            for item in (section.get('items') or []):
+                number = _to_int(item.get('item_number'), 0)
+                if number > 0 and number not in existing_numbers:
+                    kept.append(item)
+            if not kept:
+                continue
+            take = kept[:remaining]
+            remaining -= len(take)
+            narrowed.append(_section_for_slots(section, take))
+        sections = narrowed
+
     accepted_by_section = []
     saved_numbers = set()
     for section in sections:
@@ -3194,6 +3284,65 @@ Return JSON only.
                 'bloom_distribution': _section_for_slots(section, ordered).get('bloom_distribution') or {},
                 'items': ordered,
             })
+
+    if incremental:
+        create_items = []
+        for section in accepted_by_section:
+            section_key = _normalize_topic_key(section.get('section_title'))
+            matched_module = section_module_matches.get(section_key)
+            for item in section['items']:
+                number = _to_int(item.get('item_number'), 0)
+                if number <= 0 or number in existing_numbers:
+                    continue
+                existing_numbers.add(number)
+                create_items.append(
+                    AssessmentItem(
+                        assessment=incremental_assessment,
+                        module=matched_module,
+                        question_text=str(item.get('question_text') or '').strip() or f"{item.get('item_number')}. Item",
+                        item_type=source['assessment_type'],
+                        difficulty=item.get('bloom_level') or '',
+                        rubric={
+                            'item_number': item.get('item_number'),
+                            'section_title': item.get('section_title') or section.get('section_title'),
+                            'exam_label': item.get('exam_label') or section.get('exam_label'),
+                            'bloom_level': item.get('bloom_level'),
+                            'bloom_verb': item.get('bloom_verb'),
+                            'ilo_refs': item.get('ilo_refs') or [],
+                            'choices': _normalize_choices(item.get('choices')),
+                            'correct_answer': str(item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
+                            'answer_key': item.get('answer_key') or '',
+                            'points': item.get('points') or 0,
+                            'assessment_name': source['assessment_name'],
+                            'assessment_code': source['assessment_code'],
+                            'assessment_task_label': source['assessment_task_label'],
+                            'assessment_total_items': planned_total,
+                            'matched_module_id': str(matched_module.module_id) if matched_module else None,
+                            'matched_module_title': matched_module.module_title if matched_module else '',
+                            'matched_module_week': matched_module.week_number if matched_module else None,
+                        },
+                    )
+                )
+        if create_items:
+            AssessmentItem.objects.bulk_create(create_items)
+        missing = [number for number in planned_numbers if number not in existing_numbers]
+        saved_count = AssessmentItem.objects.filter(assessment=incremental_assessment).count()
+        returned_items = [
+            {
+                'item_number': item.rubric.get('item_number'),
+                'question_text': item.question_text,
+                'section_title': item.rubric.get('section_title') or '',
+            }
+            for item in create_items
+        ]
+        detail = '' if returned_items or not missing else 'This batch did not return valid items.'
+        payload = _incremental_payload(len(returned_items), saved_count, missing, detail)
+        payload['returned_count'] = len(returned_items)
+        payload['items'] = returned_items
+        return Response(
+            payload,
+            status=status.HTTP_201_CREATED if returned_items else status.HTTP_200_OK,
+        )
 
     requested_numbers = []
     for section in sections:
