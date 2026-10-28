@@ -71,7 +71,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
-import { materializeTosExam, materializeTosList, tosMaterializedEqual, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
+import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
 import { collectLectureDiscussionTopics, isLectureDiscussionTask, lectureTopicLines } from '../utils/lectureTopics'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
@@ -4602,7 +4602,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const solvedTopics = solvedTos?.topics || []
       const lectureChoices = collectScheduleTopics()
       const totalHrs = solvedTopics.reduce((s, r) => s + (Number(r.hours_class) || 0), 0)
-      const totalMins = solvedTopics.reduce((s, r) => s + (Number(r.hours_min) || 0), 0)
+      const minuteValues = solvedTopics.map(row => displayedTopicMinutes(row, activeTos.totalExamMinutes))
+      const totalMins = minuteValues.every(value => value == null)
+        ? null
+        : minuteValues.reduce((sum, value) => sum + (value || 0), 0)
       const totalPts = solvedTopics.reduce((s, r) => s + (Number(r.total_points) || 0), 0)
 
       // ── ILO-Bloom alignment helpers ────────────────────────────────────────
@@ -4955,8 +4958,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_class ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value), 52)}</td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                                <Typography variant="caption" sx={{ fontWeight: 700, color: '#555' }}>
-                                  {Number(activeTos.totalExamMinutes) > 0 ? (Number(row.hours_min) || 0) : '—'}
+                                <Typography variant="caption" sx={{ fontWeight: 700, color: 'inherit' }}>
+                                  {displayedTopicMinutes(row, activeTos.totalExamMinutes) ?? '—'}
                                 </Typography>
                               </td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -5004,7 +5007,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'left' }}>Total</td>
                             <td style={TABLE_TD} />
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs}</td>
-                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{Number(activeTos.totalExamMinutes) > 0 ? totalMins : '—'}</td>
+                            <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalMins == null ? '—' : totalMins}</td>
                             <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center' }}>{totalHrs > 0 ? '100%' : '—'}</td>
                             {BLOOM_KEYS.map(k => {
                               const sumItems = solvedTopics.reduce((acc, r) => acc + (Number((r.bloom_items || {})[k]) || 0), 0)
@@ -5032,7 +5035,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <AddRowBtn label="Add topic row" onClick={() => addTopicRow(activeTos.id)} />
                     </Box>
                     <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 1 }}>
-                      Weight, minutes, points, and Bloom item counts are computed for you. Class hours set the weight. That weight splits Total test items and Total exam minutes. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
+                      Weight, minutes, points, and Bloom item counts are computed for you. Class hours set the weight, and the Min column shows those hours in minutes. When Total exam minutes is set, that time is split across topics by the same weight. Each topic's Bloom percentages should total 100%, and those percentages set the item count for that Bloom level. Assessments use those exact counts.
                     </Typography>
                   </Box>
                 </>

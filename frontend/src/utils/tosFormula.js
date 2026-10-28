@@ -75,6 +75,19 @@ export function materializeTosList(tos) {
   return (Array.isArray(tos) ? tos : []).map(materializeTosExam)
 }
 
+// The Min column sits under "No. of hrs". With no exam duration yet, that
+// cell is the class hours expressed in minutes. Once Total exam minutes is
+// set, the same column shows each topic's share of that exam time.
+export function displayedTopicMinutes(row, totalExamMinutes) {
+  const total = Number(totalExamMinutes) || 0
+  const stored = Number(row?.hours_min) || 0
+  if (total > 0) return stored
+  if (stored > 0) return stored
+  const hours = Number(row?.hours_class) || 0
+  if (hours > 0) return Math.round(hours * 60)
+  return null
+}
+
 export function tosMaterializedEqual(before, after) {
   const left = Array.isArray(before) ? before : []
   const right = Array.isArray(after) ? after : []
