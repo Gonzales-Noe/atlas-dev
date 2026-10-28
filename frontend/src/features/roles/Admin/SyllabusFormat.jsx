@@ -576,7 +576,7 @@ export default function SyllabusFormat() {
             type: field.type,
             group: field.group,
             lockable: Boolean(field.lockable),
-            fixed: wantsFixed && Boolean(content),
+            fixed: wantsFixed,
             content,
           }
         }),
