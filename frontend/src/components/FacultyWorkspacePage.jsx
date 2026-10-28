@@ -6343,30 +6343,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <Stack spacing={2}>
           <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 1.75 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, px: 1.5, py: 0.85 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.25, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Modules
               </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center',
-                       mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
-              <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
-              <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
-              <Chip size="small" label="TLA Activities · Lecture/Discussion"
-                sx={{ height: 24, fontSize: '0.74rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
-                      border: '1px solid', borderColor: MAROON_LIGHT }} />
-              <Chip size="small"
-                label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
-                sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
-                      bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
-                      color: moduleTopics.length ? MAROON : '#888',
-                      border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
-              <Typography variant="caption" sx={{ color: '#888', flex: 1, minWidth: 220 }}>
-                One module per week. Lists in the same week are combined. Reading lists are left out.
-              </Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
+                <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
+                <Chip size="small" label="TLA Activities · Lecture/Discussion"
+                  sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
+                        border: '1px solid', borderColor: MAROON_LIGHT }} />
+                <Chip size="small"
+                  label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
+                  sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
+                        bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
+                        color: moduleTopics.length ? MAROON : '#888',
+                        border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
+              </Box>
             </Box>
           </Paper>
           {lectureTopics.length === 0 ? (
