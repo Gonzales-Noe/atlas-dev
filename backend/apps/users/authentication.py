@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken
@@ -15,5 +16,8 @@ class UserProfileJWTAuthentication(JWTAuthentication):
 
         try:
             return UserProfile.objects.select_related('institution').get(user_id=user_id, is_active=True)
-        except UserProfile.DoesNotExist as exc:
+        except (UserProfile.DoesNotExist, ValidationError, ValueError) as exc:
+            # A bad id must stay a 401. Django's ValidationError is not an
+            # API exception, so leaving it uncaught becomes an HTTP 500 page
+            # and the sign-in screen reports that auth is unavailable.
             raise AuthenticationFailed('User not found or inactive.') from exc
