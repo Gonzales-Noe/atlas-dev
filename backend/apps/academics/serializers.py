@@ -5,14 +5,24 @@ from apps.integrations.models import Course, Section
 
 class SectionSerializer(serializers.ModelSerializer):
     display_name = serializers.SerializerMethodField()
+    year_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Section
-        fields = ['section_id', 'code', 'name', 'display_name']
-        read_only_fields = ['section_id', 'display_name']
+        fields = ['section_id', 'code', 'name', 'year_number', 'year_label', 'display_name']
+        read_only_fields = ['section_id', 'display_name', 'year_label']
 
     def get_display_name(self, obj):
         return obj.name or obj.code
+
+    def get_year_label(self, obj):
+        return obj.year_label
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if data.get('year_number') is None and instance.year_level_id:
+            data['year_number'] = instance.year_level.year_number
+        return data
 
     def validate_code(self, value):
         return value.strip()
@@ -20,15 +30,19 @@ class SectionSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         institution = self.context.get('institution')
         code = attrs.get('code', getattr(self.instance, 'code', None))
+        year_number = attrs.get('year_number', getattr(self.instance, 'year_number', None))
         if institution and code:
             queryset = Section.objects.filter(
                 institution=institution,
                 code__iexact=code,
+                year_number=year_number,
             )
             if self.instance:
                 queryset = queryset.exclude(section_id=self.instance.section_id)
             if queryset.exists():
-                raise serializers.ValidationError({'code': 'A section with this code already exists.'})
+                raise serializers.ValidationError({
+                    'code': 'A section with this code already exists for that year.',
+                })
         return attrs
 
     def create(self, validated_data):
@@ -38,17 +52,24 @@ class SectionSerializer(serializers.ModelSerializer):
 
 class CourseSerializer(serializers.ModelSerializer):
     section_code = serializers.SerializerMethodField()
+    section_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
         fields = [
-            'course_id', 'section', 'section_code', 'course_code', 'course_title',
+            'course_id', 'section', 'section_code', 'section_label', 'course_code', 'course_title',
             'description', 'category', 'units', 'is_active',
         ]
-        read_only_fields = ['course_id', 'section_code']
+        read_only_fields = ['course_id', 'section_code', 'section_label']
 
     def get_section_code(self, obj):
         return obj.section.code if obj.section_id else None
+
+    def get_section_label(self, obj):
+        if not obj.section_id:
+            return None
+        year = obj.section.year_label
+        return f'{obj.section.code} · {year}' if year else obj.section.code
 
     def validate_course_code(self, value):
         return value.strip().upper()

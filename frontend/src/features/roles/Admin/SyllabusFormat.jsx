@@ -25,12 +25,15 @@ import { analyzeSyllabusTemplate, describeDetectedStructure } from './academicAp
 import { PageHeader, GlassCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 import LoadingState from '../../../components/LoadingState'
 import {
+  applyTableOverride,
   blueprintGroupsFor,
   blueprintTableFor,
   blueprintTablesFor,
+  blueprintTablesWithTabsFor,
   blueprintTabsFor,
   cloneDefaultSyllabusSections,
   mergeSyllabusSections,
+  normalizeTableOverrides,
 } from '../../../config/syllabusStructure'
 
 const inputSx = {
@@ -286,16 +289,148 @@ export default function SyllabusFormat() {
       table_column_groups: tableDraft.columnGroups,
       table_rows: rows,
     }
-    if (tableTarget.subsectionIndex == null) updateSection(tableTarget.sectionIndex, changes)
-    else updateSubsection(tableTarget.sectionIndex, tableTarget.subsectionIndex, changes)
+    const nextSections = sections.map((section, index) => {
+      if (index !== tableTarget.sectionIndex) return section
+      if (tableTarget.subsectionIndex == null) return { ...section, ...changes }
+      return {
+        ...section,
+        subsections: (section.subsections || []).map((subsection, i) => (
+          i === tableTarget.subsectionIndex ? { ...subsection, ...changes } : subsection
+        )),
+      }
+    })
     setError('')
     setTableTarget(null)
+    dirtyRef.current = true
+    setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
+    save(nextSections)
   }
 
   function toggleTable(sectionIndex, subsectionIndex, enabled) {
     if (enabled) openTable(sectionIndex, subsectionIndex)
     else if (subsectionIndex == null) updateSection(sectionIndex, { table_enabled: false })
     else updateSubsection(sectionIndex, subsectionIndex, { table_enabled: false })
+  }
+
+  function tableOverrideFromView(table, view) {
+    const columns = view.columns.map(column => String(column ?? ''))
+    const rows = (view.defaultRows || []).map(row => (
+      columns.map((_, index) => {
+        const value = Array.isArray(row) ? row[index] : ''
+        return value === null ? null : String(value ?? '')
+      })
+    ))
+    const override = { columns, rows }
+    if (view.rowLabels) {
+      const prefix = view.rowLabels.header === 'ILOs' ? 'ILO' : 'Row '
+      override.rowLabels = rows.map((_, index) => (
+        view.rowLabels.values?.[index] || `${prefix}${index + 1}`
+      ))
+    }
+    return override
+  }
+
+  function writeTableOverride(table, view) {
+    updateSection(activeIndex, {
+      blueprint_tables: {
+        ...(activeSection.blueprint_tables || {}),
+        [table.key]: tableOverrideFromView(table, view),
+      },
+    })
+  }
+
+  function setTableColumn(table, view, columnIndex, value) {
+    writeTableOverride(table, {
+      ...view,
+      columns: view.columns.map((column, index) => (index === columnIndex ? value : column)),
+    })
+  }
+
+  function setTableCell(table, view, rowIndex, columnIndex, value) {
+    const rows = (view.defaultRows || []).map(row => (
+      view.columns.map((_, index) => {
+        const cell = Array.isArray(row) && index in row ? row[index] : ''
+        return cell === null ? null : String(cell ?? '')
+      })
+    ))
+    if (!rows[rowIndex]) return
+    rows[rowIndex][columnIndex] = value
+    writeTableOverride(table, { ...view, defaultRows: rows })
+  }
+
+  function setTableRowLabel(table, view, rowIndex, value) {
+    const rowLabels = (view.rowLabels?.values || []).slice()
+    while (rowLabels.length < (view.defaultRows || []).length) rowLabels.push('')
+    rowLabels[rowIndex] = value
+    writeTableOverride(table, { ...view, rowLabels: { ...view.rowLabels, values: rowLabels } })
+  }
+
+  function addTableRow(table, view) {
+    const rows = [...(view.defaultRows || []), view.columns.map(() => '')]
+    const next = { ...view, defaultRows: rows }
+    if (view.rowLabels) {
+      const prefix = view.rowLabels.header === 'ILOs' ? 'ILO' : 'Row '
+      next.rowLabels = {
+        ...view.rowLabels,
+        values: [...(view.rowLabels.values || []), `${prefix}${rows.length}`],
+      }
+    }
+    writeTableOverride(table, next)
+  }
+
+  function removeTableRow(table, view, rowIndex) {
+    const rows = (view.defaultRows || []).filter((_, index) => index !== rowIndex)
+    const next = { ...view, defaultRows: rows }
+    if (view.rowLabels) {
+      next.rowLabels = {
+        ...view.rowLabels,
+        values: (view.rowLabels.values || []).filter((_, index) => index !== rowIndex),
+      }
+    }
+    writeTableOverride(table, next)
+  }
+
+  function addTableColumn(table, view) {
+    writeTableOverride(table, {
+      ...view,
+      columns: [...view.columns, `Column ${view.columns.length + 1}`],
+      defaultRows: (view.defaultRows || []).map(row => [...row, '']),
+    })
+  }
+
+  function removeTableColumn(table, view, columnIndex) {
+    writeTableOverride(table, {
+      ...view,
+      columns: view.columns.filter((_, index) => index !== columnIndex),
+      defaultRows: (view.defaultRows || []).map(row => row.filter((_, index) => index !== columnIndex)),
+    })
+  }
+
+  function restoreBuiltInTable(table) {
+    const nextSections = sections.map((section, index) => {
+      if (index !== activeIndex) return section
+      const tables = { ...(section.blueprint_tables || {}) }
+      delete tables[table.key]
+      return { ...section, blueprint_tables: tables }
+    })
+    setError('')
+    dirtyRef.current = true
+    setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
+    save(nextSections)
+  }
+
+  function setSectionStatic(enabled) {
+    const changes = { is_static: enabled }
+    if (enabled) {
+      const overrides = { ...(activeSection.blueprint_tables || {}) }
+      blueprintTablesWithTabsFor(activeSection).forEach(table => {
+        if (!overrides[table.key]) {
+          overrides[table.key] = tableOverrideFromView(table, applyTableOverride(table, null))
+        }
+      })
+      changes.blueprint_tables = overrides
+    }
+    updateSection(activeIndex, changes)
   }
 
   function openFieldEditor(field) {
@@ -414,30 +549,46 @@ export default function SyllabusFormat() {
   }
 
   async function save(nextSections = sections) {
+    // onClick={save} would pass the click event; always resolve a real array.
+    const source = Array.isArray(nextSections) ? nextSections : sections
     setError('')
     setNotice('')
-    const payload = nextSections.map(section => ({
-      ...section,
-      key: (section.key || slug(section.label) || '').trim(),
-      label: (section.label || '').trim(),
-      is_static: Boolean(section.is_static),
-      static_content: section.is_static ? (section.static_content || '').trim() : '',
-      fields: (section.fields || []).map(field => ({
-        key: field.key,
-        label: field.label,
-        type: field.type,
-        group: field.group,
-        lockable: Boolean(field.lockable),
-        fixed: section.is_static ? false : Boolean(field.fixed),
-        content: !section.is_static && field.fixed ? (field.content || '').trim() : '',
-      })),
-      subsections: (section.subsections || []).map(subsection => ({
-        ...subsection,
-        label: (subsection.label || '').trim(),
-        is_static: Boolean(subsection.is_static),
-        static_content: subsection.is_static ? (subsection.static_content || '').trim() : '',
-      })),
-    }))
+    const payload = source.map(section => {
+      const tableEnabled = Boolean(
+        section.table_enabled
+        && Array.isArray(section.table_columns)
+        && section.table_columns.length
+        && section.table_columns.every(column => String(column ?? '').trim()),
+      )
+      return {
+        ...section,
+        key: (section.key || slug(section.label) || '').trim(),
+        label: (section.label || '').trim(),
+        is_static: Boolean(section.is_static),
+        static_content: section.is_static ? (section.static_content || '').trim() : '',
+        table_enabled: tableEnabled,
+        fields: (section.fields || []).map(field => {
+          const wantsFixed = Boolean(section.is_static) || Boolean(field.fixed)
+          const content = wantsFixed ? (field.content || '').trim() : ''
+          return {
+            key: field.key,
+            label: field.label,
+            type: field.type,
+            group: field.group,
+            lockable: Boolean(field.lockable),
+            fixed: wantsFixed && Boolean(content),
+            content,
+          }
+        }),
+        subsections: (section.subsections || []).map(subsection => ({
+          ...subsection,
+          label: (subsection.label || '').trim(),
+          is_static: Boolean(subsection.is_static),
+          static_content: subsection.is_static ? (subsection.static_content || '').trim() : '',
+        })),
+        blueprint_tables: normalizeTableOverrides(section.blueprint_tables),
+      }
+    })
 
     if (payload.some(section => section.enabled !== false && !section.label)) {
       setError('Add a name to every enabled section.')
@@ -447,24 +598,19 @@ export default function SyllabusFormat() {
       setError('Add a name to each additional field before saving.')
       return
     }
-    if (payload.some(section => !section.is_static && section.fields.some(field => field.fixed && !field.content))) {
-      setError('Add fixed content for every locked field.')
-      return
-    }
-    if (payload.some(section => section.table_enabled && (!section.table_columns?.length || section.table_columns.some(column => !column)))) {
-      setError('Name every table column before saving.')
-      return
-    }
 
     setSaving(true)
     savingRef.current = true
     try {
-      await api.patch('/users/institution-customization/', { ...customization, syllabus_sections: payload })
-      setCustomization(current => ({ ...current, syllabus_sections: payload }))
+      const response = await api.patch('/users/institution-customization/', { ...customization, syllabus_sections: payload })
+      const storedSections = Array.isArray(response.data?.syllabus_sections) && response.data.syllabus_sections.length
+        ? mergeSyllabusSections(response.data.syllabus_sections)
+        : payload
+      setCustomization(current => ({ ...current, ...response.data, syllabus_sections: storedSections }))
       dirtyRef.current = false
-      setNotice('Syllabus format saved for every admin in your institution.')
+      setNotice('Syllabus format saved to the database and applied to every Faculty syllabus in your institution.')
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to save syllabus format.')
+      setError(err.response?.data?.detail || 'Failed to save syllabus format to the database.')
     } finally {
       setSaving(false)
       savingRef.current = false
@@ -657,8 +803,10 @@ export default function SyllabusFormat() {
     const entry = (activeSection.fields || []).find(item => item.key === field.key)
     if (!entry) return null
     const label = entry.label || field.label
-    const canLock = entry.lockable && !activeSection.is_static && !activeSection.derived
-    const locked = Boolean(entry.fixed) && !activeSection.is_static
+    const sectionFixed = Boolean(activeSection.is_static)
+    const canLock = entry.lockable && !sectionFixed && !activeSection.derived
+    const locked = (Boolean(entry.fixed) || sectionFixed) && !activeSection.derived
+    const tableDriven = field.type === 'repeat' || field.type === 'table'
     const fixedContent = (entry.content || '').trim()
     return (
       <Box key={field.key} sx={{ py: 1, borderBottom: '1px solid var(--border-color)' }}>
@@ -692,12 +840,14 @@ export default function SyllabusFormat() {
             </Stack>
             {locked && (
               <Box sx={{ mt: 0.5 }}>
-                <Typography variant="caption" sx={{ color: fixedContent ? 'var(--text-tertiary)' : '#FFB74D' }}>
-                  {fixedContent
-                    ? 'Faculty see your fixed content and cannot edit this field.'
-                    : 'Use Edit to add the content Faculty will see.'}
+                <Typography variant="caption" sx={{ color: tableDriven || fixedContent ? 'var(--text-tertiary)' : '#FFB74D' }}>
+                  {tableDriven
+                    ? 'Faculty see the rows you enter in the built-in table below.'
+                    : fixedContent
+                      ? 'Faculty see your fixed content and cannot edit this field.'
+                      : 'Use Edit to add the content Faculty will see.'}
                 </Typography>
-                {fixedContent && (
+                {fixedContent && !tableDriven && (
                   <Typography
                     variant="caption"
                     sx={{
@@ -712,18 +862,20 @@ export default function SyllabusFormat() {
               </Box>
             )}
           </Box>
-          {canLock ? (
+          {locked ? (
             <Stack direction="row" spacing={0.5} alignItems="center">
-              <FormControlLabel
-                sx={{ m: 0, whiteSpace: 'nowrap' }}
-                control={<Switch size="small" checked={locked} onChange={event => updateField(activeIndex, field.key, { fixed: event.target.checked })} />}
-                label={<Typography variant="caption" sx={{ fontWeight: 700, color: locked ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
-              />
-              {locked && (
+              {canLock && (
+                <FormControlLabel
+                  sx={{ m: 0, whiteSpace: 'nowrap' }}
+                  control={<Switch size="small" checked={Boolean(entry.fixed)} onChange={event => updateField(activeIndex, field.key, { fixed: event.target.checked })} />}
+                  label={<Typography variant="caption" sx={{ fontWeight: 700, color: entry.fixed ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
+                />
+              )}
+              {!tableDriven && (
                 <Tooltip title="Edit fixed content">
                   <IconButton
                     size="small"
-                    aria-label={`Edit fixed content for ${field.label}`}
+                    aria-label={`Edit fixed content for ${label}`}
                     onClick={() => openFieldEditor(field)}
                     sx={{ color: '#FFB74D' }}
                   >
@@ -731,6 +883,14 @@ export default function SyllabusFormat() {
                   </IconButton>
                 </Tooltip>
               )}
+            </Stack>
+          ) : canLock ? (
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <FormControlLabel
+                sx={{ m: 0, whiteSpace: 'nowrap' }}
+                control={<Switch size="small" checked={false} onChange={event => updateField(activeIndex, field.key, { fixed: event.target.checked })} />}
+                label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Fixed</Typography>}
+              />
             </Stack>
           ) : (
             <Chip size="small" variant="outlined"
@@ -743,12 +903,16 @@ export default function SyllabusFormat() {
   }
 
   function renderBlueprintTable(table) {
+    const override = activeSection?.blueprint_tables?.[table.key]
+    const view = applyTableOverride(table, override)
     const groups = table.columnGroups || []
     const subGroups = table.subGroups || []
-    const hasRowLabels = Boolean(table.rowLabels)
-    const dataColCount = table.columns.length
+    const hasRowLabels = Boolean(view.rowLabels)
+    const dataColCount = view.columns.length
     const totalCols = dataColCount + (hasRowLabels ? 1 : 0)
     const headerDepth = (groups.length ? 1 : 0) + (subGroups.length ? 1 : 0) + (table.noHeader ? 0 : 1)
+    const editable = !activeSection.derived
+    const canChangeColumns = editable && !groups.length && !subGroups.length && !table.totalRow && !table.noteRow
     const previewSx = {
       width: '100%', borderCollapse: 'collapse', fontSize: '0.74rem', mt: 1,
       '& th, & td': {
@@ -757,13 +921,26 @@ export default function SyllabusFormat() {
       },
       '& th': { color: 'var(--text-primary)', fontWeight: 600, bgcolor: 'rgba(255,255,255,0.03)' },
     }
-    const sampleRows = (table.defaultRows || []).filter(row => (row || []).some(cell => cell !== '' && cell !== null))
-    const showRows = sampleRows.length ? sampleRows : (table.defaultRows || []).slice(0, 3)
+    const cellInputSx = {
+      width: '100%', minWidth: 56, boxSizing: 'border-box',
+      bgcolor: 'var(--input-bg)', color: 'var(--text-primary)',
+      border: '1px solid var(--border-color)', borderRadius: 1,
+      px: 0.75, py: 0.4, fontSize: '0.72rem', fontFamily: 'inherit', outline: 'none',
+      '&:focus': { borderColor: '#86EFAC' },
+    }
+    const headInputSx = { ...cellInputSx, fontWeight: 700 }
+    const sampleRows = (view.defaultRows || []).filter(row => (row || []).some(cell => cell !== '' && cell !== null))
+    const rows = editable
+      ? (view.defaultRows || [])
+      : (override
+        ? (view.defaultRows || [])
+        : (sampleRows.length ? sampleRows : (view.defaultRows || []).slice(0, 3)))
     // When a subGroup already names the first leaf column (e.g. "Distribution"),
     // skip repeating it in the leaf header tier.
-    const leafColumns = subGroups.length && table.columns[0] === subGroups[0].title
-      ? table.columns.map((column, i) => (i === 0 ? '' : column))
-      : table.columns
+    const repeatFirstLeaf = !editable && subGroups.length > 0 && view.columns[0] === subGroups[0].title
+    const leafColumns = repeatFirstLeaf
+      ? view.columns.map((column, i) => (i === 0 ? '' : column))
+      : view.columns
 
     return (
       <Box key={table.key} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
@@ -773,6 +950,7 @@ export default function SyllabusFormat() {
               {table.title}
             </Typography>
             <Chip size="small" label="Built-in table" sx={chipSx('#60AAFF')} variant="outlined" />
+            {override && <Chip size="small" label="Fixed" sx={chipSx('#FFB74D')} variant="outlined" />}
             {groups.some(group => group.dynamic) && (
               <Chip size="small" label="Grows with the ILOs" sx={chipSx('#60AAFF')} variant="outlined" />
             )}
@@ -787,7 +965,7 @@ export default function SyllabusFormat() {
               <thead>
                 {groups.length > 0 && (
                   <tr>
-                    {hasRowLabels && <th rowSpan={headerDepth}>{table.rowLabels.header}</th>}
+                    {hasRowLabels && <th rowSpan={headerDepth}>{view.rowLabels.header}</th>}
                     {groups.map((group, index) => (
                       <th key={index} colSpan={group.span}>
                         {group.title}{group.dynamic ? ' (per ILO)' : ''}
@@ -804,16 +982,29 @@ export default function SyllabusFormat() {
                 )}
                 {!table.noHeader && (
                   <tr>
-                    {groups.length === 0 && hasRowLabels && <th rowSpan={headerDepth}>{table.rowLabels.header}</th>}
-                    {leafColumns.map((column, index) => (
-                      <th key={index}>{column || ' '}</th>
-                    ))}
+                    {groups.length === 0 && hasRowLabels && <th rowSpan={headerDepth}>{view.rowLabels.header}</th>}
+                    {leafColumns.map((column, index) => {
+                      const suppressed = subGroups.length > 0 && index === 0 && view.columns[0] === subGroups[0].title
+                      return (
+                        <th key={index}>
+                          {editable && !suppressed ? (
+                            <Box
+                              component="input"
+                              aria-label={`${table.title} column ${index + 1} name`}
+                              value={view.columns[index] || ''}
+                              onChange={event => setTableColumn(table, view, index, event.target.value)}
+                              sx={headInputSx}
+                            />
+                          ) : (column || ' ')}
+                        </th>
+                      )
+                    })}
                   </tr>
                 )}
-                {table.noHeader && groups.length === 0 && hasRowLabels && <tr><th>{table.rowLabels.header}</th></tr>}
+                {table.noHeader && groups.length === 0 && hasRowLabels && <tr><th>{view.rowLabels.header}</th></tr>}
               </thead>
               <tbody>
-                {showRows.map((row, rowIndex) => {
+                {rows.map((row, rowIndex) => {
                   const cells = []
                   ;(row || []).forEach((cell, cellIndex) => {
                     if (cell === null && cells.length) {
@@ -824,10 +1015,30 @@ export default function SyllabusFormat() {
                   })
                   return (
                     <tr key={rowIndex}>
-                      {hasRowLabels && <td>{table.rowLabels.values[rowIndex] || ''}</td>}
+                      {hasRowLabels && (
+                        <td>
+                          {editable ? (
+                            <Box
+                              component="input"
+                              aria-label={`${table.title} row ${rowIndex + 1} label`}
+                              value={view.rowLabels.values?.[rowIndex] || ''}
+                              onChange={event => setTableRowLabel(table, view, rowIndex, event.target.value)}
+                              sx={cellInputSx}
+                            />
+                          ) : (view.rowLabels.values?.[rowIndex] || ' ')}
+                        </td>
+                      )}
                       {cells.map(cell => (
                         <td key={cell.key} colSpan={cell.colSpan > 1 ? cell.colSpan : undefined}>
-                          {cell.value || ' '}
+                          {editable ? (
+                            <Box
+                              component="input"
+                              aria-label={`${table.title} row ${rowIndex + 1} column ${cell.key + 1}`}
+                              value={cell.value ?? ''}
+                              onChange={event => setTableCell(table, view, rowIndex, cell.key, event.target.value)}
+                              sx={cellInputSx}
+                            />
+                          ) : (cell.value || ' ')}
                         </td>
                       ))}
                     </tr>
@@ -855,10 +1066,47 @@ export default function SyllabusFormat() {
           {table.footer && (
             <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mt: 1 }}>{table.footer}</Typography>
           )}
-          <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.75 }}>
-            {sampleRows.length
-              ? 'Rows above are the default content; Faculty can edit every row in the Syllabus workspace.'
-              : 'Faculty fill this table row by row in the Syllabus workspace.'}
+          {editable && (
+            <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1.25, flexWrap: 'wrap', rowGap: 1 }}>
+              <OutlineBtn small onClick={() => addTableRow(table, view)}>Add row</OutlineBtn>
+              <OutlineBtn
+                small
+                disabled={!rows.length}
+                onClick={() => removeTableRow(table, view, rows.length - 1)}
+              >
+                Remove row
+              </OutlineBtn>
+              {canChangeColumns && (
+                <OutlineBtn small onClick={() => addTableColumn(table, view)}>Add column</OutlineBtn>
+              )}
+              {canChangeColumns && (
+                <OutlineBtn
+                  small
+                  disabled={view.columns.length <= 1}
+                  onClick={() => removeTableColumn(table, view, view.columns.length - 1)}
+                >
+                  Remove column
+                </OutlineBtn>
+              )}
+              <Box sx={{ flex: 1 }} />
+              {override && (
+                <OutlineBtn small disabled={saving} onClick={() => restoreBuiltInTable(table)}>
+                  Restore built-in
+                </OutlineBtn>
+              )}
+              <PrimaryBtn small disabled={saving} onClick={() => save()}>
+                {saving ? 'Saving…' : 'Save table'}
+              </PrimaryBtn>
+            </Stack>
+          )}
+          <Typography variant="caption" sx={{ color: override ? '#FFB74D' : 'var(--text-tertiary)', display: 'block', mt: 0.75 }}>
+            {editable
+              ? 'Edit any header, row label or cell, then choose Save table. Saved tables become fixed content every Faculty sees and cannot change.'
+              : override
+                ? 'Fixed by your institution. Faculty see this table exactly as shown and cannot edit it.'
+                : sampleRows.length
+                  ? 'Rows above are the default content; Faculty can edit every row in the Syllabus workspace.'
+                  : 'Faculty fill this table row by row in the Syllabus workspace.'}
           </Typography>
         </Box>
       </Box>
@@ -993,7 +1241,7 @@ export default function SyllabusFormat() {
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
               <FormControlLabel
                 sx={{ m: 0 }}
-                control={<Switch size="small" disabled={activeSection.derived} checked={Boolean(activeSection.is_static)} onChange={event => updateSection(activeIndex, { is_static: event.target.checked })} />}
+                control={<Switch size="small" disabled={activeSection.derived} checked={Boolean(activeSection.is_static)} onChange={event => setSectionStatic(event.target.checked)} />}
                 label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Fix the whole section</Typography>}
               />
               <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
@@ -1189,7 +1437,7 @@ export default function SyllabusFormat() {
       <PageHeader
         title="Syllabus Format"
         subtitle="The Admin view of the Faculty Syllabus workspace. Choose the sections Faculty see and lock the content that must stay the same. Changes apply to every admin account in your institution."
-        action={<PrimaryBtn onClick={save} disabled={loading || saving}>{saving ? 'Saving…' : 'Save Format'}</PrimaryBtn>}
+        action={<PrimaryBtn onClick={() => save()} disabled={loading || saving}>{saving ? 'Saving…' : 'Save Format'}</PrimaryBtn>}
       />
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
