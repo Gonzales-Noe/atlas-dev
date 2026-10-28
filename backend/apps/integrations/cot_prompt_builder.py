@@ -57,8 +57,326 @@ def _count_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+_SYLLABUS_CATEGORIES = ("ged", "common", "professional", "mandated")
+
+# Stored text. Prompts must not ask the model to write these.
+_SYLLABUS_DO_NOT_GENERATE = (
+    "Do not write any of these. They are stored and inserted: "
+    "vision, mission, Institutional Graduate Attributes, Student Outcomes, "
+    "CDIO skills, SDG skills, mapping sentences, grading scale, class policy, "
+    "missed examinations, academic dishonesty, dropping, remarks, "
+    "a table of specifications, or a second assessment plan. "
+    "Criteria for Assessment is faculty input. Read it. Do not add or rename a component."
+)
+
+_SYLLABUS_SHAPE = (
+    "Present tense. Subject is \"This course\", \"The course\", or \"Students\". "
+    "No first person. No contractions in the rationale. "
+    "Intended learning outcomes and topic outcomes are bare imperatives. "
+    "Do not write \"students will be able to\", \"students should be able to\", "
+    "\"this section describes\", or \"in conclusion\". "
+    "No second sentence in a table cell. No week-by-week retelling in the rationale "
+    "or the teaching-learning-assessment text. No definitions of tools, standards, or frameworks. "
+    "No stacked adjectives. Subtopic lines are noun phrases of 2–5 words, one per line, no period. "
+    "No laboratory line, tool list, or sprint on a general-education, PATHFit, NSTP, capstone, or internship course. "
+    "No chapter titles (\"Main Topic N\") and no second civic clause on a common-course or professional-course ILO. "
+    "No more than three intended learning outcomes."
+)
+
+_LECTURE_ONLY_MARKERS = (
+    "human-computer interaction",
+    "human computer interaction",
+    "project management",
+    "social issues",
+    "technopreneurship",
+    "platform technologies",
+)
+
+_CATEGORY_BLOCKS = {
+    "ged": (
+        "Course Rationale and Description — 2–3 sentences on what the course examines in society, "
+        "culture, or the discipline's role in ordinary life, and why a student in any program takes it. "
+        "No tools. No weekly topics.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(examinations, quizzes, participation, a course project). Methods are lecture, discussion, "
+        "and the named activity. No laboratory and no technology list.\n\n"
+        "Each ILO — one short sentence. Verbs: Explain, Examine, Discuss, Critique. No \"such that\" clause.\n\n"
+        "Topics / Reading List — a chapter-style topic title, indented subtopic titles, then an activity "
+        "title such as Written Assessment #1, Reflection, or Film Viewing.\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). "
+        "Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence on what the student does with that topic."
+    ),
+    "common": (
+        "Course Rationale and Description — 2–3 sentences on the foundation skill and where it sits "
+        "before the major courses. Name a tool only when the course cannot be described without it.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(laboratory activities, case studies, examinations, projects). One clause each. "
+        "Methods are lecture plus the laboratory or case already named in the criteria.\n\n"
+        "Each ILO — one short sentence. Verbs: Define, Apply, Implement, Analyze.\n\n"
+        "Topics / Reading List — topic title, indented subtopic titles, activity title. "
+        "The activity is a lab, case, or exercise (Lab 1, Case Study 1), not a chapter essay.\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence, imperative, about the skill practiced that week."
+    ),
+    "professional": (
+        "Course Rationale and Description — 2–3 sentences on the major skill and the course output "
+        "(a build, an analysis, or a design). One tool name is enough.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria. One clause each. "
+        "Do not add Analytics Reporting, a sprint, or a final exam unless that line is already in the criteria.\n\n"
+        "Each ILO — one short sentence. Verbs: Analyze, Apply, Design, Implement, Evaluate.\n\n"
+        "Topics / Reading List — topic title, indented subtopic titles, activity title "
+        "(Lab, Sprint, Case, Reporting).\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence."
+    ),
+    "capstone": (
+        "Course Rationale and Description — 2–3 sentences naming the required output "
+        "(proposal, completed system, documentation, defense) and the standing rule. No tool catalog.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(proposal, documentation, oral defense). One clause each.\n\n"
+        "Each ILO — one short sentence on the output the student produces.\n\n"
+        "Topics / Reading List — phase title, indented work-item titles, activity title is the deliverable "
+        "(Proposal, Documentation, Oral Defense).\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence for that phase."
+    ),
+    "internship": (
+        "Course Rationale and Description — 2–3 sentences stating the required hours "
+        "(500 for BSIT Internship Training) and the year standing. No weekly chapter list.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(deployment, accomplishment report, supervisor evaluation, narrative report, presentation).\n\n"
+        "Each ILO — one short sentence on the workplace task or the report.\n\n"
+        "Topics / Reading List — requirement title, indented requirement parts, activity title "
+        "(Narrative Report, Supervisor Evaluation, Presentation). Do not emit 18 topic rows.\n\n"
+        "Weeks — 1 or 1-2 for each requirement block, not one row per calendar week of the deployment.\n\n"
+        "Topic Outcomes — one brief sentence."
+    ),
+    "pathfit": (
+        "Course Rationale and Description — 2–3 sentences naming the movement, exercise, game, "
+        "or sport in the course title.\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(practical test, participation, attendance). Demonstration and drill. No technology list.\n\n"
+        "Each ILO — one short sentence. Verbs: Demonstrate, Perform, Apply.\n\n"
+        "Topics / Reading List — skill title, indented drill or game titles, activity title "
+        "(Practical Drill, Performance Check).\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence on the skill performed."
+    ),
+    "nstp": (
+        "Course Rationale and Description — 2–3 sentences citing Republic Act 9163 and the component "
+        "(CWTS, LTS, or ROTC).\n\n"
+        "Teaching, Learning, and Assessment Strategies — only the faculty criteria "
+        "(attendance, immersion output, final report).\n\n"
+        "Each ILO — one short sentence on the service or training task.\n\n"
+        "Topics / Reading List — module title, indented session titles, activity title "
+        "(Community Immersion, Literacy Session, Final Report).\n\n"
+        "Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. The rows together cover week 1 through week 18.\n\n"
+        "Topic Outcomes — one brief sentence."
+    ),
+}
+
+_CATEGORY_FIELD_PREFIX = {
+    "rationale": "Course Rationale and Description",
+    "tlas": "Teaching, Learning, and Assessment Strategies",
+    "ilo": "Each ILO",
+    "topics": "Topics / Reading List",
+    "topic_outcome": "Topic Outcomes",
+}
+
+
+def _normalize_syllabus_category(category: str) -> str:
+    value = (category or "professional").strip().lower()
+    return value if value in _SYLLABUS_CATEGORIES else "professional"
+
+
+def _contains_term(blob: str, term: str) -> bool:
+    import re
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", blob) is not None
+
+
+def syllabus_course_kind(course_name: str, course_code: str, category: str) -> tuple:
+    """Return (stored category, instruction block key).
+
+    Internship, thesis, and capstone stay ``professional``. Only the topic
+    block changes, and only when the title or code says so. PATHFit and NSTP
+    stay ``mandated``.
+    """
+    stored = _normalize_syllabus_category(category)
+    blob = f"{course_name or ''} {course_code or ''}".lower()
+    if stored == "professional":
+        if any(_contains_term(blob, term) for term in ("internship", "ojt", "practicum")):
+            return stored, "internship"
+        if any(_contains_term(blob, term) for term in ("capstone", "thesis")):
+            return stored, "capstone"
+        if any(_contains_term(blob, term) for term in _LECTURE_ONLY_MARKERS):
+            return stored, "professional_lecture"
+        return stored, "professional"
+    if stored == "mandated":
+        if any(_contains_term(blob, term) for term in ("nstp", "national service", "cwts", "rotc")):
+            return stored, "nstp"
+        return stored, "pathfit"
+    return stored, stored
+
+
+def _category_block(kind: str) -> str:
+    if kind == "professional_lecture":
+        return (
+            _CATEGORY_BLOCKS["professional"]
+            + "\n\nThis course is lecture only (3 lecture, 0 laboratory). Do not invent a laboratory."
+        )
+    return _CATEGORY_BLOCKS.get(kind) or _CATEGORY_BLOCKS["professional"]
+
+
+def _category_field_line(kind: str, section: str) -> str:
+    prefix = _CATEGORY_FIELD_PREFIX.get(section, "")
+    if not prefix:
+        return ""
+    for paragraph in _CATEGORY_BLOCKS.get(
+        "professional" if kind == "professional_lecture" else kind,
+        _CATEGORY_BLOCKS["professional"],
+    ).split("\n\n"):
+        if paragraph.startswith(prefix):
+            line = paragraph.strip()
+            if kind == "professional_lecture":
+                return line + " This course is lecture only (3 lecture, 0 laboratory). Do not invent a laboratory."
+            return line
+    return ""
+
+
+def _criteria_lines(criteria: str) -> str:
+    import re
+    text = (criteria or "").strip()
+    if not text:
+        return "(none yet)"
+    lines = []
+    for line in text.splitlines():
+        cleaned = re.sub(r"^[-*•]\s*", "", line.strip())
+        if cleaned:
+            lines.append(cleaned)
+    return "\n".join(lines) if lines else "(none yet)"
+
+
+def _weekly_block_line(kind: str, num_weeks: int) -> str:
+    if kind == "internship":
+        return (
+            "Weekly blocks: one block per requirement, not one row per calendar week. "
+            "Do not emit 18 topic rows. Each block's week cell is 1 or 1-2."
+        )
+    term = num_weeks if num_weeks and num_weeks > 0 else 18
+    return (
+        f"One row per topic. A week cell is a single number (10, 14) or a merged pair "
+        f"(1-2, 5-6) when that topic is heavier. The rows together cover week 1 through week {term}. "
+        f"Do not skip a week and do not pass week {term}."
+    )
+
+
+def _parse_topic_plan(raw: str) -> list:
+    """Read '1 or 2, then a title' lines. A merged pair counts as span 2."""
+    import re
+    rows = []
+    for line in (raw or "").splitlines():
+        cleaned = re.sub(r"^[-*•]\s*", "", line.strip())
+        if not cleaned:
+            continue
+        merged = re.match(r"^(\d+)\s*-\s*(\d+)\s+(.+)$", cleaned)
+        if merged:
+            start, end = int(merged.group(1)), int(merged.group(2))
+            span = 2 if end > start else 1
+            title = re.sub(r"\s+", " ", merged.group(3)).strip(" .")
+            if title:
+                rows.append((span, title))
+            continue
+        span_line = re.match(r"^(1|2)(?:\t+|\s+)(.+)$", cleaned)
+        if span_line:
+            title = re.sub(r"\s+", " ", span_line.group(2)).strip(" .")
+            if title and title.lower() not in {"topic", "title", "topic title"}:
+                rows.append((int(span_line.group(1)), title))
+            continue
+        if cleaned.lower() in {"topic", "title", "weeks"}:
+            continue
+        rows.append((1, re.sub(r"\s+", " ", cleaned).strip(" .")))
+    return rows
+
+
+def _fit_topic_spans(spans: list, term_weeks: int) -> list:
+    """Make the spans add up to the term. A span is 1 week or a heavier 2-week pair."""
+    items = [2 if span == 2 else 1 for span in spans]
+    if not items:
+        items = [1] * term_weeks
+
+    def total():
+        return sum(items)
+
+    while total() > term_weeks and items:
+        heavy = next((index for index in range(len(items) - 1, -1, -1) if items[index] == 2), None)
+        if heavy is not None:
+            items[heavy] = 1
+        else:
+            items.pop()
+    while total() < term_weeks:
+        light = next((index for index, span in enumerate(items) if span == 1), None)
+        if light is not None:
+            items[light] = 2
+        else:
+            remain = term_weeks - total()
+            items.append(2 if remain >= 2 else 1)
+    return items
+
+
+def _week_labels(spans: list) -> list:
+    cursor = 1
+    labels = []
+    for span in spans:
+        if span <= 1:
+            labels.append(str(cursor))
+            cursor += 1
+        else:
+            labels.append(f"{cursor}-{cursor + span - 1}")
+            cursor += span
+    return labels
+
+
+def assign_topic_weeks(raw: str, term_weeks: int = 18, pad_to_term: bool = True) -> str:
+    """Turn a topic plan into one row per topic.
+
+    Each line is ``{week label}\\t{title}``. A light topic is ``10``. A heavier
+    topic is ``3-4``. Together the labels cover week 1 through ``term_weeks``
+    when ``pad_to_term`` is set. Internship plans are not padded to 18.
+    """
+    parsed = _parse_topic_plan(raw)
+    spans = [span for span, _title in parsed]
+    titles = [title for _span, title in parsed]
+    fitted = _fit_topic_spans(spans, term_weeks) if pad_to_term else (
+        [2 if span == 2 else 1 for span in spans] or [1]
+    )
+    lines = []
+    for index, label in enumerate(_week_labels(fitted)):
+        title = titles[index] if index < len(titles) else ""
+        lines.append(f"{label}\t{title}".rstrip())
+    return "\n".join(lines)
+
+
 class CoTPromptBuilder:
     """Builds structured, step-by-step prompts for syllabus, module, and assessment generation."""
+
+    # Whole-syllabus call after vision, policy, TOS, and framework text are removed.
+    SYLLABUS_MAX_TOKENS = 900
+    GENERATABLE_SYLLABUS_SECTIONS = frozenset({
+        "rationale", "tlas", "ilo", "topics", "topic_outcome", "week_plan",
+    })
+    _FIELD_MAX_TOKENS = {
+        "rationale": 160,
+        "tlas": 220,
+        "ilo": 50,
+        "topics": 180,
+        "topic_outcome": 50,
+        "week_plan": 400,
+    }
+
+    @classmethod
+    def field_max_tokens(cls, section: str) -> int:
+        return cls._FIELD_MAX_TOKENS[section]
 
     # ------------------------------------------------------------------
     # Shared helpers
@@ -122,114 +440,70 @@ class CoTPromptBuilder:
         context_chunks: list,
         extra_instructions: str = "",
         context_summary: str = "",
+        course_category: str = "professional",
+        assessment_criteria: str = "",
     ) -> tuple:
         """
-        Build a CoT prompt for generating a complete university course syllabus.
+        Build a CoT prompt for the course cells of a syllabus.
 
-        Args:
-            context_summary: Pre-computed progressive summary from
-                semantic_search_with_summary().  When provided, it is used
-                instead of raw chunks for token-efficient context injection.
+        Vision, mission, framework catalogs, policy, grading, the table of
+        specifications, and a second assessment plan are not requested.
+        ``course_category`` is the stored value (ged, common, professional,
+        mandated). Capstone, thesis, and internship stay professional and
+        only swap the subject-matter block.
 
         Returns:
             (system_prompt: str, user_prompt: str)
         """
         context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
+        stored_category, kind = syllabus_course_kind(course_name, course_code, course_category)
+        criteria = _criteria_lines(assessment_criteria)
+        weeks_line = _weekly_block_line(kind, num_weeks)
 
         system = (
             "You are an expert curriculum designer at a Philippine university that follows "
-            "Outcome-Based Education (OBE). You produce thorough, well-structured syllabi "
-            "that align Course Learning Outcomes (CLOs) with Bloom's Taxonomy levels and "
-            "clearly map assessments to those outcomes. Always be specific and practical."
+            "Outcome-Based Education (OBE). Write only the cells listed, at the length given, "
+            "and do not add a section that was not requested. "
+            + _SYLLABUS_SHAPE + " " + _SYLLABUS_DO_NOT_GENERATE
         )
 
-        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
-{context}
+        user = f"""Private note — Step 1: read the reference material below. Do not print Step 1.
 
-TASK: Generate a comprehensive, OBE-aligned university course syllabus.
+REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+{context}
 
 Course Name : {course_name}
 Course Code : {course_code or "N/A"}
-Duration    : {num_weeks} weeks{extra}
+{weeks_line}{extra}
 
-THINK STEP BY STEP:
+Course category: {stored_category}
+Criteria for Assessment (faculty input, do not add or rename a component):
+{criteria}
 
-Step 1 — Course Scope
-  Using the reference material above, identify the core purpose, coverage, and level
-  of the course. Note any prerequisite knowledge implied by the content.
+Subject matter for this category:
+{_category_block(kind)}
 
-Step 2 — Course Rationale
-  Write a dedicated rationale paragraph (2–3 sentences) explaining WHY this course
-  exists in the curriculum — its role in the program, the professional competencies
-  it develops, and its contribution to graduate attributes or societal needs.
-  This is separate from the course description.
+Write only these cells.
 
-Step 3 — Course Learning Outcomes (CLOs / ILOs)
-  Formulate 4–6 measurable CLOs using Bloom's Taxonomy action verbs.
-  For each CLO specify:
-    CLO number | Statement | Bloom's Taxonomy Level (Remember/Understand/Apply/
-                              Analyze/Evaluate/Create) | Primary Bloom Verb
-  Ensure CLOs span at least three Bloom's levels. Higher-order levels (Apply and
-  above) should account for at least 50% of the CLOs.
+Course Rationale and Description
+  2–3 sentences. One idea per sentence. No second paragraph, no tool catalog, no week list. Follow the category block. Do not also emit a separate description.
 
-Step 4 — Weekly Schedule with ILO References
-  Plan a {num_weeks}-week schedule where topics build progressively on each other.
-  For EACH week specify: Week | Topic / Subject Matter | Key Learning Activities |
-  Delivery Method | ILO References (list CLO numbers covered that week, e.g. "1,3").
-  Every CLO must be covered at least once.
+Teaching, Learning, and Assessment Strategies
+  Use only the criteria above. For each line, one clause on how it is taught and how it is assessed.
+  Do not add a component. Do not restate the rationale. No closing essay.
 
-Step 5 — Assessment Design with Sub-tasks and I/R/D
-  Design assessments (quizzes, midterm exam, final exam, projects, activities) that
-  directly map to the CLOs. For each assessment component specify:
-    • Code (e.g. ME, QZ, FP)
-    • Task name
-    • I/R/D designation (I = Introduced, R = Reinforced, D = Demonstrated)
-    • Category (Formative / Summative / Performance / Project)
-    • Sub-tasks if applicable (e.g. Written Exam, Lab Report, Presentation)
-    • CLOs covered
+Intended Learning Outcomes
+  Three lines. Each line is one short sentence. One Bloom verb. 8–16 words. One period. Hard cap 18 words.
+  No "students should be able to".
 
-Step 6 — Table of Specifications (TOS)
-  For each major assessment component, provide a TOS showing how points are
-  distributed across Bloom's levels:
-    Topic | Total Points | Remember% | Understand% | Apply% | Analyze% | Evaluate% | Create%
-  Percentages per row must sum to 100%.
-
-Step 7 — Grading Breakdown
-  Assign weights to each assessment component such that they total exactly 100%.
-
-Step 8 — Framework Alignment
-  Note the alignment of CLOs to:
-    • Student Outcomes (SO) — ABET/CHED attributes
-    • Institutional Graduate Attributes (IGA)
-    • CDIO Skills
-    • Sustainable Development Goals (SDG)
-
-Step 9 — References
-  List required and recommended textbooks, articles, or online resources.
-
-OUTPUT — Return the syllabus using exactly this structure:
-
-1. COURSE DESCRIPTION (3–4 sentences)
-
-2. COURSE RATIONALE (2–3 sentences — why this course matters in the program)
-
-3. COURSE LEARNING OUTCOMES (CLOs)
-   CLO | Statement | Bloom's Level | Primary Bloom Verb
-
-4. WEEKLY SCHEDULE
-   Week | Topic / Subject Matter | Key Learning Activities | Delivery | ILO Refs
-
-5. ASSESSMENT BREAKDOWN
-   Code | Task | I/R/D | Category | Sub-tasks | Weight (%) | CLOs Covered
-
-6. TABLE OF SPECIFICATIONS (TOS)
-   Topic | Total Pts | Remember% | Understand% | Apply% | Analyze% | Evaluate% | Create%
-
-7. FRAMEWORK ALIGNMENT
-   CLO | SO | IGA | CDIO | SDG
-
-8. REQUIRED MATERIALS & REFERENCES
+Weekly rows
+  One row per topic.
+    Topics / Reading List — topic title, indented subtopic titles, activity title. Titles only. No sentences.
+    Weeks — a single week number (10, 14) or a merged pair for a heavier topic (1-2, 5-6). Digits and a hyphen only. Together the rows cover week 1 through the end of the term. Do not skip a week.
+    Topic Outcomes — one brief sentence. One imperative verb. No second sentence.
+  Do not write Key Learning Activities or Delivery as extra sentences in the row.
+  ILO numbers, if needed, are codes (1, 2) in their own column.
 """
         return system, user
 
@@ -662,39 +936,52 @@ OUTPUT — Return the assessment using exactly this structure:
     # Syllabus field generation
     # ------------------------------------------------------------------
 
-    # Per-section content hints for targeted generation
+    # Per-section content hints. Weeks are not a model call.
     _SECTION_HINTS = {
-        'contact': (
-            "Generate specific, OBE-aligned assessment criteria for {course_name}. "
-            "Include grading breakdown, performance expectations, and how each "
-            "assessment component maps to course learning outcomes."
+        'rationale': (
+            "Course Rationale and Description for {course_name}. "
+            "2–3 sentences, one field. One idea per sentence. "
+            "Do not also emit a separate description. No second paragraph, no tool catalog, no week list."
         ),
         'tlas': (
-            "Generate comprehensive Teaching, Learning, and Assessment (TLA) strategies "
-            "for {course_name}. Include active learning methods, collaborative activities, "
-            "formative assessment techniques, and instructional approaches aligned with OBE."
+            "Using only these criteria: {criteria}. For each one, write one clause on how it is taught "
+            "and how it is assessed. Do not add a component. Do not restate the rationale."
         ),
         'ilo': (
-            "Generate a specific, measurable Intended Learning Outcome (ILO) for "
-            "{course_name} using Bloom's Taxonomy action verbs. "
-            "The ILO must be observable and assessable."
+            "One short sentence for {course_name}. One Bloom verb. No second clause. "
+            "Do not write \"students should be able to\"."
+        ),
+        'topics': (
+            "Topics / Reading List for {course_name}. First line is the topic title. "
+            "Following indented lines are subtopic titles. Last unindented line is the activity title. "
+            "Titles only. No sentences."
+        ),
+        'topic_outcome': (
+            "One brief sentence. One imperative verb. No second sentence."
+        ),
+        'week_plan': (
+            "Weekly topic plan for {course_name}. One line per topic. "
+            "Each line is 1 or 2, then a tab, then the topic title. "
+            "1 is one week. 2 is a heavier topic that merges two weeks. "
+            "The numbers must add up to 18. Titles only. No sentences. "
+            "Do not write week numbers or the word weeks."
+        ),
+        'contact': (
+            "Do not generate. Criteria for Assessment is entered by the faculty."
         ),
         'assessment_map': (
-            "Generate a complete assessment task row for {course_name}: task name, "
-            "code, I/R/D designation, weight percentage, ILO coverage, and cognitive domain."
+            "Do not generate. Criteria for Assessment is faculty input. Do not design an assessment plan."
         ),
         'references': (
-            "Generate an academic reference in APA 7th-edition format for {course_name}. "
-            "Use authoritative textbooks, journal articles, or online resources directly "
-            "relevant to the course topics."
+            "One APA-like reference line for {course_name}. 12–22 words. No annotation."
         ),
         'attributes': (
-            "Generate graduate attribute descriptions for {course_name} including code, "
-            "title, and description mapping to student outcomes, CDIO skills, or SDG goals."
+            "Do not generate. Institutional Graduate Attributes, Student Outcomes, CDIO skills, "
+            "SDG skills, and the mapping sentences are stored and inserted."
         ),
         'policies': (
-            "Generate a clear, fair course policy section for {course_name} that covers "
-            "student expectations, academic integrity, attendance, and professional conduct."
+            "Do not generate. Grading scale, class policy, missed examinations, academic dishonesty, "
+            "dropping, and remarks are stored and inserted."
         ),
     }
 
@@ -710,6 +997,8 @@ OUTPUT — Return the assessment using exactly this structure:
         context_chunks: list,
         context_summary: str = "",
         extra_instructions: str = "",
+        course_category: str = "professional",
+        assessment_criteria: str = "",
     ) -> tuple:
         """
         Build a prompt to generate or continue a single syllabus field.
@@ -718,50 +1007,70 @@ OUTPUT — Return the assessment using exactly this structure:
             course_name:      Full course title.
             course_code:      Course code (may be empty).
             field_label:      Human-readable label for the field (shown in footer).
-            section:          Syllabus section key (e.g. 'tlas', 'ilo', 'policies').
+            section:          Syllabus section key (e.g. 'tlas', 'ilo', 'topics').
             existing_content: Current value of the field (used for 'continue' mode).
             mode:             'generate' (fresh) or 'continue' (extend existing).
             context_chunks:   RAG chunks (global + course-specific).
             context_summary:  Pre-computed progressive summary (token-efficient).
+            course_category:  Stored category: ged, common, professional, or mandated.
+            assessment_criteria: Faculty Criteria for Assessment. Required for tlas.
 
         Returns:
             (system_prompt: str, user_prompt: str)
         """
         context = cls._format_context(context_chunks, context_summary)
-
+        stored_category, kind = syllabus_course_kind(course_name, course_code, course_category)
+        criteria = _criteria_lines(assessment_criteria)
         hint_template = cls._SECTION_HINTS.get(
             section,
-            "Generate professional, OBE-aligned content for the {course_name} syllabus.",
+            "Write only this field for {course_name}, at the length given, "
+            "and do not add a section that was not requested.",
         )
-        hint = hint_template.replace("{course_name}", course_name)
+        hint = (
+            hint_template
+            .replace("{course_name}", course_name)
+            .replace("{criteria}", criteria)
+        )
+        if section == "ilo":
+            hint += " 8–16 words. One period. Hard cap 18 words."
+        if section == "week_plan" and kind == "internship":
+            hint = (
+                f"Requirement plan for {course_name}. One line per requirement, "
+                "not one row per calendar week. Do not emit 18 lines. "
+                "Each line is 1 or 2, then a tab, then the requirement title. "
+                "1 is one block. 2 is a heavier block. Titles only. No sentences."
+            )
+        field_line = _category_field_line(kind, section)
+        subject = f"\n\nSubject matter:\n{field_line}" if field_line else ""
 
         system = (
             "You are an expert curriculum designer at a Philippine university following "
-            "Outcome-Based Education (OBE). You generate precise, professional syllabus content. "
-            "Be specific, practical, and aligned with CHED guidelines. "
-            "Return ONLY the requested content — no headers, no explanations, no markdown fences."
+            "Outcome-Based Education (OBE). Write only the field requested, at the length given, "
+            "and do not add a section that was not requested. "
+            "Return ONLY the requested content — no headers, no explanations, no markdown fences. "
+            + _SYLLABUS_SHAPE + " " + _SYLLABUS_DO_NOT_GENERATE
         )
 
         if mode == "continue":
             user = (
                 f"REFERENCE MATERIAL:\n{context}\n\n"
-                f'TASK: Continue the following content that a faculty member has started for '
-                f'the "{field_label}" field of the course "{course_name}" ({course_code or "N/A"}).\n\n'
+                f"Course category: {stored_category}{subject}\n\n"
+                f'TASK: Continue the "{field_label}" field of "{course_name}" '
+                f'({course_code or "N/A"}).\n\n'
+                f"Limit: {hint}\n\n"
                 f"EXISTING CONTENT:\n{existing_content}\n\n"
-                "Continue naturally from where the text leaves off. Match the tone, style, and "
-                "format of the existing content. Do not repeat what is already written. "
-                "Do not add a header or prefix. Output only the continuation text."
+                "Continue from where the text leaves off. Do not repeat what is already written. "
+                "Stay inside the limit. Do not add a header or prefix. Output only the continuation text."
             )
         else:
             user = (
                 f"REFERENCE MATERIAL:\n{context}\n\n"
+                f"Course category: {stored_category}{subject}\n\n"
                 f"TASK: {hint}\n\n"
                 f"Course       : {course_name}\n"
                 f"Course Code  : {course_code or 'N/A'}\n"
                 f"Field to populate: {field_label}\n\n"
-                "Generate professional, OBE-aligned content for this field. "
-                "Be concise but complete. Output only the field content — "
-                "no headers, no explanations, no extra commentary."
+                "Output only the field content — no headers, no explanations, no extra commentary."
             )
 
         if extra_instructions:
