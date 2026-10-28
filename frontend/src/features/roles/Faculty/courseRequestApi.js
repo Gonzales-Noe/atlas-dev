@@ -14,10 +14,8 @@ export async function submitCourseRequest(payload) {
 }
 
 export const COURSE_CATEGORIES = [
-  { value: 'ged', label: 'General Education (GE)' },
-  { value: 'professional', label: 'Professional' },
-  { value: 'elective', label: 'Elective' },
-  { value: 'laboratory', label: 'Laboratory' },
-  { value: 'pe', label: 'Physical Education' },
-  { value: 'other', label: 'Other' },
+  { value: 'ged', label: 'General Education' },
+  { value: 'common', label: 'Common Courses' },
+  { value: 'professional', label: 'Professional Courses' },
+  { value: 'mandated', label: 'Mandated Courses' },
 ]

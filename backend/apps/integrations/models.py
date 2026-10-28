@@ -250,12 +250,10 @@ class Section(models.Model):
 
 
 class CourseCategory(models.TextChoices):
-    GED = 'ged', 'General Education (GE)'
-    PROFESSIONAL = 'professional', 'Professional'
-    ELECTIVE = 'elective', 'Elective'
-    LABORATORY = 'laboratory', 'Laboratory'
-    PE = 'pe', 'Physical Education'
-    OTHER = 'other', 'Other'
+    GED = 'ged', 'General Education'
+    COMMON = 'common', 'Common Courses'
+    PROFESSIONAL = 'professional', 'Professional Courses'
+    MANDATED = 'mandated', 'Mandated Courses'
 
 
 class Course(models.Model):
