@@ -18,7 +18,7 @@ def _parse_refine_flag(raw):
     value = str(raw if raw is not None else 'false').strip().lower()
     if value in {'0', 'false', 'no', 'none', 'off', ''}:
         return False, None
-    if value in {'ollama', 'groq', 'openrouter', 'nvidia', 'mistral'}:
+    if value in {'ollama', 'groq', 'openrouter', 'gemma', 'cloudflare'}:
         return True, value
     if value in {'1', 'true', 'yes', 'on', 'auto'}:
         provider = (os.environ.get('SYLLABUS_REFINE_PROVIDER') or 'ollama').strip().lower()
