@@ -140,16 +140,13 @@ const ADMIN_FIXED_FIELDS = {
   'other-policies': 'other_policies',
 }
 
-const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
+const PROVIDERS = ['auto', 'groq', 'gemma', 'cloudflare', 'openrouter', 'ollama']
 const PROVIDER_LABELS = {
   auto: 'Auto (best available free model)',
   groq: 'Groq — GPT-OSS 120B',
-  nvidia: 'NVIDIA NIM — Nemotron 3 Super',
-  mistral: 'Mistral — Mistral Small',
   gemma: 'Google AI Studio — Gemma 4 31B',
   cloudflare: 'Cloudflare — GPT-OSS 120B',
   openrouter: 'OpenRouter — free models',
-  huggingface: 'Hugging Face — GPT-OSS 120B',
   ollama: 'Ollama (VPS local)',
 }
 const ASSESSMENT_TYPES = [
