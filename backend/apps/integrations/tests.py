@@ -11,7 +11,12 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
 from apps.integrations.syllabus_pipeline import _parse_refine_flag
-from apps.integrations.cot_prompt_builder import CoTPromptBuilder, assign_topic_weeks
+from apps.integrations.cot_prompt_builder import (
+    CoTPromptBuilder,
+    assign_topic_weeks,
+    complete_syllabus_field,
+    field_reply_is_usable,
+)
 from apps.integrations.llm_service import DEFAULT_CHAIN, LLMService, message_text
 from apps.integrations.models import GlobalDocument
 from apps.integrations.views import (
@@ -353,6 +358,58 @@ class TopicWeekPlanTests(SimpleTestCase):
         self.assertEqual(labels, ["1", "1-2", "3"])
         self.assertIn("Class Orientation", text.splitlines()[0])
         self.assertIn("Deployment", text.splitlines()[1])
+
+
+class SyllabusFieldTakeoverTests(SimpleTestCase):
+    def _messages(self):
+        return {
+            "section": "topic_outcome",
+            "messages": [{"role": "user", "content": "Topic: Relational schema."}],
+            "system": "Reply with the sentence only.",
+        }
+
+    def test_a_usable_reply_is_kept(self):
+        llm = MagicMock()
+        llm.generate_response_with_fallback.return_value = (
+            "Design a relational schema for a sample database.",
+            "groq",
+        )
+        text, provider = complete_syllabus_field(llm, **self._messages())
+        self.assertEqual(text, "Design a relational schema for a sample database.")
+        self.assertEqual(provider, "groq")
+        self.assertEqual(llm.generate_response_with_fallback.call_count, 1)
+        self.assertFalse(field_reply_is_usable(
+            "topic_outcome",
+            "We need one sentence, imperative verb, 7-12 words.",
+        ))
+
+    def test_unusable_reply_retries_once_then_uses_ollama(self):
+        llm = MagicMock()
+        echo = "We need one sentence, imperative verb, 7-12 words."
+        llm.generate_response_with_fallback.side_effect = [
+            (echo, "groq"),
+            (echo, "groq"),
+            ("Design a relational schema for a sample database.", "ollama"),
+        ]
+        text, provider = complete_syllabus_field(llm, **self._messages())
+        self.assertEqual(text, "Design a relational schema for a sample database.")
+        self.assertEqual(provider, "ollama")
+        self.assertEqual(
+            [call.kwargs["preferred_provider"] for call in llm.generate_response_with_fallback.call_args_list],
+            [None, None, "ollama"],
+        )
+
+    def test_a_provider_error_goes_straight_to_ollama(self):
+        llm = MagicMock()
+        llm.generate_response_with_fallback.side_effect = [
+            ValueError("all available providers"),
+            ("Design a relational schema for a sample database.", "ollama"),
+        ]
+        text, provider = complete_syllabus_field(llm, **self._messages())
+        self.assertEqual(provider, "ollama")
+        self.assertIn("relational schema", text)
+        self.assertEqual(llm.generate_response_with_fallback.call_count, 2)
+        self.assertEqual(llm.generate_response_with_fallback.call_args_list[1].kwargs["preferred_provider"], "ollama")
 
 
 class InstitutionScopedAdminDataTests(SimpleTestCase):

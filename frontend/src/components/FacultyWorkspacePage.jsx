@@ -358,6 +358,25 @@ function parseAssignedWeekPlan(text) {
   })
 }
 
+async function requestSyllabusField(api, body, shape) {
+  const post = payload => api.post('/curriculum/generate-syllabus-field/', payload, { timeout: 120000 })
+  const read = data => {
+    const raw = data?.generated_text || ''
+    const text = shape ? shape(raw) : String(raw).trim()
+    return { data, text }
+  }
+  try {
+    const first = read((await post(body)).data)
+    if (first.text || first.data?.provider_used === 'ollama' || body.provider === 'ollama') return first
+    return read((await post({ ...body, provider: 'ollama' })).data)
+  } catch (err) {
+    if (body.provider === 'ollama') throw err
+    const message = err?.response?.data?.error || err?.response?.data?.detail || err?.message || ''
+    if (/ollama/i.test(String(message))) throw err
+    return read((await post({ ...body, provider: 'ollama' })).data)
+  }
+}
+
 function SyllabusDraftText({ text, section, sx }) {
   if (section === 'topics') {
     return (
@@ -1865,7 +1884,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAiPipelineProgress({ completed: 0, total: 1, label: 'Weekly topic plan' })
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
-      const planResponse = await api.post('/curriculum/generate-syllabus-field/', {
+      const planResult = await requestSyllabusField(api, {
         course_id: courseId,
         section: 'week_plan',
         field_label: 'Weekly topic plan',
@@ -1875,8 +1894,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         extra_instructions: '',
         assessment_criteria: source.assessment_criteria || '',
         selected_doc_ids: selectedIds,
-      }, { timeout: 120000 })
-      const plan = parseAssignedWeekPlan(planResponse.data?.generated_text)
+      }, text => (parseAssignedWeekPlan(text).length ? text : ''))
+      const plan = parseAssignedWeekPlan(planResult.data?.generated_text)
       if (!plan.length) {
         throw new Error('The weekly plan did not include any topics. Try again.')
       }
@@ -1950,7 +1969,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           ? `Topic title: ${row.title}. The first line must be this title. This row covers week ${row.weeks}. Do not write the week numbers in this cell.`
           : `This row covers week ${row.weeks}. Continue the course sequence. Do not write the week numbers in this cell.`
         setAiPipelineProgress({ completed, total, label: `Topics / Reading List ${row.weeks}` })
-        const topicsResponse = await api.post('/curriculum/generate-syllabus-field/', {
+        const topicsResult = await requestSyllabusField(api, {
           course_id: courseId,
           section: 'topics',
           field_label: `Topics / Reading List ${index + 1}`,
@@ -1960,8 +1979,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           extra_instructions: topicHint,
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
-        }, { timeout: 120000 })
-        const topicsText = shapeTopicsCell(topicsResponse.data?.generated_text)
+        }, shapeTopicsCell)
+        const topicsText = topicsResult.text
         if (!topicsText) {
           throw new Error(`The AI did not return topics for weeks ${row.weeks}. Try again.`)
         }
@@ -1979,7 +1998,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         const topicName = row.title || topicLabels[index]
         setAiPipelineProgress({ completed, total, label: `Topic Outcomes ${row.weeks}` })
-        const outcomeResponse = await api.post('/curriculum/generate-syllabus-field/', {
+        const outcomeResult = await requestSyllabusField(api, {
           course_id: courseId,
           section: 'topic_outcome',
           field_label: 'Topic outcome',
@@ -1989,8 +2008,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           extra_instructions: `Topic: ${topicName}.`,
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
-        }, { timeout: 120000 })
-        const outcomeText = shapeOutcome(outcomeResponse.data?.generated_text)
+        }, shapeOutcome)
+        const outcomeText = outcomeResult.text
         if (!outcomeText) {
           throw new Error(`The AI did not return a topic outcome for weeks ${row.weeks}. Try again.`)
         }
@@ -2021,7 +2040,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setAiPipelineProgress({ completed, total, label: 'ILO and SO mapping' })
       let mapText = ''
       try {
-        const mapResponse = await api.post('/curriculum/generate-syllabus-field/', {
+        const mapResult = await requestSyllabusField(api, {
           course_id: courseId,
           section: 'topic_map',
           field_label: 'ILO and SO mapping',
@@ -2031,8 +2050,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           extra_instructions: mapInstructions,
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
-        }, { timeout: 120000 })
-        mapText = mapResponse.data?.generated_text || ''
+        })
+        mapText = mapResult.text || ''
       } catch {
         mapText = ''
       }
@@ -2114,7 +2133,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           else if (usedIloVerbs.length) extraHints.push(`Do not start with ${usedIloVerbs.join(' or ')}. Use a different verb.`)
           if (iloFocusText.trim()) extraHints.push(`The outcome is about: ${iloFocusText.trim()}.`)
         }
-        const { data } = await api.post('/curriculum/generate-syllabus-field/', {
+        const fieldResult = await requestSyllabusField(api, {
           course_id: courseId,
           section: field.section,
           field_label: field.label,
@@ -2124,8 +2143,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           extra_instructions: extraHints.join(' '),
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
-        }, { timeout: 120000 })
-        const generatedText = shapeGeneratedField(field.section, data.generated_text)
+        }, text => shapeGeneratedField(field.section, text))
+        const generatedText = fieldResult.text
         if (!generatedText) {
           throw new Error(`The AI did not return text for "${field.label}". Try generating the section again.`)
         }

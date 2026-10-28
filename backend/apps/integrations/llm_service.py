@@ -96,18 +96,14 @@ COOLDOWN_SECONDS = {
 }
 
 
-def message_text(message):
-    """Assistant text from a chat message.
-
-    Reasoning models sometimes leave content empty and put the answer in
-    reasoning. Use that text only when content itself is empty.
-    """
+def visible_text(message):
+    """Answer text from a chat message. Reasoning is not an answer."""
     if not isinstance(message, dict):
         return ''
 
     content = message.get('content')
     if isinstance(content, str) and content.strip():
-        return content
+        return content.strip()
     if isinstance(content, list):
         parts = []
         for part in content:
@@ -117,15 +113,48 @@ def message_text(message):
                 text = part.get('text') or part.get('content') or ''
                 if str(text).strip():
                     parts.append(str(text))
-        joined = '\n'.join(parts).strip()
-        if joined:
-            return joined
-
-    for key in ('reasoning', 'reasoning_content'):
-        text = message.get(key)
-        if isinstance(text, str) and text.strip():
-            return text
+        return '\n'.join(parts).strip()
     return ''
+
+
+def message_text(message):
+    """Assistant text from a chat message.
+
+    Reasoning models sometimes leave content empty and put a finished answer
+    in reasoning. Use that text only when content itself is empty.
+    """
+    text = visible_text(message)
+    if text:
+        return text
+    if not isinstance(message, dict):
+        return ''
+    for key in ('reasoning', 'reasoning_content'):
+        reasoning = message.get(key)
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning
+    return ''
+
+
+def completion_text(choice):
+    """Answer text, or None when the reply stopped before an answer was written."""
+    if not isinstance(choice, dict):
+        return ''
+    message = choice.get('message') if isinstance(choice.get('message'), dict) else {}
+    content = visible_text(message)
+    if content:
+        return content
+    if choice.get('finish_reason') == 'length':
+        return None
+    return message_text(message)
+
+
+def _move_ollama_next(providers, failed_index):
+    """Put Ollama immediately after the provider whose reply stopped."""
+    tail = providers[failed_index + 1:]
+    if 'ollama' not in tail:
+        return providers
+    rest = [name for name in tail if name != 'ollama']
+    return providers[:failed_index + 1] + ['ollama'] + rest
 
 
 def normalize_provider(choice):
@@ -320,7 +349,7 @@ class LLMService:
             try:
                 return self._chat_completion(provider, candidate, payload_messages, max_tokens)
             except ProviderError as exc:
-                if exc.kind in ('auth', 'quota'):
+                if exc.kind in ('auth', 'quota', 'incomplete'):
                     raise
                 logger.warning("LLM provider '%s' model '%s' failed: %s", provider, candidate, exc)
                 last_error = exc
@@ -355,11 +384,15 @@ class LLMService:
                 status_code=response.status_code,
             )
         try:
-            content = message_text(response.json()['choices'][0]['message'])
+            content = completion_text(response.json()['choices'][0])
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderError(provider, f'unexpected response: {response.text[:300]}') from exc
-        if not content or not content.strip():
-            raise ProviderError(provider, 'returned an empty response')
+        if content is None or not str(content).strip():
+            raise ProviderError(
+                provider,
+                'reply stopped before the answer was written',
+                kind='incomplete',
+            )
         return content
 
     def _ollama_completion(self, model, payload_messages, max_tokens):
@@ -442,26 +475,33 @@ class LLMService:
         """
         primary_provider = normalize_provider(preferred_provider) or self.default_provider
         providers_to_try = list(dict.fromkeys([primary_provider, *self.chain]))
-        # Local Ollama is last-resort fallback when free online providers fail.
+        # Ollama stays last until a reply stops before the answer is written.
+        # That reply is not retried; Ollama takes the same request next.
         if self.ollama_configured and 'ollama' not in providers_to_try:
             providers_to_try.append('ollama')
         prompt_tokens = estimate_tokens(system, *(m.get('content', '') for m in messages))
         failures = []
 
-        for provider_choice in providers_to_try:
+        index = 0
+        while index < len(providers_to_try):
+            provider_choice = providers_to_try[index]
             if provider_choice in PROVIDER_SPECS:
                 if not self.configured[provider_choice]:
+                    index += 1
                     continue
                 remaining = provider_cooldown_remaining(provider_choice)
                 if remaining:
                     failures.append(f'{provider_choice}: paused for {remaining}s after an earlier failure')
+                    index += 1
                     continue
                 if self._completion_budget(provider_choice, prompt_tokens, max_tokens) is None:
                     failures.append(f'{provider_choice}: prompt too large for its free tier')
+                    index += 1
                     continue
             elif provider_choice == 'ollama':
                 if not self.is_ollama_available():
                     failures.append('ollama: server not reachable')
+                    index += 1
                     continue
             try:
                 result = self.generate_response(
@@ -484,6 +524,13 @@ class LLMService:
             except Exception as exc:
                 logger.warning("LLM provider '%s' failed: %s", provider_choice, exc)
                 failures.append(f"{provider_choice}: {exc}")
+                if getattr(exc, 'kind', None) == 'incomplete':
+                    providers_to_try = _move_ollama_next(providers_to_try, index)
+                    logger.warning(
+                        "LLM provider '%s' reply stopped; Ollama takes over when it is reachable",
+                        provider_choice,
+                    )
+            index += 1
 
         raise ValueError(
             "AI generation failed with all available providers. "
