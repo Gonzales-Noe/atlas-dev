@@ -414,6 +414,146 @@ const blankSoCpaRow = () => ({ so_vals: Array(DEFAULT_SO_HEADERS.length).fill(''
 const blankIgaRow = () => ({ vals: Array(DEFAULT_IGA_HEADERS.length).fill('') })
 const blankCdioSdgRow = () => ({ cdio_vals: Array(DEFAULT_CDIO_HEADERS.length).fill(''), sdg_vals: Array(DEFAULT_SDG_HEADERS.length).fill('') })
 
+function frameworkHeaders(state) {
+  const list = (values, fallback) => (values && values.length ? values : [...fallback])
+  return {
+    so: list(state.so_headers, DEFAULT_SO_HEADERS),
+    iga: list(state.iga_headers, DEFAULT_IGA_HEADERS),
+    cdio: list(state.cdio_headers, DEFAULT_CDIO_HEADERS),
+    sdg: list(state.sdg_headers, DEFAULT_SDG_HEADERS),
+  }
+}
+
+function iloTaskCodes(ats, iloIndex) {
+  const tokens = new Set([`ILO${iloIndex + 1}`.toUpperCase(), String(iloIndex + 1)])
+  const codes = []
+  const seen = new Set()
+  ;(ats || []).forEach(component => {
+    ;(component.subs || []).forEach(task => {
+      const checked = (task.ilos || []).some(id => tokens.has(String(id).trim().toUpperCase()))
+      const code = String(task.code || '').trim()
+      const key = code.toUpperCase()
+      if (!checked || !code || seen.has(key)) return
+      seen.add(key)
+      codes.push(code)
+    })
+  })
+  return codes.join(', ')
+}
+
+function anyTaskIloChecked(ats) {
+  return (ats || []).some(component => (component.subs || []).some(task => (
+    String(task.code || '').trim() && (task.ilos || []).length
+  )))
+}
+
+function soColumnsForIlo(chapters, iloIndex, soHeaders) {
+  const want = String(iloIndex + 1)
+  const numbers = new Set()
+  ;(chapters || []).forEach(chapter => {
+    const ilo = String(chapter.ilo || '').trim()
+    const so = String(chapter.so || '').replace(/\D/g, '')
+    if (ilo === want && so) numbers.add(so)
+  })
+  if (!numbers.size) return soHeaders.map(() => true)
+  return soHeaders.map(header => numbers.has(String(header).replace(/\D/g, '')))
+}
+
+function withMappedAssessmentCodes(state, { onlyIfChecked = false } = {}) {
+  if (onlyIfChecked && !anyTaskIloChecked(state.ats)) return state
+  const headers = frameworkHeaders(state)
+  const iloCount = Math.max(Array.isArray(state.ilos) ? state.ilos.length : 0, 1)
+  const fill = (length, text) => Array.from({ length }, () => text)
+  return {
+    ...state,
+    so_headers: headers.so,
+    iga_headers: headers.iga,
+    cdio_headers: headers.cdio,
+    sdg_headers: headers.sdg,
+    so_cpa_rows: Array.from({ length: iloCount }, (_, index) => {
+      const prev = (state.so_cpa_rows || [])[index] || {}
+      const text = iloTaskCodes(state.ats, index)
+      const columns = soColumnsForIlo(state.tla_chapters, index, headers.so)
+      return {
+        c: prev.c || '',
+        p: prev.p || '',
+        a: prev.a || '',
+        so_vals: headers.so.map((_, column) => (columns[column] ? text : '')),
+      }
+    }),
+    iga_rows: Array.from({ length: iloCount }, (_, index) => ({
+      vals: fill(headers.iga.length, iloTaskCodes(state.ats, index)),
+    })),
+    cdio_sdg_rows: Array.from({ length: iloCount }, (_, index) => {
+      const text = iloTaskCodes(state.ats, index)
+      return {
+        cdio_vals: fill(headers.cdio.length, text),
+        sdg_vals: fill(headers.sdg.length, text),
+      }
+    }),
+  }
+}
+
+function weeksCoveredByLabel(label) {
+  const text = String(label || '').trim()
+  const range = text.match(/^(\d+)\s*-\s*(\d+)$/)
+  if (range) {
+    const start = Number(range[1])
+    const end = Number(range[2])
+    const low = Math.min(start, end)
+    const high = Math.max(start, end)
+    return Array.from({ length: high - low + 1 }, (_, offset) => low + offset)
+  }
+  const single = text.match(/^(\d+)$/)
+  return single ? [Number(single[1])] : []
+}
+
+function scheduleMarkIsPlotted(value) {
+  const mark = String(value || '').trim()
+  return Boolean(mark) && mark !== '0'
+}
+
+function mergeScheduleNamesIntoTopics(topics, wanted, knownNames) {
+  const lines = String(topics || '').split('\n')
+  const kept = lines.filter(line => {
+    const trimmed = line.trim()
+    if (!trimmed) return true
+    const isOwnLine = line === trimmed
+    return !(isOwnLine && knownNames.has(trimmed.toLowerCase()))
+  })
+  while (kept.length && !kept[kept.length - 1].trim()) kept.pop()
+  const readingIndex = kept.findIndex(line => /^reading list\s*:/i.test(line.trim()))
+  const insertAt = readingIndex === -1 ? kept.length : readingIndex
+  const present = new Set(kept.map(line => line.trim().toLowerCase()))
+  const additions = wanted.filter(name => !present.has(name.toLowerCase()))
+  kept.splice(insertAt, 0, ...additions)
+  return kept.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function applyScheduleMethodsToTopics(state, previousNames = []) {
+  const methods = Array.isArray(state.schedule_methods) ? state.schedule_methods : []
+  const names = methods.map(method => String(method.name || '').trim()).filter(name => name && name !== '0')
+  const knownNames = new Set([...names, ...previousNames].map(name => String(name || '').trim().toLowerCase()).filter(Boolean))
+  const chapters = (state.tla_chapters || []).map(chapter => {
+    const covered = new Set(weeksCoveredByLabel(chapter.weeks))
+    const wanted = []
+    const seen = new Set()
+    methods.forEach(method => {
+      const name = String(method.name || '').trim()
+      const key = name.toLowerCase()
+      if (!name || name === '0' || seen.has(key)) return
+      const plotted = (method.values || []).some((value, index) => (
+        scheduleMarkIsPlotted(value) && covered.has(index + 1)
+      ))
+      if (!plotted) return
+      seen.add(key)
+      wanted.push(name)
+    })
+    return { ...chapter, topics: mergeScheduleNamesIntoTopics(chapter.topics, wanted, knownNames) }
+  })
+  return { ...state, tla_chapters: chapters }
+}
+
 const DEFAULT_GRADING_ROWS = [
   { grade: '1.0',  rating: 'Excellent',    range: '97–100' },
   { grade: '1.25', rating: 'Very Good',    range: '94–96.99' },
@@ -1483,7 +1623,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function setSylArrObj(field, i, key, value) {
     setIsDirty(true)
     setSaveSuccess(false)
-    setSyllabusData(s => ({ ...s, [field]: s[field].map((item, j) => j === i ? { ...item, [key]: value } : item) }))
+    setSyllabusData(s => {
+      let next = { ...s, [field]: s[field].map((item, j) => j === i ? { ...item, [key]: value } : item) }
+      if (field === 'tla_chapters' && (key === 'ilo' || key === 'so')) next = withMappedAssessmentCodes(next)
+      if (field === 'tla_chapters' && key === 'weeks') next = applyScheduleMethodsToTopics(next)
+      return next
+    })
   }
   function addSylItem(field, empty) {
     setIsDirty(true)
@@ -1493,7 +1638,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function removeSylItem(field, i) {
     setIsDirty(true)
     setSaveSuccess(false)
-    setSyllabusData(s => ({ ...s, [field]: s[field].filter((_, j) => j !== i) }))
+    setSyllabusData(s => {
+      if (field !== 'schedule_methods') {
+        return { ...s, [field]: s[field].filter((_, j) => j !== i) }
+      }
+      const previousNames = (s.schedule_methods || []).map(method => method.name)
+      const schedule_methods = (s.schedule_methods || []).filter((_, j) => j !== i)
+      return applyScheduleMethodsToTopics({ ...s, schedule_methods }, previousNames)
+    })
   }
 
   // Normalize raw syllabus data — migrates old formats and initialises all structured fields
@@ -1605,7 +1757,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }))
     })()
 
-    return {
+    return applyScheduleMethodsToTopics(withMappedAssessmentCodes({
       ...EMPTY_SYLLABUS, ...raw,
       rationale: raw.rationale || '',
       ilos: Array.from({ length: iloCount }, (_, i) => storedIlos[i] || ''),
@@ -1624,7 +1776,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       custom_sections: raw.custom_sections || {},
       custom_subsections: raw.custom_subsections || {},
       custom_tables: raw.custom_tables || {},
-    }
+    }, { onlyIfChecked: true }))
   }
 
   // Add an ILO and extend every assessment task and mapping row in sync
@@ -2190,10 +2342,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         .filter(draft => draft.arrField === 'tla_chapters')
         .reduce((max, draft) => Math.max(max, (draft.arrIndex ?? 0) + 1), 0)
       if (chapterNeeded) next = ensureChapterCount(next, chapterNeeded)
-      return aiPipelineDrafts.reduce(
+      return applyScheduleMethodsToTopics(aiPipelineDrafts.reduce(
         (state, draft) => updateSyllabusWithAiText(state, draft, draft.text, draft.rows),
         next,
-      )
+      ))
     })
     setIsDirty(true)
     setSaveSuccess(false)
@@ -4982,7 +5134,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             ats={syllabusData.ats || []}
             setAts={updater => {
               setIsDirty(true); setSaveSuccess(false)
-              setSyllabusData(s => ({ ...s, ats: typeof updater === 'function' ? updater(s.ats || []) : updater }))
+              setSyllabusData(s => {
+                const ats = typeof updater === 'function' ? updater(s.ats || []) : updater
+                const next = { ...s, ats }
+                if (!anyTaskIloChecked(ats) && !anyTaskIloChecked(s.ats)) return next
+                return withMappedAssessmentCodes(next)
+              })
             }}
           />
           )}
@@ -5284,15 +5441,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
       const updScheduleMethod = (i, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
-        setSyllabusData(s => ({
-          ...s,
-          schedule_methods: s.schedule_methods.map((m, mi) => {
-            if (mi !== i) return m
-            if (key === 'name') return { ...m, name: val }
-            const values = [...(m.values || [])]; values[ci] = val
-            return { ...m, values }
-          }),
-        }))
+        setSyllabusData(s => {
+          const current = s.schedule_methods?.length
+            ? s.schedule_methods
+            : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
+          const previousNames = current.map(method => method.name)
+          const schedule_methods = current.map((method, methodIndex) => {
+            if (methodIndex !== i) return method
+            if (key === 'name') return { ...method, name: val }
+            const values = [...(method.values || [])]
+            values[ci] = val
+            return { ...method, values }
+          })
+          return applyScheduleMethodsToTopics({ ...s, schedule_methods }, previousNames)
+        })
       }
       return (
         <>
@@ -5423,11 +5585,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={TABLE_TD}>
                       {inlineInput(m.name || '', e => updScheduleMethod(i, 'name', 0, e.target.value), 160)}
                     </td>
-                    {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => (
-                      <td key={w} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                        {inlineInput((m.values || [])[w] || '', e => updScheduleMethod(i, 'values', w, e.target.value), 32, undefined, { numeric: true })}
-                      </td>
-                    ))}
+                    {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => {
+                      const plotted = scheduleMarkIsPlotted((m.values || [])[w])
+                      return (
+                        <td key={w} style={{ ...TABLE_TD, textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={plotted}
+                            aria-label={`${m.name || 'Assessment method'} week ${w + 1}`}
+                            onChange={e => updScheduleMethod(i, 'values', w, e.target.checked ? 'x' : '')}
+                            style={{ width: 16, height: 16, accentColor: '#86EFAC', cursor: 'pointer' }}
+                          />
+                        </td>
+                      )
+                    })}
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                       <RemoveBtn onClick={() => removeSylItem('schedule_methods', i)} disabled={scheduleMethods.length <= 1} />
                     </td>
