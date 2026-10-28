@@ -2,7 +2,7 @@
 // 3-panel workspace — shared dark faculty workspace theme.
 // Left: nav tabs | Middle: content + syllabus section tabs | Right: upload
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Autocomplete from '@mui/material/Autocomplete'
 import AutoAlert from './AutoAlert'
@@ -495,17 +495,26 @@ function withMappedAssessmentCodes(state, { onlyIfChecked = false } = {}) {
 }
 
 function weeksCoveredByLabel(label) {
-  const text = String(label || '').trim()
-  const range = text.match(/^(\d+)\s*-\s*(\d+)$/)
-  if (range) {
-    const start = Number(range[1])
-    const end = Number(range[2])
-    const low = Math.min(start, end)
-    const high = Math.max(start, end)
+  const text = String(label ?? '').trim().replace(/[–—]/g, '-')
+  if (!text || text === '0') return []
+  const range = text.match(/(\d+)\s*-\s*(\d+)/)
+  const withoutWeekWord = text.replace(/weeks?/gi, '')
+  if (range && !/[a-z]/i.test(withoutWeekWord)) {
+    const low = Math.min(Number(range[1]), Number(range[2]))
+    const high = Math.max(Number(range[1]), Number(range[2]))
+    if (high - low > 30) return []
     return Array.from({ length: high - low + 1 }, (_, offset) => low + offset)
   }
-  const single = text.match(/^(\d+)$/)
-  return single ? [Number(single[1])] : []
+  if (/^\d+$/.test(text) || /^weeks?\s*\d+$/i.test(text)) {
+    return [Number(text.match(/\d+/)[0])]
+  }
+  return []
+}
+
+function weeksForChapter(chapter) {
+  const fromWeeks = weeksCoveredByLabel(chapter?.weeks)
+  if (fromWeeks.length) return fromWeeks
+  return weeksCoveredByLabel(chapter?.chapter)
 }
 
 function scheduleMarkIsPlotted(value) {
@@ -514,12 +523,18 @@ function scheduleMarkIsPlotted(value) {
 }
 
 function mergeScheduleNamesIntoTopics(topics, wanted, knownNames) {
-  const lines = String(topics || '').split('\n')
-  const kept = lines.filter(line => {
+  const lines = String(topics || '').replace(/\r\n/g, '\n').split('\n')
+  const kept = lines.filter((line, index) => {
     const trimmed = line.trim()
     if (!trimmed) return true
-    const isOwnLine = line === trimmed
-    return !(isOwnLine && knownNames.has(trimmed.toLowerCase()))
+    if (/^\s/.test(line)) return true
+    if (!knownNames.has(trimmed.toLowerCase())) return true
+    if (index !== 0) return false
+    const laterContent = lines.slice(1).some(item => {
+      const text = item.trim()
+      return text && !knownNames.has(text.toLowerCase())
+    })
+    return laterContent
   })
   while (kept.length && !kept[kept.length - 1].trim()) kept.pop()
   const readingIndex = kept.findIndex(line => /^reading list\s*:/i.test(line.trim()))
@@ -535,7 +550,7 @@ function applyScheduleMethodsToTopics(state, previousNames = []) {
   const names = methods.map(method => String(method.name || '').trim()).filter(name => name && name !== '0')
   const knownNames = new Set([...names, ...previousNames].map(name => String(name || '').trim().toLowerCase()).filter(Boolean))
   const chapters = (state.tla_chapters || []).map(chapter => {
-    const covered = new Set(weeksCoveredByLabel(chapter.weeks))
+    const covered = new Set(weeksForChapter(chapter))
     const wanted = []
     const seen = new Set()
     methods.forEach(method => {
@@ -1132,6 +1147,24 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
         inputMode: 'numeric',
         style: { padding: '5px 8px' },
       }}
+    />
+  )
+}
+
+function TopicsCell({ value, onChange }) {
+  const ref = useRef(null)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.max(el.scrollHeight, 44)}px`
+  }, [value])
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
     />
   )
 }
@@ -1735,7 +1768,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // 6. Assessment schedule methods
     const normSchedule = (raw.schedule_methods || []).map(m => ({
       name: m.name || '',
-      values: Array.from({ length: 16 }, (_, j) => (m.values || [])[j] || ''),
+      taskId: m.taskId || '',
+      values: Array.from({ length: TLA_WEEK_COUNT }, (_, j) => (m.values || [])[j] || ''),
     }))
 
     const normTasksResult = normTasks(raw.assessment_tasks || [])
@@ -5485,7 +5519,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           const schedule_methods = current.map((method, methodIndex) => {
             if (methodIndex !== i) return method
             if (key === 'name') return { ...method, name: val }
-            const values = [...(method.values || [])]
+            const values = Array.from(
+              { length: Math.max(TLA_WEEK_COUNT, (method.values || []).length, ci + 1) },
+              (_, index) => (method.values || [])[index] || '',
+            )
             values[ci] = val
             return { ...method, values }
           })
@@ -5524,16 +5561,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   const _btnLabel = _existingMod ? 'View Module' : 'Generate Module'
                   const _btnColor = _existingMod ? '#1565c0' : MAROON
                   const _btnHover = _existingMod ? '#e3f2fd' : MAROON_LIGHT
+                  const coveredWeeks = weeksForChapter(ch)
                   return (
-                  <tr key={i}>
+                  <tr key={i} data-tla-weeks={coveredWeeks.join(' ')}>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 40, undefined, { numeric: true })}</td>
                     <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
-                      <textarea
+                      <TopicsCell
                         value={ch.topics || ''}
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
-                        onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
-                        ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -5627,7 +5662,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             type="checkbox"
                             checked={plotted}
                             aria-label={`${m.name || 'Assessment method'} week ${w + 1}`}
-                            onChange={e => updScheduleMethod(i, 'values', w, e.target.checked ? 'x' : '')}
+                            onChange={e => {
+                              const week = w + 1
+                              updScheduleMethod(i, 'values', w, e.target.checked ? 'x' : '')
+                              requestAnimationFrame(() => {
+                                document.querySelector(`[data-tla-weeks~="${week}"]`)
+                                  ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+                              })
+                            }}
                             style={{ width: 16, height: 16, accentColor: '#86EFAC', cursor: 'pointer' }}
                           />
                         </td>
