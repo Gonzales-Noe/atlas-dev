@@ -71,7 +71,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
-import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
+import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes } from '../utils/tosFormula'
 import { collectLectureDiscussionTopics, isLectureDiscussionTask, lectureTopicLines } from '../utils/lectureTopics'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
@@ -2640,26 +2640,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return levels.size > 0 ? Array.from(levels) : ['Remember']
   }
 
-  function selectedTosBloomPlan(selectedTopics) {
-    const selected = new Set((selectedTopics || []).map(topic => String(topic || '').trim().toLowerCase()))
-    if (selected.size === 0) return { total: 0, counts: {} }
-    const exam = materializeTosExam(getAssessmentBlueprint().selectedExam || { topics: [] })
-    const counts = {}
-    let total = 0
-    for (const row of exam.topics || []) {
-      const name = String(row?.topic || row?.label || '').trim().toLowerCase()
-      if (!selected.has(name)) continue
-      for (const key of TOS_BLOOM_KEYS) {
-        const count = Number(row?.bloom_items?.[key] || 0)
-        if (count <= 0) continue
-        const label = key.charAt(0).toUpperCase() + key.slice(1)
-        counts[label] = (counts[label] || 0) + count
-        total += count
-      }
-    }
-    return { total, counts }
-  }
-
   function formatAssessmentId(id) {
     const raw = String(id || '').trim()
     if (!raw) return ''
@@ -2735,11 +2715,40 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     )
   }
 
+  function examSelectValue(exam) {
+    if (!exam) return ''
+    return `${exam.examCode || ''}::${exam.examLabel || ''}`
+  }
+
+  function applyAssessmentGenExam(exam, { clearTopics = true } = {}) {
+    if (!exam) return
+    setAssessmentParams(prev => ({
+      ...prev,
+      source_exam_code: exam.examCode || '',
+      source_exam_label: exam.examLabel || '',
+      target_total_items: exam.totalItems || 0,
+      assessment_type: 'Major Examination',
+    }))
+    setAssessmentGenTitle(exam.examLabel || 'Assessment')
+    setAssessmentGenItemCount(Math.max(1, Number(exam.totalItems || 1)))
+    if (clearTopics) setAssessmentGenSelectedTopics([])
+  }
+
   function openAssessmentGenDialog(mode, prefillTopic) {
+    const majorExams = getMajorTosExams()
     const blueprint = getAssessmentBlueprint()
+    const selectedExam = blueprint.selectedExam || majorExams[0] || null
     setAssessmentGenMode(mode)
-    setAssessmentGenTitle(blueprint.hasMajorExam ? blueprint.assessmentName : 'Assessment')
-    setAssessmentGenItemCount(Math.max(1, Number(blueprint.totalItems || 50)))
+    if (selectedExam) {
+      setAssessmentParams(prev => ({
+        ...prev,
+        source_exam_code: selectedExam.examCode || '',
+        source_exam_label: selectedExam.examLabel || '',
+        target_total_items: selectedExam.totalItems || 0,
+      }))
+    }
+    setAssessmentGenTitle(selectedExam?.examLabel || 'Assessment')
+    setAssessmentGenItemCount(Math.max(1, Number(selectedExam?.totalItems || blueprint.totalItems || 50)))
     if (mode === 'single' && prefillTopic) {
       setAssessmentGenSelectedTopics([prefillTopic])
     } else {
@@ -2768,7 +2777,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         extra_instructions: '',
         selected_doc_ids: selectedIds,
         source_exam_code: blueprint.examCode,
-        source_exam_label: assessmentGenTitle || blueprint.assessmentName,
+        source_exam_label: blueprint.assessmentName || assessmentGenTitle,
         faculty_topics: assessmentGenSelectedTopics,
         total_items: blueprint.hasMajorExam ? undefined : assessmentGenItemCount,
       }, { timeout: 300000 })
@@ -6320,7 +6329,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const blueprint = getAssessmentBlueprint()
       const assessments = workspaceApi.data?.assessments || []
       const assessmentGenTopics = assessmentGenAvailableTopics()
-      const canGenerateAssessment = assessmentGenTopics.length > 0
+      const canGenerateAssessment = majorExams.some(exam =>
+        (exam.topics || []).some(row => String(row?.topic || row?.label || '').trim())
+      )
 
       if (selectedAssessment && assessmentDetail) {
         return (
@@ -6663,13 +6674,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                        px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
                   Create Assessment
                 </Button>
-                <Button size="small" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={!canGenerateAssessment || actionLoading}
-                  onClick={() => openAssessmentGenDialog('single')}
-                  sx={{ bgcolor: '#1565c0', color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#0d47a1' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
-                  Generate Assessment
-                </Button>
               </Box>
             </Box>
 
@@ -6688,22 +6692,60 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </DialogTitle>
               <DialogContent>
                 <Stack spacing={2} sx={{ mt: 0.5 }}>
-                  <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
-                    {'Select TOS topics to cover. The assessment uses each selected topic\'s Bloom item counts exactly.'}
-                  </Alert>
-                  <LField label="Assessment Title" value={assessmentGenTitle}
-                    onChange={e => setAssessmentGenTitle(e.target.value)} />
+                  <Box sx={{
+                    px: 1.5, py: 1.15, borderRadius: 1.5,
+                    bgcolor: 'rgba(255,255,255,0.04)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                  }}>
+                    <Typography sx={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.72)', lineHeight: 1.5 }}>
+                      Choose an exam generated in TOS, then select the topics to cover. TOS supplies the assessment structure, Bloom distribution, and item count.
+                    </Typography>
+                  </Box>
+                  {majorExams.length > 0 && (
+                    <LField
+                      select
+                      label="Exam from TOS"
+                      value={examSelectValue(
+                        majorExams.find(exam =>
+                          (exam.examCode && exam.examCode === assessmentParams.source_exam_code)
+                          || (exam.examLabel && exam.examLabel === assessmentParams.source_exam_label)
+                        ) || majorExams[0]
+                      )}
+                      onChange={e => {
+                        const exam = majorExams.find(item => examSelectValue(item) === e.target.value)
+                        applyAssessmentGenExam(exam)
+                      }}
+                    >
+                      {majorExams.map(exam => (
+                        <MenuItem key={examSelectValue(exam)} value={examSelectValue(exam)}>
+                          {exam.examLabel}
+                        </MenuItem>
+                      ))}
+                    </LField>
+                  )}
+                  <Box>
+                    <LField label="Assessment Title" value={assessmentGenTitle}
+                      onChange={e => setAssessmentGenTitle(e.target.value)} />
+                    {majorExams.length > 0 && (
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mt: 0.75 }}>
+                        {(() => {
+                          const allocated = Number(blueprint.totalItems || 0)
+                          return `${allocated} item${allocated === 1 ? '' : 's'} allocated by TOS`
+                        })()}
+                      </Typography>
+                    )}
+                  </Box>
                   {!majorExams.length && (
                     <LField label="Number of Items" type="number" value={assessmentGenItemCount}
                       onChange={e => setAssessmentGenItemCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
                       inputProps={{ min: 1, max: 100 }} />
                   )}
                   <Box>
-                    <Typography variant="caption" sx={{ color: '#888', fontWeight: 600, display: 'block', mb: 0.5 }}>
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontWeight: 600, display: 'block', mb: 0.5 }}>
                       Topics to cover
                     </Typography>
                     {assessmentGenTopics.length === 0 ? (
-                      <Typography variant="caption" sx={{ color: '#aaa' }}>No topics available.</Typography>
+                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>No topics available for this exam.</Typography>
                     ) : (
                       <Stack spacing={0.25} sx={{ maxHeight: 260, overflowY: 'auto' }}>
                         {assessmentGenTopics.map(({ topic, week, moduleTitle }) => (
@@ -6713,7 +6755,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   '&:hover': { bgcolor: 'rgba(255,255,255,0.04)' } }}>
                             <Checkbox size="small"
                               checked={assessmentGenSelectedTopics.includes(topic)}
-                              sx={{ p: 0.5, '&.Mui-checked': { color: MAROON } }} />
+                              sx={{ p: 0.5, color: 'rgba(255,255,255,0.45)', '&.Mui-checked': { color: MAROON } }} />
                             <Typography variant="body2" sx={{ fontSize: '0.84rem' }}>
                               {week ? `Wk ${week} — ` : ''}{topic}
                               {moduleTitle ? `  ·  Module: ${moduleTitle}` : '  ·  No matching module'}
@@ -6723,17 +6765,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       </Stack>
                     )}
                   </Box>
-                  {majorExams.length > 0 && (() => {
-                    const plan = selectedTosBloomPlan(assessmentGenSelectedTopics)
-                    const breakdown = Object.entries(plan.counts).map(([level, count]) => `${level} ${count}`).join(', ')
-                    return (
-                      <Typography variant="caption" sx={{ color: '#555', display: 'block' }}>
-                        {plan.total > 0
-                          ? `This assessment will have ${plan.total} item${plan.total === 1 ? '' : 's'}: ${breakdown}.`
-                          : 'Selected topics have no Bloom item counts yet. Set class hours, total test items, and Bloom % on the TOS first.'}
-                      </Typography>
-                    )
-                  })()}
                   {actionLoading && (
                     <Box sx={{ textAlign: 'center', py: 1 }}>
                       <CircularProgress size={22} sx={{ color: MAROON }} />
