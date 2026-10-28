@@ -324,6 +324,8 @@ class SyllabusFieldPromptTests(SimpleTestCase):
         self.assertEqual(CoTPromptBuilder.field_max_tokens('topics'), 180)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('topic_outcome'), 50)
         self.assertEqual(CoTPromptBuilder.field_max_tokens('topic_map'), 200)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('framework_columns'), 120)
+        self.assertIn('framework_columns', CoTPromptBuilder.GENERATABLE_SYLLABUS_SECTIONS)
 
         _, outcome = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name='Information Management',
@@ -355,6 +357,22 @@ class SyllabusFieldPromptTests(SimpleTestCase):
         self.assertIn('ILO number, tab, SO number', mapped)
         self.assertIn('1. Define a relational schema.', mapped)
         self.assertNotIn('TASK:', mapped)
+
+        _, columns = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Information Management',
+            course_code='IT 221',
+            field_label='Framework column numbers',
+            section='framework_columns',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            extra_instructions='SO 5: Design a system.\nILO 1: Design a database.',
+        )
+        self.assertIn('Do not write the statements again.', columns)
+        self.assertIn('SO 5: Design a system.', columns)
+        self.assertIn('SO: n, n', columns)
+        self.assertTrue(field_reply_is_usable('framework_columns', 'SO: 5\nIGA: none\nCDIO: 2\nSDG: none'))
+        self.assertFalse(field_reply_is_usable('framework_columns', 'SO: none\nIGA: none'))
 
         _, topics = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name='Analytics Techniques and Tools',

@@ -15,7 +15,6 @@
 const field = (key, label, type = 'text') => ({ key, label, type })
 
 const iloRowLabels = ['ILO1', 'ILO2', 'ILO3', 'ILO4', 'ILO5', 'ILO6', 'ILO7']
-const blankIloRows = Array.from({ length: 7 }, () => ['', '', '', ''])
 
 export const SYLLABUS_SECTION_BLUEPRINTS = [
   {
@@ -282,46 +281,28 @@ export const SYLLABUS_SECTION_BLUEPRINTS = [
         key: 'ilo-so-cpa-map',
         title: 'STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)',
         rowLabels: { header: 'ILOs', values: iloRowLabels },
-        columnGroups: [{ title: 'STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)', span: 4 }],
-        columns: ['2', '3', 'P', 'A'],
-        defaultRows: [
-          ['WA LA PA', 'LA', 'WA PA', ''],
-          ['WA LA MA', 'LA', 'WA MA', 'LA'],
-          ['WA LA FA FP', 'LA FP', 'WA FA', 'LA FP'],
-          ...blankIloRows.slice(3),
-        ],
+        columnGroups: [{ title: 'STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)', span: 8 }],
+        columns: ['', '', '', '', '', 'C', 'P', 'A'],
+        defaultRows: Array.from({ length: 7 }, () => ['', '', '', '', '', '', '', '']),
       },
       {
         key: 'ilo-iga-map',
         title: 'INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)',
         rowLabels: { header: 'ILOs', values: iloRowLabels },
-        columnGroups: [{ title: 'INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)', span: 4 }],
-        columns: ['2', '3', '4', '5'],
-        defaultRows: [
-          ['WA PA', 'LA', 'LA', ''],
-          ['WA MA', 'LA', 'LA', ''],
-          ['WA FA', 'LA FP', 'LA FP', ''],
-          ...blankIloRows.slice(3),
-        ],
+        columnGroups: [{ title: 'INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)', span: 6 }],
+        columns: ['', '', '', '', '', ''],
+        defaultRows: Array.from({ length: 7 }, () => ['', '', '', '', '', '']),
       },
       {
         key: 'ilo-cdio-sdg-map',
         title: 'CDIO SKILLS and SDG Skills: Mapping of Assessment Tasks (AT)',
         rowLabels: { header: 'ILOs', values: iloRowLabels },
         columnGroups: [
-          { title: 'CDIO SKILLS', span: 1 },
-          { title: 'SDG Skills', span: 2 },
+          { title: 'CDIO SKILLS', span: 3 },
+          { title: 'SDG Skills', span: 4 },
         ],
-        columns: ['4', '1', '5'],
-        defaultRows: [
-          ['WA LA PA', 'WA PA', ''],
-          ['WA LA MA', 'WA MA', 'LA'],
-          ['WA LA FA FP', 'WA FA', 'LA FP'],
-          ['', '', ''],
-          ['', '', ''],
-          ['', '', ''],
-          ['', '', ''],
-        ],
+        columns: ['', '', '', '', '', '', ''],
+        defaultRows: Array.from({ length: 7 }, () => ['', '', '', '', '', '', '']),
       },
     ],
   },

@@ -43,6 +43,8 @@ def field_reply_is_usable(section: str, text: str) -> bool:
         return False
     if section == "topic_map":
         return re.search(r"\d+\D+\d+", cleaned) is not None
+    if section == "framework_columns":
+        return bool(re.search(r"\b(SO|IGA|CDIO|SDG)\b", cleaned, re.IGNORECASE) and re.search(r"\d", cleaned))
     return True
 
 
@@ -459,6 +461,7 @@ class CoTPromptBuilder:
     SYLLABUS_MAX_TOKENS = 900
     GENERATABLE_SYLLABUS_SECTIONS = frozenset({
         "rationale", "tlas", "ilo", "topics", "topic_outcome", "week_plan", "topic_map",
+        "framework_columns",
     })
     _FIELD_MAX_TOKENS = {
         "rationale": 160,
@@ -468,6 +471,7 @@ class CoTPromptBuilder:
         "topic_outcome": 50,
         "week_plan": 400,
         "topic_map": 200,
+        "framework_columns": 120,
     }
 
     @classmethod
@@ -1193,6 +1197,26 @@ OUTPUT — Return the assessment using exactly this structure:
                 f"Course code: {course_code or 'N/A'}\n\n"
                 f"{extra_instructions}\n\n"
                 "One line per topic. ILO number, tab, SO number. Use only the numbers listed above."
+            )
+            return system, user
+
+        if section == "framework_columns":
+            system = (
+                "You choose stored framework numbers that align with this course. "
+                "Reply with four lines only. Do not write framework statements."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                f"{extra_instructions}\n\n"
+                "Read the framework statements, the intended learning outcomes, and the topics.\n"
+                "Choose the numbers whose statements align with those outcomes and topics.\n"
+                "Use only numbers from the lists above. Write none when a group does not align.\n"
+                "Do not write the statements again.\n\n"
+                "SO: n, n\n"
+                "IGA: n\n"
+                "CDIO: n, n\n"
+                "SDG: none"
             )
             return system, user
 
