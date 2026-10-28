@@ -1232,7 +1232,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
                   )}
                     {at.subs.map((sub, si) => {
                       return (
-                        <div key={sub.code} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: si < at.subs.length - 1 ? '1px solid var(--c-border)' : 'none', flexWrap: 'wrap' }}>
+                        <div key={si} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 0', borderBottom: si < at.subs.length - 1 ? '1px solid var(--c-border)' : 'none', flexWrap: 'wrap' }}>
                           <div style={{ flex: '1 1 200px', maxWidth: '75%', minWidth: 0, display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                             <input value={sub.code} onChange={e => updSub(at.code, si, 'code', e.target.value)} style={{ ...inputStyle, fontSize: '0.72rem', fontFamily: 'monospace', fontWeight: 700, width: 52, flexShrink: 0, boxSizing: 'border-box' }} />
                             <input value={sub.label} onChange={e => updSub(at.code, si, 'label', e.target.value)} style={{ ...inputStyle, fontSize: '0.8rem', flex: 1, minWidth: 0, width: '100%', boxSizing: 'border-box' }} />
