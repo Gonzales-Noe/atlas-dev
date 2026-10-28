@@ -58,7 +58,7 @@ export default function AdminAcademicStructure() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState(0)
-  const [sectionForm, setSectionForm] = useState({ code: '', name: '', year_number: '' })
+  const [sectionForm, setSectionForm] = useState({ code: '', year_number: '' })
   const [courseForm, setCourseForm] = useState(emptyCourse)
   const [editingCourse, setEditingCourse] = useState(null)
   const [courseFilter, setCourseFilter] = useState('')
@@ -131,10 +131,9 @@ export default function AdminAcademicStructure() {
     await run(async () => {
       await createSection({
         code: sectionForm.code.trim(),
-        name: sectionForm.name.trim(),
         year_number: sectionForm.year_number === '' ? null : Number(sectionForm.year_number),
       })
-      setSectionForm({ code: '', name: '', year_number: '' })
+      setSectionForm({ code: '', year_number: '' })
     }, 'Section added.')
   }
 
@@ -290,13 +289,10 @@ export default function AdminAcademicStructure() {
         <div style={{ padding: 22 }}>
           {tab === 0 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr) auto', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(160px, 1fr) auto', gap: 12, marginBottom: 20 }}>
                 <TextField label="Section code" size="small" value={sectionForm.code}
                   onChange={event => setSectionForm(current => ({ ...current, code: event.target.value }))}
                   sx={inputSx} inputProps={{ maxLength: 50 }} />
-                <TextField label="Section name (optional)" size="small" value={sectionForm.name}
-                  onChange={event => setSectionForm(current => ({ ...current, name: event.target.value }))}
-                  sx={inputSx} inputProps={{ maxLength: 100 }} />
                 <TextField select label="Year level" size="small" value={sectionForm.year_number}
                   onChange={event => setSectionForm(current => ({ ...current, year_number: event.target.value }))}
                   sx={inputSx}>
@@ -313,13 +309,13 @@ export default function AdminAcademicStructure() {
                 <TableContainer>
                   <Table size="small">
                     <TableHead><TableRow>
-                      {['Section', 'Name', 'Year', ''].map(label => <TableCell key={label} sx={headCellSx}>{label}</TableCell>)}
+                      {['Section', 'Year', ''].map(label => <TableCell key={label} sx={headCellSx}>{label}</TableCell>)}
                     </TableRow></TableHead>
                     <TableBody>
                       {sectionGroups.map(group => (
                         <Fragment key={group.key}>
                           <TableRow>
-                            <TableCell colSpan={4} sx={groupHeaderSx}>
+                            <TableCell colSpan={3} sx={groupHeaderSx}>
                               {group.label}
                               <span style={groupCountSx}>
                                 {group.sections.length} section{group.sections.length === 1 ? '' : 's'}
@@ -329,7 +325,6 @@ export default function AdminAcademicStructure() {
                           {group.sections.map(section => (
                             <TableRow key={section.section_id}>
                               <TableCell sx={bodyCellSx}>{section.code}</TableCell>
-                              <TableCell sx={bodyCellSx}>{section.name || '—'}</TableCell>
                               <TableCell sx={bodyCellSx}>
                                 <TextField select size="small" value={section.year_number ?? ''}
                                   disabled={saving}
@@ -355,7 +350,7 @@ export default function AdminAcademicStructure() {
                         </Fragment>
                       ))}
                       {!structure.sections.length && (
-                        <TableRow><TableCell colSpan={4} align="center" sx={bodyCellSx}>No sections have been added.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={3} align="center" sx={bodyCellSx}>No sections have been added.</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -366,13 +361,18 @@ export default function AdminAcademicStructure() {
 
           {tab === 1 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(200px, 2.2fr) minmax(90px, 0.6fr)', gap: 12, marginBottom: 12 }}>
                 <TextField label="Course code" size="small" value={courseForm.course_code}
                   onChange={event => setCourseForm(current => ({ ...current, course_code: event.target.value }))}
                   sx={inputSx} inputProps={{ maxLength: 100 }} />
                 <TextField label="Course title" size="small" value={courseForm.course_title}
                   onChange={event => setCourseForm(current => ({ ...current, course_title: event.target.value }))}
                   sx={inputSx} inputProps={{ maxLength: 255 }} />
+                <TextField label="Units" type="number" size="small" value={courseForm.units}
+                  onChange={event => setCourseForm(current => ({ ...current, units: event.target.value }))}
+                  sx={inputSx} inputProps={{ min: 0, step: 0.5 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
                 <TextField select label="Section (optional)" size="small" value={courseForm.section}
                   onChange={event => setCourseForm(current => ({ ...current, section: event.target.value }))}
                   sx={inputSx}>
@@ -390,26 +390,25 @@ export default function AdminAcademicStructure() {
                     <MenuItem key={category.value} value={category.value}>{category.label}</MenuItem>
                   ))}
                 </TextField>
-                <TextField label="Units (optional)" type="number" size="small" value={courseForm.units}
-                  onChange={event => setCourseForm(current => ({ ...current, units: event.target.value }))}
-                  sx={inputSx} inputProps={{ min: 0, step: 0.5 }} />
                 <TextField label="Description (optional)" size="small" value={courseForm.description}
                   onChange={event => setCourseForm(current => ({ ...current, description: event.target.value }))}
                   sx={inputSx} />
               </div>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-                <PrimaryBtn small disabled={saving || !courseForm.course_code.trim() || !courseForm.course_title.trim()} onClick={saveCourse}>
-                  <AddIcon fontSize="small" /> {editingCourse ? 'Update course' : 'Add course'}
-                </PrimaryBtn>
-                {editingCourse && (
-                  <OutlineBtn small disabled={saving} onClick={() => { setEditingCourse(null); setCourseForm(emptyCourse()) }}>
-                    Cancel
-                  </OutlineBtn>
-                )}
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <PrimaryBtn small disabled={saving || !courseForm.course_code.trim() || !courseForm.course_title.trim()} onClick={saveCourse}>
+                    <AddIcon fontSize="small" /> {editingCourse ? 'Update course' : 'Add course'}
+                  </PrimaryBtn>
+                  {editingCourse && (
+                    <OutlineBtn small disabled={saving} onClick={() => { setEditingCourse(null); setCourseForm(emptyCourse()) }}>
+                      Cancel
+                    </OutlineBtn>
+                  )}
+                </div>
+                <TextField placeholder="Filter courses by code or title…" size="small"
+                  sx={{ ...inputSx, width: 280, maxWidth: '100%' }}
+                  onChange={event => setCourseFilter(event.target.value)} value={courseFilter} />
               </div>
-              <TextField placeholder="Filter courses by code or title…" size="small"
-                sx={{ ...inputSx, maxWidth: 320, mb: 1.5 }}
-                onChange={event => setCourseFilter(event.target.value)} value={courseFilter} />
               {loading ? <LoadingState label="Loading courses..." /> : (
                 <TableContainer>
                   <Table size="small">
