@@ -1,7 +1,6 @@
 // Enriched faculty workspace header: back button + course identity + status.
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Chip from '@mui/material/Chip'
 import IconButton from '@mui/material/IconButton'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
@@ -10,7 +9,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked'
 import SchoolIcon from '@mui/icons-material/School'
 
-export default function WorkspacePageHeader({ course, activeLabel, done, doneCount, totalSteps, onBack, onToggleDone, actionLoading }) {
+export default function WorkspacePageHeader({ course, activeLabel, done, onBack, onToggleDone, actionLoading }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', minWidth: 0 }}>
       <Tooltip title="Back to courses">
@@ -31,8 +30,6 @@ export default function WorkspacePageHeader({ course, activeLabel, done, doneCou
             <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: '#86EFAC' }}>{course.course_code}</Typography>
           )}
           <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>Now working on: {activeLabel}</Typography>
-          <Chip size="small" label={doneCount + '/' + totalSteps + ' modules done'}
-            sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700, bgcolor: 'rgba(22,163,74,0.16)', color: '#86EFAC', border: '1px solid rgba(22,163,74,0.35)' }} />
         </Box>
       </Box>
       <Tooltip title={done ? 'Mark this module as not yet approved' : 'Approve this generation (Step 11: Faculty Review and Approval)'}>

@@ -41,20 +41,6 @@ PROVIDER_SPECS = {
         default_model='openai/gpt-oss-120b',
         max_request_tokens=7800,
     ),
-    'nvidia': ProviderSpec(
-        label='NVIDIA NIM',
-        base_url='https://integrate.api.nvidia.com/v1',
-        key_envs=('NVIDIA_API_KEY',),
-        model_env='NVIDIA_MODEL',
-        default_model='nvidia/nemotron-3-super-120b-a12b',
-    ),
-    'mistral': ProviderSpec(
-        label='Mistral',
-        base_url='https://api.mistral.ai/v1',
-        key_envs=('MISTRAL_API_KEY',),
-        model_env='MISTRAL_MODEL',
-        default_model='mistral-small-latest',
-    ),
     'gemma': ProviderSpec(
         label='Google AI Studio (Gemma)',
         base_url='https://generativelanguage.googleapis.com/v1beta/openai',
@@ -82,16 +68,9 @@ PROVIDER_SPECS = {
             'google/gemma-4-26b-a4b-it:free',
         ),
     ),
-    'huggingface': ProviderSpec(
-        label='Hugging Face',
-        base_url='https://router.huggingface.co/v1',
-        key_envs=('HF_TOKEN',),
-        model_env='HF_LLM_MODEL',
-        default_model='openai/gpt-oss-120b',
-    ),
 }
 
-DEFAULT_CHAIN = ['groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+DEFAULT_CHAIN = ['groq', 'gemma', 'cloudflare', 'openrouter']
 DEFAULT_GROQ_MODEL = PROVIDER_SPECS['groq'].default_model
 DEFAULT_OPENROUTER_MODEL = PROVIDER_SPECS['openrouter'].default_model
 
@@ -509,5 +488,5 @@ class LLMService:
         raise ValueError(
             "AI generation failed with all available providers. "
             + ("; ".join(failures) if failures else
-               "No providers are configured. Add at least one free API key (e.g. GROQ_API_KEY, NVIDIA_API_KEY).")
+               "No providers are configured. Add at least one free API key (e.g. GROQ_API_KEY).")
         )

@@ -12,7 +12,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
 from apps.integrations.syllabus_pipeline import _parse_refine_flag
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
-from apps.integrations.llm_service import LLMService, message_text
+from apps.integrations.llm_service import DEFAULT_CHAIN, LLMService, message_text
 from apps.integrations.models import GlobalDocument
 from apps.integrations.views import (
     list_audit_logs,
@@ -26,7 +26,7 @@ def _service(*configured):
     """LLMService with only the given providers configured, independent of .env."""
     service = LLMService()
     service.configured = {name: name in configured for name in service.configured}
-    service.chain = ['groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface']
+    service.chain = list(DEFAULT_CHAIN)
     return service
 
 
@@ -46,7 +46,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(generated_text, 'Draft text')
 
     def test_walks_the_chain_until_a_provider_succeeds(self):
-        service = _service('openrouter', 'groq', 'nvidia')
+        service = _service('openrouter', 'groq', 'gemma')
         service.default_provider = 'openrouter'
 
         with patch.object(
@@ -61,10 +61,10 @@ class LLMProviderFallbackTests(SimpleTestCase):
             )
 
         self.assertEqual(generated_text, 'Draft text')
-        self.assertEqual(provider_used, 'nvidia')
+        self.assertEqual(provider_used, 'gemma')
         self.assertEqual(
             [call.kwargs['provider_choice'] for call in generate_response.call_args_list],
-            ['openrouter', 'groq', 'nvidia'],
+            ['openrouter', 'groq', 'gemma'],
         )
 
     def test_legacy_and_auto_provider_names(self):
@@ -107,7 +107,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(generate_response.call_count, 1)
 
     def test_rate_limited_provider_is_paused_for_later_requests(self):
-        service = _service('groq', 'nvidia')
+        service = _service('groq', 'gemma')
         service.api_keys = {name: 'key' for name in service.api_keys}
         rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
         success = MagicMock(ok=True, status_code=200, headers={})
@@ -117,13 +117,13 @@ class LLMProviderFallbackTests(SimpleTestCase):
             first = service.generate_response_with_fallback([{'role': 'user', 'content': 'Hi'}], return_provider=True)
             second = service.generate_response_with_fallback([{'role': 'user', 'content': 'Hi'}], return_provider=True)
 
-        self.assertEqual(first, ('Draft text', 'nvidia'))
-        self.assertEqual(second, ('Draft text', 'nvidia'))
+        self.assertEqual(first, ('Draft text', 'gemma'))
+        self.assertEqual(second, ('Draft text', 'gemma'))
         self.assertEqual(post.call_count, 3)
         self.assertGreater(llm_service.provider_cooldown_remaining('groq'), 0)
 
     def test_large_prompt_skips_groq_and_caps_its_completion_budget(self):
-        service = _service('groq', 'nvidia')
+        service = _service('groq', 'gemma')
         big_prompt = 'x' * 4 * 9000
 
         with patch.object(service, 'generate_response', return_value='Draft text') as generate_response:
@@ -131,7 +131,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
                 [{'role': 'user', 'content': big_prompt}], max_tokens=4096, return_provider=True,
             )
 
-        self.assertEqual(provider_used, 'nvidia')
+        self.assertEqual(provider_used, 'gemma')
         self.assertEqual(generate_response.call_count, 1)
         self.assertEqual(service._completion_budget('groq', 5000, 8192), 2800)
 
