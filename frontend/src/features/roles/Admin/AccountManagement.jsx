@@ -470,7 +470,9 @@ export default function AdminAccountManagement() {
       return
     }
     try {
-      await api.patch('/users/institution-customization/', customization)
+      const customizationFields = { ...customization }
+      delete customizationFields.syllabus_field_map
+      await api.patch('/users/institution-customization/', customizationFields)
       setCustomizationDialog(false)
       setNotice('Syllabus format saved.')
     } catch (err) {
