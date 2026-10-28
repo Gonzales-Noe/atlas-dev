@@ -423,7 +423,13 @@ function normalizeTableOverride(override) {
   const rowLabels = Array.isArray(override.rowLabels)
     ? override.rowLabels.map(label => String(label ?? ''))
     : []
-  return { columns, rows, rowLabels }
+  return {
+    columns,
+    rows,
+    rowLabels,
+    // Older saved tables have no flag and stay locked. Fixed off is explicit.
+    fixed: override.fixed !== false,
+  }
 }
 
 function mergeSection(section, index) {
@@ -444,6 +450,7 @@ function mergeSection(section, index) {
       ? section.table_column_groups
       : [],
     table_rows: Array.isArray(section.table_rows) ? section.table_rows : [],
+    table_titles: normalizeTableTitles(section.table_titles),
     blueprint_tables: normalizeTableOverrides(section.blueprint_tables),
   }
   if (!blueprint) {
@@ -483,6 +490,15 @@ export function blueprintTablesWithTabsFor(section) {
   if (!blueprint) return []
   const tabTables = (blueprint.tabs || []).map(tab => tab.table).filter(Boolean)
   return [...(blueprint.tables || []), ...tabTables]
+}
+
+function normalizeTableTitles(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.entries(value).reduce((out, [key, title]) => {
+    const text = String(title ?? '').trim()
+    if (key && text) out[key] = text
+    return out
+  }, {})
 }
 
 export function normalizeTableOverrides(value) {
@@ -758,6 +774,7 @@ export function fixedContentPatch(sections) {
       if (dataKey && content && (sectionFixed || field.fixed)) patch[dataKey] = field.content
     })
     Object.entries(section.blueprint_tables || {}).forEach(([tableKey, override]) => {
+      if (override && override.fixed === false && !sectionFixed) return
       Object.assign(patch, tablePatch(tableKey, override))
     })
     if (sectionFixed && String(section.static_content ?? '').trim() && sectionKey) {

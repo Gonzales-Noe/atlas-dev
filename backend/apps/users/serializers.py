@@ -18,7 +18,7 @@ from apps.integrations.models import (
     UserProfile,
     UserRole,
 )
-from apps.integrations.fixed_syllabus import seed_course_syllabi
+from apps.integrations.fixed_syllabus import attach_shared_syllabus_format, seed_course_syllabi
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
@@ -237,6 +237,8 @@ class RegisterSerializer(serializers.Serializer):
             if selected_plan:
                 update_fields.append('selected_plan')
             institution.save(update_fields=update_fields)
+
+        attach_shared_syllabus_format(institution)
 
         return UserProfile.objects.create(
             institution=institution,

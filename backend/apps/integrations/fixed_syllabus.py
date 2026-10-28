@@ -1,14 +1,16 @@
-"""Copy institution-fixed syllabus content into every course syllabus.
+"""Copy admin-fixed syllabus content into every institution and course.
 
-Admin "fixed" fields and saved blueprint tables live on the institution.
-Faculty, existing and newly added, read the course syllabus, so the fixed
-text has to be written onto each course — when the admin saves it, when a
-course is created or assigned, and again whenever a syllabus is saved.
+An admin's fixed fields and tables are the format for the whole deployment:
+every institution that already exists, every institution created later, and
+every faculty or admin account, because those accounts read the institution
+format and the course syllabus.
 """
+
+import copy
 
 from django.utils import timezone
 
-from apps.integrations.models import Course, InstitutionCustomization, Syllabus
+from apps.integrations.models import Course, Institution, InstitutionCustomization, Syllabus
 
 # Admin Syllabus Format field keys -> faculty syllabus_content keys.
 # Mirrors ADMIN_FIXED_FIELDS in FacultyWorkspacePage.jsx.
@@ -48,6 +50,17 @@ _ATTR_TABLES = {
 }
 
 
+def sections_for_course(course):
+    """The admin format that a faculty save must obey for this course."""
+    sections = sections_for_institution(getattr(course, 'institution', None))
+    if fixed_content_patch(sections):
+        return sections
+    shared = canonical_syllabus_sections()
+    if fixed_content_patch(shared):
+        return shared
+    return sections
+
+
 def sections_for_institution(institution):
     if institution is None:
         return []
@@ -58,6 +71,29 @@ def sections_for_institution(institution):
     )
     sections = customization.syllabus_sections if customization else None
     return sections if isinstance(sections, list) else []
+
+
+def canonical_syllabus_sections():
+    """The format most recently saved by an admin, shared with every institution."""
+    for customization in InstitutionCustomization.objects.order_by('-updated_at').iterator():
+        sections = customization.syllabus_sections
+        if isinstance(sections, list) and sections:
+            return sections
+    return []
+
+
+def attach_shared_syllabus_format(institution):
+    """Give a new institution the fixed format already published for the deployment."""
+    if institution is None:
+        return
+    sections = canonical_syllabus_sections()
+    if not sections:
+        return
+    customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
+    if isinstance(customization.syllabus_sections, list) and customization.syllabus_sections:
+        return
+    customization.syllabus_sections = copy.deepcopy(sections)
+    customization.save(update_fields=['syllabus_sections', 'updated_at'])
 
 
 def _text(value):
@@ -302,6 +338,8 @@ def fixed_content_patch(sections):
             if data_key and content and (section_fixed or field.get('fixed')):
                 patch[data_key] = field.get('content')
         for table_key, override in (section.get('blueprint_tables') or {}).items():
+            if isinstance(override, dict) and override.get('fixed') is False and not section_fixed:
+                continue
             patch.update(_table_patch(table_key, override))
         if section_fixed and _text(section.get('static_content')).strip() and section_key:
             custom_sections[section_key] = section.get('static_content')
@@ -354,7 +392,7 @@ def seed_course_syllabi(course, sections=None):
     if course is None:
         return 0
     if sections is None:
-        sections = sections_for_institution(getattr(course, 'institution', None))
+        sections = sections_for_course(course)
     if not fixed_content_patch(sections):
         return 0
     syllabi = list(Syllabus.objects.filter(course=course))
@@ -389,5 +427,20 @@ def seed_institution_syllabi(institution, sections=None):
         return 0
     updated = 0
     for course in Course.objects.filter(institution=institution).iterator():
+        updated += seed_course_syllabi(course, sections)
+    return updated
+
+
+def publish_fixed_syllabus(sections):
+    """Copy one admin's format onto every institution and every course syllabus."""
+    if not isinstance(sections, list) or not sections:
+        return 0
+    for institution in Institution.objects.all().iterator():
+        customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
+        if customization.syllabus_sections != sections:
+            customization.syllabus_sections = copy.deepcopy(sections)
+            customization.save(update_fields=['syllabus_sections', 'updated_at'])
+    updated = 0
+    for course in Course.objects.all().iterator():
         updated += seed_course_syllabi(course, sections)
     return updated

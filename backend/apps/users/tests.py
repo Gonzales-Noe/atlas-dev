@@ -365,8 +365,9 @@ class InstitutionCustomizationSaveTests(SimpleTestCase):
             InstitutionCustomizationView,
             'get',
             return_value=SimpleNamespace(data={'syllabus_sections': customization.syllabus_sections}),
-        ):
+        ), patch('apps.users.views.publish_fixed_syllabus') as publish:
             view.patch(request)
+            self.published_sections = publish.call_args.args[0] if publish.called else None
         return customization
 
     def test_framework_table_cells_survive_when_field_map_is_echoed(self):
@@ -389,6 +390,10 @@ class InstitutionCustomizationSaveTests(SimpleTestCase):
 
         self.assertEqual(
             customization.syllabus_sections[0]['blueprint_tables']['iga-table']['rows'][0][1],
+            'Communicates effectively in writing.',
+        )
+        self.assertEqual(
+            self.published_sections[0]['blueprint_tables']['iga-table']['rows'][0][1],
             'Communicates effectively in writing.',
         )
         customization.save.assert_called_once()
