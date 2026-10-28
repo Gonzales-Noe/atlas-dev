@@ -546,10 +546,11 @@ function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) 
   const dataKey = ADMIN_FIXED_FIELDS[fieldKey] || fieldKey
   const locked = Boolean(rules && Object.prototype.hasOwnProperty.call(rules, dataKey))
   if (!locked) return <LField {...props} value={value} InputProps={InputProps} helperText={helperText} />
+  const fixedText = String(rules[dataKey] ?? '')
   return (
     <LField
       {...props}
-      value={rules[dataKey]}
+      value={fixedText.trim() ? fixedText : value}
       disabled
       helperText={helperText || 'Fixed by your institution'}
       InputProps={{ ...InputProps, readOnly: true }}
@@ -1484,13 +1485,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function getAiFieldsForCurrentSection() {
-    const simpleFields = (section, fields) => fields.map(([field, label]) => ({
-      section,
-      field,
-      label,
-      fieldType: 'simple',
-    }))
-    if (!activeConfiguredSection) return []
+    const simpleFields = (section, fields) => fields
+      .filter(([field]) => {
+        const dataKey = ADMIN_FIXED_FIELDS[field] || field
+        return !Object.prototype.hasOwnProperty.call(fixedFieldRules, dataKey)
+      })
+      .map(([field, label]) => ({
+        section,
+        field,
+        label,
+        fieldType: 'simple',
+      }))
+    if (!activeConfiguredSection || activeConfiguredSection.is_static) return []
 
     const configuredTableFields = []
     if (!activeConfiguredSection.is_static) {
@@ -1506,6 +1512,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         })
       }
       for (const subsection of activeConfiguredSection.subsections || []) {
+        if (subsection.is_static) continue
         if (subsection.table_enabled
           && Array.isArray(subsection.table_columns)
           && subsection.table_columns.length) {
@@ -1535,6 +1542,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ]))
     }
     if (activeSyllabusSectionKey === 'iloat-references') {
+      if (fixedTableFor('iloat-references', 'ilo-table')) return withConfiguredTables([])
       return withConfiguredTables(syllabusData.ilos.map((_, index) => ({
         section: 'iloat-references',
         label: `Intended Learning Outcome ${index + 1}`,
@@ -1544,6 +1552,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })))
     }
     if (activeSyllabusSectionKey === 'framework-mapping') {
+      const frameworkTableKey = { IGA: 'iga-table', SO: 'so-table', CDIO: 'cdio-table', SDG: 'sdg-table' }[activeFwKey] || 'iga-table'
+      if (fixedTableFor('framework-mapping', frameworkTableKey)) return withConfiguredTables([])
       const frameworkFields = {
         IGA: ['igas', 'Institutional Graduate Attribute'],
         SO: ['student_outcomes', 'Student Outcome'],
@@ -1567,9 +1577,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         { section: 'course-policies', label: 'Academic Dishonesty', fieldType: 'simple', field: 'academic_dishonesty' },
         { section: 'course-policies', label: 'Dropping', fieldType: 'simple', field: 'dropping' },
         { section: 'course-policies', label: 'Other Course Policies and Requirements', fieldType: 'simple', field: 'other_policies' },
-      ])
+      ].filter(field => !Object.prototype.hasOwnProperty.call(fixedFieldRules, field.field)))
     }
     if (activeSyllabusSectionKey === 'tla-activities') {
+      if (fixedTableFor('tla-activities', 'tla-table')) return withConfiguredTables([])
       const SCHEDULE_AI_FIELDS = ['topics']
       const SCHEDULE_FIELD_LABELS = {
         chapter: 'Week Number',
@@ -2064,8 +2075,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const sectionFixed = Boolean(section.is_static)
       ;(section.fields || []).forEach(field => {
         const dataKey = ADMIN_FIXED_FIELDS[field.key]
-        const content = String(field.content || '').trim()
-        if (dataKey && (sectionFixed || field.fixed) && content) rules[dataKey] = field.content
+        if (dataKey && (sectionFixed || field.fixed)) rules[dataKey] = field.content || ''
       })
     })
     return rules
@@ -2105,11 +2115,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [adminFormatSections])
 
   const fixedTableFor = useCallback((sectionKey, tableKey) => {
+    const adminSection = adminFormatSections.find(section => (
+      section.enabled !== false && (section.key === sectionKey || section.editor === sectionKey)
+    ))
     const override = adminFixedTables.bySection[sectionKey]?.[tableKey] || adminFixedTables.byTable[tableKey]
-    if (!override) return null
+    // A saved table, or a whole section marked Fixed, is read-only for every account.
+    if (!override && !adminSection?.is_static) return null
     const descriptor = ALL_BLUEPRINT_TABLES.find(table => table.key === tableKey)
-    return descriptor ? applyTableOverride(descriptor, override) : null
-  }, [adminFixedTables])
+    return descriptor ? applyTableOverride(descriptor, override || null) : null
+  }, [adminFixedTables, adminFormatSections])
 
   // Re-applied after every render so loading a saved syllabus or AI generation
   // can never overwrite content the institution fixed. Tables are included,
@@ -2117,7 +2131,41 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   useEffect(() => {
     setSyllabusData(current => applyFixedSyllabusContent(current, adminFormatSections))
   })
-  const configuredSections = SYLLABUS_SECTIONS.map(section => ({ ...section, editorKey: section.key }))
+  const configuredSections = (() => {
+    const builtinKeys = new Set(SYLLABUS_SECTIONS.map(section => section.key))
+    const matchAdmin = section => adminFormatSections.find(item => (
+      item.enabled !== false && (item.key === section.key || item.editor === section.key)
+    ))
+    const builtin = SYLLABUS_SECTIONS.map(section => {
+      const admin = matchAdmin(section)
+      return {
+        ...section,
+        editorKey: section.key,
+        label: admin?.label || section.label,
+        is_static: Boolean(admin?.is_static),
+        static_content: admin?.static_content || '',
+        subsections: Array.isArray(admin?.subsections) ? admin.subsections : [],
+        table_enabled: Boolean(admin?.table_enabled),
+        table_columns: admin?.table_columns || [],
+        table_column_groups: admin?.table_column_groups || [],
+      }
+    })
+    const extras = adminFormatSections
+      .filter(section => section.enabled !== false && section.key && !builtinKeys.has(section.key) && !builtinKeys.has(section.editor))
+      .map(section => ({
+        key: section.key,
+        label: section.label || section.key,
+        editorKey: section.key,
+        custom: true,
+        is_static: Boolean(section.is_static),
+        static_content: section.static_content || '',
+        subsections: Array.isArray(section.subsections) ? section.subsections : [],
+        table_enabled: Boolean(section.table_enabled),
+        table_columns: section.table_columns || [],
+        table_column_groups: section.table_column_groups || [],
+      }))
+    return [...builtin, ...extras]
+  })()
   const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
   const activeSyllabusSectionKey = activeConfiguredSection?.editorKey || activeConfiguredSection?.key || ''
 
@@ -4217,7 +4265,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
   }
 
-  function renderConfiguredTable(sectionKey, fieldKey, title, columns, columnGroups = []) {
+  function renderConfiguredTable(sectionKey, fieldKey, title, columns, columnGroups = [], readOnly = false) {
     const storedRows = syllabusData.custom_tables?.[sectionKey]?.[fieldKey]
     const tableRows = Array.isArray(storedRows) ? storedRows : []
     const groupHeaders = []
@@ -4272,54 +4320,69 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <TableRow key={rowIndex}>
                     {columns.map((_, columnIndex) => (
                       <TableCell key={columnIndex} sx={{ minWidth: 160 }}>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          value={row[columnIndex] || ''}
-                          inputProps={{ 'aria-label': `${columns[columnIndex]}, row ${rowIndex + 1}` }}
-                          onChange={event => updateConfiguredTable(sectionKey, fieldKey, currentRows => {
-                            const nextRows = currentRows.map(cells => [...cells])
-                            nextRows[rowIndex][columnIndex] = event.target.value
-                            return nextRows
-                          })}
-                        />
+                        {readOnly ? (
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{row[columnIndex] || ' '}</Typography>
+                        ) : (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={row[columnIndex] || ''}
+                            inputProps={{ 'aria-label': `${columns[columnIndex]}, row ${rowIndex + 1}` }}
+                            onChange={event => updateConfiguredTable(sectionKey, fieldKey, currentRows => {
+                              const nextRows = currentRows.map(cells => [...cells])
+                              nextRows[rowIndex][columnIndex] = event.target.value
+                              return nextRows
+                            })}
+                          />
+                        )}
                       </TableCell>
                     ))}
                     <TableCell>
-                      <IconButton
-                        size="small"
-                        aria-label={`Remove row ${rowIndex + 1}`}
-                        onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => currentRows.filter((_, index) => index !== rowIndex))}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                      {!readOnly && (
+                        <IconButton
+                          size="small"
+                          aria-label={`Remove row ${rowIndex + 1}`}
+                          onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => currentRows.filter((_, index) => index !== rowIndex))}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => [
-              ...currentRows,
-              Array(columns.length).fill(''),
-            ])}
-            sx={{ alignSelf: 'flex-start', textTransform: 'none', color: MAROON }}
-          >
-            Add row
-          </Button>
+          {!readOnly && (
+            <Button
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => [
+                ...currentRows,
+                Array(columns.length).fill(''),
+              ])}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none', color: MAROON }}
+            >
+              Add row
+            </Button>
+          )}
+          {readOnly && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Fixed by your institution
+            </Typography>
+          )}
         </Stack>
       </SectionCard>
     )
   }
 
   function renderConfiguredSubsections() {
-    if (!activeConfiguredSection || activeConfiguredSection.is_static) return null
+    if (!activeConfiguredSection) return null
     const subsections = Array.isArray(activeConfiguredSection.subsections)
       ? activeConfiguredSection.subsections
       : []
+    const sectionLocked = Boolean(activeConfiguredSection.is_static)
+    if (!activeConfiguredSection.table_enabled && !subsections.length) return null
 
     return (
       <>
@@ -4332,9 +4395,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             `${activeConfiguredSection.label} table`,
             activeConfiguredSection.table_columns,
             activeConfiguredSection.table_column_groups,
+            sectionLocked,
           )}
-        {subsections.map((subsection, index) => (
-          subsection.table_enabled
+        {subsections.map((subsection, index) => {
+          const locked = sectionLocked || Boolean(subsection.is_static)
+          return subsection.table_enabled
             ? Array.isArray(subsection.table_columns) && subsection.table_columns.length > 0
               && renderConfiguredTable(
                 activeConfiguredSection.key,
@@ -4342,6 +4407,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 subsection.label || `Subsection ${index + 1}`,
                 subsection.table_columns,
                 subsection.table_column_groups,
+                locked,
               )
             : <SectionCard key={subsection.key || index} title={subsection.label || `Subsection ${index + 1}`}>
                 <TextField
@@ -4349,9 +4415,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   multiline
                   minRows={2}
                   label={subsection.label || `Subsection ${index + 1}`}
-                  required={Boolean(subsection.required)}
-                  value={syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || ''}
-                  onChange={event => {
+                  required={Boolean(subsection.required) && !locked}
+                  disabled={locked}
+                  helperText={locked ? 'Fixed by your institution' : undefined}
+                  value={locked
+                    ? (subsection.static_content || syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')
+                    : (syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')}
+                  onChange={locked ? undefined : event => {
                     setIsDirty(true)
                     setSaveSuccess(false)
                     setSyllabusData(current => ({
@@ -4368,7 +4438,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#fff' } }}
                 />
               </SectionCard>
-        ))}
+        })}
       </>
     )
   }
@@ -4389,16 +4459,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Paper>
       )
     }
-    if (activeConfiguredSection.is_static) {
-      return (
-        <SectionCard title={activeConfiguredSection.label}>
-          <Typography variant="body2" sx={{ color: '#444', whiteSpace: 'pre-wrap' }}>
-            {activeConfiguredSection.static_content || ''}
-          </Typography>
-        </SectionCard>
-      )
-    }
-
     if (sectionKey === 'university-information') {
       return (
         <>
@@ -5882,7 +5942,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {configuredSections.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
               </Tabs>
             </Box>
+            {activeConfiguredSection?.is_static && (activeConfiguredSection.static_content || '').trim() && (
+              <SectionCard title="Fixed by your institution">
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {activeConfiguredSection.static_content}
+                </Typography>
+              </SectionCard>
+            )}
             {renderSyllabusSection()}
+            {renderConfiguredSubsections()}
           </Box>
 
           {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && aiPipelineDrafts && (
