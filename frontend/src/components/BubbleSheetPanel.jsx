@@ -17,7 +17,6 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
-import InputAdornment from '@mui/material/InputAdornment'
 import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -31,7 +30,6 @@ import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
@@ -41,7 +39,6 @@ import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import FlagIcon from '@mui/icons-material/Flag'
 import KeyIcon from '@mui/icons-material/Key'
-import QrCodeIcon from '@mui/icons-material/QrCode'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SyncIcon from '@mui/icons-material/Sync'
 import api from '../config/api'
@@ -106,7 +103,7 @@ function LF({ label, ...props }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function BubbleSheetPanel({ courseId, assessments = [], actionSheetMode, onActionSheetChange, onModifyTemplate }) {
+export default function BubbleSheetPanel({ courseId, assessments = [], onModifyTemplate }) {
   const [tab, setTab] = useState(0)
 
   // shared across sub-panels
@@ -157,8 +154,6 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
           templates={templates}
           loading={templatesLoading}
           onRefresh={loadTemplates}
-          actionSheetMode={actionSheetMode}
-          onActionSheetChange={onActionSheetChange}
           onModifyTemplate={onModifyTemplate}
         />
       )}
@@ -182,7 +177,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
+function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, onModifyTemplate }) {
   const [creating, setCreating] = useState(false)
   const [keyDialog, setKeyDialog] = useState(null) // template obj
 
@@ -215,8 +210,6 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
                     template={t}
                     onRefresh={onRefresh}
                     onSetKey={() => setKeyDialog(t)}
-                    actionSheetMode={actionSheetMode}
-                    onActionSheetChange={onActionSheetChange}
                     onModifyTemplate={onModifyTemplate}
                   />
                 ))}
@@ -245,11 +238,9 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
   )
 }
 
-function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
-  const [pdfLoading, setPdfLoading] = useState(false)
+function TemplateRow({ template: t, onRefresh, onSetKey, onModifyTemplate }) {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
-  const [qrOpen, setQrOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [err, setErr] = useState('')
   const [syncingKey, setSyncingKey] = useState(false)
@@ -261,23 +252,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
       { responseType: 'blob' }
     )
     return URL.createObjectURL(r.data)
-  }
-
-  async function handleGeneratePdf() {
-    setPdfLoading(true)
-    setErr('')
-    try {
-      const url = await fetchPdfBlob()
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `bubble_sheet_${t.name.replace(/\s+/g, '_')}.pdf`
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setPdfLoading(false)
-    }
   }
 
   async function handlePreview() {
@@ -362,41 +336,41 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
               </span>
             </Tooltip>
           )}
-          <Tooltip title="Answer Sheet Actions">
-            <Select
-              labelId="action-sheet-select"
-              id="action-sheet-select"
-              value={actionSheetMode}
-              onChange={(e) => {
-                const mode = e.target.value
-                onActionSheetChange(mode)
-                if (mode === 'view') handlePreview()
-                if (mode === 'modify' && onModifyTemplate) onModifyTemplate(t)
-              }}
-              disabled={previewLoading || pdfLoading}
-              sx={{
-                minWidth: 80,
-                color: TEXT,
-                bgcolor: SURFACE,
-                '& .MuiSelect-icon': { color: MUTED },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: BORDER },
-                  '&:hover fieldset': { borderColor: MAROON },
-                  '&.Mui-focused fieldset': { borderColor: MAROON },
-                },
-                '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
-              }}
-              SelectProps={{
-                MenuProps: { PaperProps: { elevation: 2 } },
-              }}
-            >
-              <MenuItem value="view">View</MenuItem>
-              <MenuItem value="modify">Modify</MenuItem>
-            </Select>
-          </Tooltip>
-          <Tooltip title="Generate Student QR">
-            <IconButton size="small" onClick={() => setQrOpen(true)}><QrCodeIcon sx={{ fontSize: 16 }} /></IconButton>
-          </Tooltip>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={previewLoading}
+            onClick={handlePreview}
+            sx={{
+              minWidth: 64,
+              height: 30,
+              px: 1.25,
+              color: TEXT,
+              borderColor: BORDER,
+              textTransform: 'none',
+              fontSize: '0.75rem',
+              '&:hover': { borderColor: MAROON, bgcolor: 'rgba(22,163,74,0.08)' },
+            }}
+          >
+            {previewLoading ? 'Opening…' : 'View'}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onModifyTemplate?.(t)}
+            sx={{
+              minWidth: 72,
+              height: 30,
+              px: 1.25,
+              color: TEXT,
+              borderColor: BORDER,
+              textTransform: 'none',
+              fontSize: '0.75rem',
+              '&:hover': { borderColor: MAROON, bgcolor: 'rgba(22,163,74,0.08)' },
+            }}
+          >
+            Modify
+          </Button>
           <Tooltip title="Delete template">
             <span>
               <IconButton size="small" color="error" onClick={handleDelete} disabled={deleting}>
@@ -406,13 +380,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
           </Tooltip>
         </Stack>
       </Stack>
-
-      {qrOpen && (
-        <StudentQrDialog
-          template={t}
-          onClose={() => setQrOpen(false)}
-        />
-      )}
 
       {previewUrl && (
         <PdfPreviewDialog
@@ -767,89 +734,6 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
           sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Answer Key
         </Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
-// ── Student QR Dialog ──────────────────────────────────────────────────────
-function StudentQrDialog({ template, onClose }) {
-  const [studentId, setStudentId] = useState('')
-  const [qrSrc, setQrSrc] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState('')
-
-  async function fetchQr() {
-    if (!studentId.trim()) return
-    setLoading(true)
-    setErr('')
-    try {
-      const r = await api.get(
-        `/grading/bubble/templates/${template.template_id}/student-qr/?student_id=${encodeURIComponent(studentId.trim())}`,
-        { responseType: 'blob' }
-      )
-      const url = URL.createObjectURL(r.data)
-      setQrSrc(url)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function handleDownload() {
-    if (!qrSrc) return
-    const a = document.createElement('a')
-    a.href = qrSrc
-    a.download = `qr_${studentId}.png`
-    a.click()
-  }
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
-        Student QR Code
-      </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2}>
-          <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.78rem' }}>
-            Enter the student's preset identification number to generate a QR sticker.
-            No personal information is encoded — only the numeric ID.
-          </Typography>
-          <LF
-            label="Student ID number"
-            value={studentId}
-            onChange={e => setStudentId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchQr()}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Button size="small" onClick={fetchQr} disabled={loading || !studentId.trim()}
-                    sx={{ minWidth: 0, color: MAROON, textTransform: 'none', fontSize: '0.78rem' }}>
-                    Generate
-                  </Button>
-                </InputAdornment>
-              )
-            }}
-          />
-          {err && <Alert severity="error" sx={{ fontSize: '0.78rem' }}>{err}</Alert>}
-          {loading && <LinearProgress sx={{ height: 3, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />}
-          {qrSrc && (
-            <Box sx={{ textAlign: 'center' }}>
-              <img src={qrSrc} alt={`QR for ${studentId}`} style={{ width: 160, height: 160, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
-              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: MUTED, fontSize: '0.72rem' }}>
-                ID: <strong>{studentId}</strong>
-              </Typography>
-              <Button size="small" startIcon={<DownloadIcon />} onClick={handleDownload}
-                sx={{ mt: 1, color: MAROON, textTransform: 'none', fontSize: '0.78rem' }}>
-                Download PNG
-              </Button>
-            </Box>
-          )}
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 1.5 }}>
-        <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
       </DialogActions>
     </Dialog>
   )
