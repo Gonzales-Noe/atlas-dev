@@ -10,7 +10,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.integrations.cot_prompt_builder import CoTPromptBuilder
+from apps.integrations.cot_prompt_builder import (
+    CoTPromptBuilder,
+    assign_topic_weeks,
+    syllabus_course_kind,
+)
 from apps.integrations.fixed_syllabus import apply_fixed_content, sections_for_course, seed_course_syllabi
 from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
@@ -399,6 +403,19 @@ def save_course_module_topic(request, course_id):
     )
 
 
+def _stored_assessment_criteria(course) -> str:
+    """Faculty Criteria for Assessment from the latest saved syllabus, if any."""
+    latest = (
+        Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
+        .order_by("-generated_at", "-syllabus_id")
+        .first()
+    )
+    content = latest.syllabus_content if latest else None
+    if not isinstance(content, dict):
+        return ""
+    return str(content.get("assessment_criteria") or "")
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def generate_syllabus(request):
@@ -439,6 +456,8 @@ def generate_syllabus(request):
     course_name = data["course_name"]
     course_code = data.get("course_code", "")
     num_weeks = data.get("num_weeks", 16)
+    course_category = "professional"
+    assessment_criteria = ""
     top_k = data.get("top_k", 5)
     provider = data.get("provider") or None
     extra_instructions = data.get("extra_instructions", "")
@@ -461,6 +480,8 @@ def generate_syllabus(request):
             # If course_id is present, source canonical title/code and include faculty uploads.
             course_name = course.course_title
             course_code = course.course_code
+            course_category = course.category or "professional"
+            assessment_criteria = _stored_assessment_criteria(course)
             course_chunks = _load_course_rag_chunks(course, limit=3)
         chunks = global_chunks + course_chunks
         logger.info(
@@ -481,6 +502,8 @@ def generate_syllabus(request):
             context_chunks=chunks,
             extra_instructions=extra_instructions,
             context_summary=global_summary,
+            course_category=course_category,
+            assessment_criteria=assessment_criteria,
         )
 
         # Step 3 — Call LLM
@@ -489,7 +512,7 @@ def generate_syllabus(request):
             messages=[{"role": "user", "content": user_prompt}],
             preferred_provider=provider,
             system=system_prompt,
-            max_tokens=2048,
+            max_tokens=CoTPromptBuilder.SYLLABUS_MAX_TOKENS,
             return_provider=True,
         )
 
@@ -3960,7 +3983,7 @@ def generate_syllabus_field(request):
         return _faculty_only_response()
 
     course_id = request.data.get("course_id")
-    section = request.data.get("section", "")
+    section = str(request.data.get("section") or "").strip().lower()
     field_label = request.data.get("field_label", "Syllabus Field")
     existing_content = request.data.get("existing_content", "")
     mode = request.data.get("mode", "generate")
@@ -3980,6 +4003,21 @@ def generate_syllabus_field(request):
     trial_response = trial_generation_gate(request.user, syllabus_generation=True)
     if trial_response:
         return trial_response
+    if section not in CoTPromptBuilder.GENERATABLE_SYLLABUS_SECTIONS:
+        return Response(
+            {
+                "success": False,
+                "detail": (
+                    "This part of the syllabus is stored or entered by the faculty. "
+                    "It is not generated."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if "assessment_criteria" in request.data:
+        assessment_criteria = str(request.data.get("assessment_criteria") or "")
+    else:
+        assessment_criteria = _stored_assessment_criteria(course)
 
     try:
         # ── Step 1: Global RAG with progressive summary ────────────────────
@@ -4020,6 +4058,8 @@ def generate_syllabus_field(request):
             context_chunks=all_chunks,
             context_summary=rag_result["context_summary"],
             extra_instructions=extra_instructions,
+            course_category=course.category or "professional",
+            assessment_criteria=assessment_criteria,
         )
 
         # ── Step 4: Call LLM ─────────────────────────────────────────────
@@ -4028,9 +4068,19 @@ def generate_syllabus_field(request):
             messages=[{"role": "user", "content": user_prompt}],
             preferred_provider=provider,
             system=system_prompt,
-            max_tokens=1500,
+            max_tokens=CoTPromptBuilder.field_max_tokens(section),
             return_provider=True,
         )
+
+        if section == "week_plan":
+            _stored, kind = syllabus_course_kind(
+                course.course_title, course.course_code, course.category or "professional",
+            )
+            generated_text = assign_topic_weeks(
+                generated_text,
+                term_weeks=18,
+                pad_to_term=kind != "internship",
+            )
 
         logger.info(
             "generate_syllabus_field: section=%r field=%r mode=%r course=%r provider=%r chunks=%d",
