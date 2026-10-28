@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from . import indexing, rag_service
 from .document_processor import DocumentProcessor
 from .llm_service import LLMService
+from .traffic import concurrent_snapshot
 from .models import (
     AuditLog,
     ChildChunk,
@@ -178,6 +179,38 @@ def _handle_global_rag_upload(request):
             {"success": False, "error": f"Failed to upload document: {exc}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+def _is_superadmin_user(request) -> bool:
+    role = getattr(request.user, 'role', None)
+    return role in {UserRole.SUPERADMIN, 'superadmin', 'super_admin'}
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def traffic_status(request):
+    """Superadmin view of users active in the current traffic window."""
+    if not _is_superadmin_user(request):
+        return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+    return Response({'success': True, **concurrent_snapshot()}, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def llm_health(request):
+    """Superadmin view of model health, unused quota, and when a limit returns."""
+    if not _is_superadmin_user(request):
+        return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+    refresh = str(request.query_params.get('refresh') or '').lower() in {'1', 'true', 'yes'}
+    llm = LLMService()
+    return Response(
+        {
+            'success': True,
+            'default_provider': llm.default_provider,
+            'providers': llm.llm_health(refresh=refresh),
+        },
+        status=status.HTTP_200_OK,
+    )
 
 
 @api_view(['GET'])

@@ -13,4 +13,6 @@ urlpatterns = [
     path('course-rag-documents/<uuid:records_id>/delete/', views.delete_course_rag_document, name='delete_course_rag_document'),
     path('semantic-search/', views.semantic_search, name='semantic_search'),
     path('llm-provider-status/', views.llm_provider_status, name='llm_provider_status'),
+    path('llm-health/', views.llm_health, name='llm_health'),
+    path('traffic/', views.traffic_status, name='traffic_status'),
 ]

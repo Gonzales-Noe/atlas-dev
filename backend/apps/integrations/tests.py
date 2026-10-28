@@ -11,13 +11,20 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
 from apps.integrations.syllabus_pipeline import _parse_refine_flag
+from apps.integrations.traffic import concurrent_snapshot, record_presence
 from apps.integrations.cot_prompt_builder import (
     CoTPromptBuilder,
     assign_topic_weeks,
     complete_syllabus_field,
     field_reply_is_usable,
 )
-from apps.integrations.llm_service import DEFAULT_CHAIN, LLMService, message_text
+from apps.integrations.llm_service import (
+    DEFAULT_CHAIN,
+    LLMService,
+    message_text,
+    parse_reset_delay,
+    quota_from_headers,
+)
 from apps.integrations.models import GlobalDocument
 from apps.integrations.views import (
     list_audit_logs,
@@ -160,6 +167,51 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual((text, provider_used), ('Draft text', 'ollama'))
         self.assertEqual(generate_response.call_args.kwargs['provider_choice'], 'ollama')
         self.assertEqual(generate_response.call_count, 1)
+
+
+class LlmQuotaHealthTests(SimpleTestCase):
+    def test_groq_duration_and_unused_tokens(self):
+        self.assertAlmostEqual(parse_reset_delay('667ms'), 0.667, places=3)
+        self.assertAlmostEqual(parse_reset_delay('1h7m40.8s'), 3600 + 7 * 60 + 40.8, places=1)
+        quota = quota_from_headers('groq', {
+            'x-ratelimit-limit-tokens': '8000',
+            'x-ratelimit-remaining-tokens': '7911',
+            'x-ratelimit-limit-requests': '1000',
+            'x-ratelimit-remaining-requests': '953',
+            'x-ratelimit-reset-tokens': '667ms',
+            'x-ratelimit-reset-requests': '1h7m40.8s',
+        })
+        self.assertEqual(quota['status'], 'healthy')
+        self.assertEqual(quota['tokens_remaining'], 7911)
+        self.assertEqual(quota['tokens_limit'], 8000)
+        self.assertEqual(quota['quota_kind'], 'tokens')
+
+    def test_zero_remaining_tokens_are_a_reached_limit(self):
+        quota = quota_from_headers('groq', {
+            'x-ratelimit-limit-tokens': '8000',
+            'x-ratelimit-remaining-tokens': '0',
+            'x-ratelimit-reset-tokens': '30s',
+        })
+        self.assertEqual(quota['status'], 'limited')
+        self.assertIsNotNone(quota['resets_at'])
+        self.assertIn('The limit is reached.', quota['detail'])
+
+
+class ConcurrentTrafficTests(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_counts_unique_users_in_the_window(self):
+        faculty = SimpleNamespace(user_id='faculty-1', role='faculty')
+        admin = SimpleNamespace(user_id='admin-1', role='admin')
+        record_presence(faculty)
+        record_presence(faculty)
+        record_presence(admin)
+        snapshot = concurrent_snapshot()
+        self.assertEqual(snapshot['concurrent_users'], 2)
+        counts = {item['label']: item['count'] for item in snapshot['by_role']}
+        self.assertEqual(counts, {'Faculty': 1, 'Admin': 1})
+        self.assertEqual(snapshot['window_seconds'], 120)
 
 
 class SyllabusFieldPromptTests(SimpleTestCase):

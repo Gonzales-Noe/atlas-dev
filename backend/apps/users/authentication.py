@@ -5,6 +5,7 @@ from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.settings import api_settings
 
 from apps.integrations.models import UserProfile
+from apps.integrations.traffic import record_presence
 
 
 class UserProfileJWTAuthentication(JWTAuthentication):
@@ -15,9 +16,11 @@ class UserProfileJWTAuthentication(JWTAuthentication):
             raise InvalidToken('Token contained no recognizable user identification')
 
         try:
-            return UserProfile.objects.select_related('institution').get(user_id=user_id, is_active=True)
+            user = UserProfile.objects.select_related('institution').get(user_id=user_id, is_active=True)
         except (UserProfile.DoesNotExist, ValidationError, ValueError) as exc:
             # A bad id must stay a 401. Django's ValidationError is not an
             # API exception, so leaving it uncaught becomes an HTTP 500 page
             # and the sign-in screen reports that auth is unavailable.
             raise AuthenticationFailed('User not found or inactive.') from exc
+        record_presence(user)
+        return user
