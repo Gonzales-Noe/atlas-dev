@@ -4,6 +4,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
+import Autocomplete from '@mui/material/Autocomplete'
 import AutoAlert from './AutoAlert'
 import MarkdownText, { MarkdownInline } from './MarkdownText'
 import Box from '@mui/material/Box'
@@ -212,8 +213,87 @@ const TLA_DEFAULT_CHAPTER_ROWS = 8
 const ASSESSMENT_SCHEDULE_DEFAULT_ROWS = 6
 
 // Weekly Schedule controls are shared across all courses. Only the Topic /
-// Activity field is AI-generatable; Delivery is a fixed faculty-selected value.
-const WEEKLY_SCHEDULE_DELIVERY_OPTIONS = ['F2F', 'Online', 'Hybrid', 'Exam', 'Lab']
+// Activity field is AI-generatable. Delivery is chosen from this list, or typed.
+const WEEKLY_SCHEDULE_DELIVERY_OPTIONS = [
+  'Lecture/Discussion',
+  'Student Presentation',
+  'Guided Reading',
+  'Video Presentation',
+  'Problem-Solving Session',
+  'Hands-on Activity',
+  'Case Study Analysis',
+  'Group Activity',
+]
+
+function filterDeliveryOptions(options, input) {
+  const query = String(input || '').trim().toLowerCase()
+  if (!query) return options
+  const starts = []
+  const contains = []
+  options.forEach(option => {
+    const label = option.toLowerCase()
+    if (label.startsWith(query)) starts.push(option)
+    else if (label.includes(query)) contains.push(option)
+  })
+  return [...starts, ...contains]
+}
+
+function DeliveryMethodField({ value, onChange }) {
+  const current = String(value || '')
+  return (
+    <Autocomplete
+      freeSolo
+      autoHighlight
+      clearOnBlur={false}
+      size="small"
+      options={WEEKLY_SCHEDULE_DELIVERY_OPTIONS}
+      value={current || null}
+      inputValue={current}
+      onChange={(_, next) => onChange(typeof next === 'string' ? next : '')}
+      onInputChange={(_, next, reason) => {
+        if (reason === 'input' || reason === 'clear') onChange(next)
+      }}
+      filterOptions={(options, state) => {
+        const matches = filterDeliveryOptions(options, state.inputValue)
+        const typed = state.inputValue.trim()
+        if (!typed || options.some(option => option.toLowerCase() === typed.toLowerCase())) return matches
+        return matches.length ? matches : [typed]
+      }}
+      renderInput={params => (
+        <TextField
+          {...params}
+          placeholder="Type or choose"
+          sx={{
+            minWidth: 196,
+            '& .MuiInputBase-root': {
+              fontSize: '0.82rem',
+              bgcolor: '#1A1A1F',
+              color: '#F0F0F2',
+              pr: '28px !important',
+            },
+            '& .MuiInputBase-input': { py: '5px' },
+            '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.42)', opacity: 1 },
+            '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.14)' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(134,239,172,0.45)' },
+            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#86EFAC' },
+            '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
+          }}
+        />
+      )}
+      slotProps={{
+        paper: {
+          sx: {
+            bgcolor: '#1A1A1F',
+            color: '#F0F0F2',
+            border: '1px solid rgba(255,255,255,0.14)',
+            '& .MuiAutocomplete-option': { fontSize: '0.82rem' },
+            '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(22,163,74,0.28)' },
+          },
+        },
+      }}
+    />
+  )
+}
 
 function normalizeWeeklyScheduleChoice(value, options, fallback = '') {
   const choice = String(value || '').trim()
@@ -466,22 +546,6 @@ function GenButton({ children, ...props }) {
   )
 }
 
-function WorkspaceProgressBanner({ label, detail, value }) {
-  const determinate = Number.isFinite(value)
-  const safeValue = determinate ? Math.max(0, Math.min(100, value)) : undefined
-  return (
-    <Box role="status" aria-live="polite" sx={{ flexShrink: 0, px: { xs: 1.5, md: 3 }, py: 0.75, bgcolor: '#15181A', borderBottom: '1px solid rgba(134,239,172,0.28)' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.45 }}>
-        <CircularProgress size={13} sx={{ color: '#86EFAC' }} />
-        <Typography variant="caption" sx={{ color: '#F0F0F2', fontWeight: 700 }}>{label}</Typography>
-        {determinate && <Typography variant="caption" sx={{ color: '#86EFAC', ml: 'auto', fontWeight: 700 }}>{Math.round(safeValue)}%</Typography>}
-      </Box>
-      {detail && <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.58)', display: 'block', mb: 0.5 }}>{detail}</Typography>}
-      <LinearProgress variant={determinate ? 'determinate' : 'indeterminate'} value={safeValue}
-        sx={{ height: 3, borderRadius: 99, bgcolor: 'rgba(255,255,255,0.12)', '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC', borderRadius: 99 } }} />
-    </Box>
-  )
-}
 function AddRowBtn({ onClick, label }) {
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
@@ -4453,7 +4517,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 8. TLA Activities ────────────────────────────────────────────────────
     if (sectionKey === 'tla-activities') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
-      const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
       const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
       const updScheduleMethod = (i, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
@@ -4481,7 +4544,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <th style={{ ...TABLE_TH, minWidth: 300 }}>Topic Outcomes</th>
                   <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>ILO</th>
                   <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>SO</th>
-                  <th style={{ ...TABLE_TH, minWidth: 150 }}>Delivery Method</th>
+                  <th style={{ ...TABLE_TH, minWidth: 210 }}>Delivery Method</th>
                   <th style={{ ...TABLE_TH, minWidth: 44, width: 44, textAlign: 'center' }}>Action</th>
                   <th style={{ ...TABLE_TH, borderRight: 'none' }} />
                 </tr>
@@ -4526,16 +4589,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       {inlineInput(ch.so, e => setSylArrObj('tla_chapters', i, 'so', e.target.value), 60, undefined, { numeric: true })}
                     </td>
                     <td style={TABLE_TD}>
-                      <select
-                        value={ch.delivery || ''}
-                        onChange={e => setSylArrObj('tla_chapters', i, 'delivery', e.target.value)}
-                        style={{ ...SELECT_STYLE, width: 145 }}
-                      >
-                        <option value="">—</option>
-                        {WEEKLY_SCHEDULE_DELIVERY_OPTIONS.map(option => (
-                          <option key={option}>{option}</option>
-                        ))}
-                      </select>
+                      <DeliveryMethodField
+                        value={ch.delivery}
+                        onChange={next => setSylArrObj('tla_chapters', i, 'delivery', next)}
+                      />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
                       <button
@@ -5426,7 +5483,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {renderSyllabusSection()}
           </Box>
 
-          {aiPipelineDrafts && (
+          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
             <Paper
               variant="outlined"
               sx={{
@@ -5489,7 +5546,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {/* The AI pipeline stays visible in every syllabus section. */}
+          {activeSyllabusSectionKey !== 'university-information' && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -5616,6 +5673,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               )}
             </Stack>
           </Box>
+          )}
 
           <Dialog
             open={aiReviewOpen}
@@ -6425,9 +6483,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Define assessment coverage here, then use the module matches to prepare assessments.
               </Typography>
             </Box>
-            <Button size="small" variant="outlined" onClick={() => setActiveTab('syllabus')} sx={{ textTransform: 'none', borderColor: MAROON, color: MAROON }}>
-              Back to syllabus
-            </Button>
             <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' } }}>
               {saveLoading ? 'Saving…' : saveSuccess ? 'Saved' : 'Save TOS'}
             </Button>
@@ -6763,22 +6818,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
 
       return (
-        <Stack spacing={2}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          <Stack spacing={2}>
           <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Assessments
               </Typography>
-              <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={!canGenerateAssessment || actionLoading}
-                  onClick={() => openAssessmentGenDialog('multi')}
-                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.4, '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
-                  Create Assessment
-                </Button>
-              </Box>
             </Box>
 
             {!canGenerateAssessment && (
@@ -6962,6 +7010,65 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Stack>
             )}
           </Stack>
+          </Box>
+          <Box sx={{
+            flexShrink: 0,
+            bgcolor: '#15181A',
+            borderTop: '2px solid rgba(134,239,172,0.65)',
+            px: 2,
+            py: 1,
+          }}>
+            <Stack spacing={0.75}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />
+                <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
+                  <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                    Assessment generation
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                    {actionLoading && assessmentBatchProgress
+                      ? (assessmentBatchProgress.requested
+                        ? `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`
+                        : 'Preparing the assessment items…')
+                      : 'Create an assessment from the TOS exam. You can choose the topics before generating.'}
+                  </Typography>
+                </Box>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!canGenerateAssessment || actionLoading}
+                  startIcon={actionLoading ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
+                  onClick={() => openAssessmentGenDialog('multi')}
+                  sx={{
+                    bgcolor: '#16A34A',
+                    color: '#fff',
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: '#15803D' },
+                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  {actionLoading ? 'Generating…' : 'Create Assessment'}
+                </Button>
+              </Box>
+              {actionLoading && (
+                <LinearProgress
+                  variant={assessmentBatchProgress?.requested ? 'determinate' : 'indeterminate'}
+                  value={assessmentBatchProgress?.requested
+                    ? (assessmentBatchProgress.generated / Math.max(assessmentBatchProgress.requested, 1)) * 100
+                    : undefined}
+                  sx={{
+                    height: 4,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                  }}
+                />
+              )}
+            </Stack>
+          </Box>
+        </Box>
         )
 
 
@@ -7358,37 +7465,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   // ── Root ──────────────────────────────────────────────────────────────────
-  const activeProgress = uploading
-    ? { label: 'Uploading course source', detail: uploadStatus || 'Sending the file to the course knowledge base…', value: uploadProgress }
-    : syllabusUploading
-      ? {
-          label: 'Reading the syllabus',
-          detail: 'Copying the file into the syllabus fields…',
-        }
-      : aiGenerating
-        ? { label: 'Generating syllabus content', detail: aiPipelineProgress?.label || 'Working through the selected fields…', value: aiPipelineProgress?.total ? (aiPipelineProgress.completed / aiPipelineProgress.total) * 100 : undefined }
-        : moduleGeneratingAll
-          ? { label: 'Generating modules', detail: `${moduleGeneratingTopic.size || 1} module${moduleGeneratingTopic.size === 1 ? '' : 's'} currently being processed…` }
-          : moduleGeneratingTopic.size > 0
-            ? { label: 'Generating module', detail: 'Building teaching content from the selected topic…' }
-            : subtopicGenerating
-              ? { label: 'Generating subtopic content', detail: 'Drafting content for the selected subtopic…' }
-              : chatLoading
-                ? { label: 'Generating assistant response', detail: 'Reviewing the current module content…' }
-                : actionLoading && activeTab === 'assessment' && assessmentBatchProgress
-                  ? {
-                      label: 'Generating assessment',
-                      detail: assessmentBatchProgress.requested
-                        ? `${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items generated`
-                        : 'Preparing the assessment items…',
-                      value: assessmentBatchProgress.requested
-                        ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100
-                        : undefined,
-                    }
-                  : actionLoading
-                    ? { label: activeTab === 'module' ? 'Generating module' : 'Generating syllabus', detail: 'This may take a moment while the AI prepares the content…', value: assessmentBatchProgress?.requested ? (assessmentBatchProgress.generated / assessmentBatchProgress.requested) * 100 : undefined }
-                  : null
-
   return (
     <Box ref={containerRef}
       className="faculty-workspace"
@@ -7439,8 +7515,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       </Box>
 
       {/* Mobile nav Drawer — pipeline steps with completion checks */}
-      {activeProgress && <WorkspaceProgressBanner {...activeProgress} />}
-
       <Drawer anchor="left" open={isMobile && mobileNavOpen} onClose={() => setMobileNavOpen(false)}
         PaperProps={{ sx: { width: 260, display: 'flex', flexDirection: 'column', bgcolor: '#101014' } }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
@@ -7503,9 +7577,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* MIDDLE */}
         <Box sx={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          ...(activeTab === 'syllabus' ? {} : { overflow: 'auto', p: 2.5 }),
+          ...(activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment) ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
-          {activeTab === 'syllabus'
+          {activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment)
             ? <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
             : renderCenterPanel()
           }
