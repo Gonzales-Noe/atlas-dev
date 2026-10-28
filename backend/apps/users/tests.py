@@ -348,6 +348,7 @@ class InstitutionCustomizationSaveTests(SimpleTestCase):
         from apps.users.views import InstitutionCustomizationView
 
         customization = SimpleNamespace(
+            institution=None,
             syllabus_sections=[],
             syllabus_field_map={'sections': [], 'click_log': []},
             save=Mock(),

@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
+from apps.integrations.fixed_syllabus import apply_fixed_content, sections_for_institution, seed_course_syllabi
 from apps.integrations.llm_service import LLMService
 from apps.integrations.models import (
     Assessment,
@@ -308,6 +309,7 @@ def save_syllabus_content(request, course_id):
             {'success': False, 'detail': 'syllabus_content is required.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    content = apply_fixed_content(content, sections_for_institution(course.institution))
 
     # Write the syllabus the workspace is showing. A Draft-only update can
     # leave the edits on a row the screen never loads again.
@@ -766,6 +768,7 @@ def generate_module(request):
             syllabus = Syllabus.objects.create(
                 course=course, status="Draft", term="", version=1
             )
+        seed_course_syllabi(course)
 
         module = Module.objects.create(
             syllabus=syllabus,
