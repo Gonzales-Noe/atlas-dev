@@ -71,7 +71,7 @@ import useApi from '../hooks/useApi'
 import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
-import { materializeTosExam, materializeTosList, tosMaterializedEqual, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
+import { materializeTosExam, materializeTosList, tosMaterializedEqual, institutionalBloomPercents, BLOOM_KEYS as TOS_BLOOM_KEYS } from '../utils/tosFormula'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
 import WorkspacePageHeader from './WorkspacePageHeader'
@@ -878,7 +878,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
   const [copiedAssessmentId, setCopiedAssessmentId] = useState('')
   const [answerSheetDialogOpen, setAnswerSheetDialogOpen] = useState(false)
-  const [actionSheetMode, setActionSheetMode] = useState('view')
   const [bubbleSheetMenuAnchor, setBubbleSheetMenuAnchor] = useState(null)
   const [bubbleSheetPreviewOpen, setBubbleSheetPreviewOpen] = useState(false)
   const [bubbleSheetPreviewUrl, setBubbleSheetPreviewUrl] = useState('')
@@ -2797,6 +2796,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       workspaceApi.execute()
       markStepDone('assessment', true)
       notifyGenerationComplete('Assessment', assessmentGenTitle || 'Assessment')
+      const missingSlots = Array.isArray(data?.missing_item_numbers) ? data.missing_item_numbers : []
+      if (missingSlots.length) {
+        setActionError(`Generated ${data?.total_items || 0} items. TOS slots ${missingSlots.join(', ')} still need another try.`)
+      }
       if (newId) await handleOpenAssessment(data.assessment)
     } catch (err) {
       setActionError(extractApiError(err) || err?.message || 'Assessment generation failed.')
@@ -3500,7 +3503,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   async function handleViewBubbleSheet() {
-    setActionSheetMode('view')
     setBubbleSheetPreviewLoading(true)
     setActionError('')
     try {
@@ -3525,7 +3527,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   async function handleOpenAnswerSheetDialog() {
     if (!courseId || !assessmentDetail?.assessment_id) return
-    setActionSheetMode('modify')
     setAnswerSheetDialogOpen(true)
     setAnswerSheetLoading(true)
     setActionError('')
@@ -3547,7 +3548,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function handleModifyBubbleSheet(template) {
-    setActionSheetMode('modify')
     setAnswerSheetTemplate(template)
     setAnswerSheetForm({
       name: template?.name || 'Answer Sheet',
@@ -4555,8 +4555,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       // ── ILO-Bloom alignment helpers ────────────────────────────────────────
       const BLOOM_LEVEL_NUM = { remember: 1, understand: 2, apply: 3, analyze: 4, evaluate: 5, create: 6 }
-      // Weights from ceiling downward: ceiling gets most, lower levels get less
-      const BLOOM_SUGGEST_WEIGHTS = { 1:[100], 2:[70,30], 3:[60,30,10], 4:[55,25,12,8], 5:[50,20,15,10,5], 6:[45,18,15,12,6,4] }
 
       // Highest Bloom level (1-6) among the ILOs mapped to this row
       const rowIloCeiling = (row) => {
@@ -4585,19 +4583,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         if (totalPct === 0) return null
         const hasAbove = BLOOM_KEYS.slice(ceiling).some(k => (parseFloat((row.bloom_pct || {})[k]) || 0) > 0)
         if (hasAbove) return 'over'
-        const topK = BLOOM_KEYS.reduce((best, k) =>
-          (parseFloat((row.bloom_pct || {})[k] || 0) >= parseFloat((row.bloom_pct || {})[best] || 0)) ? k : best
-        , BLOOM_KEYS[0])
-        return BLOOM_KEYS.indexOf(topK) + 1 === ceiling ? 'aligned' : 'mismatch'
+        const suggested = institutionalBloomPercents(ceiling)
+        const matchesSplit = BLOOM_KEYS.every((k, i) => Math.round(parseFloat((row.bloom_pct || {})[k]) || 0) === suggested[i])
+        return matchesSplit ? 'aligned' : 'mismatch'
       }
 
-      // Fill bloom_pct distribution weighted toward the ILO ceiling
+      // Fill bloom_pct with the institutional 60-30-10 split, cut off at the ILO ceiling.
       const applyBloomSuggestion = (examId, rowId, row) => {
         const ceiling = rowIloCeiling(row)
         if (ceiling === 0) return
-        const w = BLOOM_SUGGEST_WEIGHTS[ceiling]
+        const alloc = institutionalBloomPercents(ceiling)
         const pct = {}
-        BLOOM_KEYS.forEach((k, i) => { pct[k] = i < ceiling ? String(w[ceiling - 1 - i]) : '0' })
+        BLOOM_KEYS.forEach((k, i) => { pct[k] = alloc[i] ? String(alloc[i]) : '0' })
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({ ...s, tos: s.tos.map(t => t.id !== examId ? t : { ...t, topics: t.topics.map(r => r.id !== rowId ? r : { ...r, bloom_pct: pct }) }) }))
       }
@@ -4801,7 +4798,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                       <button type="button"
                                         onClick={() => applyBloomSuggestion(activeTos.id, row.id, row)}
                                         style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: 99, border: `1px solid ${MAROON}`, background: MAROON_LIGHT, color: MAROON, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5 }}
-                                        title="Auto-fill Bloom % weighted toward the ILO ceiling level">
+                                        title="Fill Bloom % with 60% Remember and Understand, 30% Apply and Analyze, 10% Evaluate and Create, up to this ILO">
                                         ✦ Auto
                                       </button>
                                     </div>
@@ -6938,8 +6935,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <BubbleSheetPanel
           courseId={courseId} 
           assessments={workspaceApi.data?.assessments || []}
-          actionSheetMode={actionSheetMode}
-          onActionSheetChange={setActionSheetMode}
           onModifyTemplate={handleModifyBubbleSheet}
         />
       )

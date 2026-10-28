@@ -6,6 +6,16 @@
 
 export const BLOOM_KEYS = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
 
+// Institutional cognitive split: 60% Remember + Understand, 30% Apply + Analyze,
+// 10% Evaluate + Create. Each pair is shared evenly.
+export const INSTITUTIONAL_BLOOM_PCT = [30, 30, 15, 15, 5, 5]
+
+export function institutionalBloomPercents(ceiling) {
+  const cap = Math.max(1, Math.min(6, Math.round(Number(ceiling) || 6)))
+  const weights = INSTITUTIONAL_BLOOM_PCT.map((weight, index) => (index < cap ? weight : 0))
+  return largestRemainder(100, weights)
+}
+
 export function largestRemainder(total, weights) {
   const count = weights.length
   const target = Math.max(0, Math.round(Number(total) || 0))
