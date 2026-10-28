@@ -75,6 +75,14 @@ export function materializeTosList(tos) {
   return (Array.isArray(tos) ? tos : []).map(materializeTosExam)
 }
 
+// Min under "No. of hrs" is the class-hour field converted as it is typed.
+// One class hour is 60 minutes. A blank or zero class-hour cell stays empty.
+export function displayedTopicMinutes(row) {
+  const hours = Number(row?.hours_class)
+  if (!Number.isFinite(hours) || hours <= 0) return null
+  return Math.round(hours * 60)
+}
+
 export function tosMaterializedEqual(before, after) {
   const left = Array.isArray(before) ? before : []
   const right = Array.isArray(after) ? after : []

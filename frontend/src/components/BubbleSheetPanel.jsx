@@ -1,11 +1,11 @@
 // BubbleSheetPanel.jsx — Self-contained Bubble Sheet workflow
-// Tabs: Templates | Scan | Results
+// Tabs: Templates | Results
 //
 // Props:
 //   courseId    – current course UUID (string)
 //   assessments – array of { assessment_id, title } for the course
 //
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -17,7 +17,6 @@ import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
-import InputAdornment from '@mui/material/InputAdornment'
 import LinearProgress from '@mui/material/LinearProgress'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
@@ -31,17 +30,14 @@ import Tabs from '@mui/material/Tabs'
 import TextField from '@mui/material/TextField'
 import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
-import Select from '@mui/material/Select'
 import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DownloadIcon from '@mui/icons-material/Download'
 import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import FlagIcon from '@mui/icons-material/Flag'
 import KeyIcon from '@mui/icons-material/Key'
-import QrCodeIcon from '@mui/icons-material/QrCode'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SyncIcon from '@mui/icons-material/Sync'
 import api from '../config/api'
@@ -106,7 +102,7 @@ function LF({ label, ...props }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function BubbleSheetPanel({ courseId, assessments = [], actionSheetMode, onActionSheetChange, onModifyTemplate }) {
+export default function BubbleSheetPanel({ courseId, assessments = [], onModifyTemplate }) {
   const [tab, setTab] = useState(0)
 
   // shared across sub-panels
@@ -144,7 +140,6 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
         }}
       >
         <Tab label="Templates" />
-        <Tab label="Scan Sheet" />
         <Tab label="Results" />
       </Tabs>
 
@@ -157,19 +152,10 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
           templates={templates}
           loading={templatesLoading}
           onRefresh={loadTemplates}
-          actionSheetMode={actionSheetMode}
-          onActionSheetChange={onActionSheetChange}
           onModifyTemplate={onModifyTemplate}
         />
       )}
       {tab === 1 && (
-        <ScanTab
-          courseId={courseId}
-          templates={templates}
-          onScanned={() => setTab(2)}
-        />
-      )}
-      {tab === 2 && (
         <ResultsTab
           courseId={courseId}
           templates={templates}
@@ -182,7 +168,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], actionShe
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
+function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, onModifyTemplate }) {
   const [creating, setCreating] = useState(false)
   const [keyDialog, setKeyDialog] = useState(null) // template obj
 
@@ -215,8 +201,6 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
                     template={t}
                     onRefresh={onRefresh}
                     onSetKey={() => setKeyDialog(t)}
-                    actionSheetMode={actionSheetMode}
-                    onActionSheetChange={onActionSheetChange}
                     onModifyTemplate={onModifyTemplate}
                   />
                 ))}
@@ -245,11 +229,9 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, ac
   )
 }
 
-function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActionSheetChange, onModifyTemplate }) {
-  const [pdfLoading, setPdfLoading] = useState(false)
+function TemplateRow({ template: t, onRefresh, onSetKey, onModifyTemplate }) {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState(null)
-  const [qrOpen, setQrOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [err, setErr] = useState('')
   const [syncingKey, setSyncingKey] = useState(false)
@@ -261,23 +243,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
       { responseType: 'blob' }
     )
     return URL.createObjectURL(r.data)
-  }
-
-  async function handleGeneratePdf() {
-    setPdfLoading(true)
-    setErr('')
-    try {
-      const url = await fetchPdfBlob()
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `bubble_sheet_${t.name.replace(/\s+/g, '_')}.pdf`
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setPdfLoading(false)
-    }
   }
 
   async function handlePreview() {
@@ -335,7 +300,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
           <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.5 }}>
             <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
             <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
-            {t.has_essay && <Chip label="Essay" size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(10,132,255,0.16)', color: '#93C5FD', border: '1px solid rgba(10,132,255,0.28)' }} />}
             <Chip
               label={t.has_answer_key ? 'Key set' : 'No key'}
               size="small"
@@ -363,41 +327,41 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
               </span>
             </Tooltip>
           )}
-          <Tooltip title="Answer Sheet Actions">
-            <Select
-              labelId="action-sheet-select"
-              id="action-sheet-select"
-              value={actionSheetMode}
-              onChange={(e) => {
-                const mode = e.target.value
-                onActionSheetChange(mode)
-                if (mode === 'view') handlePreview()
-                if (mode === 'modify' && onModifyTemplate) onModifyTemplate(t)
-              }}
-              disabled={previewLoading || pdfLoading}
-              sx={{
-                minWidth: 80,
-                color: TEXT,
-                bgcolor: SURFACE,
-                '& .MuiSelect-icon': { color: MUTED },
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: BORDER },
-                  '&:hover fieldset': { borderColor: MAROON },
-                  '&.Mui-focused fieldset': { borderColor: MAROON },
-                },
-                '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
-              }}
-              SelectProps={{
-                MenuProps: { PaperProps: { elevation: 2 } },
-              }}
-            >
-              <MenuItem value="view">View</MenuItem>
-              <MenuItem value="modify">Modify</MenuItem>
-            </Select>
-          </Tooltip>
-          <Tooltip title="Generate Student QR">
-            <IconButton size="small" onClick={() => setQrOpen(true)}><QrCodeIcon sx={{ fontSize: 16 }} /></IconButton>
-          </Tooltip>
+          <Button
+            size="small"
+            variant="outlined"
+            disabled={previewLoading}
+            onClick={handlePreview}
+            sx={{
+              minWidth: 64,
+              height: 30,
+              px: 1.25,
+              color: TEXT,
+              borderColor: BORDER,
+              textTransform: 'none',
+              fontSize: '0.75rem',
+              '&:hover': { borderColor: MAROON, bgcolor: 'rgba(22,163,74,0.08)' },
+            }}
+          >
+            {previewLoading ? 'Opening…' : 'View'}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={() => onModifyTemplate?.(t)}
+            sx={{
+              minWidth: 72,
+              height: 30,
+              px: 1.25,
+              color: TEXT,
+              borderColor: BORDER,
+              textTransform: 'none',
+              fontSize: '0.75rem',
+              '&:hover': { borderColor: MAROON, bgcolor: 'rgba(22,163,74,0.08)' },
+            }}
+          >
+            Modify
+          </Button>
           <Tooltip title="Delete template">
             <span>
               <IconButton size="small" color="error" onClick={handleDelete} disabled={deleting}>
@@ -407,13 +371,6 @@ function TemplateRow({ template: t, onRefresh, onSetKey, actionSheetMode, onActi
           </Tooltip>
         </Stack>
       </Stack>
-
-      {qrOpen && (
-        <StudentQrDialog
-          template={t}
-          onClose={() => setQrOpen(false)}
-        />
-      )}
 
       {previewUrl && (
         <PdfPreviewDialog
@@ -476,8 +433,6 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
     total_items: 30,
     num_choices: 4,
     num_id_columns: 8,
-    has_essay: false,
-    essay_lines: 10,
     parts: [{ label: 'Part I', start_item: 1, end_item: 30 }],
   })
   const [saving, setSaving] = useState(false)
@@ -551,8 +506,8 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
           start_item: Number(p.start_item),
           end_item: Number(p.end_item),
         })),
-        has_essay: form.has_essay,
-        essay_lines: Number(form.essay_lines),
+        has_essay: false,
+        essay_lines: 0,
         layout_metadata: { num_id_columns: Number(form.num_id_columns) },
       })
       onCreated()
@@ -644,20 +599,6 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
             onChange={e => setField('num_id_columns', Number(e.target.value))}
             inputProps={{ min: 4, max: 15 }}
             helperText="Number of digit columns for the Student ID shading matrix (4–15)" />
-
-          {/* Essay */}
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <LF select label="Essay / open-ended section" value={form.has_essay ? '1' : '0'}
-              onChange={e => setField('has_essay', e.target.value === '1')} sx={{ flex: 2 }}>
-              <MenuItem value="0">No essay section</MenuItem>
-              <MenuItem value="1">Include essay lines</MenuItem>
-            </LF>
-            {form.has_essay && (
-              <LF label="Lines" type="number" value={form.essay_lines}
-                onChange={e => setField('essay_lines', e.target.value)}
-                inputProps={{ min: 2, max: 50 }} sx={{ flex: 1 }} />
-            )}
-          </Stack>
         </Stack>
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
@@ -786,264 +727,6 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         </Button>
       </DialogActions>
     </Dialog>
-  )
-}
-
-// ── Student QR Dialog ──────────────────────────────────────────────────────
-function StudentQrDialog({ template, onClose }) {
-  const [studentId, setStudentId] = useState('')
-  const [qrSrc, setQrSrc] = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState('')
-
-  async function fetchQr() {
-    if (!studentId.trim()) return
-    setLoading(true)
-    setErr('')
-    try {
-      const r = await api.get(
-        `/grading/bubble/templates/${template.template_id}/student-qr/?student_id=${encodeURIComponent(studentId.trim())}`,
-        { responseType: 'blob' }
-      )
-      const url = URL.createObjectURL(r.data)
-      setQrSrc(url)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function handleDownload() {
-    if (!qrSrc) return
-    const a = document.createElement('a')
-    a.href = qrSrc
-    a.download = `qr_${studentId}.png`
-    a.click()
-  }
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="xs" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
-        Student QR Code
-      </DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2}>
-          <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.78rem' }}>
-            Enter the student's preset identification number to generate a QR sticker.
-            No personal information is encoded — only the numeric ID.
-          </Typography>
-          <LF
-            label="Student ID number"
-            value={studentId}
-            onChange={e => setStudentId(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchQr()}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Button size="small" onClick={fetchQr} disabled={loading || !studentId.trim()}
-                    sx={{ minWidth: 0, color: MAROON, textTransform: 'none', fontSize: '0.78rem' }}>
-                    Generate
-                  </Button>
-                </InputAdornment>
-              )
-            }}
-          />
-          {err && <Alert severity="error" sx={{ fontSize: '0.78rem' }}>{err}</Alert>}
-          {loading && <LinearProgress sx={{ height: 3, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />}
-          {qrSrc && (
-            <Box sx={{ textAlign: 'center' }}>
-              <img src={qrSrc} alt={`QR for ${studentId}`} style={{ width: 160, height: 160, border: `1px solid ${BORDER}`, borderRadius: 6 }} />
-              <Typography variant="caption" display="block" sx={{ mt: 0.5, color: MUTED, fontSize: '0.72rem' }}>
-                ID: <strong>{studentId}</strong>
-              </Typography>
-              <Button size="small" startIcon={<DownloadIcon />} onClick={handleDownload}
-                sx={{ mt: 1, color: MAROON, textTransform: 'none', fontSize: '0.78rem' }}>
-                Download PNG
-              </Button>
-            </Box>
-          )}
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 1.5 }}>
-        <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
-      </DialogActions>
-    </Dialog>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCAN TAB
-// ─────────────────────────────────────────────────────────────────────────────
-function ScanTab({ courseId, templates, onScanned }) {
-  const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
-  const [scanning, setScanning] = useState(false)
-  const [result, setResult] = useState(null)
-  const [err, setErr] = useState('')
-  const fileRef = useRef()
-
-  const readyTemplates = templates.filter(t => t.has_answer_key)
-
-  function handleFileChange(e) {
-    const f = e.target.files[0]
-    if (!f) return
-    setFile(f)
-    setResult(null)
-    setErr('')
-    const reader = new FileReader()
-    reader.onload = ev => setPreview(ev.target.result)
-    reader.readAsDataURL(f)
-  }
-
-  async function handleScan() {
-    if (!selectedTemplate || !file) return
-    setScanning(true)
-    setErr('')
-    setResult(null)
-    try {
-      const fd = new FormData()
-      fd.append('template_id', selectedTemplate)
-      fd.append('image', file)
-      const r = await api.post('/grading/bubble/scans/', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      setResult(r.data.scan)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setScanning(false)
-    }
-  }
-
-  function handleAnother() {
-    setFile(null)
-    setPreview(null)
-    setResult(null)
-    setErr('')
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  return (
-    <SCard title="Scan Answered Sheet">
-      <Stack spacing={2}>
-        {readyTemplates.length === 0
-          ? <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-            No templates with an answer key yet. Go to the Templates tab to create one and set its key.
-          </Alert>
-          : null
-        }
-
-        <LF select label="Select template" value={selectedTemplate}
-          onChange={e => { setSelectedTemplate(e.target.value); setResult(null) }}
-          disabled={readyTemplates.length === 0}>
-          <MenuItem value="">— Choose a template —</MenuItem>
-          {readyTemplates.map(t => (
-            <MenuItem key={t.template_id} value={t.template_id}>
-              {t.name} ({t.total_items} items, {t.num_choices} choices)
-            </MenuItem>
-          ))}
-        </LF>
-
-        {/* Upload zone */}
-        <Box
-          onClick={() => fileRef.current?.click()}
-          sx={{
-            border: `2px dashed ${file ? '#86EFAC' : 'rgba(255,255,255,0.24)'}`,
-            borderRadius: 2,
-            p: 3,
-            textAlign: 'center',
-            cursor: 'pointer',
-            bgcolor: file ? MAROON_LIGHT : 'rgba(255,255,255,0.04)',
-            color: TEXT,
-            transition: 'all 0.15s',
-            '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(22,163,74,0.12)' },
-          }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-          {preview
-            ? <img src={preview} alt="Preview" style={{ maxHeight: 180, maxWidth: '100%', borderRadius: 6, objectFit: 'contain' }} />
-            : (
-              <>
-                <CloudUploadIcon sx={{ fontSize: 36, color: MUTED, mb: 0.5 }} />
-                <Typography sx={{ fontSize: '0.8rem', color: TEXT }}>
-                  Click or drag to upload a scanned sheet image
-                </Typography>
-                <Typography sx={{ fontSize: '0.7rem', color: MUTED, mt: 0.5 }}>
-                  JPEG · PNG · WebP
-                </Typography>
-              </>
-            )
-          }
-        </Box>
-
-        {err && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{err}</Alert>}
-
-        {/* Scan result */}
-        {result && (
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: SURFACE, color: TEXT, borderColor: BORDER }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Scan Result</Typography>
-              {result.is_flagged && (
-                <Chip icon={<FlagIcon />} label="Flagged" size="small" color="error" sx={{ fontSize: '0.68rem' }} />
-              )}
-            </Stack>
-            <Stack spacing={0.5}>
-              <Row label="Student ID" value={result.student_identifier || '(not decoded)'} />
-              <Row label="Score" value={`${result.score_raw} / ${result.max_score}`} />
-              <Row label="Percentage" value={`${result.score_percent}%`} />
-              {result.flag_reason && <Row label="Flag reason" value={result.flag_reason} warn />}
-            </Stack>
-          </Paper>
-        )}
-
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant="contained"
-            startIcon={scanning ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <CloudUploadIcon />}
-            disabled={!selectedTemplate || !file || scanning}
-            onClick={handleScan}
-            sx={{
-              bgcolor: MAROON,
-              '&:hover': { bgcolor: '#14532D' },
-              '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)', color: MUTED },
-              '&.Mui-disabled .MuiButton-startIcon': { color: MUTED },
-              textTransform: 'none', fontSize: '0.82rem',
-            }}
-          >
-            {scanning ? 'Scanning…' : 'Scan Sheet'}
-          </Button>
-          {result && (
-            <>
-              <Button variant="outlined" onClick={handleAnother}
-                sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                Scan Another
-              </Button>
-              <Button variant="text" onClick={onScanned}
-                sx={{ color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                View All Results →
-              </Button>
-            </>
-          )}
-        </Stack>
-      </Stack>
-    </SCard>
-  )
-}
-
-function Row({ label, value, warn = false }) {
-  return (
-    <Stack direction="row" spacing={1}>
-      <Typography sx={{ fontSize: '0.78rem', color: MUTED, minWidth: 110 }}>{label}</Typography>
-      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: warn ? '#FCA5A5' : TEXT }}>{value}</Typography>
-    </Stack>
   )
 }
 

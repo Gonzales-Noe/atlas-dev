@@ -289,6 +289,17 @@ def _add_tos_meta_block(doc, exam, multi_exam):
     doc.add_paragraph()
 
 
+def _topic_minutes(topic):
+    """Minutes in the No. of hrs / Min column: class hours × 60."""
+    try:
+        hours = float((topic or {}).get('hours_class'))
+    except (TypeError, ValueError):
+        return ''
+    if hours != hours or hours <= 0:
+        return ''
+    return int(round(hours * 60))
+
+
 def _add_tos_grid(doc, exam):
     """The 18-column ToS table: Topic, ILOs, hours, weight, 6x2 Bloom, total."""
     topics = [t for t in (exam.get('topics') or []) if isinstance(t, dict)]
@@ -352,7 +363,7 @@ def _add_tos_grid(doc, exam):
         _cell_text(cells[0], topic.get('topic'), size=_TINY_PT)
         _cell_text(cells[1], ', '.join(_text(i) for i in (topic.get('ilos') or []) if _text(i)), size=_TINY_PT)
         _cell_text(cells[2], topic.get('hours_class'), size=_TINY_PT)
-        _cell_text(cells[3], topic.get('hours_min'), size=_TINY_PT)
+        _cell_text(cells[3], _topic_minutes(topic), size=_TINY_PT)
         _cell_text(cells[4], _with_percent(topic.get('weight')), size=_TINY_PT)
 
         col = 5

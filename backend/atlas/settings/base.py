@@ -42,6 +42,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'apps.users.middleware.DatabaseReconnectMiddleware',
 ]
 
 ROOT_URLCONF = 'atlas.urls'
@@ -97,7 +98,8 @@ else:
     _db_user = os.environ['DB_USER']
 
 _is_transaction_pooler = str(_db_port) == '6543'
-_is_supabase_pooler = _db_host.lower().endswith('.pooler.supabase.com')
+_db_host_lower = _db_host.lower()
+_is_supabase = 'supabase.com' in _db_host_lower or 'supabase.co' in _db_host_lower
 
 DATABASES = {
     'default': {
@@ -108,7 +110,10 @@ DATABASES = {
         'HOST': _db_host,
         'PORT': _db_port,
         # Don't retain client sessions in Supabase's small session-mode pool.
-        'CONN_MAX_AGE': 0 if _is_transaction_pooler or _is_supabase_pooler else 60,
+        # An idle pooled connection is often already closed by the time the
+        # next request uses it, which turns the next login into an HTTP 500.
+        'CONN_MAX_AGE': 0 if _is_transaction_pooler or _is_supabase else 60,
+        'CONN_HEALTH_CHECKS': True,
         'DISABLE_SERVER_SIDE_CURSORS': _is_transaction_pooler,
         'OPTIONS': {
             'sslmode': os.environ.get('DB_SSLMODE', 'require'),
