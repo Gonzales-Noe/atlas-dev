@@ -1,11 +1,11 @@
 // BubbleSheetPanel.jsx — Self-contained Bubble Sheet workflow
-// Tabs: Templates | Scan | Results
+// Tabs: Templates | Results
 //
 // Props:
 //   courseId    – current course UUID (string)
 //   assessments – array of { assessment_id, title } for the course
 //
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -32,7 +32,6 @@ import Tooltip from '@mui/material/Tooltip'
 import Typography from '@mui/material/Typography'
 import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DownloadIcon from '@mui/icons-material/Download'
 import EditIcon from '@mui/icons-material/Edit'
@@ -141,7 +140,6 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
         }}
       >
         <Tab label="Templates" />
-        <Tab label="Scan Sheet" />
         <Tab label="Results" />
       </Tabs>
 
@@ -158,13 +156,6 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
         />
       )}
       {tab === 1 && (
-        <ScanTab
-          courseId={courseId}
-          templates={templates}
-          onScanned={() => setTab(2)}
-        />
-      )}
-      {tab === 2 && (
         <ResultsTab
           courseId={courseId}
           templates={templates}
@@ -736,181 +727,6 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         </Button>
       </DialogActions>
     </Dialog>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SCAN TAB
-// ─────────────────────────────────────────────────────────────────────────────
-function ScanTab({ courseId, templates, onScanned }) {
-  const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [file, setFile] = useState(null)
-  const [preview, setPreview] = useState(null)
-  const [scanning, setScanning] = useState(false)
-  const [result, setResult] = useState(null)
-  const [err, setErr] = useState('')
-  const fileRef = useRef()
-
-  const readyTemplates = templates.filter(t => t.has_answer_key)
-
-  function handleFileChange(e) {
-    const f = e.target.files[0]
-    if (!f) return
-    setFile(f)
-    setResult(null)
-    setErr('')
-    const reader = new FileReader()
-    reader.onload = ev => setPreview(ev.target.result)
-    reader.readAsDataURL(f)
-  }
-
-  async function handleScan() {
-    if (!selectedTemplate || !file) return
-    setScanning(true)
-    setErr('')
-    setResult(null)
-    try {
-      const fd = new FormData()
-      fd.append('template_id', selectedTemplate)
-      fd.append('image', file)
-      const r = await api.post('/grading/bubble/scans/', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      setResult(r.data.scan)
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setScanning(false)
-    }
-  }
-
-  function handleAnother() {
-    setFile(null)
-    setPreview(null)
-    setResult(null)
-    setErr('')
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  return (
-    <SCard title="Scan Answered Sheet">
-      <Stack spacing={2}>
-        {readyTemplates.length === 0
-          ? <Alert severity="info" sx={{ fontSize: '0.8rem' }}>
-            No templates with an answer key yet. Go to the Templates tab to create one and set its key.
-          </Alert>
-          : null
-        }
-
-        <LF select label="Select template" value={selectedTemplate}
-          onChange={e => { setSelectedTemplate(e.target.value); setResult(null) }}
-          disabled={readyTemplates.length === 0}>
-          <MenuItem value="">— Choose a template —</MenuItem>
-          {readyTemplates.map(t => (
-            <MenuItem key={t.template_id} value={t.template_id}>
-              {t.name} ({t.total_items} items, {t.num_choices} choices)
-            </MenuItem>
-          ))}
-        </LF>
-
-        {/* Upload zone */}
-        <Box
-          onClick={() => fileRef.current?.click()}
-          sx={{
-            border: `2px dashed ${file ? '#86EFAC' : 'rgba(255,255,255,0.24)'}`,
-            borderRadius: 2,
-            p: 3,
-            textAlign: 'center',
-            cursor: 'pointer',
-            bgcolor: file ? MAROON_LIGHT : 'rgba(255,255,255,0.04)',
-            color: TEXT,
-            transition: 'all 0.15s',
-            '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(22,163,74,0.12)' },
-          }}
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            style={{ display: 'none' }}
-            onChange={handleFileChange}
-          />
-          {preview
-            ? <img src={preview} alt="Preview" style={{ maxHeight: 180, maxWidth: '100%', borderRadius: 6, objectFit: 'contain' }} />
-            : (
-              <>
-                <CloudUploadIcon sx={{ fontSize: 36, color: MUTED, mb: 0.5 }} />
-                <Typography sx={{ fontSize: '0.8rem', color: TEXT }}>
-                  Click or drag to upload a scanned sheet image
-                </Typography>
-                <Typography sx={{ fontSize: '0.7rem', color: MUTED, mt: 0.5 }}>
-                  JPEG · PNG · WebP
-                </Typography>
-              </>
-            )
-          }
-        </Box>
-
-        {err && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{err}</Alert>}
-
-        {/* Scan result */}
-        {result && (
-          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: SURFACE, color: TEXT, borderColor: BORDER }}>
-            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-              <Typography sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Scan Result</Typography>
-              {result.is_flagged && (
-                <Chip icon={<FlagIcon />} label="Flagged" size="small" color="error" sx={{ fontSize: '0.68rem' }} />
-              )}
-            </Stack>
-            <Stack spacing={0.5}>
-              <Row label="Student ID" value={result.student_identifier || '(not decoded)'} />
-              <Row label="Score" value={`${result.score_raw} / ${result.max_score}`} />
-              <Row label="Percentage" value={`${result.score_percent}%`} />
-              {result.flag_reason && <Row label="Flag reason" value={result.flag_reason} warn />}
-            </Stack>
-          </Paper>
-        )}
-
-        <Stack direction="row" spacing={1}>
-          <Button
-            variant="contained"
-            startIcon={scanning ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <CloudUploadIcon />}
-            disabled={!selectedTemplate || !file || scanning}
-            onClick={handleScan}
-            sx={{
-              bgcolor: MAROON,
-              '&:hover': { bgcolor: '#14532D' },
-              '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.08)', color: MUTED },
-              '&.Mui-disabled .MuiButton-startIcon': { color: MUTED },
-              textTransform: 'none', fontSize: '0.82rem',
-            }}
-          >
-            {scanning ? 'Scanning…' : 'Scan Sheet'}
-          </Button>
-          {result && (
-            <>
-              <Button variant="outlined" onClick={handleAnother}
-                sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                Scan Another
-              </Button>
-              <Button variant="text" onClick={onScanned}
-                sx={{ color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                View All Results →
-              </Button>
-            </>
-          )}
-        </Stack>
-      </Stack>
-    </SCard>
-  )
-}
-
-function Row({ label, value, warn = false }) {
-  return (
-    <Stack direction="row" spacing={1}>
-      <Typography sx={{ fontSize: '0.78rem', color: MUTED, minWidth: 110 }}>{label}</Typography>
-      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: warn ? '#FCA5A5' : TEXT }}>{value}</Typography>
-    </Stack>
   )
 }
 
