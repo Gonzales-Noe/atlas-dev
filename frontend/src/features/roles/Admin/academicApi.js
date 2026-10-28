@@ -31,31 +31,9 @@ export async function saveInstitutionCustomization(payload) {
 export async function analyzeSyllabusTemplate(file) {
   const formData = new FormData()
   formData.append('file', file)
-  try {
-    const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 90000,
-    })
-    return data
-  } catch (err) {
-    if (err?.code === 'ECONNABORTED' || /timeout/i.test(String(err?.message || ''))) {
-      const timeoutErr = new Error(
-        'Analysis timed out. Prefer Upload DOCX for the click-to-map editor.',
-      )
-      timeoutErr.response = { data: { detail: timeoutErr.message } }
-      throw timeoutErr
-    }
-    throw err
-  }
-}
-
-/** Upload editable DOCX → clickable preview blocks (MVP template-first editor). */
-export async function previewSyllabusTemplate(file) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const { data } = await api.post('/users/institution-syllabus-template/preview/', formData, {
+  const { data } = await api.post('/users/institution-syllabus-template/analyze/', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 60000,
+    timeout: 120000,
   })
   return data
 }
@@ -78,20 +56,8 @@ export function describeDetectedStructure(result) {
     0,
   )
   const plural = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`
-  const parser = result?.structure_source === 'docling_tree'
-    ? 'Docling tree'
-    : (result?.parser === 'docling' ? 'Docling' : 'heading outline')
-  const llm = result?.llm_provider && result.llm_provider !== 'none'
-    ? ` + ${result.llm_provider} polish`
-    : ''
-  const structureConfidence = result?.confidence?.sections
-  const styleConfidence = result?.confidence?.style
-  const confNote = [
-    structureConfidence != null ? `structure ${Math.round(Number(structureConfidence) * 100)}%` : null,
-    styleConfidence != null ? `style ${Math.round(Number(styleConfidence) * 100)}%` : null,
-  ].filter(Boolean).join(', ')
-  const note = result?.docling_note ? ` Note: ${result.docling_note}.` : ''
-  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} via ${parser}${llm}${confNote ? ` (${confNote})` : ''}.${note} Review before saving.`
+  const method = result?.source === 'ai' ? 'AI-assisted' : 'heading-based'
+  return `Detected ${plural(sections.length, 'section')} and ${plural(subsectionCount, 'subsection')} (${method}). Review them before saving.`
 }
 
 export async function createFacultyWithAssignments(payload) {
