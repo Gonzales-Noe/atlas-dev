@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
   Alert, IconButton, MenuItem, Tab, Tabs,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField,
@@ -10,8 +10,8 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 
 import AdminLayout from './AdminLayout'
 import {
-  COURSE_CATEGORIES, createCourse, createSection, deleteCourse, deleteSection,
-  fetchAcademicStructure, fetchCourseRequests, reviewCourseRequest, updateCourse,
+  COURSE_CATEGORIES, SECTION_YEARS, createCourse, createSection, deleteCourse, deleteSection,
+  fetchAcademicStructure, fetchCourseRequests, reviewCourseRequest, updateCourse, updateSection,
 } from './academicApi'
 import { GlassCard, OutlineBtn, PageHeader, PrimaryBtn, StatCard, StatusChip } from '../../../components/ui'
 import LoadingState from '../../../components/LoadingState'
@@ -30,6 +30,12 @@ const headCellSx = {
 }
 
 const bodyCellSx = { borderBottom: '1px solid var(--border-color)' }
+const groupHeaderSx = {
+  ...bodyCellSx, py: 1, fontWeight: 800, fontSize: '0.75rem',
+  letterSpacing: '0.06em', textTransform: 'uppercase',
+  color: 'var(--text-secondary)', backgroundColor: 'rgba(255,255,255,0.03)',
+}
+const groupCountSx = { marginLeft: 8, fontWeight: 500, letterSpacing: 0, textTransform: 'none' }
 const emptyStructure = { sections: [], courses: [] }
 const emptyCourse = () => ({
   course_code: '', course_title: '', description: '', category: 'professional', units: '', section: '',
@@ -52,7 +58,7 @@ export default function AdminAcademicStructure() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState(0)
-  const [sectionForm, setSectionForm] = useState({ code: '', name: '' })
+  const [sectionForm, setSectionForm] = useState({ code: '', name: '', year_number: '' })
   const [courseForm, setCourseForm] = useState(emptyCourse)
   const [editingCourse, setEditingCourse] = useState(null)
   const [courseFilter, setCourseFilter] = useState('')
@@ -123,9 +129,23 @@ export default function AdminAcademicStructure() {
   async function saveSection() {
     if (!sectionForm.code.trim()) return
     await run(async () => {
-      await createSection({ code: sectionForm.code.trim(), name: sectionForm.name.trim() })
-      setSectionForm({ code: '', name: '' })
+      await createSection({
+        code: sectionForm.code.trim(),
+        name: sectionForm.name.trim(),
+        year_number: sectionForm.year_number === '' ? null : Number(sectionForm.year_number),
+      })
+      setSectionForm({ code: '', name: '', year_number: '' })
     }, 'Section added.')
+  }
+
+  async function changeSectionYear(section, rawValue) {
+    const yearNumber = rawValue === '' ? null : Number(rawValue)
+    if ((section.year_number ?? null) === yearNumber) return
+    const yearLabel = SECTION_YEARS.find(year => year.value === yearNumber)?.label
+    await run(
+      () => updateSection(section.section_id, { year_number: yearNumber }),
+      yearLabel ? `${section.code} moved to ${yearLabel}.` : `${section.code} moved to “Year not set”.`,
+    )
   }
 
   async function saveCourse() {
@@ -169,6 +189,33 @@ export default function AdminAcademicStructure() {
       || (course.course_code || '').toLowerCase().includes(query)
       || (course.course_title || '').toLowerCase().includes(query)
   })
+
+  const courseGroups = COURSE_CATEGORIES
+    .map(category => ({
+      key: category.value,
+      label: category.label,
+      courses: filteredCourses.filter(course => course.category === category.value),
+    }))
+    .filter(group => group.courses.length)
+
+  const knownCategories = new Set(COURSE_CATEGORIES.map(category => category.value))
+  const uncategorizedCourses = filteredCourses.filter(course => !knownCategories.has(course.category))
+  if (uncategorizedCourses.length) {
+    courseGroups.push({ key: 'uncategorized', label: 'Uncategorized', courses: uncategorizedCourses })
+  }
+
+  const sectionGroups = SECTION_YEARS
+    .map(year => ({
+      key: String(year.value),
+      label: year.label,
+      sections: structure.sections.filter(section => Number(section.year_number) === year.value),
+    }))
+    .filter(group => group.sections.length)
+
+  const sectionsWithoutYear = structure.sections.filter(section => !Number(section.year_number))
+  if (sectionsWithoutYear.length) {
+    sectionGroups.push({ key: 'none', label: 'Year not set', sections: sectionsWithoutYear })
+  }
 
   return (
     <AdminLayout>
@@ -243,13 +290,21 @@ export default function AdminAcademicStructure() {
         <div style={{ padding: 22 }}>
           {tab === 0 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 2fr) auto', gap: 12, marginBottom: 20 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 1fr) minmax(180px, 2fr) minmax(140px, 1fr) auto', gap: 12, marginBottom: 20 }}>
                 <TextField label="Section code" size="small" value={sectionForm.code}
                   onChange={event => setSectionForm(current => ({ ...current, code: event.target.value }))}
                   sx={inputSx} inputProps={{ maxLength: 50 }} />
                 <TextField label="Section name (optional)" size="small" value={sectionForm.name}
                   onChange={event => setSectionForm(current => ({ ...current, name: event.target.value }))}
                   sx={inputSx} inputProps={{ maxLength: 100 }} />
+                <TextField select label="Year level" size="small" value={sectionForm.year_number}
+                  onChange={event => setSectionForm(current => ({ ...current, year_number: event.target.value }))}
+                  sx={inputSx}>
+                  <MenuItem value="">Year not set</MenuItem>
+                  {SECTION_YEARS.map(year => (
+                    <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
+                  ))}
+                </TextField>
                 <PrimaryBtn small disabled={saving || !sectionForm.code.trim()} onClick={saveSection}>
                   <AddIcon fontSize="small" /> Add section
                 </PrimaryBtn>
@@ -258,25 +313,49 @@ export default function AdminAcademicStructure() {
                 <TableContainer>
                   <Table size="small">
                     <TableHead><TableRow>
-                      {['Section', 'Name', ''].map(label => <TableCell key={label} sx={headCellSx}>{label}</TableCell>)}
+                      {['Section', 'Name', 'Year', ''].map(label => <TableCell key={label} sx={headCellSx}>{label}</TableCell>)}
                     </TableRow></TableHead>
                     <TableBody>
-                      {structure.sections.map(section => (
-                        <TableRow key={section.section_id}>
-                          <TableCell sx={bodyCellSx}>{section.code}</TableCell>
-                          <TableCell sx={bodyCellSx}>{section.name || '—'}</TableCell>
-                          <TableCell sx={bodyCellSx} align="right">
-                            <IconButton aria-label={`Delete section ${section.code}`} size="small"
-                              disabled={saving}
-                              onClick={() => run(() => deleteSection(section.section_id), 'Section removed.')}
-                              sx={{ color: '#86EFAC' }}>
-                              <DeleteOutlinedIcon fontSize="small" />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
+                      {sectionGroups.map(group => (
+                        <Fragment key={group.key}>
+                          <TableRow>
+                            <TableCell colSpan={4} sx={groupHeaderSx}>
+                              {group.label}
+                              <span style={groupCountSx}>
+                                {group.sections.length} section{group.sections.length === 1 ? '' : 's'}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                          {group.sections.map(section => (
+                            <TableRow key={section.section_id}>
+                              <TableCell sx={bodyCellSx}>{section.code}</TableCell>
+                              <TableCell sx={bodyCellSx}>{section.name || '—'}</TableCell>
+                              <TableCell sx={bodyCellSx}>
+                                <TextField select size="small" value={section.year_number ?? ''}
+                                  disabled={saving}
+                                  onChange={event => changeSectionYear(section, event.target.value)}
+                                  sx={{ ...inputSx, minWidth: 140 }}
+                                  slotProps={{ select: { inputProps: { 'aria-label': `Year level for section ${section.code}` } } }}>
+                                  <MenuItem value="">Year not set</MenuItem>
+                                  {SECTION_YEARS.map(year => (
+                                    <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
+                                  ))}
+                                </TextField>
+                              </TableCell>
+                              <TableCell sx={bodyCellSx} align="right">
+                                <IconButton aria-label={`Delete section ${section.code}`} size="small"
+                                  disabled={saving}
+                                  onClick={() => run(() => deleteSection(section.section_id), 'Section removed.')}
+                                  sx={{ color: '#86EFAC' }}>
+                                  <DeleteOutlinedIcon fontSize="small" />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
                       ))}
                       {!structure.sections.length && (
-                        <TableRow><TableCell colSpan={3} align="center" sx={bodyCellSx}>No sections have been added.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={4} align="center" sx={bodyCellSx}>No sections have been added.</TableCell></TableRow>
                       )}
                     </TableBody>
                   </Table>
@@ -300,7 +379,7 @@ export default function AdminAcademicStructure() {
                   <MenuItem value="">No section</MenuItem>
                   {structure.sections.map(section => (
                     <MenuItem key={section.section_id} value={section.section_id}>
-                      {section.display_name || section.code}
+                      {section.display_name || section.code}{section.year_label ? ` · ${section.year_label}` : ''}
                     </MenuItem>
                   ))}
                 </TextField>
@@ -335,31 +414,40 @@ export default function AdminAcademicStructure() {
                 <TableContainer>
                   <Table size="small">
                     <TableHead><TableRow>
-                      {['Code', 'Title', 'Section', 'Category', 'Units', 'Actions'].map(label => (
+                      {['Code', 'Title', 'Section', 'Units', 'Actions'].map(label => (
                         <TableCell key={label} sx={headCellSx}>{label}</TableCell>
                       ))}
                     </TableRow></TableHead>
                     <TableBody>
-                      {filteredCourses.map(course => (
-                        <TableRow key={course.course_id}>
-                          <TableCell sx={bodyCellSx}>{course.course_code}</TableCell>
-                          <TableCell sx={bodyCellSx}>{course.course_title}</TableCell>
-                          <TableCell sx={bodyCellSx}>{course.section_code || '—'}</TableCell>
-                          <TableCell sx={bodyCellSx}>
-                            <StatusChip label={course.category || '—'} type={course.category === 'ged' ? 'info' : 'default'} />
-                          </TableCell>
-                          <TableCell sx={bodyCellSx}>{course.units ?? '—'}</TableCell>
-                          <TableCell sx={bodyCellSx} align="right">
-                            <IconButton aria-label={`Edit course ${course.course_code}`} size="small" onClick={() => startEditCourse(course)}
-                              sx={{ color: 'var(--text-secondary)' }}><EditIcon fontSize="small" /></IconButton>
-                            <IconButton aria-label={`Delete course ${course.course_code}`} size="small" disabled={saving}
-                              onClick={() => run(() => deleteCourse(course.course_id), 'Course removed.')}
-                              sx={{ color: '#86EFAC' }}><DeleteOutlinedIcon fontSize="small" /></IconButton>
-                          </TableCell>
-                        </TableRow>
+                      {courseGroups.map(group => (
+                        <Fragment key={group.key}>
+                          <TableRow>
+                            <TableCell colSpan={5} sx={groupHeaderSx}>
+                              {group.label}
+                              <span style={groupCountSx}>
+                                {group.courses.length} course{group.courses.length === 1 ? '' : 's'}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                          {group.courses.map(course => (
+                            <TableRow key={course.course_id}>
+                              <TableCell sx={bodyCellSx}>{course.course_code}</TableCell>
+                              <TableCell sx={bodyCellSx}>{course.course_title}</TableCell>
+                              <TableCell sx={bodyCellSx}>{course.section_label || course.section_code || '—'}</TableCell>
+                              <TableCell sx={bodyCellSx}>{course.units ?? '—'}</TableCell>
+                              <TableCell sx={bodyCellSx} align="right">
+                                <IconButton aria-label={`Edit course ${course.course_code}`} size="small" onClick={() => startEditCourse(course)}
+                                  sx={{ color: 'var(--text-secondary)' }}><EditIcon fontSize="small" /></IconButton>
+                                <IconButton aria-label={`Delete course ${course.course_code}`} size="small" disabled={saving}
+                                  onClick={() => run(() => deleteCourse(course.course_id), 'Course removed.')}
+                                  sx={{ color: '#86EFAC' }}><DeleteOutlinedIcon fontSize="small" /></IconButton>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
                       ))}
                       {!filteredCourses.length && (
-                        <TableRow><TableCell colSpan={6} align="center" sx={bodyCellSx}>
+                        <TableRow><TableCell colSpan={5} align="center" sx={bodyCellSx}>
                           {structure.courses.length ? 'No courses match your search.' : 'No courses have been added.'}
                         </TableCell></TableRow>
                       )}

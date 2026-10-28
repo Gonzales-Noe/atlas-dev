@@ -332,8 +332,8 @@ class FacultyCreateSerializer(serializers.Serializer):
     password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
     assignments = serializers.ListField(
         child=serializers.DictField(),
-        required=True,
-        allow_empty=False,
+        required=False,
+        default=list,
         write_only=True,
     )
 
@@ -365,18 +365,21 @@ class FacultyCreateSerializer(serializers.Serializer):
         validated = []
         for index, assignment in enumerate(assignments):
             section = str(assignment.get('section') or '').strip()
-            courses = assignment.get('courses')
-            if not section:
-                raise serializers.ValidationError({index: {'section': 'Section is required.'}})
-            if not isinstance(courses, list) or not courses:
-                raise serializers.ValidationError({index: {'courses': 'Add at least one course to each section.'}})
+            raw_courses = assignment.get('courses')
+            if raw_courses is None:
+                raw_courses = []
+            if not isinstance(raw_courses, list):
+                raise serializers.ValidationError({index: {'courses': 'Courses must be a list.'}})
 
             normalized_courses = []
-            for course_index, course_data in enumerate(courses):
+            for course_index, course_data in enumerate(raw_courses):
                 course_id = course_data.get('course_id')
                 code = str(course_data.get('course_code') or '').strip().upper()
                 title = str(course_data.get('course_title') or '').strip()
                 description = str(course_data.get('description') or '').strip()
+
+                if not course_id and not code and not title:
+                    continue
 
                 if course_id:
                     course = Course.objects.filter(
@@ -399,6 +402,15 @@ class FacultyCreateSerializer(serializers.Serializer):
                     'course_title': title,
                     'description': description,
                 })
+
+            if normalized_courses and not section:
+                raise serializers.ValidationError({
+                    index: {'section': 'Section is required when adding courses.'},
+                })
+            if not section or not normalized_courses:
+                # Sections and courses are optional: a faculty member can be
+                # created first and assigned later.
+                continue
 
             validated.append({'section': section, 'courses': normalized_courses})
         return validated

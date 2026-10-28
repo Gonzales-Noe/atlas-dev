@@ -80,6 +80,7 @@ import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import { applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -435,12 +436,34 @@ function LField({ label, ...props }) {
         },
         '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
         '& .MuiSelect-select': { whiteSpace: 'normal', wordBreak: 'break-word' },
+        // MUI's default disabled colors are near-black and unreadable on the
+        // dark workspace, so institution-fixed fields keep light text.
+        '& .MuiInputBase-input.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
+        },
+        '& .MuiSelect-select.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
+        },
+        '& .MuiOutlinedInput-root.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.06)' },
+        '& .MuiOutlinedInput-root.Mui-disabled fieldset': { borderColor: 'var(--border-color)' },
+        '& .MuiInputLabel-root.Mui-disabled': { color: 'rgba(255,255,255,0.72)' },
+        '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.62)' },
+        '& .MuiFormHelperText-root.Mui-error': { color: '#FF7B72' },
         ...props.sx,
       }}
       SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
     />
   )
 }
+
+const ALL_BLUEPRINT_TABLES = SYLLABUS_SECTION_BLUEPRINTS.flatMap(section => [
+  ...(section.tables || []),
+  ...(section.tabs || []).map(tab => tab.table).filter(Boolean),
+])
 
 function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) {
   const dataKey = ADMIN_FIXED_FIELDS[fieldKey] || fieldKey
@@ -454,6 +477,111 @@ function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) 
       helperText={helperText || 'Fixed by your institution'}
       InputProps={{ ...InputProps, readOnly: true }}
     />
+  )
+}
+
+function FixedBlueprintTable({ table }) {
+  const groups = table.columnGroups || []
+  const subGroups = table.subGroups || []
+  const hasRowLabels = Boolean(table.rowLabels)
+  const dataColCount = table.columns.length
+  const totalCols = dataColCount + (hasRowLabels ? 1 : 0)
+  const headerDepth = (groups.length ? 1 : 0) + (subGroups.length ? 1 : 0) + (table.noHeader ? 0 : 1)
+  const leafColumns = subGroups.length && table.columns[0] === subGroups[0].title
+    ? table.columns.map((column, index) => (index === 0 ? '' : column))
+    : table.columns
+  const rows = table.defaultRows || []
+  const cellStyle = { ...TABLE_TD, padding: '5px 8px', whiteSpace: 'pre-wrap' }
+  const headStyle = { ...TABLE_TH, padding: '6px 8px' }
+
+  return (
+    <Box sx={{ overflowX: 'auto' }}>
+      {table.intro && (
+        <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.72)' }}>{table.intro}</Typography>
+      )}
+      <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
+        <thead>
+          {groups.length > 0 && (
+            <tr style={{ backgroundColor: BG }}>
+              {hasRowLabels && <th rowSpan={headerDepth} style={headStyle}>{table.rowLabels.header}</th>}
+              {groups.map((group, index) => (
+                <th key={index} colSpan={group.span} style={{ ...headStyle, textAlign: 'center' }}>
+                  {group.title}{group.dynamic ? ' (per ILO)' : ''}
+                </th>
+              ))}
+            </tr>
+          )}
+          {subGroups.length > 0 && (
+            <tr style={{ backgroundColor: BG }}>
+              {subGroups.map((group, index) => (
+                <th key={index} colSpan={group.span} style={{ ...headStyle, textAlign: 'center' }}>{group.title}</th>
+              ))}
+            </tr>
+          )}
+          {!table.noHeader && (
+            <tr style={{ backgroundColor: BG }}>
+              {groups.length === 0 && hasRowLabels && (
+                <th rowSpan={headerDepth} style={headStyle}>{table.rowLabels.header}</th>
+              )}
+              {leafColumns.map((column, index) => (
+                <th key={index} style={headStyle}>{column || ' '}</th>
+              ))}
+            </tr>
+          )}
+          {table.noHeader && groups.length === 0 && hasRowLabels && (
+            <tr style={{ backgroundColor: BG }}><th style={headStyle}>{table.rowLabels.header}</th></tr>
+          )}
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => {
+            const cells = []
+            ;(row || []).forEach((cell, cellIndex) => {
+              if (cell === null && cells.length) {
+                cells[cells.length - 1].colSpan += 1
+                return
+              }
+              cells.push({ value: cell, colSpan: 1, key: cellIndex })
+            })
+            return (
+              <tr key={rowIndex} style={{ backgroundColor: rowIndex % 2 === 0 ? '#1A1A1F' : BG }}>
+                {hasRowLabels && (
+                  <td style={{ ...cellStyle, textAlign: 'center', fontWeight: 700, color: MAROON }}>
+                    {table.rowLabels.values?.[rowIndex] || ''}
+                  </td>
+                )}
+                {cells.map(cell => (
+                  <td key={cell.key} colSpan={cell.colSpan > 1 ? cell.colSpan : undefined} style={cellStyle}>
+                    {cell.value || ' '}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
+          {table.totalRow && (
+            <tr style={{ backgroundColor: BG }}>
+              {hasRowLabels && <td style={{ ...cellStyle, fontWeight: 700 }}>{table.totalRow.label}</td>}
+              {Array.from({ length: dataColCount }, (_, columnIndex) => (
+                <td key={columnIndex} style={cellStyle}>
+                  {table.totalRow.columns.includes(columnIndex) ? 'Total' : ''}
+                </td>
+              ))}
+            </tr>
+          )}
+          {table.noteRow && (
+            <tr>
+              <td style={{ ...cellStyle, fontWeight: 700 }}>{table.noteRow.label}</td>
+              <td colSpan={totalCols - 1} style={cellStyle}>{table.noteRow.text}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {table.footer && (
+        <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 }}>{table.footer}</Typography>
+      )}
+      <Typography variant="caption" sx={{ display: 'block', mt: 1, color: MAROON, fontWeight: 600 }}>
+        Fixed by your institution. This table cannot be edited.
+      </Typography>
+    </Box>
   )
 }
 
@@ -1670,11 +1798,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const fixedFieldRules = useMemo(() => {
     const rules = {}
     adminFormatSections.forEach(section => {
-      if (section.enabled === false || section.is_static) return
+      if (section.enabled === false) return
+      const sectionFixed = Boolean(section.is_static)
       ;(section.fields || []).forEach(field => {
         const dataKey = ADMIN_FIXED_FIELDS[field.key]
         const content = String(field.content || '').trim()
-        if (dataKey && field.fixed && content) rules[dataKey] = field.content
+        if (dataKey && (sectionFixed || field.fixed) && content) rules[dataKey] = field.content
       })
     })
     return rules
@@ -1693,6 +1822,32 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return labels
   }, [adminFormatSections])
   const labelFor = (fieldKey, fallback) => fieldLabelOverrides[fieldKey] || fallback
+
+  // Tables the admin fixed in the Syllabus Format are stored per institution
+  // under section.blueprint_tables. Faculty see those rows read-only. The
+  // lookup is also flattened by table key so a saved override still applies if
+  // the stored section key ever differs from the canonical blueprint key.
+  const adminFixedTables = useMemo(() => {
+    const bySection = {}
+    const byTable = {}
+    adminFormatSections.forEach(section => {
+      if (section.enabled === false) return
+      const key = section.key || section.editor
+      const tables = section.blueprint_tables || {}
+      if (key) bySection[key] = { ...(bySection[key] || {}), ...tables }
+      Object.entries(tables).forEach(([tableKey, override]) => {
+        if (override) byTable[tableKey] = override
+      })
+    })
+    return { bySection, byTable }
+  }, [adminFormatSections])
+
+  const fixedTableFor = useCallback((sectionKey, tableKey) => {
+    const override = adminFixedTables.bySection[sectionKey]?.[tableKey] || adminFixedTables.byTable[tableKey]
+    if (!override) return null
+    const descriptor = ALL_BLUEPRINT_TABLES.find(table => table.key === tableKey)
+    return descriptor ? applyTableOverride(descriptor, override) : null
+  }, [adminFixedTables])
 
   // Re-applied after every render so loading a saved syllabus or AI generation
   // can never overwrite a field the institution fixed.
@@ -3955,10 +4110,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
     // ── 3. ILO, AT, and References ───────────────────────────────────────────
     if (sectionKey === 'iloat-references') {
+      const fixedIloTable = fixedTableFor('iloat-references', 'ilo-table')
+      const fixedAtTable = fixedTableFor('iloat-references', 'at-distribution-map')
+      const fixedReferenceTable = fixedTableFor('iloat-references', 'books-references')
       return (
         <>
           <SectionCard title="Table 1: Intended Learning Outcomes (ILO)"
-            action={<AddRowBtn label="Add ILO" onClick={addIlo} />}>
+            action={fixedIloTable ? undefined : <AddRowBtn label="Add ILO" onClick={addIlo} />}>
+            {fixedIloTable ? <FixedBlueprintTable table={fixedIloTable} /> : (
             <Stack spacing={1.5}>
               {syllabusData.ilos.map((ilo, i) => (
                 <Box key={i} sx={{ border: '1px solid rgba(0,0,0,0.07)', borderRadius: 1.5, p: 1.5 }}>
@@ -3973,8 +4132,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               ))}
             </Stack>
+            )}
           </SectionCard>
 
+          {fixedAtTable ? (
+            <SectionCard title="Table 2: Assessment Method and Distribution Map">
+              <FixedBlueprintTable table={fixedAtTable} />
+            </SectionCard>
+          ) : (
           <PEAAssessmentCard
             ilos={syllabusData.ilos.map((_, idx) => ({ id: `ILO${idx + 1}` }))}
             ats={syllabusData.ats || []}
@@ -3983,9 +4148,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               setSyllabusData(s => ({ ...s, ats: typeof updater === 'function' ? updater(s.ats || []) : updater }))
             }}
           />
+          )}
 
           <SectionCard title="Table 3: Books and Other References"
-            action={<AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
+            action={fixedReferenceTable ? undefined : <AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
+            {fixedReferenceTable ? <FixedBlueprintTable table={fixedReferenceTable} /> : (
             <Stack spacing={1.25}>
               {syllabusData.references.map((ref, i) => (
                 <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -3997,6 +4164,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               ))}
             </Stack>
+            )}
           </SectionCard>
         </>
       )
@@ -4006,16 +4174,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 5. Framework Mapping ─────────────────────────────────────────────────
     if (sectionKey === 'framework-mapping') {
       const fwTabs = [
-        { key: 'IGA',  label: 'IGA',  itemsField: 'igas',             codePrefix: 'IGA',  statementCol: 'Institutional Graduate Attributes (IGA) Statements' },
-        { key: 'SO',   label: 'SO',   itemsField: 'student_outcomes', codePrefix: 'SO',   statementCol: 'Student Outcomes (SO) Statements' },
-        { key: 'CDIO', label: 'CDIO', itemsField: 'cdio_skills',      codePrefix: 'CDIO', statementCol: 'CDIO Skills' },
-        { key: 'SDG',  label: 'SDG',  itemsField: 'sdg_skills',       codePrefix: 'SDG',  statementCol: 'SDG Skills' },
+        { key: 'IGA',  label: 'IGA',  itemsField: 'igas',             codePrefix: 'IGA',  tableKey: 'iga-table',  statementCol: 'Institutional Graduate Attributes (IGA) Statements' },
+        { key: 'SO',   label: 'SO',   itemsField: 'student_outcomes', codePrefix: 'SO',   tableKey: 'so-table',   statementCol: 'Student Outcomes (SO) Statements' },
+        { key: 'CDIO', label: 'CDIO', itemsField: 'cdio_skills',      codePrefix: 'CDIO', tableKey: 'cdio-table', statementCol: 'CDIO Skills' },
+        { key: 'SDG',  label: 'SDG',  itemsField: 'sdg_skills',       codePrefix: 'SDG',  tableKey: 'sdg-table',  statementCol: 'SDG Skills' },
       ]
       const activeFw = fwTabs.find(f => f.key === activeFwKey) || fwTabs[0]
       const fwItems = syllabusData[activeFw.itemsField] || []
+      const fixedFwTable = fixedTableFor('framework-mapping', activeFw.tableKey)
       return (
         <SectionCard title="Framework Mapping"
-          action={<AddRowBtn label={`Add ${activeFw.key}`} onClick={() => addSylItem(activeFw.itemsField, { ...EMPTY_ATTR, code: `${activeFw.codePrefix}${fwItems.length + 1}` })} />}>
+          action={fixedFwTable
+            ? <Chip size="small" label="Fixed by institution" sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700 }} />
+            : <AddRowBtn label={`Add ${activeFw.key}`} onClick={() => addSylItem(activeFw.itemsField, { ...EMPTY_ATTR, code: `${activeFw.codePrefix}${fwItems.length + 1}` })} />}>
           {/* Tab strip */}
           <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap', borderBottom: '1px solid rgba(0,0,0,0.07)', pb: 1 }}>
             {fwTabs.map(fw => (
@@ -4031,6 +4202,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
 
           {/* Two-column statement table */}
+          {fixedFwTable ? <FixedBlueprintTable table={fixedFwTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
               <thead>
@@ -4064,6 +4236,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
       )
     }
@@ -4121,9 +4294,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           ILO{ri + 1}
         </td>
       )
+      const fixedSoCpaTable = fixedTableFor('mapping-of-at', 'ilo-so-cpa-map')
+      const fixedIgaMapTable = fixedTableFor('mapping-of-at', 'ilo-iga-map')
+      const fixedCdioSdgTable = fixedTableFor('mapping-of-at', 'ilo-cdio-sdg-map')
       return (
         <Stack spacing={2}>
           <SectionCard title="Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)">
+            {fixedSoCpaTable ? <FixedBlueprintTable table={fixedSoCpaTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4165,9 +4342,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
 
           <SectionCard title="Table 2. INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)">
+            {fixedIgaMapTable ? <FixedBlueprintTable table={fixedIgaMapTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4201,9 +4380,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
 
           <SectionCard title="Table 3. CDIO and SDG Skills: Mapping of Assessment Tasks (AT)">
+            {fixedCdioSdgTable ? <FixedBlueprintTable table={fixedCdioSdgTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4251,6 +4432,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
         </Stack>
       )
@@ -4259,6 +4441,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 8. TLA Activities ────────────────────────────────────────────────────
     if (sectionKey === 'tla-activities') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
+      const fixedTlaTable = fixedTableFor('tla-activities', 'tla-table')
+      const fixedScheduleTable = fixedTableFor('tla-activities', 'assessment-schedule')
       const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
       const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
       const updScheduleMethod = (i, key, ci, val) => {
@@ -4276,7 +4460,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <>
         <SectionCard title="Table 1. Teaching, Learning, and Assessment (TLA) Activities"
-          action={<AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
+          action={fixedTlaTable ? undefined : <AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
+          {fixedTlaTable ? <FixedBlueprintTable table={fixedTlaTable} /> : (
           <Box sx={{ overflowX: 'auto', minWidth: '100%' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem', minWidth: '100%', tableLayout: 'auto' }}>
               <thead>
@@ -4378,10 +4563,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
 
         <SectionCard title="Table 2. Assessment Method"
-          action={<AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
+          action={fixedScheduleTable ? undefined : <AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
+          {fixedScheduleTable ? <FixedBlueprintTable table={fixedScheduleTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem' }}>
               <thead>
@@ -4414,6 +4601,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
         </>
       )
@@ -4851,6 +5039,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 10. Course Policies ──────────────────────────────────────────────────
     if (sectionKey === 'course-policies') {
       const gradingRows = (syllabusData.grading_rows || []).length ? syllabusData.grading_rows : DEFAULT_GRADING_ROWS.map(row => ({ ...row }))
+      const fixedGradingTable = fixedTableFor('course-policies', 'grading-scale')
       const policyFields = [
         { fieldKey: 'class-policy',          label: 'Class Policy',          dataKey: 'class_policy' },
         { fieldKey: 'missed-examinations',   label: 'Missed Examinations',   dataKey: 'missed_examinations' },
@@ -4860,7 +5049,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <Stack spacing={2}>
           <SectionCard title="A. Grading System"
-            action={<AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
+            action={fixedGradingTable ? undefined : <AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
+            {fixedGradingTable ? <FixedBlueprintTable table={fixedGradingTable} /> : (
+            <>
             <Typography variant="body2" sx={{ mb: 1.5, color: '#444' }}>
               The grading system adopted by this course is as follows:
             </Typography>
@@ -4904,6 +5095,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Typography variant="body2" sx={{ mt: 1.5, color: '#444', lineHeight: 1.6 }}>
               Students who got a computed grade of 70-74 will be given an appropriate remedial activity in which the final grade should be either passing (3.0) or failure (5.0). No rounding off of grades shall be allowed.
             </Typography>
+            </>
+            )}
           </SectionCard>
 
           <SectionCard title="B. Course Policies">
