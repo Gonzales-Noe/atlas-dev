@@ -7,7 +7,14 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
     _build_sectioned_assessment_payload,
+    _coerce_generated_item_fields,
+    _collect_section_items,
+    _compact_assessment_slot,
+    _derive_assessment_source,
+    _fill_answer_key_fallback,
+    _generated_item_quality_errors,
     _materialize_tos_exam,
+    _normalize_slot_item,
     create_course,
 )
 from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
@@ -167,6 +174,66 @@ class TosFormulaTests(SimpleTestCase):
         self.assertEqual(counts[('Operating systems', 'Apply')], 5)
         self.assertNotIn(('Hardware', 'Apply'), counts)
         self.assertNotIn(('Hardware', 'Create'), counts)
+        by_level = {}
+        for section in sections:
+            for item in section['items']:
+                by_level.setdefault(item['bloom_level'], []).append(item['item_number'])
+        self.assertEqual(by_level['Remember'], [1, 2, 3])
+        self.assertEqual(by_level['Understand'], [4, 5])
+        self.assertEqual(by_level['Apply'], [6, 7, 8, 9, 10])
+
+    def test_checked_ilos_set_the_bloom_levels_and_numbering_stays_with_the_topic(self):
+        sections = _build_sectioned_assessment_payload(
+            [
+                {'topic': 'Cells', 'total_points': 10, 'ilos': ['ILO1', 'ILO2']},
+                {
+                    'topic': 'Genetics',
+                    'total_points': 4,
+                    'bloom_items': {'remember': 1, 'create': 3},
+                    'ilos': ['ILO2'],
+                },
+            ],
+            'major examination',
+            14,
+            ilos=['Identify cell parts', 'Design an experiment'],
+            ilo_bloom=[
+                {'level': 'Remember', 'verb': 'identify'},
+                {'level': 'Create', 'verb': 'design'},
+            ],
+            assessment_label='Prelim',
+        )
+        cells = sections[0]['items']
+        genetics = sections[1]['items']
+        self.assertEqual(
+            [item['bloom_level'] for item in cells],
+            ['Remember'] * 5 + ['Create'] * 5,
+        )
+        self.assertEqual(cells[0]['bloom_verb'], 'identify')
+        self.assertEqual(cells[5]['bloom_verb'], 'design')
+        self.assertEqual([item['item_number'] for item in cells], list(range(1, 11)))
+        self.assertEqual(
+            [item['bloom_level'] for item in genetics],
+            ['Remember'] + ['Create'] * 3,
+        )
+        self.assertEqual([item['item_number'] for item in genetics], [11, 12, 13, 14])
+        self.assertEqual(genetics[1]['bloom_verb'], 'design')
+
+    def test_hours_only_rows_stay_remember_until_faculty_set_a_level(self):
+        sections = _build_sectioned_assessment_payload(
+            [
+                {'topic': 'Cells', 'total_points': 4},
+                {'topic': 'Genetics', 'total_points': 4},
+            ],
+            'major examination',
+            8,
+            assessment_label='Final',
+        )
+        levels = [item['bloom_level'] for section in sections for item in section['items']]
+        self.assertEqual(levels, ['Remember'] * 8)
+        self.assertEqual(
+            [item['item_number'] for section in sections for item in section['items']],
+            list(range(1, 9)),
+        )
 
     def test_generated_items_are_forced_back_to_blueprint_blooms(self):
         blueprint = {
@@ -192,6 +259,110 @@ class TosFormulaTests(SimpleTestCase):
         self.assertEqual([item['bloom_level'] for item in aligned['items']], ['Remember', 'Remember', 'Apply'])
         self.assertEqual([item['question_text'] for item in aligned['items']], ['Question one', 'Question two', 'Question three'])
         self.assertEqual(aligned['allocated_items'], 3)
+
+
+class AssessmentGenerationSlotTests(SimpleTestCase):
+    def test_tos_exam_is_selected_by_exam_code_and_label(self):
+        source = _derive_assessment_source(
+            {
+                'tos': [
+                    {
+                        'examCode': 'ME',
+                        'examLabel': 'Midterm Examination',
+                        'totalTestItems': 2,
+                        'topics': [{'topic': 'Hardware', 'hours_class': 1, 'bloom_pct': {'remember': 100}}],
+                    },
+                    {
+                        'examCode': 'FE',
+                        'examLabel': 'Final Examination',
+                        'totalTestItems': 2,
+                        'topics': [{'topic': 'Networks', 'hours_class': 1, 'bloom_pct': {'apply': 100}}],
+                    },
+                ],
+            },
+            source_exam_code='FE',
+            source_exam_label='Final Examination',
+        )
+
+        self.assertEqual(source['assessment_name'], 'Final Examination')
+        self.assertEqual(source['topic_rows'][0]['topic'], 'Networks')
+
+    def test_slot_prompt_omits_placeholder_stems_and_choices(self):
+        slot = _compact_assessment_slot({
+            'section_title': 'Hardware',
+            'exam_label': 'Final Examination',
+            'items': [{
+                'item_number': 1,
+                'question_text': '[Hardware] Major Examination item 1 (Remember)',
+                'choices': ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
+                'bloom_level': 'Remember',
+                'bloom_verb': 'list',
+                'ilo_refs': ['ILO 1'],
+            }],
+        })
+
+        self.assertNotIn('question_text', slot['items'][0])
+        self.assertNotIn('choices', slot['items'][0])
+        self.assertEqual(slot['items'][0]['bloom_level'], 'Remember')
+
+    def test_explanation_alias_and_valid_item_are_kept(self):
+        blueprint = {
+            'section_title': 'Networks',
+            'exam_label': 'Final Examination',
+            'items': [
+                {'item_number': 1, 'bloom_level': 'Apply', 'bloom_verb': 'use', 'ilo_refs': ['ILO 1'], 'question_text': '[Networks] Major Examination item 1 (Apply)'},
+                {'item_number': 2, 'bloom_level': 'Apply', 'bloom_verb': 'use', 'ilo_refs': ['ILO 1'], 'question_text': '[Networks] Major Examination item 2 (Apply)'},
+            ],
+        }
+        generated = {
+            'items': [
+                {
+                    'item_number': 1,
+                    'question_text': 'Which device forwards packets between networks?',
+                    'choices': ['A. router', 'B. monitor', 'C. keyboard', 'D. printer'],
+                    'correct_answer': 'A',
+                    'explanation': 'A router forwards packets.',
+                },
+                {
+                    'item_number': 2,
+                    'question_text': 'Which command shows the route table?',
+                    'choices': ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
+                    'correct_answer': 'B',
+                    'answer_key': 'placeholder choices',
+                },
+            ],
+        }
+
+        accepted, retry_numbers = _collect_section_items(blueprint, generated)
+
+        self.assertEqual(list(accepted), [1])
+        self.assertEqual(accepted[1]['answer_key'], 'A router forwards packets.')
+        self.assertEqual(accepted[1]['bloom_level'], 'Apply')
+        self.assertEqual(retry_numbers, [2])
+
+    def test_missing_explanation_gets_a_fallback_after_the_item_is_otherwise_complete(self):
+        item = _normalize_slot_item(
+            {
+                'question_text': 'Which layer adds an IP header?',
+                'choices': ['A. network', 'B. physical', 'C. session', 'D. application'],
+                'correct_answer': 'A',
+            },
+            {'item_number': 3, 'bloom_level': 'Remember', 'bloom_verb': 'identify', 'ilo_refs': []},
+            {'section_title': 'Networks', 'exam_label': 'Final Examination'},
+        )
+        self.assertEqual(_generated_item_quality_errors(item), ['answer_key (explanation) is missing.'])
+        filled = _fill_answer_key_fallback(item)
+        self.assertEqual(_generated_item_quality_errors(filled), [])
+        self.assertIn('Option A', filled['answer_key'])
+
+    def test_blueprint_stem_is_not_accepted_as_a_question(self):
+        errors = _generated_item_quality_errors(_coerce_generated_item_fields({
+            'question_text': '[Hardware] Major Examination item 1 (Remember)',
+            'choices': ['A. ram', 'B. rom', 'C. cpu', 'D. bus'],
+            'correct_answer': 'A',
+            'answer_key': 'RAM is memory.',
+        }))
+        self.assertIn('question_text is missing.', errors)
 
 
 class SyllabusTabSplitTests(SimpleTestCase):
