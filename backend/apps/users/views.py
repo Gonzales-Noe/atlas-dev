@@ -30,7 +30,6 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
-from apps.integrations.syllabus_defaults import default_syllabus_sections
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -1185,9 +1184,7 @@ class InstitutionCustomizationView(APIView):
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
-        if not customization.syllabus_sections:
-            customization.syllabus_sections = default_syllabus_sections()
-            customization.save(update_fields=['syllabus_sections', 'updated_at'])
+        has_file = bool(customization.syllabus_template)
         return Response({
             'header_image_url': customization.header_image_url,
             'footer_image_url': customization.footer_image_url,

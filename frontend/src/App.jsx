@@ -15,7 +15,6 @@ import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
 import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
 import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
 import AdminAcademicStructure from './features/roles/Admin/AcademicStructure.jsx'
-import AdminSyllabusFormat from './features/roles/Admin/SyllabusFormat.jsx'
 import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 // 1. Import your new Landing Page
 import LandingPage from './pages/LandingPage.jsx' 
@@ -205,14 +204,6 @@ function App() {
           element={
             <ProtectedRoute role="admin">
               <AdminAcademicStructure />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path={ROUTES.ADMIN.SYLLABUS_FORMAT}
-          element={
-            <ProtectedRoute role="admin">
-              <AdminSyllabusFormat />
             </ProtectedRoute>
           }
         />
