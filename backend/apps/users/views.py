@@ -1,4 +1,5 @@
 import base64
+import copy
 import hashlib
 import hmac
 import json
@@ -28,7 +29,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
-from apps.integrations.fixed_syllabus import seed_course_syllabi, seed_institution_syllabi
+from apps.integrations.fixed_syllabus import canonical_syllabus_sections, publish_fixed_syllabus, seed_course_syllabi
 from apps.integrations.syllabus_defaults import default_syllabus_sections
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
@@ -1187,7 +1188,14 @@ class InstitutionCustomizationView(APIView):
                 'field_labels': {},
             })
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=institution)
-        if not customization.syllabus_sections:
+        # Every admin edits one shared format, even when their accounts
+        # belong to different institutions. An empty institution takes that
+        # format instead of starting a private copy.
+        shared = canonical_syllabus_sections()
+        if shared and customization.syllabus_sections != shared:
+            customization.syllabus_sections = copy.deepcopy(shared)
+            customization.save(update_fields=['syllabus_sections', 'updated_at'])
+        elif not customization.syllabus_sections:
             customization.syllabus_sections = default_syllabus_sections()
             customization.save(update_fields=['syllabus_sections', 'updated_at'])
         has_file = bool(customization.syllabus_template)
@@ -1209,6 +1217,8 @@ class InstitutionCustomizationView(APIView):
         })
 
     def patch(self, request):
+        # Any institution admin may fix or unfix fields and tables, and rename
+        # sections. The saved format is then published to every institution.
         if normalize_role(request.user.role) != 'admin':
             return Response({'detail': 'Only institution admins can edit customization.'}, status=status.HTTP_403_FORBIDDEN)
         if not request.user.institution:
@@ -1238,7 +1248,7 @@ class InstitutionCustomizationView(APIView):
             if 'syllabus_sections' not in request.data:
                 customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
         customization.save()
-        seed_institution_syllabi(customization.institution, customization.syllabus_sections)
+        publish_fixed_syllabus(customization.syllabus_sections)
         return self.get(request)
 
 

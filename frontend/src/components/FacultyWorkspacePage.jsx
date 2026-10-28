@@ -2094,6 +2094,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return labels
   }, [adminFormatSections])
   const labelFor = (fieldKey, fallback) => fieldLabelOverrides[fieldKey] || fallback
+  const titleForTable = (sectionKey, tableKey, fallback) => {
+    const admin = adminFormatSections.find(section => (
+      section.enabled !== false && (section.key === sectionKey || section.editor === sectionKey)
+    ))
+    const custom = admin?.table_titles?.[tableKey]
+    return typeof custom === 'string' && custom.trim() ? custom.trim() : fallback
+  }
 
   // Tables the admin fixed in the Syllabus Format are stored per institution
   // under section.blueprint_tables. Faculty see those rows read-only. The
@@ -2120,7 +2127,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ))
     const override = adminFixedTables.bySection[sectionKey]?.[tableKey] || adminFixedTables.byTable[tableKey]
     // A saved table, or a whole section marked Fixed, is read-only for every account.
-    if (!override && !adminSection?.is_static) return null
+    // Fixed off keeps the admin's draft but lets Faculty edit their own copy.
+    if (!adminSection?.is_static && (!override || override.fixed === false)) return null
     const descriptor = ALL_BLUEPRINT_TABLES.find(table => table.key === tableKey)
     return descriptor ? applyTableOverride(descriptor, override || null) : null
   }, [adminFixedTables, adminFormatSections])
@@ -2448,12 +2456,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSaveError(`Complete required fields: ${missingRequiredSubsections.join(', ')}.`)
       return
     }
+    const restored = applyFixedSyllabusContent(syllabusForPersist(), adminFormatSections)
+    setSyllabusData(restored)
     setSaveLoading(true)
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
-        syllabus_content: syllabusForPersist(),
+        syllabus_content: restored,
         syllabus_id: syllabusId,
       }, { timeout: 60000 })
+      if (data?.syllabus_content && typeof data.syllabus_content === 'object') {
+        setSyllabusData(normalizeSyllabusData(data.syllabus_content))
+      }
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
       setSaveSuccess(true)
@@ -4541,7 +4554,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const fixedReferenceTable = fixedTableFor('iloat-references', 'books-references')
       return (
         <>
-          <SectionCard title="Table 1: Intended Learning Outcomes (ILO)"
+          <SectionCard title={titleForTable('iloat-references', 'ilo-table', 'Table 1: Intended Learning Outcomes (ILO)')}
             action={fixedIloTable ? undefined : <AddRowBtn label="Add ILO" onClick={addIlo} />}>
             {fixedIloTable ? <FixedBlueprintTable table={fixedIloTable} /> : (
             <Stack spacing={1.5}>
@@ -4562,7 +4575,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </SectionCard>
 
           {fixedAtTable ? (
-            <SectionCard title="Table 2: Assessment Method and Distribution Map">
+            <SectionCard title={titleForTable('iloat-references', 'at-distribution-map', 'Table 2: Assessment Method and Distribution Map')}>
               <FixedBlueprintTable table={fixedAtTable} />
             </SectionCard>
           ) : (
@@ -4576,7 +4589,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           />
           )}
 
-          <SectionCard title="Table 3: Books and Other References"
+          <SectionCard title={titleForTable('iloat-references', 'books-references', 'Table 3: Books and Other References')}
             action={fixedReferenceTable ? undefined : <AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
             {fixedReferenceTable ? <FixedBlueprintTable table={fixedReferenceTable} /> : (
             <Stack spacing={1.25}>
@@ -4725,7 +4738,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const fixedCdioSdgTable = fixedTableFor('mapping-of-at', 'ilo-cdio-sdg-map')
       return (
         <Stack spacing={2}>
-          <SectionCard title="Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-so-cpa-map', 'Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)')}>
             {fixedSoCpaTable ? <FixedBlueprintTable table={fixedSoCpaTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
@@ -4771,7 +4784,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </SectionCard>
 
-          <SectionCard title="Table 2. INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-iga-map', 'Table 2. INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)')}>
             {fixedIgaMapTable ? <FixedBlueprintTable table={fixedIgaMapTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
@@ -4809,7 +4822,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </SectionCard>
 
-          <SectionCard title="Table 3. CDIO and SDG Skills: Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-cdio-sdg-map', 'Table 3. CDIO and SDG Skills: Mapping of Assessment Tasks (AT)')}>
             {fixedCdioSdgTable ? <FixedBlueprintTable table={fixedCdioSdgTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
@@ -4885,7 +4898,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
       return (
         <>
-        <SectionCard title="Table 1. Teaching, Learning, and Assessment (TLA) Activities"
+        <SectionCard title={titleForTable('tla-activities', 'tla-table', 'Table 1. Teaching, Learning, and Assessment (TLA) Activities')}
           action={fixedTlaTable ? undefined : <AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
           {fixedTlaTable ? <FixedBlueprintTable table={fixedTlaTable} /> : (
           <Box sx={{ overflowX: 'auto', minWidth: '100%' }}>
@@ -4990,7 +5003,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           )}
         </SectionCard>
 
-        <SectionCard title="Table 2. Assessment Method"
+        <SectionCard title={titleForTable('tla-activities', 'assessment-schedule', 'Table 2. Assessment Method')}
           action={fixedScheduleTable ? undefined : <AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
           {fixedScheduleTable ? <FixedBlueprintTable table={fixedScheduleTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
@@ -5603,7 +5616,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ]
       return (
         <Stack spacing={2}>
-          <SectionCard title="A. Grading System"
+          <SectionCard title={titleForTable('course-policies', 'grading-scale', 'A. Grading System')}
             action={fixedGradingTable ? undefined : <AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
             {fixedGradingTable ? <FixedBlueprintTable table={fixedGradingTable} /> : (
             <>
@@ -5953,7 +5966,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {renderConfiguredSubsections()}
           </Box>
 
-          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && aiPipelineDrafts && (
+          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
             <Paper
               variant="outlined"
               sx={{
@@ -6016,7 +6029,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && (
+          {activeSyllabusSectionKey !== 'university-information' && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',

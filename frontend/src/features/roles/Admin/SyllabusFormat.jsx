@@ -330,7 +330,7 @@ export default function SyllabusFormat() {
     else updateSubsection(sectionIndex, subsectionIndex, { table_enabled: false })
   }
 
-  function tableOverrideFromView(table, view) {
+  function tableOverrideFromView(table, view, fixed) {
     const columns = view.columns.map(column => String(column ?? ''))
     const rows = (view.defaultRows || []).map(row => (
       columns.map((_, index) => {
@@ -344,6 +344,12 @@ export default function SyllabusFormat() {
       override.rowLabels = rows.map((_, index) => (
         view.rowLabels.values?.[index] || `${prefix}${index + 1}`
       ))
+    }
+    if (typeof fixed === 'boolean') override.fixed = fixed
+    else {
+      const existing = activeSection?.blueprint_tables?.[table.key]
+      // Keep a table locked only after Fixed or Save table. Typing alone does not lock it.
+      override.fixed = existing ? existing.fixed !== false : false
     }
     return override
   }
@@ -424,6 +430,33 @@ export default function SyllabusFormat() {
     })
   }
 
+  function setTableTitle(table, title) {
+    dirtyRef.current = true
+    updateSection(activeIndex, {
+      table_titles: { ...(activeSection?.table_titles || {}), [table.key]: title },
+    })
+  }
+
+  function commitTableTitle(table, title) {
+    setTableTitle(table, title.trim() || table.title)
+  }
+
+  function setBlueprintTableFixed(table, fixed) {
+    const currentOverride = activeSection?.blueprint_tables?.[table.key]
+    if (!fixed && !currentOverride) return
+    const view = applyTableOverride(table, currentOverride || null)
+    const nextSections = sections.map((section, index) => {
+      if (index !== activeIndex) return section
+      const tables = { ...(section.blueprint_tables || {}) }
+      tables[table.key] = tableOverrideFromView(table, view, fixed)
+      return { ...section, blueprint_tables: tables }
+    })
+    dirtyRef.current = true
+    setError('')
+    setCustomization(current => ({ ...current, syllabus_sections: nextSections }))
+    save(nextSections)
+  }
+
   function restoreBuiltInTable(table) {
     const nextSections = sections.map((section, index) => {
       if (index !== activeIndex) return section
@@ -443,7 +476,7 @@ export default function SyllabusFormat() {
       const overrides = { ...(activeSection.blueprint_tables || {}) }
       blueprintTablesWithTabsFor(activeSection).forEach(table => {
         if (!overrides[table.key]) {
-          overrides[table.key] = tableOverrideFromView(table, applyTableOverride(table, null))
+          overrides[table.key] = tableOverrideFromView(table, applyTableOverride(table, null), true)
         }
       })
       changes.blueprint_tables = overrides
@@ -634,7 +667,7 @@ export default function SyllabusFormat() {
         : payload
       setCustomization(current => ({ ...current, ...response.data, syllabus_sections: storedSections }))
       dirtyRef.current = false
-      setNotice('Syllabus format saved to the database and applied to every Faculty syllabus in your institution.')
+      setNotice('Syllabus format saved. Every admin can change it, and it applies to every institution and faculty account.')
       return true
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save syllabus format to the database.')
@@ -959,6 +992,7 @@ export default function SyllabusFormat() {
     }
     const headInputSx = { ...cellInputSx, fontWeight: 700 }
     const sampleRows = (view.defaultRows || []).filter(row => (row || []).some(cell => cell !== '' && cell !== null))
+    const tableFixed = Boolean(activeSection.is_static) || Boolean(override && override.fixed !== false)
     const rows = editable
       ? (view.defaultRows || [])
       : (override
@@ -974,14 +1008,35 @@ export default function SyllabusFormat() {
     return (
       <Box key={table.key} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
-          <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
-            <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              {table.title}
-            </Typography>
-            <Chip size="small" label="Built-in table" sx={chipSx('#60AAFF')} variant="outlined" />
-            {override && <Chip size="small" label="Fixed" sx={chipSx('#FFB74D')} variant="outlined" />}
-            {groups.some(group => group.dynamic) && (
-              <Chip size="small" label="Grows with the ILOs" sx={chipSx('#60AAFF')} variant="outlined" />
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0, flex: 1 }}>
+              <TextField
+                size="small"
+                value={activeSection?.table_titles?.[table.key] ?? table.title}
+                onChange={event => setTableTitle(table, event.target.value)}
+                onBlur={event => commitTableTitle(table, event.target.value)}
+                aria-label={`${table.title} name`}
+                sx={{ ...inputSx, flex: '1 1 220px', minWidth: 180 }}
+              />
+              <Chip size="small" label="Built-in table" sx={chipSx('#60AAFF')} variant="outlined" />
+              {tableFixed && <Chip size="small" label="Fixed" sx={chipSx('#FFB74D')} variant="outlined" />}
+              {groups.some(group => group.dynamic) && (
+                <Chip size="small" label="Grows with the ILOs" sx={chipSx('#60AAFF')} variant="outlined" />
+              )}
+            </Stack>
+            {editable && (
+              <FormControlLabel
+                sx={{ m: 0, whiteSpace: 'nowrap', flexShrink: 0 }}
+                control={(
+                  <Switch
+                    size="small"
+                    checked={tableFixed}
+                    disabled={Boolean(activeSection.is_static)}
+                    onChange={event => setBlueprintTableFixed(table, event.target.checked)}
+                  />
+                )}
+                label={<Typography variant="caption" sx={{ fontWeight: 700, color: tableFixed ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
+              />
             )}
           </Stack>
         </Box>
@@ -1123,16 +1178,16 @@ export default function SyllabusFormat() {
                   Restore built-in
                 </OutlineBtn>
               )}
-              <PrimaryBtn small disabled={saving} onClick={() => save()}>
+              <PrimaryBtn small disabled={saving} onClick={() => setBlueprintTableFixed(table, true)}>
                 {saving ? 'Saving…' : 'Save table'}
               </PrimaryBtn>
             </Stack>
           )}
-          <Typography variant="caption" sx={{ color: override ? '#FFB74D' : 'var(--text-tertiary)', display: 'block', mt: 0.75 }}>
-            {editable
-              ? 'Edit any header, row label or cell, then choose Save table. Saved tables become fixed content every Faculty sees and cannot change.'
-              : override
-                ? 'Fixed by your institution. Faculty see this table exactly as shown and cannot edit it.'
+          <Typography variant="caption" sx={{ color: tableFixed ? '#FFB74D' : 'var(--text-tertiary)', display: 'block', mt: 0.75 }}>
+            {tableFixed
+              ? 'Fixed for every Faculty account. They see this table and cannot edit it. The table name is set by admins.'
+              : editable
+                ? 'Any admin can rename this table. Faculty see that name and cannot change it. Save Format stores the name for every institution.'
                 : sampleRows.length
                   ? 'Rows above are the default content; Faculty can edit every row in the Syllabus workspace.'
                   : 'Faculty fill this table row by row in the Syllabus workspace.'}
@@ -1161,7 +1216,7 @@ export default function SyllabusFormat() {
           </Stack>
         </Box>
         <Stack spacing={2} sx={{ p: 2 }}>
-          {activeBlueprintTabs.map(tab => renderBlueprintTable({ ...tab.table, title: `${tab.label} — ${tab.table.title}` }))}
+          {activeBlueprintTabs.map(tab => renderBlueprintTable(tab.table))}
         </Stack>
       </Box>
     )
