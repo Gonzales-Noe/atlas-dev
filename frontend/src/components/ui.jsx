@@ -7,7 +7,7 @@ import React from 'react'
 export function PageHeader({ title, subtitle, action }) {
   return (
     <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-      <div>
+      <div style={{ flex: '1 1 480px', minWidth: 0 }}>
         <h1 style={{ fontSize: '1.65rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 4px', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
           {title}
         </h1>
@@ -17,7 +17,7 @@ export function PageHeader({ title, subtitle, action }) {
           </p>
         )}
       </div>
-      {action && <div style={{ flexShrink: 0 }}>{action}</div>}
+      {action && <div style={{ flexShrink: 0, marginLeft: 'auto' }}>{action}</div>}
     </div>
   )
 }

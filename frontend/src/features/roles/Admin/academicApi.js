@@ -91,6 +91,11 @@ export async function createSection(payload) {
   return data
 }
 
+export async function updateSection(sectionId, payload) {
+  const { data } = await api.patch(`${BASE}/sections/${sectionId}/`, payload)
+  return data
+}
+
 export async function deleteSection(sectionId) {
   await api.delete(`${BASE}/sections/${sectionId}/`)
 }
@@ -133,6 +138,15 @@ export async function resetSetup() {
 }
 
 // ── Domain constants shared by the wizard and the structure page ──────────────
+export const SECTION_YEARS = [
+  { value: 1, label: '1st Year' },
+  { value: 2, label: '2nd Year' },
+  { value: 3, label: '3rd Year' },
+  { value: 4, label: '4th Year' },
+  { value: 5, label: '5th Year' },
+  { value: 6, label: '6th Year' },
+]
+
 export const COURSE_CATEGORIES = [
   { value: 'ged', label: 'General Education (GE)' },
   { value: 'professional', label: 'Professional' },

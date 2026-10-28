@@ -39,7 +39,7 @@ PASS_MARK = "[PASS]"
 FAIL_MARK = "[FAIL]"
 WARN_MARK = "[WARN]"
 
-DEFAULT_PROVIDERS = ["groq", "nvidia", "mistral", "gemma", "cloudflare", "openrouter", "huggingface"]
+DEFAULT_PROVIDERS = ["groq", "gemma", "cloudflare", "openrouter"]
 
 # The five required section headings produced by CoTPromptBuilder.build_module_prompt
 REQUIRED_SECTIONS = [

@@ -660,3 +660,20 @@ body.atlas-light #root {
 .faculty-workspace select {
   color-scheme: dark;
 }
+/* Institution-fixed fields are disabled by design; keep their text readable. */
+.faculty-workspace .MuiInputBase-input.Mui-disabled,
+.faculty-workspace .MuiSelect-select.Mui-disabled,
+.faculty-workspace input.Mui-disabled,
+.faculty-workspace textarea.Mui-disabled {
+  -webkit-text-fill-color: var(--workspace-text) !important;
+  color: var(--workspace-text) !important;
+  opacity: 1 !important;
+}
+.faculty-workspace .MuiInputLabel-root.Mui-disabled {
+  color: var(--workspace-text) !important;
+  opacity: 0.85;
+}
+.faculty-workspace .MuiInputBase-root.Mui-disabled,
+.faculty-workspace .MuiOutlinedInput-root.Mui-disabled {
+  background: rgba(255,255,255,0.05) !important;
+}

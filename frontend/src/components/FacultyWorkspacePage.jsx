@@ -83,6 +83,7 @@ import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
+import { applyFixedSyllabusContent, applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -139,16 +140,13 @@ const ADMIN_FIXED_FIELDS = {
   'other-policies': 'other_policies',
 }
 
-const PROVIDERS = ['auto', 'groq', 'nvidia', 'mistral', 'gemma', 'cloudflare', 'openrouter', 'huggingface', 'ollama']
+const PROVIDERS = ['auto', 'groq', 'gemma', 'cloudflare', 'openrouter', 'ollama']
 const PROVIDER_LABELS = {
   auto: 'Auto (best available free model)',
   groq: 'Groq — GPT-OSS 120B',
-  nvidia: 'NVIDIA NIM — Nemotron 3 Super',
-  mistral: 'Mistral — Mistral Small',
   gemma: 'Google AI Studio — Gemma 4 31B',
   cloudflare: 'Cloudflare — GPT-OSS 120B',
   openrouter: 'OpenRouter — free models',
-  huggingface: 'Hugging Face — GPT-OSS 120B',
   ollama: 'Ollama (VPS local)',
 }
 const ASSESSMENT_TYPES = [
@@ -515,6 +513,23 @@ function LField({ label, ...props }) {
         },
         '& .MuiInputLabel-root.Mui-focused': { color: MAROON },
         '& .MuiSelect-select': { whiteSpace: 'normal', wordBreak: 'break-word' },
+        // MUI's default disabled colors are near-black and unreadable on the
+        // dark workspace, so institution-fixed fields keep light text.
+        '& .MuiInputBase-input.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
+        },
+        '& .MuiSelect-select.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
+        },
+        '& .MuiOutlinedInput-root.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.06)' },
+        '& .MuiOutlinedInput-root.Mui-disabled fieldset': { borderColor: 'var(--border-color)' },
+        '& .MuiInputLabel-root.Mui-disabled': { color: 'rgba(255,255,255,0.72)' },
+        '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.62)' },
+        '& .MuiFormHelperText-root.Mui-error': { color: '#FF7B72' },
         ...props.sx,
       }}
       SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
@@ -522,18 +537,129 @@ function LField({ label, ...props }) {
   )
 }
 
+const ALL_BLUEPRINT_TABLES = SYLLABUS_SECTION_BLUEPRINTS.flatMap(section => [
+  ...(section.tables || []),
+  ...(section.tabs || []).map(tab => tab.table).filter(Boolean),
+])
+
 function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) {
   const dataKey = ADMIN_FIXED_FIELDS[fieldKey] || fieldKey
   const locked = Boolean(rules && Object.prototype.hasOwnProperty.call(rules, dataKey))
   if (!locked) return <LField {...props} value={value} InputProps={InputProps} helperText={helperText} />
+  const fixedText = String(rules[dataKey] ?? '')
   return (
     <LField
       {...props}
-      value={rules[dataKey]}
+      value={fixedText.trim() ? fixedText : value}
       disabled
       helperText={helperText || 'Fixed by your institution'}
       InputProps={{ ...InputProps, readOnly: true }}
     />
+  )
+}
+
+function FixedBlueprintTable({ table }) {
+  const groups = table.columnGroups || []
+  const subGroups = table.subGroups || []
+  const hasRowLabels = Boolean(table.rowLabels)
+  const dataColCount = table.columns.length
+  const totalCols = dataColCount + (hasRowLabels ? 1 : 0)
+  const headerDepth = (groups.length ? 1 : 0) + (subGroups.length ? 1 : 0) + (table.noHeader ? 0 : 1)
+  const leafColumns = subGroups.length && table.columns[0] === subGroups[0].title
+    ? table.columns.map((column, index) => (index === 0 ? '' : column))
+    : table.columns
+  const rows = table.defaultRows || []
+  const cellStyle = { ...TABLE_TD, padding: '5px 8px', whiteSpace: 'pre-wrap' }
+  const headStyle = { ...TABLE_TH, padding: '6px 8px' }
+
+  return (
+    <Box sx={{ overflowX: 'auto' }}>
+      {table.intro && (
+        <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.72)' }}>{table.intro}</Typography>
+      )}
+      <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
+        <thead>
+          {groups.length > 0 && (
+            <tr style={{ backgroundColor: BG }}>
+              {hasRowLabels && <th rowSpan={headerDepth} style={headStyle}>{table.rowLabels.header}</th>}
+              {groups.map((group, index) => (
+                <th key={index} colSpan={group.span} style={{ ...headStyle, textAlign: 'center' }}>
+                  {group.title}{group.dynamic ? ' (per ILO)' : ''}
+                </th>
+              ))}
+            </tr>
+          )}
+          {subGroups.length > 0 && (
+            <tr style={{ backgroundColor: BG }}>
+              {subGroups.map((group, index) => (
+                <th key={index} colSpan={group.span} style={{ ...headStyle, textAlign: 'center' }}>{group.title}</th>
+              ))}
+            </tr>
+          )}
+          {!table.noHeader && (
+            <tr style={{ backgroundColor: BG }}>
+              {groups.length === 0 && hasRowLabels && (
+                <th rowSpan={headerDepth} style={headStyle}>{table.rowLabels.header}</th>
+              )}
+              {leafColumns.map((column, index) => (
+                <th key={index} style={headStyle}>{column || ' '}</th>
+              ))}
+            </tr>
+          )}
+          {table.noHeader && groups.length === 0 && hasRowLabels && (
+            <tr style={{ backgroundColor: BG }}><th style={headStyle}>{table.rowLabels.header}</th></tr>
+          )}
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => {
+            const cells = []
+            ;(row || []).forEach((cell, cellIndex) => {
+              if (cell === null && cells.length) {
+                cells[cells.length - 1].colSpan += 1
+                return
+              }
+              cells.push({ value: cell, colSpan: 1, key: cellIndex })
+            })
+            return (
+              <tr key={rowIndex} style={{ backgroundColor: rowIndex % 2 === 0 ? '#1A1A1F' : BG }}>
+                {hasRowLabels && (
+                  <td style={{ ...cellStyle, textAlign: 'center', fontWeight: 700, color: MAROON }}>
+                    {table.rowLabels.values?.[rowIndex] || ''}
+                  </td>
+                )}
+                {cells.map(cell => (
+                  <td key={cell.key} colSpan={cell.colSpan > 1 ? cell.colSpan : undefined} style={cellStyle}>
+                    {cell.value || ' '}
+                  </td>
+                ))}
+              </tr>
+            )
+          })}
+          {table.totalRow && (
+            <tr style={{ backgroundColor: BG }}>
+              {hasRowLabels && <td style={{ ...cellStyle, fontWeight: 700 }}>{table.totalRow.label}</td>}
+              {Array.from({ length: dataColCount }, (_, columnIndex) => (
+                <td key={columnIndex} style={cellStyle}>
+                  {table.totalRow.columns.includes(columnIndex) ? 'Total' : ''}
+                </td>
+              ))}
+            </tr>
+          )}
+          {table.noteRow && (
+            <tr>
+              <td style={{ ...cellStyle, fontWeight: 700 }}>{table.noteRow.label}</td>
+              <td colSpan={totalCols - 1} style={cellStyle}>{table.noteRow.text}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      {table.footer && (
+        <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.72)', lineHeight: 1.6 }}>{table.footer}</Typography>
+      )}
+      <Typography variant="caption" sx={{ display: 'block', mt: 1, color: MAROON, fontWeight: 600 }}>
+        Fixed by your institution. This table cannot be edited.
+      </Typography>
+    </Box>
   )
 }
 
@@ -1038,6 +1164,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Module creation flow state ───────────────────────────────────────────
   const [moduleGeneratingAll, setModuleGeneratingAll] = useState(false)
   const [moduleGeneratingTopic, setModuleGeneratingTopic] = useState(new Set())
+  const [moduleGenProgress, setModuleGenProgress] = useState(null)
   const [deletedModuleIds, setDeletedModuleIds] = useState(new Set())
 
   // ── Syllabus section / subsection the Module topics are read from ────────
@@ -1358,13 +1485,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function getAiFieldsForCurrentSection() {
-    const simpleFields = (section, fields) => fields.map(([field, label]) => ({
-      section,
-      field,
-      label,
-      fieldType: 'simple',
-    }))
-    if (!activeConfiguredSection) return []
+    const simpleFields = (section, fields) => fields
+      .filter(([field]) => {
+        const dataKey = ADMIN_FIXED_FIELDS[field] || field
+        return !Object.prototype.hasOwnProperty.call(fixedFieldRules, dataKey)
+      })
+      .map(([field, label]) => ({
+        section,
+        field,
+        label,
+        fieldType: 'simple',
+      }))
+    if (!activeConfiguredSection || activeConfiguredSection.is_static) return []
 
     const configuredTableFields = []
     if (!activeConfiguredSection.is_static) {
@@ -1380,6 +1512,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         })
       }
       for (const subsection of activeConfiguredSection.subsections || []) {
+        if (subsection.is_static) continue
         if (subsection.table_enabled
           && Array.isArray(subsection.table_columns)
           && subsection.table_columns.length) {
@@ -1409,6 +1542,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ]))
     }
     if (activeSyllabusSectionKey === 'iloat-references') {
+      if (fixedTableFor('iloat-references', 'ilo-table')) return withConfiguredTables([])
       return withConfiguredTables(syllabusData.ilos.map((_, index) => ({
         section: 'iloat-references',
         label: `Intended Learning Outcome ${index + 1}`,
@@ -1418,6 +1552,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })))
     }
     if (activeSyllabusSectionKey === 'framework-mapping') {
+      const frameworkTableKey = { IGA: 'iga-table', SO: 'so-table', CDIO: 'cdio-table', SDG: 'sdg-table' }[activeFwKey] || 'iga-table'
+      if (fixedTableFor('framework-mapping', frameworkTableKey)) return withConfiguredTables([])
       const frameworkFields = {
         IGA: ['igas', 'Institutional Graduate Attribute'],
         SO: ['student_outcomes', 'Student Outcome'],
@@ -1441,9 +1577,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         { section: 'course-policies', label: 'Academic Dishonesty', fieldType: 'simple', field: 'academic_dishonesty' },
         { section: 'course-policies', label: 'Dropping', fieldType: 'simple', field: 'dropping' },
         { section: 'course-policies', label: 'Other Course Policies and Requirements', fieldType: 'simple', field: 'other_policies' },
-      ])
+      ].filter(field => !Object.prototype.hasOwnProperty.call(fixedFieldRules, field.field)))
     }
     if (activeSyllabusSectionKey === 'tla-activities') {
+      if (fixedTableFor('tla-activities', 'tla-table')) return withConfiguredTables([])
       const SCHEDULE_AI_FIELDS = ['topics']
       const SCHEDULE_FIELD_LABELS = {
         chapter: 'Week Number',
@@ -1934,11 +2071,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const fixedFieldRules = useMemo(() => {
     const rules = {}
     adminFormatSections.forEach(section => {
-      if (section.enabled === false || section.is_static) return
+      if (section.enabled === false) return
+      const sectionFixed = Boolean(section.is_static)
       ;(section.fields || []).forEach(field => {
         const dataKey = ADMIN_FIXED_FIELDS[field.key]
-        const content = String(field.content || '').trim()
-        if (dataKey && field.fixed && content) rules[dataKey] = field.content
+        if (dataKey && (sectionFixed || field.fixed)) rules[dataKey] = field.content || ''
       })
     })
     return rules
@@ -1957,24 +2094,86 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return labels
   }, [adminFormatSections])
   const labelFor = (fieldKey, fallback) => fieldLabelOverrides[fieldKey] || fallback
+  const titleForTable = (sectionKey, tableKey, fallback) => {
+    const admin = adminFormatSections.find(section => (
+      section.enabled !== false && (section.key === sectionKey || section.editor === sectionKey)
+    ))
+    const custom = admin?.table_titles?.[tableKey]
+    return typeof custom === 'string' && custom.trim() ? custom.trim() : fallback
+  }
+
+  // Tables the admin fixed in the Syllabus Format are stored per institution
+  // under section.blueprint_tables. Faculty see those rows read-only. The
+  // lookup is also flattened by table key so a saved override still applies if
+  // the stored section key ever differs from the canonical blueprint key.
+  const adminFixedTables = useMemo(() => {
+    const bySection = {}
+    const byTable = {}
+    adminFormatSections.forEach(section => {
+      if (section.enabled === false) return
+      const key = section.key || section.editor
+      const tables = section.blueprint_tables || {}
+      if (key) bySection[key] = { ...(bySection[key] || {}), ...tables }
+      Object.entries(tables).forEach(([tableKey, override]) => {
+        if (override) byTable[tableKey] = override
+      })
+    })
+    return { bySection, byTable }
+  }, [adminFormatSections])
+
+  const fixedTableFor = useCallback((sectionKey, tableKey) => {
+    const adminSection = adminFormatSections.find(section => (
+      section.enabled !== false && (section.key === sectionKey || section.editor === sectionKey)
+    ))
+    const override = adminFixedTables.bySection[sectionKey]?.[tableKey] || adminFixedTables.byTable[tableKey]
+    // A saved table, or a whole section marked Fixed, is read-only for every account.
+    // Fixed off keeps the admin's draft but lets Faculty edit their own copy.
+    if (!adminSection?.is_static && (!override || override.fixed === false)) return null
+    const descriptor = ALL_BLUEPRINT_TABLES.find(table => table.key === tableKey)
+    return descriptor ? applyTableOverride(descriptor, override || null) : null
+  }, [adminFixedTables, adminFormatSections])
 
   // Re-applied after every render so loading a saved syllabus or AI generation
-  // can never overwrite a field the institution fixed.
+  // can never overwrite content the institution fixed. Tables are included,
+  // so a newly opened course already shows the seeded statements.
   useEffect(() => {
-    if (!Object.keys(fixedFieldRules).length) return
-    setSyllabusData(current => {
-      let changed = false
-      const next = { ...current }
-      Object.entries(fixedFieldRules).forEach(([key, content]) => {
-        if (next[key] !== content) {
-          next[key] = content
-          changed = true
-        }
-      })
-      return changed ? next : current
-    })
+    setSyllabusData(current => applyFixedSyllabusContent(current, adminFormatSections))
   })
-  const configuredSections = SYLLABUS_SECTIONS.map(section => ({ ...section, editorKey: section.key }))
+  const configuredSections = (() => {
+    const builtinKeys = new Set(SYLLABUS_SECTIONS.map(section => section.key))
+    const matchAdmin = section => adminFormatSections.find(item => (
+      item.enabled !== false && (item.key === section.key || item.editor === section.key)
+    ))
+    const builtin = SYLLABUS_SECTIONS.map(section => {
+      const admin = matchAdmin(section)
+      return {
+        ...section,
+        editorKey: section.key,
+        label: admin?.label || section.label,
+        is_static: Boolean(admin?.is_static),
+        static_content: admin?.static_content || '',
+        subsections: Array.isArray(admin?.subsections) ? admin.subsections : [],
+        table_enabled: Boolean(admin?.table_enabled),
+        table_columns: admin?.table_columns || [],
+        table_column_groups: admin?.table_column_groups || [],
+      }
+    })
+    const extras = adminFormatSections
+      .filter(section => section.enabled !== false && section.key && !builtinKeys.has(section.key) && !builtinKeys.has(section.editor))
+      .map(section => ({
+        key: section.key,
+        label: section.label || section.key,
+        editorKey: section.key,
+        custom: true,
+        is_static: Boolean(section.is_static),
+        static_content: section.static_content || '',
+        subsections: Array.isArray(section.subsections) ? section.subsections : [],
+        table_enabled: Boolean(section.table_enabled),
+        table_columns: section.table_columns || [],
+        table_column_groups: section.table_column_groups || [],
+      }))
+    return [...builtin, ...extras]
+  })()
   const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
   const activeSyllabusSectionKey = activeConfiguredSection?.editorKey || activeConfiguredSection?.key || ''
 
@@ -2064,22 +2263,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     seededCourseRef.current = courseId
 
     const saved = apiData.syllabus?.syllabus_content
-    if (saved && typeof saved === 'object') {
-      // Merge saved content with EMPTY_SYLLABUS defaults so new keys are always present, then normalize
+    const hasSaved = saved && typeof saved === 'object'
+    // A course added after the admin locked content may only have the fixed
+    // keys stored. Course identity still comes from the course record.
+    if (!hasSaved && !course) return
+    if (!course) {
       setSyllabusData(normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...saved }))
       setIsDirty(false)
       return
     }
-
-    // No saved content yet — seed from course fields
-    if (!course) return
     const toStr = v => v != null ? String(v) : ''
     const mapAttr = arr => (arr || []).length
       ? arr.map(g => ({ code: g.code || '', title: g.title || '', description: g.description || '' }))
       : [{ ...EMPTY_ATTR }]
     const courseIlos = (course.ilos || []).length ? course.ilos.map(String) : ['']
     const iloCount   = courseIlos.length
-    setSyllabusData(normalizeSyllabusData({
+    const fromCourse = {
       university_name:  course.institution_name || '',
       college:          course.college_name || '',
       program:          course.program_name || '',
@@ -2141,7 +2340,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       cdio_sdg_rows:     course.cdio_sdg_rows     || undefined,
       ats:               course.ats               || undefined,
       custom_sections:   {},
-    }))
+    }
+    setSyllabusData(normalizeSyllabusData(hasSaved ? { ...fromCourse, ...saved } : fromCourse))
     setIsDirty(false)
   }, [workspaceApi.data])
 
@@ -2256,12 +2456,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSaveError(`Complete required fields: ${missingRequiredSubsections.join(', ')}.`)
       return
     }
+    const restored = applyFixedSyllabusContent(syllabusForPersist(), adminFormatSections)
+    setSyllabusData(restored)
     setSaveLoading(true)
     try {
       const { data } = await api.put(`/curriculum/syllabus-content/${courseId}/`, {
-        syllabus_content: syllabusForPersist(),
+        syllabus_content: restored,
         syllabus_id: syllabusId,
       }, { timeout: 60000 })
+      if (data?.syllabus_content && typeof data.syllabus_content === 'object') {
+        setSyllabusData(normalizeSyllabusData(data.syllabus_content))
+      }
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
       setSaveSuccess(true)
@@ -2522,78 +2727,166 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setGenerateDialogOpen(true)
   }
 
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  async function presentGeneratedModule(data) {
+    const content = data.module_content || {}
+    const subtopics = Array.isArray(content.subtopics) ? content.subtopics : []
+    const hasActivity = Boolean(content.short_activity && (content.short_activity.title || content.short_activity.description))
+    const total = 2 + subtopics.length + (hasActivity ? 1 : 0)
+    const shown = {
+      module_number: content.module_number,
+      module_title: content.module_title || data.module_title,
+      introduction: content.introduction || '',
+      learning_objectives: [],
+      subtopics: [],
+      short_activity: null,
+    }
+    setSelectedModule({
+      module_id: data.module_id,
+      module_title: data.module_title,
+      week_number: data.week_number,
+      status: 'Generated',
+    })
+    setModuleContent(shown)
+    setModuleContentDirty(false)
+    setExpandedSubtopics(new Set())
+    setChatMessages([])
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: 'Introduction',
+      completed: 1,
+      total,
+    })
+    await wait(320)
+    shown.learning_objectives = Array.isArray(content.learning_objectives) ? content.learning_objectives : []
+    setModuleContent({ ...shown, learning_objectives: [...shown.learning_objectives] })
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: 'Learning objectives',
+      completed: 2,
+      total,
+    })
+    let completed = 2
+    for (const subtopic of subtopics) {
+      await wait(320)
+      shown.subtopics = [...shown.subtopics, subtopic]
+      setModuleContent({ ...shown, subtopics: [...shown.subtopics] })
+      if (subtopic?.id) setExpandedSubtopics(prev => new Set(prev).add(subtopic.id))
+      completed += 1
+      setModuleGenProgress({
+        label: 'Building the module',
+        detail: subtopic?.title || 'Subtopic',
+        completed,
+        total,
+      })
+    }
+    if (hasActivity) {
+      await wait(320)
+      shown.short_activity = content.short_activity
+      setModuleContent({ ...shown })
+      setModuleGenProgress({
+        label: 'Building the module',
+        detail: content.short_activity.title || 'Short activity',
+        completed: total,
+        total,
+      })
+    }
+  }
+
   async function handleGenerateModule() {
-    if (!course) return
-    setActionError(''); setActionLoading(true); setResultText('')
+    if (!course || actionLoading) return
+    const params = { ...moduleParams }
+    const week = Number(params.week_number) || 1
+    setGenerateDialogOpen(false)
+    setActionError('')
+    setActionLoading(true)
+    setResultText('')
+    setModuleGenProgress({
+      label: 'Building the module',
+      detail: params.module_title || 'Preparing the first section…',
+      completed: 0,
+      total: 0,
+    })
+    setModuleGeneratingTopic(prev => new Set(prev).add(week))
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
       const topics = collectScheduleTopics()
       const topic = topics.find(
-        item => item.id === moduleParams.topic_id || item.topic === moduleParams.module_title,
+        item => item.id === params.topic_id || item.topic === params.module_title,
       )
       const source = lectureTopicSource()
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
-        module_title: moduleParams.module_title,
-        week_number: Number(moduleParams.week_number) || 1,
+        module_title: params.module_title,
+        week_number: week,
         section_key: source.section_key,
         section_label: source.section_label,
         subsection_key: source.subsection_key,
         subsection_label: source.subsection_label,
-        topic: topic?.topic || moduleParams.module_title,
+        topic: topic?.topic || params.module_title,
         syllabus_context: topic?.context || '',
-        structuring_level: moduleParams.structuring_level || 'standard',
-        provider: moduleParams.provider,
-        top_k: Number(moduleParams.top_k),
-        extra_instructions: moduleParams.extra_instructions,
+        structuring_level: params.structuring_level || 'standard',
+        provider: params.provider,
+        top_k: Number(params.top_k),
+        extra_instructions: params.extra_instructions,
         selected_doc_ids: selectedIds,
       }, { timeout: 300000 })
       if (data.success && data.module_content) {
-        // Open module viewer with the generated content
-        setSelectedModule({
-          module_id: data.module_id,
-          module_title: data.module_title,
-          week_number: data.week_number,
-          status: 'Generated',
-        })
-        setModuleContent(data.module_content)
-        setModuleContentDirty(false)
-        setExpandedSubtopics(new Set())
-        setChatMessages([])
-        setGenerateDialogOpen(false)
+        await presentGeneratedModule(data)
         workspaceApi.execute()
-        notifyGenerationComplete('Module', data.module_title || moduleParams.module_title)
+        notifyGenerationComplete('Module', data.module_title || params.module_title)
       }
     } catch (err) { setActionError(extractApiError(err)) }
-    finally { setActionLoading(false) }
+    finally {
+      setActionLoading(false)
+      setModuleGenProgress(null)
+      setModuleGeneratingTopic(prev => { const next = new Set(prev); next.delete(week); return next })
+    }
   }
 
   async function handleGenerateAllModules() {
-    if (!course) return
+    if (!course || moduleGeneratingAll) return
     const topics = collectScheduleTopics()
     if (!topics.length) {
+      setGenerateDialogOpen(false)
       setActionError('No Lecture/Discussion topics in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion and add a topic list. Reading lists are not topics.')
+      return
+    }
+    const source = lectureTopicSource()
+    const existingModules = workspaceApi.data?.modules || []
+    const topicsWithoutModules = topics.filter(topic => {
+      const existing = existingModules.find(mod => mod.week_number === topic.week)
+      if (!existing) return true
+      return deletedModuleIds.has(String(existing.module_id))
+    })
+    setGenerateDialogOpen(false)
+    if (!topicsWithoutModules.length) {
+      setActionError('Every Lecture/Discussion week already has a module.')
       return
     }
     setModuleGeneratingAll(true)
     setActionError('')
+    setModuleGenProgress({
+      label: 'Generating modules',
+      detail: 'Starting…',
+      completed: 0,
+      total: topicsWithoutModules.length,
+    })
     try {
-      const source = lectureTopicSource()
-      const existingModules = workspaceApi.data?.modules || []
-      const topicsWithoutModules = topics.filter(topic => {
-        const existing = existingModules.find(mod => mod.week_number === topic.week)
-        // Skip weeks that already have a module, unless the faculty deleted it.
-        if (!existing) return true
-        return deletedModuleIds.has(String(existing.module_id))
-      })
-      if (!topicsWithoutModules.length) {
-        setActionError('Every Lecture/Discussion week already has a module.')
-        return
-      }
+      let completed = 0
       for (const topic of topicsWithoutModules) {
         const week = topic.week
         setModuleGeneratingTopic(prev => new Set(prev).add(week))
+        setModuleGenProgress({
+          label: 'Generating modules',
+          detail: `Week ${week}: ${topic.topic}`,
+          completed,
+          total: topicsWithoutModules.length,
+        })
         try {
           const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
           await api.post('/curriculum/generate-module/', {
@@ -2613,17 +2906,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             extra_instructions: moduleParams.extra_instructions || '',
             selected_doc_ids: selectedIds,
           }, { timeout: 300000 })
+          completed += 1
+          setModuleGenProgress({
+            label: 'Generating modules',
+            detail: `Week ${week} added`,
+            completed,
+            total: topicsWithoutModules.length,
+          })
+          await workspaceApi.execute()
         } catch (err) {
           setActionError(extractApiError(err))
         } finally {
           setModuleGeneratingTopic(prev => { const next = new Set(prev); next.delete(week); return next })
         }
       }
-      workspaceApi.execute()
-      setGenerateDialogOpen(false)
       notifyGenerationComplete('Modules', `${topicsWithoutModules.length} module${topicsWithoutModules.length === 1 ? '' : 's'} generated`)
     } finally {
       setModuleGeneratingAll(false)
+      setModuleGenProgress(null)
     }
   }
 
@@ -3065,6 +3365,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     let stalls = 0
     try {
       for (let step = 0; step < 80 && stalls < 2; step += 1) {
+        setAssessmentBatchProgress({
+          generated,
+          requested: planned,
+          detail: generated > 0
+            ? `Writing the next items after ${generated}…`
+            : 'Preparing the assessment items…',
+        })
         const { data } = await api.post('/curriculum/generate-assessment/', {
           course_id: course.course_id,
           assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
@@ -3083,14 +3390,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         const returnedNow = Array.isArray(data?.items)
           ? data.items.length
           : Number(data?.returned_count ?? data?.batch_generated ?? 0)
+        const savedCount = Number(data?.generated_count)
         const nextPlanned = Number(data?.total_items || planned || 0)
         if (!Number.isFinite(returnedNow) || returnedNow <= 0) stalls += 1
         else stalls = 0
-        generated += Number.isFinite(returnedNow) && returnedNow > 0 ? returnedNow : 0
+        if (Number.isFinite(savedCount) && savedCount >= 0) generated = savedCount
+        else if (Number.isFinite(returnedNow) && returnedNow > 0) generated += returnedNow
         planned = nextPlanned > 0 ? nextPlanned : planned
-        setAssessmentBatchProgress({ generated, requested: planned })
+        setAssessmentBatchProgress({
+          generated,
+          requested: planned,
+          detail: data?.completed
+            ? `${generated} of ${planned || generated} items ready`
+            : `Writing the next items after ${generated}…`,
+        })
         if (latestSummary?.assessment_id && generated > 0) {
-          await handleOpenAssessment(latestSummary)
+          refreshAssessmentItems(latestSummary).catch(() => {})
         }
         if (data?.completed || (planned > 0 && generated >= planned)) break
         if (!data?.success && generated === 0) {
@@ -3239,6 +3554,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } finally {
       setActionLoading(false)
       setTimeout(() => setAssessmentBatchProgress(null), 1200)
+    }
+  }
+
+  async function refreshAssessmentItems(assessmentSummary) {
+    const { data } = await api.get(`/curriculum/assessment/${assessmentSummary.assessment_id}/`, { timeout: 20000 })
+    if (data?.success && data?.assessment) {
+      setSelectedAssessment(assessmentSummary)
+      setAssessmentDetail(data.assessment)
+      setAssessmentSessionId(data.assessment.assessment_id || assessmentSummary.assessment_id)
     }
   }
 
@@ -3637,7 +3961,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {assessmentBatchProgress && (
               <Box sx={{ p: 1, border: '1px solid rgba(21,128,61,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
                 <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
-                  {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. Still generating...
+                  {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. {assessmentBatchProgress.detail || 'Still generating...'}
                 </Typography>
               </Box>
             )}
@@ -3954,7 +4278,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
   }
 
-  function renderConfiguredTable(sectionKey, fieldKey, title, columns, columnGroups = []) {
+  function renderConfiguredTable(sectionKey, fieldKey, title, columns, columnGroups = [], readOnly = false) {
     const storedRows = syllabusData.custom_tables?.[sectionKey]?.[fieldKey]
     const tableRows = Array.isArray(storedRows) ? storedRows : []
     const groupHeaders = []
@@ -4009,54 +4333,69 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <TableRow key={rowIndex}>
                     {columns.map((_, columnIndex) => (
                       <TableCell key={columnIndex} sx={{ minWidth: 160 }}>
-                        <TextField
-                          size="small"
-                          fullWidth
-                          value={row[columnIndex] || ''}
-                          inputProps={{ 'aria-label': `${columns[columnIndex]}, row ${rowIndex + 1}` }}
-                          onChange={event => updateConfiguredTable(sectionKey, fieldKey, currentRows => {
-                            const nextRows = currentRows.map(cells => [...cells])
-                            nextRows[rowIndex][columnIndex] = event.target.value
-                            return nextRows
-                          })}
-                        />
+                        {readOnly ? (
+                          <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>{row[columnIndex] || ' '}</Typography>
+                        ) : (
+                          <TextField
+                            size="small"
+                            fullWidth
+                            value={row[columnIndex] || ''}
+                            inputProps={{ 'aria-label': `${columns[columnIndex]}, row ${rowIndex + 1}` }}
+                            onChange={event => updateConfiguredTable(sectionKey, fieldKey, currentRows => {
+                              const nextRows = currentRows.map(cells => [...cells])
+                              nextRows[rowIndex][columnIndex] = event.target.value
+                              return nextRows
+                            })}
+                          />
+                        )}
                       </TableCell>
                     ))}
                     <TableCell>
-                      <IconButton
-                        size="small"
-                        aria-label={`Remove row ${rowIndex + 1}`}
-                        onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => currentRows.filter((_, index) => index !== rowIndex))}
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                      {!readOnly && (
+                        <IconButton
+                          size="small"
+                          aria-label={`Remove row ${rowIndex + 1}`}
+                          onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => currentRows.filter((_, index) => index !== rowIndex))}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </TableContainer>
-          <Button
-            size="small"
-            startIcon={<AddIcon />}
-            onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => [
-              ...currentRows,
-              Array(columns.length).fill(''),
-            ])}
-            sx={{ alignSelf: 'flex-start', textTransform: 'none', color: MAROON }}
-          >
-            Add row
-          </Button>
+          {!readOnly && (
+            <Button
+              size="small"
+              startIcon={<AddIcon />}
+              onClick={() => updateConfiguredTable(sectionKey, fieldKey, currentRows => [
+                ...currentRows,
+                Array(columns.length).fill(''),
+              ])}
+              sx={{ alignSelf: 'flex-start', textTransform: 'none', color: MAROON }}
+            >
+              Add row
+            </Button>
+          )}
+          {readOnly && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              Fixed by your institution
+            </Typography>
+          )}
         </Stack>
       </SectionCard>
     )
   }
 
   function renderConfiguredSubsections() {
-    if (!activeConfiguredSection || activeConfiguredSection.is_static) return null
+    if (!activeConfiguredSection) return null
     const subsections = Array.isArray(activeConfiguredSection.subsections)
       ? activeConfiguredSection.subsections
       : []
+    const sectionLocked = Boolean(activeConfiguredSection.is_static)
+    if (!activeConfiguredSection.table_enabled && !subsections.length) return null
 
     return (
       <>
@@ -4069,9 +4408,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             `${activeConfiguredSection.label} table`,
             activeConfiguredSection.table_columns,
             activeConfiguredSection.table_column_groups,
+            sectionLocked,
           )}
-        {subsections.map((subsection, index) => (
-          subsection.table_enabled
+        {subsections.map((subsection, index) => {
+          const locked = sectionLocked || Boolean(subsection.is_static)
+          return subsection.table_enabled
             ? Array.isArray(subsection.table_columns) && subsection.table_columns.length > 0
               && renderConfiguredTable(
                 activeConfiguredSection.key,
@@ -4079,6 +4420,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 subsection.label || `Subsection ${index + 1}`,
                 subsection.table_columns,
                 subsection.table_column_groups,
+                locked,
               )
             : <SectionCard key={subsection.key || index} title={subsection.label || `Subsection ${index + 1}`}>
                 <TextField
@@ -4086,9 +4428,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   multiline
                   minRows={2}
                   label={subsection.label || `Subsection ${index + 1}`}
-                  required={Boolean(subsection.required)}
-                  value={syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || ''}
-                  onChange={event => {
+                  required={Boolean(subsection.required) && !locked}
+                  disabled={locked}
+                  helperText={locked ? 'Fixed by your institution' : undefined}
+                  value={locked
+                    ? (subsection.static_content || syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')
+                    : (syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')}
+                  onChange={locked ? undefined : event => {
                     setIsDirty(true)
                     setSaveSuccess(false)
                     setSyllabusData(current => ({
@@ -4105,7 +4451,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   sx={{ '& .MuiOutlinedInput-root': { backgroundColor: '#fff' } }}
                 />
               </SectionCard>
-        ))}
+        })}
       </>
     )
   }
@@ -4126,16 +4472,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         </Paper>
       )
     }
-    if (activeConfiguredSection.is_static) {
-      return (
-        <SectionCard title={activeConfiguredSection.label}>
-          <Typography variant="body2" sx={{ color: '#444', whiteSpace: 'pre-wrap' }}>
-            {activeConfiguredSection.static_content || ''}
-          </Typography>
-        </SectionCard>
-      )
-    }
-
     if (sectionKey === 'university-information') {
       return (
         <>
@@ -4213,10 +4549,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
     // ── 3. ILO, AT, and References ───────────────────────────────────────────
     if (sectionKey === 'iloat-references') {
+      const fixedIloTable = fixedTableFor('iloat-references', 'ilo-table')
+      const fixedAtTable = fixedTableFor('iloat-references', 'at-distribution-map')
+      const fixedReferenceTable = fixedTableFor('iloat-references', 'books-references')
       return (
         <>
-          <SectionCard title="Table 1: Intended Learning Outcomes (ILO)"
-            action={<AddRowBtn label="Add ILO" onClick={addIlo} />}>
+          <SectionCard title={titleForTable('iloat-references', 'ilo-table', 'Table 1: Intended Learning Outcomes (ILO)')}
+            action={fixedIloTable ? undefined : <AddRowBtn label="Add ILO" onClick={addIlo} />}>
+            {fixedIloTable ? <FixedBlueprintTable table={fixedIloTable} /> : (
             <Stack spacing={1.5}>
               {syllabusData.ilos.map((ilo, i) => (
                 <Box key={i} sx={{ border: '1px solid rgba(0,0,0,0.07)', borderRadius: 1.5, p: 1.5 }}>
@@ -4231,8 +4571,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               ))}
             </Stack>
+            )}
           </SectionCard>
 
+          {fixedAtTable ? (
+            <SectionCard title={titleForTable('iloat-references', 'at-distribution-map', 'Table 2: Assessment Method and Distribution Map')}>
+              <FixedBlueprintTable table={fixedAtTable} />
+            </SectionCard>
+          ) : (
           <PEAAssessmentCard
             ilos={syllabusData.ilos.map((_, idx) => ({ id: `ILO${idx + 1}` }))}
             ats={syllabusData.ats || []}
@@ -4241,9 +4587,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               setSyllabusData(s => ({ ...s, ats: typeof updater === 'function' ? updater(s.ats || []) : updater }))
             }}
           />
+          )}
 
-          <SectionCard title="Table 3: Books and Other References"
-            action={<AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
+          <SectionCard title={titleForTable('iloat-references', 'books-references', 'Table 3: Books and Other References')}
+            action={fixedReferenceTable ? undefined : <AddRowBtn label="Add Reference" onClick={() => addSylItem('references', '')} />}>
+            {fixedReferenceTable ? <FixedBlueprintTable table={fixedReferenceTable} /> : (
             <Stack spacing={1.25}>
               {syllabusData.references.map((ref, i) => (
                 <Box key={i} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
@@ -4255,6 +4603,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               ))}
             </Stack>
+            )}
           </SectionCard>
         </>
       )
@@ -4264,16 +4613,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 5. Framework Mapping ─────────────────────────────────────────────────
     if (sectionKey === 'framework-mapping') {
       const fwTabs = [
-        { key: 'IGA',  label: 'IGA',  itemsField: 'igas',             codePrefix: 'IGA',  statementCol: 'Institutional Graduate Attributes (IGA) Statements' },
-        { key: 'SO',   label: 'SO',   itemsField: 'student_outcomes', codePrefix: 'SO',   statementCol: 'Student Outcomes (SO) Statements' },
-        { key: 'CDIO', label: 'CDIO', itemsField: 'cdio_skills',      codePrefix: 'CDIO', statementCol: 'CDIO Skills' },
-        { key: 'SDG',  label: 'SDG',  itemsField: 'sdg_skills',       codePrefix: 'SDG',  statementCol: 'SDG Skills' },
+        { key: 'IGA',  label: 'IGA',  itemsField: 'igas',             codePrefix: 'IGA',  tableKey: 'iga-table',  statementCol: 'Institutional Graduate Attributes (IGA) Statements' },
+        { key: 'SO',   label: 'SO',   itemsField: 'student_outcomes', codePrefix: 'SO',   tableKey: 'so-table',   statementCol: 'Student Outcomes (SO) Statements' },
+        { key: 'CDIO', label: 'CDIO', itemsField: 'cdio_skills',      codePrefix: 'CDIO', tableKey: 'cdio-table', statementCol: 'CDIO Skills' },
+        { key: 'SDG',  label: 'SDG',  itemsField: 'sdg_skills',       codePrefix: 'SDG',  tableKey: 'sdg-table',  statementCol: 'SDG Skills' },
       ]
       const activeFw = fwTabs.find(f => f.key === activeFwKey) || fwTabs[0]
       const fwItems = syllabusData[activeFw.itemsField] || []
+      const fixedFwTable = fixedTableFor('framework-mapping', activeFw.tableKey)
       return (
         <SectionCard title="Framework Mapping"
-          action={<AddRowBtn label={`Add ${activeFw.key}`} onClick={() => addSylItem(activeFw.itemsField, { ...EMPTY_ATTR, code: `${activeFw.codePrefix}${fwItems.length + 1}` })} />}>
+          action={fixedFwTable
+            ? <Chip size="small" label="Fixed by institution" sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700 }} />
+            : <AddRowBtn label={`Add ${activeFw.key}`} onClick={() => addSylItem(activeFw.itemsField, { ...EMPTY_ATTR, code: `${activeFw.codePrefix}${fwItems.length + 1}` })} />}>
           {/* Tab strip */}
           <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap', borderBottom: '1px solid rgba(0,0,0,0.07)', pb: 1 }}>
             {fwTabs.map(fw => (
@@ -4289,6 +4641,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Box>
 
           {/* Two-column statement table */}
+          {fixedFwTable ? <FixedBlueprintTable table={fixedFwTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
               <thead>
@@ -4322,6 +4675,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
       )
     }
@@ -4379,9 +4733,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           ILO{ri + 1}
         </td>
       )
+      const fixedSoCpaTable = fixedTableFor('mapping-of-at', 'ilo-so-cpa-map')
+      const fixedIgaMapTable = fixedTableFor('mapping-of-at', 'ilo-iga-map')
+      const fixedCdioSdgTable = fixedTableFor('mapping-of-at', 'ilo-cdio-sdg-map')
       return (
         <Stack spacing={2}>
-          <SectionCard title="Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-so-cpa-map', 'Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)')}>
+            {fixedSoCpaTable ? <FixedBlueprintTable table={fixedSoCpaTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4423,9 +4781,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
 
-          <SectionCard title="Table 2. INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-iga-map', 'Table 2. INSTITUTIONAL GRADUATE ATTRIBUTES (IGA): Mapping of Assessment Tasks (AT)')}>
+            {fixedIgaMapTable ? <FixedBlueprintTable table={fixedIgaMapTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4459,9 +4819,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
 
-          <SectionCard title="Table 3. CDIO and SDG Skills: Mapping of Assessment Tasks (AT)">
+          <SectionCard title={titleForTable('mapping-of-at', 'ilo-cdio-sdg-map', 'Table 3. CDIO and SDG Skills: Mapping of Assessment Tasks (AT)')}>
+            {fixedCdioSdgTable ? <FixedBlueprintTable table={fixedCdioSdgTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                 <thead>
@@ -4509,6 +4871,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </tbody>
               </table>
             </Box>
+            )}
           </SectionCard>
         </Stack>
       )
@@ -4517,6 +4880,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 8. TLA Activities ────────────────────────────────────────────────────
     if (sectionKey === 'tla-activities') {
       const chapters = syllabusData.tla_chapters?.length ? syllabusData.tla_chapters : [{ ...EMPTY_CHAPTER }]
+      const fixedTlaTable = fixedTableFor('tla-activities', 'tla-table')
+      const fixedScheduleTable = fixedTableFor('tla-activities', 'assessment-schedule')
+      const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
       const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
       const updScheduleMethod = (i, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
@@ -4532,8 +4898,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
       return (
         <>
-        <SectionCard title="Table 1. Teaching, Learning, and Assessment (TLA) Activities"
-          action={<AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
+        <SectionCard title={titleForTable('tla-activities', 'tla-table', 'Table 1. Teaching, Learning, and Assessment (TLA) Activities')}
+          action={fixedTlaTable ? undefined : <AddRowBtn label="Add Week" onClick={() => addSylItem('tla_chapters', { ...EMPTY_CHAPTER })} />}>
+          {fixedTlaTable ? <FixedBlueprintTable table={fixedTlaTable} /> : (
           <Box sx={{ overflowX: 'auto', minWidth: '100%' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem', minWidth: '100%', tableLayout: 'auto' }}>
               <thead>
@@ -4633,10 +5000,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
 
-        <SectionCard title="Table 2. Assessment Method"
-          action={<AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
+        <SectionCard title={titleForTable('tla-activities', 'assessment-schedule', 'Table 2. Assessment Method')}
+          action={fixedScheduleTable ? undefined : <AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
+          {fixedScheduleTable ? <FixedBlueprintTable table={fixedScheduleTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem' }}>
               <thead>
@@ -4669,6 +5038,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </tbody>
             </table>
           </Box>
+          )}
         </SectionCard>
         </>
       )
@@ -5237,6 +5607,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 10. Course Policies ──────────────────────────────────────────────────
     if (sectionKey === 'course-policies') {
       const gradingRows = (syllabusData.grading_rows || []).length ? syllabusData.grading_rows : DEFAULT_GRADING_ROWS.map(row => ({ ...row }))
+      const fixedGradingTable = fixedTableFor('course-policies', 'grading-scale')
       const policyFields = [
         { fieldKey: 'class-policy',          label: 'Class Policy',          dataKey: 'class_policy' },
         { fieldKey: 'missed-examinations',   label: 'Missed Examinations',   dataKey: 'missed_examinations' },
@@ -5245,8 +5616,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ]
       return (
         <Stack spacing={2}>
-          <SectionCard title="A. Grading System"
-            action={<AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
+          <SectionCard title={titleForTable('course-policies', 'grading-scale', 'A. Grading System')}
+            action={fixedGradingTable ? undefined : <AddRowBtn label="Add Grade" onClick={() => addSylItem('grading_rows', { rating: '', grade: '', range: '' })} />}>
+            {fixedGradingTable ? <FixedBlueprintTable table={fixedGradingTable} /> : (
+            <>
             <Typography variant="body2" sx={{ mb: 1.5, color: '#444' }}>
               The grading system adopted by this course is as follows:
             </Typography>
@@ -5290,6 +5663,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Typography variant="body2" sx={{ mt: 1.5, color: '#444', lineHeight: 1.6 }}>
               Students who got a computed grade of 70-74 will be given an appropriate remedial activity in which the final grade should be either passing (3.0) or failure (5.0). No rounding off of grades shall be allowed.
             </Typography>
+            </>
+            )}
           </SectionCard>
 
           <SectionCard title="B. Course Policies">
@@ -5316,6 +5691,97 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     return null
+  }
+
+  function renderModuleGenFooter({ showCreate = false } = {}) {
+    const topicCount = showCreate ? collectScheduleTopics().length : 0
+    if (!showCreate && !moduleGenProgress) return null
+    const total = Number(moduleGenProgress?.total) || 0
+    const completed = Number(moduleGenProgress?.completed) || 0
+    return (
+      <Box sx={{
+        flexShrink: 0,
+        bgcolor: '#15181A',
+        borderTop: '2px solid rgba(134,239,172,0.65)',
+        px: 2,
+        py: 1,
+      }}>
+        <Stack spacing={0.75}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+            {moduleGenProgress
+              ? <CircularProgress size={16} sx={{ color: '#86EFAC', flexShrink: 0 }} />
+              : <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />}
+            <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
+              <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                {moduleGenProgress?.label || 'Module generation'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                {moduleGenProgress?.detail || 'Create a module from a Lecture/Discussion topic. You can choose the week before generating.'}
+              </Typography>
+            </Box>
+            {total > 0 && (
+              <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+                {Math.min(completed, total)}/{total}
+              </Typography>
+            )}
+            {showCreate && (
+              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  disabled={!topicCount || actionLoading || moduleGeneratingAll}
+                  startIcon={<AddIcon />}
+                  onClick={() => openGenerateDialog('single', null)}
+                  sx={{
+                    borderColor: '#86EFAC',
+                    color: '#86EFAC',
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: 'rgba(134,239,172,0.12)', borderColor: '#86EFAC' },
+                    '&.Mui-disabled': { borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  Create Module
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!topicCount || actionLoading || moduleGeneratingAll}
+                  startIcon={moduleGeneratingAll
+                    ? <CircularProgress size={15} color="inherit" />
+                    : <Zap sx={{ fontSize: '1rem !important' }} />}
+                  onClick={() => openGenerateDialog('all', null)}
+                  sx={{
+                    bgcolor: '#16A34A',
+                    color: '#fff',
+                    borderRadius: 1.5,
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    '&:hover': { bgcolor: '#15803D' },
+                    '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
+                  }}
+                >
+                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
+                </Button>
+              </Box>
+            )}
+          </Box>
+          {moduleGenProgress && (
+            <LinearProgress
+              variant={total > 0 ? 'determinate' : 'indeterminate'}
+              value={total > 0 ? (completed / Math.max(total, 1)) * 100 : undefined}
+              sx={{
+                height: 4,
+                borderRadius: 4,
+                bgcolor: 'rgba(255,255,255,0.12)',
+                '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+              }}
+            />
+          )}
+        </Stack>
+      </Box>
+    )
   }
 
   // ── Middle panel ─────────────────────────────────────────────────────────
@@ -5489,10 +5955,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {configuredSections.map(s => <Tab key={s.key} value={s.key} label={s.label} />)}
               </Tabs>
             </Box>
+            {activeConfiguredSection?.is_static && (activeConfiguredSection.static_content || '').trim() && (
+              <SectionCard title="Fixed by your institution">
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {activeConfiguredSection.static_content}
+                </Typography>
+              </SectionCard>
+            )}
             {renderSyllabusSection()}
+            {renderConfiguredSubsections()}
           </Box>
 
-          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && aiPipelineDrafts && (
+          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
             <Paper
               variant="outlined"
               sx={{
@@ -5555,7 +6029,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && (
+          {activeSyllabusSectionKey !== 'university-information' && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -5879,6 +6353,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       if (selectedModule && moduleContent) {
         const mc = moduleContent
         return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Box sx={{ position: 'relative' }}>
             <Stack spacing={2}>
               <AutoAlert message={actionError} onClose={() => setActionError('')} />
@@ -6135,6 +6611,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Box>
             )}
           </Box>
+          </Box>
+          {renderModuleGenFooter()}
+          </Box>
         )
       }
 
@@ -6147,49 +6626,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       ].filter(Boolean).join(' › ')
 
       return (
+        <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <Stack spacing={2}>
           <AutoAlert message={actionError} onClose={() => setActionError('')} />
-          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 1.75 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
+          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, px: 1.5, py: 0.85 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.25, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Modules
               </Typography>
-              <Box sx={{ display: 'flex', gap: 0.75, flexWrap: 'wrap' }}>
-                <Button size="small" variant="outlined" startIcon={<AddIcon sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={!moduleTopics.length}
-                  onClick={() => openGenerateDialog('single', null)}
-                  sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.5, py: 0.45, '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
-                  Create Module
-                </Button>
-                <Button size="small" variant="contained" startIcon={<Zap sx={{ fontSize: '0.85rem !important' }} />}
-                  disabled={moduleGeneratingAll || !moduleTopics.length}
-                  onClick={() => openGenerateDialog('all', null)}
-                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none', fontSize: '0.78rem',
-                       px: 1.75, py: 0.45, '&:hover': { bgcolor: '#14532D' },
-                       '&.Mui-disabled': { bgcolor: 'rgba(0,0,0,0.18)', color: 'rgba(0,0,0,0.38)' } }}>
-                  {moduleGeneratingAll ? 'Generating All…' : 'Generate All Modules'}
-                </Button>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
+                <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
+                <Chip size="small" label="TLA Activities · Lecture/Discussion"
+                  sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
+                        border: '1px solid', borderColor: MAROON_LIGHT }} />
+                <Chip size="small"
+                  label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
+                  sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
+                        bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
+                        color: moduleTopics.length ? MAROON : '#888',
+                        border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
               </Box>
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 1.25, flexWrap: 'wrap', alignItems: 'center',
-                       mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
-              <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
-              <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
-              <Chip size="small" label="TLA Activities · Lecture/Discussion"
-                sx={{ height: 24, fontSize: '0.74rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
-                      border: '1px solid', borderColor: MAROON_LIGHT }} />
-              <Chip size="small"
-                label={`${moduleTopics.length} topic${moduleTopics.length === 1 ? '' : 's'}`}
-                sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700,
-                      bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
-                      color: moduleTopics.length ? MAROON : '#888',
-                      border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
-              <Typography variant="caption" sx={{ color: '#888', flex: 1, minWidth: 220 }}>
-                One module per week. Lists in the same week are combined. Reading lists are left out.
-              </Typography>
             </Box>
           </Paper>
           {lectureTopics.length === 0 ? (
@@ -6373,7 +6832,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           {/* ── Generate module dialog ── */}
           <Dialog open={generateDialogOpen}
-            onClose={() => { if (!actionLoading && !moduleGeneratingAll) setGenerateDialogOpen(false) }}
+            onClose={() => setGenerateDialogOpen(false)}
             maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 2.5 } }}>
             <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', pb: 1 }}>
               {generateDialogMode === 'all' ? 'Generate all modules' : 'Generate module'}
@@ -6447,18 +6906,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
                 {(actionLoading || moduleGeneratingAll) && (
                   <Box sx={{ textAlign: 'center', py: 1 }}>
-                    <CircularProgress size={22} sx={{ color: MAROON }} />
-                    <Typography variant="caption" sx={{ color: '#888', display: 'block', mt: 0.75 }}>
-                      {moduleGeneratingAll
-                        ? 'Building your modules — this usually takes less than a minute.'
-                        : 'Building your module — this usually takes less than a minute.'}
+                    <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
+                      Generation continues in the module view. You can close this card.
                     </Typography>
                   </Box>
                 )}
               </Stack>
             </DialogContent>
             <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
-              <Button onClick={() => setGenerateDialogOpen(false)} disabled={actionLoading || moduleGeneratingAll}
+              <Button onClick={() => setGenerateDialogOpen(false)}
                 sx={{ textTransform: 'none', fontWeight: 600, color: '#666' }}>
                 Cancel
               </Button>
@@ -6476,6 +6932,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </DialogActions>
           </Dialog>
         </Stack>
+        </Box>
+        {renderModuleGenFooter({ showCreate: true })}
+        </Box>
       )
     }
 
@@ -6511,6 +6970,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       if (selectedAssessment && assessmentDetail) {
         return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Stack spacing={2}>
             <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -6823,6 +7284,49 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Stack>
             )}
           </Stack>
+          </Box>
+          {(actionLoading && assessmentBatchProgress) && (
+            <Box sx={{
+              flexShrink: 0,
+              bgcolor: '#15181A',
+              borderTop: '2px solid rgba(134,239,172,0.65)',
+              px: 2,
+              py: 1,
+            }}>
+              <Stack spacing={0.75}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={16} sx={{ color: '#86EFAC' }} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                      Assessment generation
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                      {assessmentBatchProgress.detail
+                        || `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`}
+                    </Typography>
+                  </Box>
+                  {Number(assessmentBatchProgress.requested) > 0 && (
+                    <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+                      {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested}
+                    </Typography>
+                  )}
+                </Box>
+                <LinearProgress
+                  variant={assessmentBatchProgress.requested ? 'determinate' : 'indeterminate'}
+                  value={assessmentBatchProgress.requested
+                    ? (assessmentBatchProgress.generated / Math.max(assessmentBatchProgress.requested, 1)) * 100
+                    : undefined}
+                  sx={{
+                    height: 4,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                  }}
+                />
+              </Stack>
+            </Box>
+          )}
+          </Box>
         )
       }
 
@@ -7036,9 +7540,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
                     {actionLoading && assessmentBatchProgress
-                      ? (assessmentBatchProgress.requested
-                        ? `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`
-                        : 'Preparing the assessment items…')
+                      ? (assessmentBatchProgress.detail
+                        || (assessmentBatchProgress.requested
+                          ? `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`
+                          : 'Preparing the assessment items…'))
                       : 'Create an assessment from the TOS exam. You can choose the topics before generating.'}
                   </Typography>
                 </Box>
@@ -7586,9 +8091,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* MIDDLE */}
         <Box sx={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          ...(activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment) ? {} : { overflow: 'auto', p: 2.5 }),
+          ...(activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
-          {activeTab === 'syllabus' || (activeTab === 'assessment' && !selectedAssessment)
+          {activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment'
             ? <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
             : renderCenterPanel()
           }

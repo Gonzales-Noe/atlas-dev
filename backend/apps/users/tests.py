@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db.utils import OperationalError
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from rest_framework import serializers
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import AccessToken
@@ -23,6 +24,29 @@ from apps.users.serializers import (
 
 
 class FacultyAssignmentSectionTests(SimpleTestCase):
+    def _validate(self, assignments):
+        serializer = FacultyCreateSerializer()
+        serializer.context['request'] = SimpleNamespace(
+            user=SimpleNamespace(institution=object()),
+        )
+        return serializer.validate_assignments(assignments)
+
+    def test_assignments_can_be_omitted_entirely(self):
+        self.assertEqual(self._validate([]), [])
+
+    def test_blank_assignment_rows_are_ignored(self):
+        result = self._validate([
+            {'section': '', 'courses': [{'course_code': '', 'course_title': ''}]},
+            {'section': 'BSIT 4101'},
+        ])
+        self.assertEqual(result, [])
+
+    def test_courses_still_require_a_section(self):
+        with self.assertRaises(serializers.ValidationError):
+            self._validate([
+                {'section': '', 'courses': [{'course_code': 'CS 101', 'course_title': 'Intro'}]},
+            ])
+
     @patch('apps.users.serializers.Section.objects.filter')
     @patch('apps.users.serializers.Section.objects.create')
     def test_assignment_section_name_is_resolved_to_section_instance(
@@ -317,3 +341,69 @@ class DatabaseReconnectMiddlewareTests(SimpleTestCase):
         )
 
         self.assertIsNone(response)
+
+
+class InstitutionCustomizationSaveTests(SimpleTestCase):
+    def _patch(self, data):
+        from apps.users.views import InstitutionCustomizationView
+
+        customization = SimpleNamespace(
+            institution=None,
+            syllabus_sections=[],
+            syllabus_field_map={'sections': [], 'click_log': []},
+            save=Mock(),
+        )
+        request = SimpleNamespace(
+            data=data,
+            user=SimpleNamespace(role='admin', institution=object()),
+        )
+        view = InstitutionCustomizationView()
+        with patch(
+            'apps.users.views.InstitutionCustomization.objects.get_or_create',
+            return_value=(customization, False),
+        ), patch.object(
+            InstitutionCustomizationView,
+            'get',
+            return_value=SimpleNamespace(data={'syllabus_sections': customization.syllabus_sections}),
+        ), patch('apps.users.views.publish_fixed_syllabus') as publish:
+            view.patch(request)
+            self.published_sections = publish.call_args.args[0] if publish.called else None
+        return customization
+
+    def test_framework_table_cells_survive_when_field_map_is_echoed(self):
+        sections = [{
+            'key': 'framework-mapping',
+            'label': 'Framework Mapping',
+            'enabled': True,
+            'blueprint_tables': {
+                'iga-table': {
+                    'columns': ['IGA', 'Institutional Graduate Attributes (IGA) Statements'],
+                    'rows': [['IGA1', 'Communicates effectively in writing.']],
+                    'rowLabels': [],
+                },
+            },
+        }]
+        customization = self._patch({
+            'syllabus_sections': sections,
+            'syllabus_field_map': {'sections': [], 'click_log': []},
+        })
+
+        self.assertEqual(
+            customization.syllabus_sections[0]['blueprint_tables']['iga-table']['rows'][0][1],
+            'Communicates effectively in writing.',
+        )
+        self.assertEqual(
+            self.published_sections[0]['blueprint_tables']['iga-table']['rows'][0][1],
+            'Communicates effectively in writing.',
+        )
+        customization.save.assert_called_once()
+
+    def test_field_map_only_update_still_derives_sections(self):
+        customization = self._patch({
+            'syllabus_field_map': {
+                'sections': [{'label': 'Course Policies', 'key': 'course-policies'}],
+                'click_log': [],
+            },
+        })
+
+        self.assertEqual(customization.syllabus_sections[0]['label'], 'Course Policies')
