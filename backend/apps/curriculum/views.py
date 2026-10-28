@@ -1048,15 +1048,17 @@ def _largest_remainder_allocation(total, weights):
 
 
 def _match_assessment_entry(entries, code='', label=''):
-    """Return the best matching assessment-task entry by code or label."""
+    """Return the best matching assessment task or TOS exam by code or label."""
     entries = entries if isinstance(entries, list) else []
     code = (code or '').strip().lower()
     label = (label or '').strip().lower()
     for entry in entries:
         if not isinstance(entry, dict):
             continue
-        entry_code = str(entry.get('code') or '').strip().lower()
-        entry_label = str(entry.get('task') or entry.get('label') or '').strip().lower()
+        entry_code = str(entry.get('code') or entry.get('examCode') or '').strip().lower()
+        entry_label = str(
+            entry.get('task') or entry.get('label') or entry.get('examLabel') or ''
+        ).strip().lower()
         sub_codes = [str(sub.get('code') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
         sub_labels = [str(sub.get('label') or '').strip().lower() for sub in (entry.get('subs') or []) if isinstance(sub, dict)]
         if code and (code == entry_code or code in sub_codes):
@@ -1233,8 +1235,6 @@ def _sections_from_assessment_tasks(syllabus_content):
     return out
 
 
-# Bloom spread for topics that carry no TOS Bloom counts (remember → create).
-DEFAULT_BLOOM_WEIGHTS = [3, 3, 2, 2, 0, 0]
 BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
 
 
@@ -1251,7 +1251,8 @@ def _to_float(value, default=0.0):
 def _materialize_tos_exam(exam):
     """Fill weight, minutes, points, and Bloom item counts from the TOS formula.
 
-    Weight (%) = class hours / total class hours × 100.
+    Weight of Topic (%) = instructional hours on the topic / total instructional hours × 100.
+    Number of items for the topic = (that weight / 100) × total exam items.
     Topic points and exam minutes use that same share, via largest-remainder
     so the integers add up to the exam totals. Bloom items use each topic's
     Bloom percentages against that topic's points. Stored Bloom counts are
@@ -1308,10 +1309,12 @@ def _build_sectioned_assessment_payload(
     """
     Build sectioned assessment items from TOS topic rows.
 
-    When a row has Bloom item counts, those counts are copied exactly. Item
-    totals are not spread across the other Bloom levels. Rows with no Bloom
-    counts are used only when the whole exam has none; those items are
-    Remember unless default_bloom_weights is provided.
+    Topic size comes from the hours formula already stored on the row:
+    weight (%) = topic hours / total hours × 100, and the item count is
+    (weight / 100) × N. Bloom cells the faculty filled are copied as entered.
+    A row with no Bloom cells uses only the ILO levels checked on that row,
+    split evenly. Item numbers follow the TOS from top to bottom, and within
+    a topic from left to right across the Bloom cells that have items.
     """
     sections = []
     for row in (topic_rows or []):
@@ -1339,6 +1342,7 @@ def _build_sectioned_assessment_payload(
                 'section_title': section_title,
                 'ilos': [str(v) for v in (row.get('ilos') or []) if str(v).strip()],
                 'bloom_counts': bloom_counts,
+                'item_share': row_total,
                 'weight': row_total if row_total > 0 else 1,
             }
         )
@@ -1361,39 +1365,75 @@ def _build_sectioned_assessment_payload(
             }
         ]
 
-    any_explicit_bloom = any(sum(section['bloom_counts'].values()) > 0 for section in sections)
-    if any_explicit_bloom:
-        section_alloc = [sum(section['bloom_counts'].values()) for section in sections]
+    any_share = any(_to_int(section.get('item_share')) > 0 for section in sections)
+    if any_share:
+        section_alloc = [_to_int(section.get('item_share')) for section in sections]
     else:
         total_items = max(1, int(total_items or 1))
         section_alloc = _largest_remainder_allocation(total_items, [s['weight'] for s in sections])
 
     ilo_bloom_map = {}
+    ilo_text_map = {}
     ilos = ilos or []
     ilo_bloom = ilo_bloom or []
     for idx, text in enumerate(ilos):
         if not text:
             continue
         key = str(idx + 1)
+        ilo_text_map[key] = str(text).strip()
         bloom = ilo_bloom[idx] if idx < len(ilo_bloom) and isinstance(ilo_bloom[idx], dict) else {}
         ilo_bloom_map[key] = {
             'level': str(bloom.get('level') or '').strip(),
             'verb': str(bloom.get('verb') or '').strip(),
         }
 
-    running_item_no = 1
-    section_payloads = []
-    bloom_order = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    def _checked_ilo_levels(section):
+        levels = []
+        for ilo_ref in section['ilos']:
+            ref_num = re.sub(r'\D+', '', str(ilo_ref))
+            level = _normalize_bloom_key((ilo_bloom_map.get(ref_num) or {}).get('level'))
+            if level in BLOOM_ORDER and level not in levels:
+                levels.append(level)
+        return levels
 
+    def _slot_ilo_context(section, bloom_key):
+        matched_verb = ''
+        matched_texts = []
+        fallback_texts = []
+        for ilo_ref in section['ilos']:
+            ref_num = re.sub(r'\D+', '', str(ilo_ref))
+            info = ilo_bloom_map.get(ref_num) or {}
+            text = ilo_text_map.get(ref_num) or ''
+            if text:
+                fallback_texts.append(text)
+            if _normalize_bloom_key(info.get('level')) == bloom_key:
+                if info.get('verb') and not matched_verb:
+                    matched_verb = info['verb']
+                if text and text not in matched_texts:
+                    matched_texts.append(text)
+        return matched_verb, (matched_texts or fallback_texts)
+
+    bloom_order = list(BLOOM_ORDER)
+    checked_levels = [_checked_ilo_levels(section) for section in sections]
+    faculty_set_cognition = any(
+        sum(section['bloom_counts'].values()) > 0 or checked_levels[index]
+        for index, section in enumerate(sections)
+    )
+    plans = []
     for idx, section in enumerate(sections):
         allocated = max(0, section_alloc[idx])
-        blooms = section['bloom_counts']
-        bloom_weights = [blooms.get(k, 0) for k in bloom_order]
+        bloom_weights = [section['bloom_counts'].get(key, 0) for key in bloom_order]
         if sum(bloom_weights) > 0:
-            # The TOS already states how many items belong to each Bloom level.
             bloom_alloc = list(bloom_weights)
             allocated = sum(bloom_weights)
-        elif not any_explicit_bloom and allocated > 0 and default_bloom_weights:
+        elif allocated > 0 and checked_levels[idx]:
+            selected = checked_levels[idx]
+            bloom_alloc = _largest_remainder_allocation(
+                allocated,
+                [1 if key in selected else 0 for key in bloom_order],
+            )
+            allocated = sum(bloom_alloc)
+        elif allocated > 0 and default_bloom_weights:
             fallback_weights = list(default_bloom_weights)
             nonzero_bloom_indices = [i for i, weight in enumerate(fallback_weights) if weight > 0]
             nonzero_alloc = _largest_remainder_allocation(
@@ -1403,53 +1443,61 @@ def _build_sectioned_assessment_payload(
             bloom_alloc = [0] * len(bloom_order)
             for bloom_index, count in zip(nonzero_bloom_indices, nonzero_alloc):
                 bloom_alloc[bloom_index] = count
-        elif not any_explicit_bloom and allocated > 0:
+        elif allocated > 0 and not faculty_set_cognition:
             bloom_alloc = [0] * len(bloom_order)
             bloom_alloc[0] = allocated
         else:
             bloom_alloc = [0] * len(bloom_order)
             allocated = 0
+        plans.append(
+            {
+                'section': section,
+                'allocated': allocated,
+                'bloom_alloc': bloom_alloc,
+                'items': [],
+            }
+        )
 
-        if allocated <= 0:
-            continue
-
-        items = []
-        for bloom_key, count in zip(bloom_order, bloom_alloc):
+    running_item_no = 1
+    for plan in plans:
+        section = plan['section']
+        for bloom_index, bloom_key in enumerate(bloom_order):
+            count = plan['bloom_alloc'][bloom_index]
+            verb, ilo_texts = _slot_ilo_context(section, bloom_key)
             for local_idx in range(count):
-                inferred_verb = ''
-                for ilo_ref in section['ilos']:
-                    ref_num = re.sub(r'\D+', '', str(ilo_ref))
-                    if ref_num in ilo_bloom_map and ilo_bloom_map[ref_num].get('verb'):
-                        inferred_verb = ilo_bloom_map[ref_num]['verb']
-                        break
-
-                item = {
-                    'item_number': running_item_no,
-                    'item_type': assessment_type,
-                    'section_title': section['section_title'],
-                    'exam_label': section['exam_label'],
-                    'bloom_level': bloom_key.title(),
-                    'bloom_verb': inferred_verb,
-                    'ilo_refs': section['ilos'],
-                    'question_text': (
-                        f"[{section['section_title']}] {assessment_type.title()} item "
-                        f"{local_idx + 1} ({bloom_key.title()})"
-                    ).strip(),
-                }
-                items.append(item)
+                plan['items'].append(
+                    {
+                        'item_number': running_item_no,
+                        'item_type': assessment_type,
+                        'section_title': section['section_title'],
+                        'exam_label': section['exam_label'],
+                        'bloom_level': bloom_key.title(),
+                        'bloom_verb': verb,
+                        'ilo_refs': section['ilos'],
+                        'ilo_text': '; '.join(ilo_texts),
+                        'question_text': (
+                            f"[{section['section_title']}] {assessment_type.title()} item "
+                            f"{local_idx + 1} ({bloom_key.title()})"
+                        ).strip(),
+                    }
+                )
                 running_item_no += 1
 
+    section_payloads = []
+    for plan in plans:
+        if plan['allocated'] <= 0:
+            continue
         section_payloads.append(
             {
-                'section_title': section['section_title'],
-                'exam_label': section['exam_label'],
-                'allocated_items': allocated,
+                'section_title': plan['section']['section_title'],
+                'exam_label': plan['section']['exam_label'],
+                'allocated_items': plan['allocated'],
                 'bloom_distribution': {
-                    bloom_order[i].title(): bloom_alloc[i]
+                    bloom_order[i].title(): plan['bloom_alloc'][i]
                     for i in range(len(bloom_order))
-                    if bloom_alloc[i] > 0
+                    if plan['bloom_alloc'][i] > 0
                 },
-                'items': items,
+                'items': plan['items'],
             }
         )
 
@@ -1752,11 +1800,176 @@ def _is_placeholder_choice(choice_text):
     return False
 
 
+_PLACEHOLDER_QUESTION = re.compile(
+    r'^\[[^\]]+\]\s+.+\sitem\s+\d+\s+\([^)]+\)\s*$',
+    re.IGNORECASE,
+)
+ASSESSMENT_SLOT_BATCH = 6
+
+
+def _is_placeholder_question(question_text):
+    text = str(question_text or '').strip()
+    if not text or text.lower() in {'...', 'tbd', 'na', 'n/a'}:
+        return True
+    return bool(_PLACEHOLDER_QUESTION.match(text))
+
+
+def _coerce_generated_item_fields(item):
+    """Map common model key names onto the assessment item fields."""
+    if not isinstance(item, dict):
+        return {}
+    coerced = dict(item)
+    if not str(coerced.get('question_text') or '').strip():
+        for key in ('question', 'stem', 'prompt'):
+            text = str(coerced.get(key) or '').strip()
+            if text:
+                coerced['question_text'] = text
+                break
+    if not coerced.get('choices') and coerced.get('options'):
+        coerced['choices'] = coerced.get('options')
+    if not str(coerced.get('correct_answer') or '').strip():
+        for key in ('answer', 'correct', 'correct_option'):
+            text = str(coerced.get(key) or '').strip()
+            if text:
+                coerced['correct_answer'] = text[:1].upper()
+                break
+    if not str(coerced.get('answer_key') or '').strip():
+        for key in ('explanation', 'rationale', 'answer_explanation'):
+            text = str(coerced.get(key) or '').strip()
+            if text:
+                coerced['answer_key'] = text
+                break
+    return coerced
+
+
+def _fill_answer_key_fallback(item):
+    if str(item.get('answer_key') or '').strip():
+        return item
+    letter = str(item.get('correct_answer') or '').strip()[:1].upper()
+    if letter in 'ABCD':
+        item['answer_key'] = f'Option {letter} is the correct answer.'
+    return item
+
+
+def _errors_are_only_missing_answer_key(errors):
+    return errors == ['answer_key (explanation) is missing.']
+
+
+def _compact_assessment_slot(section):
+    """Prompt payload for one section: slot identity only, no dummy stems or choices."""
+    return {
+        'section_title': section.get('section_title') or '',
+        'exam_label': section.get('exam_label') or '',
+        'allocated_items': section.get('allocated_items') or len(section.get('items') or []),
+        'bloom_distribution': section.get('bloom_distribution') or {},
+        'items': [
+            {
+                'item_number': item.get('item_number'),
+                'bloom_level': item.get('bloom_level') or '',
+                'bloom_verb': item.get('bloom_verb') or '',
+                'ilo_refs': item.get('ilo_refs') or [],
+                'ilo_text': item.get('ilo_text') or '',
+            }
+            for item in (section.get('items') or [])
+            if isinstance(item, dict)
+        ],
+    }
+
+
+def _section_for_slots(section, items):
+    distribution = {}
+    for item in items:
+        level = str(item.get('bloom_level') or '').strip()
+        if level:
+            distribution[level] = distribution.get(level, 0) + 1
+    return {
+        'section_title': section.get('section_title') or '',
+        'exam_label': section.get('exam_label') or '',
+        'allocated_items': len(items),
+        'bloom_distribution': distribution,
+        'items': list(items),
+    }
+
+
+def _prepare_generated_section(generated_section):
+    if isinstance(generated_section, list):
+        generated_section = {'items': generated_section}
+    if not isinstance(generated_section, dict):
+        return {'items': []}
+    items = generated_section.get('items')
+    if not isinstance(items, list):
+        if generated_section.get('question_text') or generated_section.get('question') or generated_section.get('stem'):
+            items = [generated_section]
+        else:
+            items = []
+    prepared = dict(generated_section)
+    prepared['items'] = [
+        _coerce_generated_item_fields(item) if isinstance(item, dict) else item
+        for item in items
+    ]
+    return prepared
+
+
+def _collect_section_items(blueprint_section, generated_section):
+    """Keep items that already pass, and list slot numbers that need another try."""
+    aligned = _align_generated_section_to_blueprint(
+        _prepare_generated_section(generated_section),
+        blueprint_section,
+    )
+    accepted = {}
+    retry_numbers = []
+    for item in aligned.get('items') or []:
+        coerced = _coerce_generated_item_fields(item)
+        number = _to_int(coerced.get('item_number'), 0)
+        if _generated_item_quality_errors(coerced):
+            if number > 0:
+                retry_numbers.append(number)
+            continue
+        if number > 0:
+            accepted[number] = coerced
+    return accepted, retry_numbers
+
+
+def _normalize_slot_item(parsed, blueprint_item, section):
+    parsed = _coerce_generated_item_fields(parsed)
+    return {
+        'item_number': blueprint_item.get('item_number'),
+        'item_type': 'Multiple Choice',
+        'section_title': section.get('section_title') or '',
+        'exam_label': section.get('exam_label') or blueprint_item.get('exam_label') or '',
+        'bloom_level': blueprint_item.get('bloom_level') or '',
+        'bloom_verb': str(parsed.get('bloom_verb') or blueprint_item.get('bloom_verb') or '').strip(),
+        'ilo_refs': blueprint_item.get('ilo_refs') or [],
+        'question_text': str(parsed.get('question_text') or '').strip(),
+        'choices': _normalize_choices(parsed.get('choices')),
+        'correct_answer': str(parsed.get('correct_answer') or '').strip()[:1].upper(),
+        'answer_key': str(parsed.get('answer_key') or '').strip(),
+        'points': max(0, _to_int(parsed.get('points'), 0)),
+    }
+
+
+def _parse_model_json(text):
+    if not isinstance(text, str) or not text.strip():
+        return None
+    clean = re.sub(r'^```(?:json)?\s*', '', text.strip())
+    clean = re.sub(r'\s*```$', '', clean).strip()
+    try:
+        return json.loads(clean)
+    except json.JSONDecodeError:
+        match = re.search(r'\{.*\}', clean, re.DOTALL)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+
 def _generated_item_quality_errors(item_payload):
     errors = []
 
     question_text = str(item_payload.get('question_text') or '').strip()
-    if not question_text:
+    if not question_text or _is_placeholder_question(question_text):
         errors.append('question_text is missing.')
 
     choices = _normalize_choices(item_payload.get('choices'))
@@ -1946,7 +2159,7 @@ def _derive_assessment_source(syllabus_content, source_exam_code='', source_exam
             'bloom_items': {},
             'total_points': '',
         }
-        for topic in faculty_topics
+        for topic in (faculty_topics or [])
         if str(topic).strip()
     ]
     if normalized_faculty_topics:
@@ -2395,7 +2608,15 @@ def generate_assessment(request):
             )
 
         manual_mode = isinstance(manual_item, dict) and bool(str(manual_item.get('question_text') or '').strip())
-        item_blueprint_json = json.dumps(target_item_blueprint, ensure_ascii=False, indent=2)
+        item_slot = {
+            'item_number': target_item_number,
+            'section_title': target_section.get('section_title') or '',
+            'exam_label': target_item_blueprint.get('exam_label') or source['assessment_name'],
+            'bloom_level': target_item_blueprint.get('bloom_level') or '',
+            'bloom_verb': target_item_blueprint.get('bloom_verb') or '',
+            'ilo_refs': target_item_blueprint.get('ilo_refs') or [],
+        }
+        item_blueprint_json = json.dumps(item_slot, ensure_ascii=False, indent=2)
 
         if manual_mode:
             parsed_item = {
@@ -2488,6 +2709,8 @@ Requirements:
 4. choices must have exactly 4 options (A, B, C, D only) and correct_answer must be A, B, C, or D.
 5. bloom_level MUST exactly match the blueprint bloom_level ({target_item_blueprint.get('bloom_level') or 'as specified'}). Do not use any other Bloom level.
 6. If relation context is provided, the item should be meaningfully related but not a duplicate.
+7. The slot has no question yet. Write a new question_text and four real choices. Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
+8. Put the explanation of the correct choice in answer_key.
 """
 
         llm = LLMService()
@@ -2521,6 +2744,8 @@ Requirements:
                     return None
 
         parsed_item = parsed_item if manual_mode else _parse_single_item_json(raw_item)
+        if not manual_mode and isinstance(parsed_item, dict):
+            parsed_item = _coerce_generated_item_fields(parsed_item)
         if not parsed_item:
             return Response(
                 {
@@ -2557,6 +2782,9 @@ Requirements:
 
         if not manual_mode:
             quality_errors = _generated_item_quality_errors(normalized_item)
+            if _errors_are_only_missing_answer_key(quality_errors):
+                normalized_item = _fill_answer_key_fallback(normalized_item)
+                quality_errors = _generated_item_quality_errors(normalized_item)
             if quality_errors:
                 return Response(
                     {
@@ -2765,9 +2993,7 @@ Requirements:
         top_k=max(1, _to_int(request.data.get('top_k'), 5)),
         selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
     )
-    all_chunks = course_rag['chunks'] + global_rag['chunks']
     combined_summary = "\n\n".join(filter(None, [course_rag['context_summary'], global_rag['context_summary']]))
-    section_module_context = _build_section_module_context(sections, section_module_matches)
 
     logger.info(
         'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s',
@@ -2779,325 +3005,211 @@ Requirements:
     system_prompt = (
         "You are an expert university assessment designer with deep knowledge of Outcome-Based Education, "
         "Bloom's Taxonomy, and the Table of Specifications (TOS). You create rigorous, fair assessments "
-        "that are aligned to syllabus section blueprints. Return ONLY valid JSON. No markdown fences, no commentary."
+        "aligned to the given item slots. Return ONLY valid JSON. No markdown fences, no commentary."
     )
-
-    # Update blueprint to require MCQ structure
-    # Add MCQ fields to each item in each section
-    def _mcqify_section(section):
-        for item in section.get('items', []):
-            item.setdefault('item_type', 'Multiple Choice')
-            item.setdefault('choices', ["A. ...", "B. ...", "C. ...", "D. ..."])
-            item.setdefault('correct_answer', "A")
-        return section
-
-    mcq_sections = [_mcqify_section(dict(s)) for s in sections]
-    blueprint_json = json.dumps(
-        {
-            'title': assessment_title,
-            'assessment_type': source['assessment_type'],
-            'term': term,
-            'total_items': total_generated,
-            'sections': mcq_sections,
-        },
-        ensure_ascii=False,
-        indent=2,
-    )
-
-    user_prompt = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
-{CoTPromptBuilder._format_context(all_chunks, combined_summary)}
-
-SAVED COURSE MODULE CONTEXT (same course, matched by section topic):
-{section_module_context or 'No saved module matched the current section topics. Use the knowledge-base context and keep topic alignment strict.'}
-
-TASK: Produce a complete assessment using the syllabus blueprint below.
-
-Course Name      : {course.course_title}
-Course Code      : {course.course_code}
-Assessment Type  : {source['assessment_name']}
-Total Items      : {total_generated}
-Term             : {term or 'N/A'}
-Extra Instructions: {extra_instructions or 'None'}
-
-SYLLABUS BLUEPRINT (must be preserved exactly in structure):
-{blueprint_json}
-
-REQUIREMENTS:
-1. ALL items must be MULTIPLE CHOICE QUESTIONS (MCQs) with exactly 4 choices each (A, B, C, D only).
-2. For each item, provide:
-     - The question stem in "question_text"
-     - A "choices" array (e.g., ["A. ...", "B. ...", "C. ...", "D. ..."])
-     - The correct answer letter in "correct_answer" (e.g., "B")
-     - An explanation or answer key in "answer_key"
-3. Keep the same sections, item numbers, and bloom_level values as the blueprint.
-4. For each section, ground item content primarily on that section's matched saved module context. If no module is matched, use the closest RAG evidence.
-5. Write each MCQ at that item's blueprint bloom_level. bloom_distribution is the exact number of items for each Bloom level. Do not move an item to another Bloom level, and do not add a Bloom level the blueprint does not list.
-6. If a section has multiple items, vary the stems but keep them aligned to the section topic and to that item's Bloom level.
-7. Use points that sum to 100 across the full assessment.
-8. Return strict JSON with this exact top-level shape:
-     {{
-         "title": string,
-         "assessment_type": string,
-         "term": string,
-         "total_items": number,
-         "sections": [
-             {{
-                 "section_title": string,
-                 "exam_label": string,
-                 "allocated_items": number,
-                 "bloom_distribution": {{...}},
-                 "items": [
-                     {{
-                         "item_number": number,
-                         "item_type": string,
-                         "question_text": string,
-                         "choices": [string],
-                         "correct_answer": string,
-                         "bloom_level": string,
-                         "bloom_verb": string,
-                         "ilo_refs": [string],
-                         "points": number,
-                         "answer_key": string
-                     }}
-                 ]
-             }}
-         ]
-     }}
-"""
 
     llm = LLMService()
-    generated_payload = None
-    llm_json_retry_used = False
-    llm_json_retry_success = False
-    section_retry_used = False
-    section_retry_success = False
+    reference_summary = (combined_summary or '').strip()
+    if not reference_summary:
+        reference_summary = CoTPromptBuilder._format_context(
+            (course_rag.get('chunks') or []) + (global_rag.get('chunks') or []),
+            '',
+        )
+    providers_unavailable = False
 
-    def _parse_assessment_json(text):
-        """Parse LLM response into JSON payload, supporting fenced blocks."""
-        if not isinstance(text, str) or not text.strip():
-            return None, 'empty'
-
-        clean = text.strip()
-        clean = re.sub(r'^```(?:json)?\s*', '', clean)
-        clean = re.sub(r'\s*```$', '', clean)
-        clean = clean.strip()
-
-        try:
-            return json.loads(clean), None
-        except json.JSONDecodeError as decode_err:
-            match = re.search(r'\{.*\}', clean, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group(0)), None
-                except json.JSONDecodeError as nested_decode_err:
-                    return None, f'primary={decode_err}; nested={nested_decode_err}'
-            return None, str(decode_err)
-
-    def _build_section_generation_prompt(section):
-        section_title = str(section.get('section_title') or '').strip()
-        section_key = _normalize_topic_key(section_title)
+    def _module_excerpt_for(section):
+        section_key = _normalize_topic_key(section.get('section_title'))
         matched_module = section_module_matches.get(section_key)
-        section_blueprint = json.dumps(section, ensure_ascii=False, indent=2)
-        module_excerpt = _module_prompt_excerpt(matched_module) if matched_module else 'No matched saved module for this section.'
-        summary_excerpt = combined_summary[:2500] if combined_summary else 'No summary available.'
-        return f"""Generate ONLY one assessment section as valid JSON.
+        if not matched_module:
+            return 'No matched saved module for this section.'
+        return _module_prompt_excerpt(matched_module)
 
-Course Name: {course.course_title}
-Course Code: {course.course_code}
+    def _call_model(prompt, max_tokens):
+        nonlocal providers_unavailable
+        if providers_unavailable:
+            raise ValueError('AI generation failed with all available providers.')
+        try:
+            return llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': prompt}],
+                preferred_provider=provider,
+                system=system_prompt,
+                max_tokens=max_tokens,
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if 'all available providers' in message or 'No providers are configured' in message:
+                providers_unavailable = True
+            raise
+
+    def _slice_prompt(slice_section):
+        slot_json = json.dumps(_compact_assessment_slot(slice_section), ensure_ascii=False, indent=2)
+        count = len(slice_section.get('items') or [])
+        section_title = slice_section.get('section_title') or ''
+        return f"""Generate {count} multiple-choice items for one assessment section.
+
+Course: {course.course_title} ({course.course_code})
 Assessment: {source['assessment_name']}
-Section Topic: {section_title}
+Section topic: {section_title}
+Extra instructions: {extra_instructions or 'None'}
 
 REFERENCE SUMMARY:
-{summary_excerpt}
+{reference_summary[:1800] or 'No summary available.'}
 
-MATCHED SAVED MODULE:
-{module_excerpt}
+MATCHED MODULE:
+{_module_excerpt_for(slice_section)}
 
-SECTION BLUEPRINT:
-{section_blueprint}
+ITEM SLOTS (write one original item for each slot and keep its item_number, bloom_level, bloom_verb, and ilo_refs):
+{slot_json}
 
-Requirements:
-1. Return one JSON object with keys \"section_title\", \"exam_label\", \"allocated_items\", \"bloom_distribution\", and \"items\".
-2. Preserve the same section title and item numbers from the blueprint.
-3. Every item must be an MCQ with exactly 4 choices (A-D).
-4. Every item must include: item_number, item_type, question_text, choices, correct_answer, bloom_level, bloom_verb, ilo_refs, points, answer_key.
-5. Write complete question stems and plausible distractors grounded in the section topic.
-6. Keep each item's bloom_level exactly as written in the blueprint. The number of items at each Bloom level must match bloom_distribution.
-7. Return ONLY valid JSON. No markdown, no prose.
-"""
-
-    def _generate_sections_individually():
-        generated_sections = []
-        for section in mcq_sections:
-            section_prompt = _build_section_generation_prompt(section)
-            section_raw = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': section_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=2500,
-            )
-            parsed_section, section_error = _parse_assessment_json(section_raw)
-            if not isinstance(parsed_section, dict):
-                raise ValueError(f"Section generation failed for {section.get('section_title')}: {section_error}")
-            generated_sections.append(parsed_section)
-        return {
-            'title': assessment_title,
-            'assessment_type': source['assessment_type'],
-            'term': term,
-            'total_items': total_generated,
-            'sections': generated_sections,
-        }
-
-    def _payload_quality_issues(payload):
-        issues = []
-        if not isinstance(payload, dict):
-            return ['payload is not an object.']
-        sections_payload = payload.get('sections')
-        if not isinstance(sections_payload, list):
-            return ['sections is missing or not a list.']
-
-        for section in sections_payload:
-            if not isinstance(section, dict):
-                issues.append('section entry is not an object.')
-                continue
-            section_title = str(section.get('section_title') or '').strip() or 'Untitled Section'
-            items = section.get('items') if isinstance(section.get('items'), list) else []
-            for item in items:
-                if not isinstance(item, dict):
-                    issues.append(f'{section_title}: item is not an object.')
-                    continue
-                item_no = _to_int(item.get('item_number'), 0)
-                item_errors = _generated_item_quality_errors(item)
-                if item_errors:
-                    issues.append(
-                        f'{section_title} item #{item_no or "?"}: ' + '; '.join(item_errors)
-                    )
-        return issues
-
-    try:
-        try:
-            raw_text = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': user_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=4000,
-            )
-        except ValueError as e:
-            logger.error("Assessment generation failed: %s", e)
-            return Response({'error': str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        generated_payload, parse_error = _parse_assessment_json(raw_text)
-
-        if not generated_payload:
-            llm_json_retry_used = True
-            logger.warning(
-                'Assessment LLM initial response was not valid JSON; retrying once with strict JSON-only repair prompt. error=%s',
-                parse_error,
-            )
-
-            repair_prompt = f"""Your previous response was not valid JSON.
-
-Return ONLY valid JSON, with no markdown fences and no extra commentary.
-Keep the exact same top-level shape and semantics requested earlier.
-
-Required top-level shape:
+Return one JSON object:
 {{
-  "title": string,
-  "assessment_type": string,
-  "term": string,
-  "total_items": number,
-  "sections": [
+  "section_title": "{section_title}",
+  "items": [
     {{
-      "section_title": string,
-      "exam_label": string,
-      "allocated_items": number,
-      "bloom_distribution": object,
-      "items": [
-        {{
-          "item_number": number,
-          "item_type": string,
-          "question_text": string,
-                    "choices": [string],
-                    "correct_answer": string,
-          "bloom_level": string,
-          "bloom_verb": string,
-          "ilo_refs": [string],
-          "points": number,
-          "answer_key": string
-        }}
-      ]
+      "item_number": 1,
+      "question_text": "Original question about this topic",
+      "choices": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
+      "correct_answer": "A",
+      "answer_key": "Why the correct choice is right",
+      "bloom_level": "Remember",
+      "bloom_verb": "",
+      "ilo_refs": []
     }}
   ]
 }}
 
-Original task prompt:
-{user_prompt}
-
-Previous invalid response:
-{raw_text}
+Rules:
+- Write exactly {count} items, using each slot's item_number, bloom_level, bloom_verb, and ilo_text as set on the Table of Specifications.
+- Each question_text is a new stem about this section topic at that slot's Bloom level. When bloom_verb is set, the stem must use that verb. When ilo_text is set, the item must assess that outcome.
+- Each item has exactly 4 real choices. correct_answer is A, B, C, or D.
+- answer_key explains why the correct choice is right.
+- Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
+- Return JSON only.
 """
 
-            repaired_text = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': repair_prompt}],
-                preferred_provider=provider,
-                system=system_prompt,
-                max_tokens=4000,
-            )
-            generated_payload, retry_error = _parse_assessment_json(repaired_text)
-            if generated_payload:
-                llm_json_retry_success = True
-            else:
-                logger.warning(
-                    'Assessment LLM retry also returned invalid JSON; attempting per-section MCQ generation. error=%s',
-                    retry_error,
+    def _item_prompt(section, blueprint_item):
+        slot = {
+            'item_number': blueprint_item.get('item_number'),
+            'section_title': section.get('section_title') or '',
+            'exam_label': section.get('exam_label') or '',
+            'bloom_level': blueprint_item.get('bloom_level') or '',
+            'bloom_verb': blueprint_item.get('bloom_verb') or '',
+            'ilo_refs': blueprint_item.get('ilo_refs') or [],
+        }
+        slot_json = json.dumps(slot, ensure_ascii=False, indent=2)
+        return f"""Generate ONE multiple-choice item as JSON.
+
+Course: {course.course_title} ({course.course_code})
+Assessment: {source['assessment_name']}
+Extra instructions: {extra_instructions or 'None'}
+
+REFERENCE SUMMARY:
+{reference_summary[:1800] or 'No summary available.'}
+
+MATCHED MODULE:
+{_module_excerpt_for(section)}
+
+SLOT (this item has no question yet):
+{slot_json}
+
+Return one JSON object with question_text, choices, correct_answer, and answer_key.
+Keep item_number {slot['item_number']} and bloom_level "{slot['bloom_level']}".
+Write the stem at bloom_level "{slot['bloom_level']}". When bloom_verb is set, use that verb. When ilo_text is set, assess that outcome.
+choices must be exactly four real options in the shape ["A. first option", "B. second option", "C. third option", "D. fourth option"].
+correct_answer is A, B, C, or D.
+answer_key explains why that choice is correct.
+Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
+Return JSON only.
+"""
+
+    def _accept_single_item(parsed, blueprint_item, section):
+        if not isinstance(parsed, dict):
+            return None
+        item = _normalize_slot_item(parsed, blueprint_item, section)
+        errors = _generated_item_quality_errors(item)
+        if _errors_are_only_missing_answer_key(errors):
+            item = _fill_answer_key_fallback(item)
+            errors = _generated_item_quality_errors(item)
+        if errors:
+            return None
+        return item
+
+    def _generate_one_slot(section, blueprint_item):
+        raw = _call_model(_item_prompt(section, blueprint_item), 1800)
+        return _accept_single_item(_parse_model_json(raw), blueprint_item, section)
+
+    accepted_by_section = []
+    saved_numbers = set()
+    for section in sections:
+        if providers_unavailable:
+            break
+        section_items = [item for item in (section.get('items') or []) if isinstance(item, dict)]
+        accepted = {}
+        for start in range(0, len(section_items), ASSESSMENT_SLOT_BATCH):
+            if providers_unavailable:
+                break
+            item_slice = section_items[start:start + ASSESSMENT_SLOT_BATCH]
+            slice_section = _section_for_slots(section, item_slice)
+            retry_numbers = [item.get('item_number') for item in item_slice]
+            try:
+                raw = _call_model(
+                    _slice_prompt(slice_section),
+                    min(4000, max(1800, 700 * len(item_slice))),
                 )
-                section_retry_used = True
-                generated_payload = _generate_sections_individually()
-                section_retry_success = True
-    except Exception:
-        logger.exception('Assessment LLM generation failed before valid MCQ payload was produced')
-
-    if isinstance(generated_payload, dict) and isinstance(generated_payload.get('sections'), list):
-        payload_issues = _payload_quality_issues(generated_payload)
-        if payload_issues:
-            logger.warning(
-                'Assessment LLM returned incomplete MCQ payload; attempting per-section regeneration. issues=%s',
-                payload_issues[:8],
-            )
-            if not section_retry_used:
-                section_retry_used = True
+                parsed = _parse_model_json(raw)
+                if isinstance(parsed, list):
+                    parsed = {'items': parsed}
+                if isinstance(parsed, dict):
+                    got, retry_numbers = _collect_section_items(slice_section, parsed)
+                    accepted.update(got)
+            except Exception:
+                logger.exception(
+                    'Assessment section batch failed for %s',
+                    section.get('section_title'),
+                )
+            if providers_unavailable:
+                break
+            by_number = {_to_int(item.get('item_number'), 0): item for item in item_slice}
+            for number in retry_numbers:
+                if providers_unavailable:
+                    break
+                blueprint_item = by_number.get(_to_int(number, 0))
+                if not blueprint_item:
+                    continue
                 try:
-                    generated_payload = _generate_sections_individually()
-                    section_retry_success = True
+                    generated_item = _generate_one_slot(section, blueprint_item)
                 except Exception:
-                    logger.exception('Per-section regeneration failed after incomplete payload validation')
-                    generated_payload = None
+                    logger.exception('Assessment item retry failed for item %s', number)
+                    generated_item = None
+                if generated_item:
+                    accepted[_to_int(number, 0)] = generated_item
+        for number, item in accepted.items():
+            saved_numbers.add(number)
+        ordered = [accepted[number] for number in sorted(accepted)]
+        if ordered:
+            accepted_by_section.append({
+                'section_title': section.get('section_title') or '',
+                'exam_label': section.get('exam_label') or '',
+                'allocated_items': len(ordered),
+                'bloom_distribution': _section_for_slots(section, ordered).get('bloom_distribution') or {},
+                'items': ordered,
+            })
 
-            if generated_payload:
-                post_retry_issues = _payload_quality_issues(generated_payload)
-                if post_retry_issues:
-                    logger.warning(
-                        'Assessment payload still incomplete after per-section regeneration. issues=%s',
-                        post_retry_issues[:8],
-                    )
-                    generated_payload = None
+    requested_numbers = []
+    for section in sections:
+        for item in (section.get('items') or []):
+            number = _to_int(item.get('item_number'), 0)
+            if number > 0:
+                requested_numbers.append(number)
+    missing_item_numbers = [number for number in requested_numbers if number not in saved_numbers]
+    saved_item_count = len(saved_numbers)
 
-    llm_json_blueprint_fallback_used = not (
-        isinstance(generated_payload, dict)
-        and isinstance(generated_payload.get('sections'), list)
-    )
-    logger.info(
-        'Assessment LLM JSON metrics: retry_used=%s retry_success=%s section_retry_used=%s section_retry_success=%s blueprint_fallback=%s course_id=%s assessment=%s',
-        llm_json_retry_used,
-        llm_json_retry_success,
-        section_retry_used,
-        section_retry_success,
-        llm_json_blueprint_fallback_used,
-        str(course.course_id),
-        source['assessment_name'],
-    )
-
-    if llm_json_blueprint_fallback_used:
+    if saved_item_count <= 0:
+        if providers_unavailable:
+            return Response(
+                {'error': 'AI generation failed with all available providers.'},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         fallback_assessment = Assessment.objects.create(
             course=course,
             title=assessment_title,
@@ -3109,17 +3221,18 @@ Previous invalid response:
         return Response(
             {
                 'success': False,
-                'detail': 'Assessment generation did not return valid MCQ JSON. Please retry with fewer items or narrower topics.',
+                'detail': 'Assessment generation did not return valid MCQ items for the TOS slots. Please retry.',
                 'manual_entry_allowed': True,
                 'assessment_id': str(fallback_assessment.assessment_id),
                 'tos_counters': _build_tos_counters(source['topic_rows'], {}),
+                'missing_item_numbers': missing_item_numbers,
                 'manual_item_schema': {
                     'manual_items': [
                         {
                             'section_title': 'Topic from TOS',
                             'bloom_level': 'Remember|Understand|Apply|Analyze|Evaluate|Create',
                             'question_text': 'Question stem',
-                            'choices': ['A. ...', 'B. ...', 'C. ...', 'D. ...'],
+                            'choices': ['A. first option', 'B. second option', 'C. third option', 'D. fourth option'],
                             'correct_answer': 'A',
                             'answer_key': 'Explanation of the answer',
                             'ilo_refs': ['ILO 1'],
@@ -3132,37 +3245,26 @@ Previous invalid response:
             status=status.HTTP_502_BAD_GATEWAY,
         )
 
-    if isinstance(generated_payload, dict) and isinstance(generated_payload.get('sections'), list):
-        # The model may retag items with other Bloom levels. Put every saved
-        # item back on the blueprint slot so the TOS counts stay exact.
-        generated_by_topic = {}
-        for section in generated_payload.get('sections', []):
-            if not isinstance(section, dict):
-                continue
-            topic_key = _normalize_topic_key(section.get('section_title'))
-            if topic_key and topic_key not in generated_by_topic:
-                generated_by_topic[topic_key] = section
-
-        normalized_sections = []
-        for blueprint_section in mcq_sections:
-            topic_key = _normalize_topic_key(blueprint_section.get('section_title'))
-            generated_section = generated_by_topic.get(topic_key) or {}
-            normalized_sections.append(
-                _align_generated_section_to_blueprint(generated_section, blueprint_section)
-            )
-
-        if normalized_sections:
-            sections = normalized_sections
-            total_generated = sum(len(s['items']) for s in sections)
+    sections = accepted_by_section
+    assessment_status = 'Generated' if not missing_item_numbers else 'Draft'
+    logger.info(
+        'Assessment generation kept %s of %s TOS items; missing=%s course_id=%s assessment=%s',
+        saved_item_count,
+        len(requested_numbers),
+        missing_item_numbers,
+        str(course.course_id),
+        source['assessment_name'],
+    )
 
     assessment = Assessment.objects.create(
         course=course,
         title=assessment_title,
         assessment_type=source['assessment_type'],
         term=term,
-        status='Generated',
+        status=assessment_status,
         generated_at=timezone.now(),
     )
+
 
     create_items = []
     for section in sections:
@@ -3214,7 +3316,8 @@ Previous invalid response:
                 'target_total_items': total_generated,
             },
             'sections': sections,
-            'total_items': total_generated,
+            'total_items': saved_item_count,
+            'missing_item_numbers': missing_item_numbers,
         },
         status=status.HTTP_201_CREATED,
     )

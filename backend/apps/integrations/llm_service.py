@@ -117,6 +117,38 @@ COOLDOWN_SECONDS = {
 }
 
 
+def message_text(message):
+    """Assistant text from a chat message.
+
+    Reasoning models sometimes leave content empty and put the answer in
+    reasoning. Use that text only when content itself is empty.
+    """
+    if not isinstance(message, dict):
+        return ''
+
+    content = message.get('content')
+    if isinstance(content, str) and content.strip():
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str) and part.strip():
+                parts.append(part)
+            elif isinstance(part, dict):
+                text = part.get('text') or part.get('content') or ''
+                if str(text).strip():
+                    parts.append(str(text))
+        joined = '\n'.join(parts).strip()
+        if joined:
+            return joined
+
+    for key in ('reasoning', 'reasoning_content'):
+        text = message.get(key)
+        if isinstance(text, str) and text.strip():
+            return text
+    return ''
+
+
 def normalize_provider(choice):
     choice = (choice or '').strip().lower()
     if choice == 'auto':
@@ -344,7 +376,7 @@ class LLMService:
                 status_code=response.status_code,
             )
         try:
-            content = response.json()['choices'][0]['message'].get('content')
+            content = message_text(response.json()['choices'][0]['message'])
         except (ValueError, KeyError, IndexError, TypeError) as exc:
             raise ProviderError(provider, f'unexpected response: {response.text[:300]}') from exc
         if not content or not content.strip():
@@ -385,13 +417,13 @@ class LLMService:
             ) from exc
         data = response.json()
         if isinstance(data, dict) and isinstance(data.get('message'), dict):
-            content = data['message'].get('content') or ''
+            content = message_text(data['message'])
             if content.strip():
                 return content
         if isinstance(data, dict) and 'choices' in data and data['choices']:
             choice = data['choices'][0]
             if isinstance(choice, dict) and isinstance(choice.get('message'), dict):
-                content = choice['message'].get('content') or ''
+                content = message_text(choice['message'])
                 if content.strip():
                     return content
         raise ProviderError('ollama', f'unexpected response: {str(data)[:300]}')
