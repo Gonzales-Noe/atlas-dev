@@ -9,6 +9,17 @@ import AdminLayout from './AdminLayout'
 import { fetchSetupStatus } from './academicApi'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
 
+const secondaryActionSx = {
+  color: 'var(--text-primary)',
+  background: 'rgba(255,255,255,0.06)',
+  border: '1px solid rgba(255,255,255,0.14)',
+  borderRadius: 10,
+  padding: '10px 16px',
+  textDecoration: 'none',
+  fontSize: '0.82rem',
+  fontWeight: 700,
+}
+
 export default function AdminDashboard() {
   const { user } = useAuth()
   const [setup, setSetup] = useState(null)
@@ -49,9 +60,9 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Link to="/admin/academic-structure" style={{ color: '#fff', background: '#15803D', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Academic structure</Link>
-            <Link to="/admin/account-management" style={{ color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Add faculty</Link>
-            <Link to="/admin/knowledge-base" style={{ color: '#fff', border: '1px solid rgba(255,255,255,.2)', borderRadius: 6, padding: '10px 14px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Set up knowledge base</Link>
+            <Link to="/admin/academic-structure" style={{ color: '#fff', background: '#15803D', border: '1px solid rgba(22,163,74,0.6)', borderRadius: 10, padding: '10px 16px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Academic structure</Link>
+            <Link to="/admin/account-management" style={secondaryActionSx}>Add faculty</Link>
+            <Link to="/admin/knowledge-base" style={secondaryActionSx}>Set up knowledge base</Link>
           </div>
         </div>
       </GlassCard>

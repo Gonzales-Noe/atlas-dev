@@ -102,12 +102,13 @@ class AcademicStructureView(AcademicBaseView):
             Section.objects.filter(
                 Q(institution=institution) | Q(program__institution=institution),
             )
+            .select_related('year_level')
             .distinct()
             .order_by('code')
         )
         courses = (
             Course.objects.filter(institution=institution)
-            .select_related('section')
+            .select_related('section', 'section__year_level')
             .order_by('course_code')
         )
 
@@ -130,17 +131,33 @@ class SectionListCreateView(AcademicBaseView):
 
 
 class SectionDetailView(AcademicBaseView):
-    def delete(self, request, section_id):
-        denied = _require_admin(request)
-        if denied:
-            return denied
+    def _get_section(self, request, section_id):
         institution = self.institution(request)
-        section = get_object_or_404(
+        return get_object_or_404(
             Section.objects.filter(
                 Q(institution=institution) | Q(program__institution=institution),
             ).distinct(),
             section_id=section_id,
         )
+
+    def patch(self, request, section_id):
+        denied = _require_admin(request)
+        if denied:
+            return denied
+        section = self._get_section(request, section_id)
+        serializer = SectionSerializer(
+            section, data=request.data, partial=True,
+            context={'institution': self.institution(request)},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def delete(self, request, section_id):
+        denied = _require_admin(request)
+        if denied:
+            return denied
+        section = self._get_section(request, section_id)
         section.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -154,7 +171,7 @@ class CourseListCreateView(AcademicBaseView):
             return denied
         queryset = (
             Course.objects.filter(institution=self.institution(request))
-            .select_related('program', 'program__college', 'year_level', 'section')
+            .select_related('program', 'program__college', 'year_level', 'section', 'section__year_level')
             .order_by('course_code')
         )
         return Response(CourseSerializer(queryset, many=True).data)

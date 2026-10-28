@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
-  InputLabel, Select, FormControl, CircularProgress,
+  InputLabel, Select, FormControl, CircularProgress, Button, Box,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -16,6 +16,7 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
+import CloseIcon from '@mui/icons-material/Close'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import {
@@ -50,6 +51,45 @@ function initials(fac) {
   return displayName(fac).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || '–'
 }
 
+const emptyFacultyForm = () => ({
+  full_name: '', email: '', password: '',
+  assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
+})
+
+function createFormsError(forms) {
+  for (const [index, form] of forms.entries()) {
+    const label = form.full_name.trim() || `Faculty ${index + 1}`
+    if (!form.full_name.trim()) return 'Enter a full name for every faculty member.'
+    if (!form.email.trim()) return `Enter an email for ${label}.`
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return `Enter a valid email for ${label}.`
+    if (form.password.length < 8) return `Temporary password for ${label} must be at least 8 characters.`
+    for (const group of form.assignments) {
+      const courses = group.courses.filter(course => course.course_code.trim() || course.course_title.trim())
+      if (courses.length && !group.section.trim()) {
+        return `Add a section for the courses listed under ${label}, or clear those course rows.`
+      }
+      if (courses.some(course => !course.course_code.trim() || !course.course_title.trim())) {
+        return `Each course under ${label} needs both a code and a name.`
+      }
+    }
+  }
+  return ''
+}
+
+function assignmentsPayload(form) {
+  return form.assignments
+    .map(group => ({
+      section: group.section.trim(),
+      courses: group.courses
+        .map(course => ({
+          course_code: course.course_code.trim(),
+          course_title: course.course_title.trim(),
+        }))
+        .filter(course => course.course_code || course.course_title),
+    }))
+    .filter(group => group.section && group.courses.length)
+}
+
 export default function AdminAccountManagement() {
   const [faculty, setFaculty] = useState([])
   const [courses, setCourses] = useState([])
@@ -80,10 +120,8 @@ export default function AdminAccountManagement() {
   const [menuItem, setMenuItem] = useState(null)
   const [sections, setSections] = useState([])
   const [editForm, setEditForm] = useState({ full_name: '', email: '', status: 'active' })
-  const [createForm, setCreateForm] = useState({
-    full_name: '', email: '', password: '',
-    assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
-  })
+  const [createForms, setCreateForms] = useState(() => [emptyFacultyForm()])
+  const [creatingFaculty, setCreatingFaculty] = useState(false)
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
@@ -222,37 +260,68 @@ export default function AdminAccountManagement() {
 
   // ── Add faculty (POST /users/faculty/) ────────────────────────────────────
   function handleCreate() {
-    setCreateForm({
-      full_name: '', email: '', password: '',
-      assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
-    })
+    setCreateForms([emptyFacultyForm()])
     setModalError('')
     setCreateDialog(true)
     handleMenuClose()
   }
 
-  async function handleSaveCreate() {
-    setModalError('')
-    try {
-      await api.post('/users/faculty/', {
-        full_name: createForm.full_name,
-        email: createForm.email,
-        password: createForm.password,
-        assignments: createForm.assignments,
-      })
-      setCreateDialog(false)
-      setNotice('Faculty account created.')
-      refreshAssignmentLists().catch(() => {})
-    } catch (err) {
-      const detail = err.response?.data?.detail
-      const errors = err.response?.data
-      let msg = detail
-      if (errors && typeof errors === 'object' && !detail) {
-        msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
-      }
-      setModalError(msg || 'Failed to create faculty account.')
-      console.error('Create faculty error:', err.response?.data)
+  function createErrorMessage(err) {
+    const data = err.response?.data
+    if (typeof data === 'string') return data
+    if (typeof data?.detail === 'string') return data.detail
+    if (data && typeof data === 'object') {
+      return Object.entries(data)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join('; ')
     }
+    return 'Failed to create faculty account.'
+  }
+
+  async function handleSaveCreate() {
+    const validation = createFormsError(createForms)
+    if (validation) {
+      setModalError(validation)
+      return
+    }
+    setModalError('')
+    setCreatingFaculty(true)
+    const failures = []
+    let createdCount = 0
+    for (const [index, form] of createForms.entries()) {
+      try {
+        await api.post('/users/faculty/', {
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          assignments: assignmentsPayload(form),
+        })
+        createdCount += 1
+      } catch (err) {
+        failures.push({
+          index,
+          label: form.email.trim() || form.full_name.trim() || `Faculty ${index + 1}`,
+          message: createErrorMessage(err),
+        })
+        console.error('Create faculty error:', err.response?.data)
+      }
+    }
+    setCreatingFaculty(false)
+    refreshAssignmentLists().catch(() => {})
+
+    if (!failures.length) {
+      setCreateDialog(false)
+      setCreateForms([emptyFacultyForm()])
+      setNotice(createdCount === 1 ? 'Faculty account created.' : `${createdCount} faculty accounts created.`)
+      return
+    }
+
+    setCreateForms(current => current.filter((_, index) => failures.some(item => item.index === index)))
+    setModalError(
+      `${failures.length} of ${createForms.length} account(s) could not be created: `
+      + failures.map(item => `${item.label} — ${item.message}`).join('; '),
+    )
+    if (createdCount) setNotice(`${createdCount} faculty account(s) created.`)
   }
 
   // ── Activate / deactivate (PATCH is_active) ────────────────────────────────
@@ -612,7 +681,7 @@ export default function AdminAccountManagement() {
       )}
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard title="Total Faculty"    value={faculty.length}    icon="👨‍🏫" accent="#86EFAC" />
         <StatCard title="Active Faculty"   value={activeFaculty}     icon="✅" accent="#5EDA7E" />
         <StatCard title="Inactive"         value={inactiveFaculty}   icon="⏸️" accent="#FFB74D" />
@@ -684,10 +753,10 @@ export default function AdminAccountManagement() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <StatusChip label={fac.role} type={fac.role === 'admin' ? 'warning' : 'info'} />
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <StatusChip label={fac.is_active ? 'active' : 'inactive'} type={fac.is_active ? 'active' : 'inactive'} />
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
@@ -701,16 +770,19 @@ export default function AdminAccountManagement() {
                       ))
                     )}
                   </TableCell>
-                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
+                  <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
                     <IconButton size="small" onClick={() => handleEdit(fac)}
+                      aria-label={`Edit ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <EditIcon fontSize="small" />
                     </IconButton>
                     <IconButton size="small" onClick={() => openAssignmentDialog(fac)}
+                      aria-label={`Assign a course to ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <AddLinkIcon fontSize="small" />
                     </IconButton>
                     <IconButton size="small" onClick={e => handleMenuOpen(e, fac)}
+                      aria-label={`More actions for ${displayName(fac)}`}
                       sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--active-bg)' } }}>
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
@@ -936,90 +1008,221 @@ export default function AdminAccountManagement() {
       </Dialog>
 
       {/* Create Dialog */}
-      <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Add New Faculty</DialogTitle>
+      <Dialog
+        open={createDialog}
+        onClose={() => setCreateDialog(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: 'var(--bg-card) !important',
+            backgroundImage: 'none',
+            border: '1px solid var(--border-color)',
+            borderRadius: '18px',
+            maxHeight: 'calc(100vh - 56px)',
+          },
+        }}
+      >
+        <DialogTitle sx={{ pt: 2.5, pb: 1.25 }}>
+          <Typography sx={{ fontSize: '1.12rem', fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.3 }}>
+            {createForms.length > 1 ? `Add ${createForms.length} New Faculty` : 'Add New Faculty'}
+          </Typography>
+          <Typography sx={{ mt: 0.5, fontSize: '0.79rem', color: 'var(--text-secondary)' }}>
+            Create accounts now — sections and courses can be assigned later.
+          </Typography>
+        </DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
-        <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
-          <Stack spacing={2.2}>
+        <DialogContent sx={{ py: 2, bgcolor: 'var(--bg-card)' }}>
+          <Stack spacing={1.75}>
             {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
-            <TextField label="Full Name" value={createForm.full_name} onChange={e => setCreateForm({ ...createForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
-            <TextField label="Email" value={createForm.email} onChange={e => setCreateForm({ ...createForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
-            <TextField label="Temporary Password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} fullWidth size="small" type="password" sx={inputSx} />
-            <Divider sx={{ borderColor: 'var(--border-color)' }} />
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Sections and courses</div>
-            {createForm.assignments.map((group, groupIndex) => (
-              <div key={groupIndex} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 12 }}>
-                <Stack spacing={1.5}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <TextField
-                      label="Section"
-                      value={group.section}
-                      onChange={event => setCreateForm(current => ({
-                        ...current,
-                        assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, section: event.target.value } : item),
-                      }))}
-                      fullWidth size="small" sx={inputSx}
-                    />
-                    <OutlineBtn
-                      small
-                      disabled={createForm.assignments.length === 1}
-                      onClick={() => setCreateForm(current => ({ ...current, assignments: current.assignments.filter((_, index) => index !== groupIndex) }))}
-                    >Remove section</OutlineBtn>
+            {createForms.map((form, formIndex) => (
+              <Box key={formIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: '14px', p: 2, bgcolor: 'rgba(255,255,255,0.02)' }}>
+                <Stack direction="row" alignItems="center" sx={{ mb: 1.5, justifyContent: 'space-between' }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(34,197,94,0.15)', color: '#4ADE80', fontSize: '0.72rem', fontWeight: 800, display: 'grid', placeItems: 'center' }}>
+                      {formIndex + 1}
+                    </Box>
+                    <Typography sx={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Faculty {formIndex + 1}
+                    </Typography>
                   </Stack>
-                  {group.courses.map((course, courseIndex) => (
-                    <div key={courseIndex} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8 }}>
-                      <TextField label="Course code" value={course.course_code}
-                        onChange={event => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
-                            ...item,
-                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_code: event.target.value } : entry),
-                          } : item),
-                        }))}
-                        size="small" sx={inputSx} />
-                      <TextField label="Course name" value={course.course_title}
-                        onChange={event => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
-                            ...item,
-                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_title: event.target.value } : entry),
-                          } : item),
-                        }))}
-                        size="small" sx={inputSx} />
-                      <OutlineBtn
-                        small
-                        disabled={group.courses.length === 1}
-                        onClick={() => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: item.courses.filter((_, courseNo) => courseNo !== courseIndex) } : item),
-                        }))}
-                      >Remove</OutlineBtn>
-                    </div>
-                  ))}
-                  <OutlineBtn small onClick={() => setCreateForm(current => ({
-                    ...current,
-                    assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item),
-                  }))}>
-                    <AddIcon fontSize="small" /> Add course to section
-                  </OutlineBtn>
+                  {createForms.length > 1 && (
+                    <Button
+                      size="small"
+                      disabled={creatingFaculty}
+                      onClick={() => setCreateForms(current => current.filter((_, index) => index !== formIndex))}
+                      sx={{ minWidth: 0, px: 1, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                    >
+                      Remove
+                    </Button>
+                  )}
                 </Stack>
-              </div>
+
+                <Stack spacing={1.5}>
+                  <TextField
+                    label="Full name" value={form.full_name}
+                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, full_name: event.target.value } : item))}
+                    fullWidth size="small" sx={inputSx}
+                  />
+                  <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1.15fr 1fr' }, gap: 1.5 }}>
+                    <TextField
+                      label="Email" value={form.email}
+                      onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, email: event.target.value } : item))}
+                      fullWidth size="small" type="email" sx={inputSx}
+                    />
+                    <TextField
+                      label="Temporary password" value={form.password}
+                      onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, password: event.target.value } : item))}
+                      fullWidth size="small" type="password"
+                      helperText="At least 8 characters"
+                      sx={{ ...inputSx, '& .MuiFormHelperText-root': { ml: 0, mt: 0.5, fontSize: '0.7rem' } }}
+                    />
+                  </Box>
+
+                  <Divider sx={{ borderColor: 'var(--border-color)' }} />
+
+                  <Box>
+                    <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                      Sections and courses{' '}
+                      <Box component="span" sx={{ fontWeight: 500, color: 'var(--text-secondary)' }}>· optional</Box>
+                    </Typography>
+                    <Typography sx={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', mt: 0.25 }}>
+                      Leave blank to add the account now and assign sections later.
+                    </Typography>
+                  </Box>
+
+                  <Stack spacing={1.25}>
+                    {form.assignments.map((group, groupIndex) => (
+                      <Box key={groupIndex} sx={{ border: '1px dashed var(--border-color)', borderRadius: '12px', p: 1.5 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField
+                            label="Section" placeholder="e.g. BSIT 1101"
+                            value={group.section}
+                            onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                              ...item,
+                              assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? { ...entry, section: event.target.value } : entry),
+                            } : item))}
+                            fullWidth size="small" sx={inputSx}
+                          />
+                          <IconButton
+                            size="small"
+                            aria-label={`Remove section ${groupIndex + 1}`}
+                            disabled={form.assignments.length === 1 || creatingFaculty}
+                            onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                              ...item,
+                              assignments: item.assignments.filter((_, groupNo) => groupNo !== groupIndex),
+                            } : item))}
+                            sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                          >
+                            <DeleteOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                        <Stack spacing={1} sx={{ mt: 1.25 }}>
+                          {group.courses.map((course, courseIndex) => (
+                            <Stack key={courseIndex} direction="row" spacing={1} alignItems="center">
+                              <TextField
+                                label="Course code" value={course.course_code}
+                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_code: event.target.value } : courseEntry),
+                                  } : entry),
+                                } : item))}
+                                size="small" sx={{ width: 140, flexShrink: 0, ...inputSx }}
+                              />
+                              <TextField
+                                label="Course name" value={course.course_title}
+                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_title: event.target.value } : courseEntry),
+                                  } : entry),
+                                } : item))}
+                                size="small" sx={{ flex: 1, minWidth: 0, ...inputSx }}
+                              />
+                              <IconButton
+                                size="small"
+                                aria-label="Remove course"
+                                disabled={group.courses.length === 1 || creatingFaculty}
+                                onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                  ...item,
+                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                    ...entry,
+                                    courses: entry.courses.filter((_, courseNo) => courseNo !== courseIndex),
+                                  } : entry),
+                                } : item))}
+                                sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                              >
+                                <CloseIcon fontSize="small" />
+                              </IconButton>
+                            </Stack>
+                          ))}
+                        </Stack>
+                        <Button
+                          size="small" startIcon={<AddIcon fontSize="small" />}
+                          disabled={creatingFaculty}
+                          onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                            ...item,
+                            assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                              ...entry,
+                              courses: [...entry.courses, { course_code: '', course_title: '' }],
+                            } : entry),
+                          } : item))}
+                          sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
+                        >
+                          Add course
+                        </Button>
+                      </Box>
+                    ))}
+                    <Box>
+                      <Button
+                        size="small" startIcon={<AddIcon fontSize="small" />}
+                        disabled={creatingFaculty}
+                        onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                          ...item,
+                          assignments: [...item.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
+                        } : item))}
+                        sx={{ textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
+                      >
+                        Add another section
+                      </Button>
+                    </Box>
+                  </Stack>
+                </Stack>
+              </Box>
             ))}
-            <OutlineBtn onClick={() => setCreateForm(current => ({
-              ...current,
-              assignments: [...current.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
-            }))}>
-              <AddIcon fontSize="small" /> Add another section
-            </OutlineBtn>
+            <Button
+              fullWidth
+              disabled={creatingFaculty}
+              startIcon={<AddIcon fontSize="small" />}
+              onClick={() => setCreateForms(current => [...current, emptyFacultyForm()])}
+              sx={{
+                py: 1,
+                textTransform: 'none',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                color: 'var(--text-secondary)',
+                border: '1px dashed var(--border-color)',
+                borderRadius: '12px',
+                '&:hover': { borderColor: '#22C55E', color: '#4ADE80', bgcolor: 'rgba(34,197,94,0.06)' },
+              }}
+            >
+              Add another faculty
+            </Button>
           </Stack>
         </DialogContent>
-        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
-          <OutlineBtn onClick={() => setCreateDialog(false)}>Cancel</OutlineBtn>
+        <DialogActions sx={{ px: 3, py: 2, gap: 1, bgcolor: 'var(--bg-card)', borderTop: '1px solid var(--border-color)' }}>
+          <OutlineBtn onClick={() => setCreateDialog(false)} disabled={creatingFaculty}>Cancel</OutlineBtn>
           <PrimaryBtn
             onClick={handleSaveCreate}
-            disabled={!createForm.full_name.trim() || !createForm.email || createForm.password.length < 8
-              || createForm.assignments.some(group => !group.section.trim() || group.courses.some(course => !course.course_code.trim() || !course.course_title.trim()))}
-          >Create Account and Assign Courses</PrimaryBtn>
+            disabled={creatingFaculty || Boolean(createFormsError(createForms))}
+          >
+            {creatingFaculty
+              ? 'Creating…'
+              : createForms.length === 1 ? 'Create Faculty Account' : `Create ${createForms.length} Faculty Accounts`}
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
 
