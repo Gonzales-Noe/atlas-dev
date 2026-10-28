@@ -3365,15 +3365,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               onChange={e => setAssessmentParams(p => ({ ...p, extra_instructions: e.target.value }))}
             />
 
-            <LField
-              select
-              label="Model Provider"
-              value={assessmentParams.provider}
-              onChange={e => setAssessmentParams(p => ({ ...p, provider: e.target.value }))}
-            >
-              {PROVIDERS.map(p => <MenuItem key={p} value={p}>{PROVIDER_LABELS[p]}</MenuItem>)}
-            </LField>
-
             {assessmentBatchProgress && (
               <Box sx={{ p: 1, border: '1px solid rgba(21,128,61,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
                 <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
