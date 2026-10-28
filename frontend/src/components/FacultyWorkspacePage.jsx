@@ -554,6 +554,42 @@ function applyScheduleMethodsToTopics(state, previousNames = []) {
   return { ...state, tla_chapters: chapters }
 }
 
+function syncScheduleMethodsFromTasks(state) {
+  const previous = Array.isArray(state.schedule_methods) ? state.schedule_methods : []
+  const previousNames = previous.map(method => method.name)
+  const byId = new Map()
+  const byName = new Map()
+  previous.forEach(method => {
+    if (method.taskId) byId.set(method.taskId, method)
+    const name = String(method.name || '').trim().toLowerCase()
+    if (name && !byName.has(name)) byName.set(name, method)
+  })
+  const used = new Set()
+  const take = method => {
+    if (!method || used.has(method)) return null
+    used.add(method)
+    return method
+  }
+  const schedule_methods = []
+  const ats = (state.ats || []).map((component, componentIndex) => ({
+    ...component,
+    subs: (component.subs || []).map((task, taskIndex) => {
+      const code = String(task.code || '').trim()
+      const label = String(task.label || '').trim()
+      if (!code && !label) return task
+      const taskId = task.scheduleId || `at-${componentIndex}-${taskIndex}`
+      const name = label || code
+      const prior = take(byId.get(taskId))
+        || take(byName.get(name.toLowerCase()))
+        || take(byName.get(code.toLowerCase()))
+      const values = Array.from({ length: TLA_WEEK_COUNT }, (_, index) => (prior?.values || [])[index] || '')
+      schedule_methods.push({ name, taskId, values })
+      return task.scheduleId === taskId ? task : { ...task, scheduleId: taskId }
+    }),
+  }))
+  return applyScheduleMethodsToTopics({ ...state, ats, schedule_methods }, previousNames)
+}
+
 const DEFAULT_GRADING_ROWS = [
   { grade: '1.0',  rating: 'Excellent',    range: '97–100' },
   { grade: '1.25', rating: 'Very Good',    range: '94–96.99' },
@@ -1757,7 +1793,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }))
     })()
 
-    return applyScheduleMethodsToTopics(withMappedAssessmentCodes({
+    return syncScheduleMethodsFromTasks(withMappedAssessmentCodes({
       ...EMPTY_SYLLABUS, ...raw,
       rationale: raw.rationale || '',
       ilos: Array.from({ length: iloCount }, (_, i) => storedIlos[i] || ''),
@@ -5136,9 +5172,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               setIsDirty(true); setSaveSuccess(false)
               setSyllabusData(s => {
                 const ats = typeof updater === 'function' ? updater(s.ats || []) : updater
-                const next = { ...s, ats }
-                if (!anyTaskIloChecked(ats) && !anyTaskIloChecked(s.ats)) return next
-                return withMappedAssessmentCodes(next)
+                let next = { ...s, ats }
+                if (anyTaskIloChecked(ats) || anyTaskIloChecked(s.ats)) next = withMappedAssessmentCodes(next)
+                return syncScheduleMethodsFromTasks(next)
               })
             }}
           />
@@ -5438,7 +5474,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const fixedTlaTable = fixedTableFor('tla-activities', 'tla-table')
       const fixedScheduleTable = fixedTableFor('tla-activities', 'assessment-schedule')
       const SELECT_STYLE = { fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '3px 5px', background: '#1A1A1F', color: '#F0F0F2' }
-      const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
+      const scheduleMethods = syllabusData.schedule_methods || []
       const updScheduleMethod = (i, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => {
@@ -5563,10 +5599,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           )}
         </SectionCard>
 
-        <SectionCard title={titleForTable('tla-activities', 'assessment-schedule', 'Table 2. Assessment Method')}
-          action={fixedScheduleTable ? undefined : <AddRowBtn label="Add Row" onClick={() => addSylItem('schedule_methods', { name: '', values: Array(TLA_WEEK_COUNT).fill('') })} />}>
+        <SectionCard title={titleForTable('tla-activities', 'assessment-schedule', 'Table 2. Assessment Method')}>
           {fixedScheduleTable ? <FixedBlueprintTable table={fixedScheduleTable} /> : (
           <Box sx={{ overflowX: 'auto' }}>
+            {scheduleMethods.length ? (
             <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.82rem' }}>
               <thead>
                 <tr>
@@ -5581,10 +5617,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </thead>
               <tbody>
                 {scheduleMethods.map((m, i) => (
-                  <tr key={i}>
-                    <td style={TABLE_TD}>
-                      {inlineInput(m.name || '', e => updScheduleMethod(i, 'name', 0, e.target.value), 160)}
-                    </td>
+                  <tr key={m.taskId || i}>
+                    <td style={{ ...TABLE_TD, fontWeight: 600, whiteSpace: 'nowrap' }}>{m.name}</td>
                     {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => {
                       const plotted = scheduleMarkIsPlotted((m.values || [])[w])
                       return (
@@ -5599,13 +5633,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         </td>
                       )
                     })}
-                    <td style={{ ...TABLE_TD, borderRight: 'none' }}>
-                      <RemoveBtn onClick={() => removeSylItem('schedule_methods', i)} disabled={scheduleMethods.length <= 1} />
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            ) : (
+              <Box sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.55)' }}>
+                Add an assessment task and it will be listed here.
+              </Box>
+            )}
           </Box>
           )}
         </SectionCard>
