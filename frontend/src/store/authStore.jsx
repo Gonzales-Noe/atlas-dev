@@ -3,7 +3,7 @@
 // Wrap <App /> with <AuthProvider /> in main.jsx.
 
 import { createContext, useContext, useReducer, useEffect } from 'react'
-import api from '../config/api'
+import api, { beginCredentialLogin } from '../config/api'
 
 const SUPERADMIN_CREDENTIALS = {
   email: 'superadmin@atlas.local',
@@ -52,12 +52,23 @@ const initialState = {
   error:         null,
 }
 
+function readDetail(detail) {
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail)) {
+    const text = detail
+      .map((item) => (typeof item === 'string' ? item : ''))
+      .filter(Boolean)
+      .join(' ')
+    if (text) return text
+  }
+  return null
+}
+
 function getAuthErrorMessage(err, fallback) {
   const status = err.response?.status
-  const data = err.response?.data
-  const detail = typeof data?.detail === 'string' ? data.detail : null
-  const nonField = Array.isArray(data?.non_field_errors) ? data.non_field_errors.join(' ') : null
-  const authMessage = detail || nonField
+  const data = err.response?.data && typeof err.response.data === 'object' ? err.response.data : null
+  const authMessage = readDetail(data?.detail)
+    || (Array.isArray(data?.non_field_errors) ? data.non_field_errors.join(' ') : null)
 
   if (!err.response) {
     return 'Unable to contact the authentication server. Check your network or try again later.'
@@ -146,9 +157,26 @@ export function AuthProvider({ children }) {
       })
   }, [])
 
+  function finishLogin(data) {
+    localStorage.setItem('atlas_access_token', data.access)
+    localStorage.setItem('atlas_refresh_token', data.refresh)
+    const user = data.user
+    if (user) localStorage.setItem('atlas_user', JSON.stringify(user))
+    return user
+  }
+
+  async function profileFor(data) {
+    const bundled = finishLogin(data)
+    if (bundled?.role) return bundled
+    const { data: user } = await api.get('/auth/me/')
+    localStorage.setItem('atlas_user', JSON.stringify(user))
+    return user
+  }
+
   // ── Actions ──────────────────────────────────────────────────────────────
   async function login(email, password) {
     dispatch({ type: 'AUTH_LOADING' })
+    beginCredentialLogin()
     try {
       if (
         email === SUPERADMIN_CREDENTIALS.email &&
@@ -156,10 +184,7 @@ export function AuthProvider({ children }) {
       ) {
         try {
           const { data } = await api.post('/auth/token/', { email, password })
-          localStorage.setItem('atlas_access_token', data.access)
-          localStorage.setItem('atlas_refresh_token', data.refresh)
-          const { data: user } = await api.get('/auth/me/')
-          localStorage.setItem('atlas_user', JSON.stringify(user))
+          const user = await profileFor(data)
           dispatch({ type: 'AUTH_SUCCESS', payload: user })
           return user
         } catch {
@@ -194,12 +219,11 @@ export function AuthProvider({ children }) {
         return ADMIN_USER
       }
 
-      // For real database authentication
+      // For real database authentication. The token response already
+      // includes the profile, so sign-in does not depend on a second call
+      // that can fail after the previous session expired.
       const { data } = await api.post('/auth/token/', { email, password })
-      localStorage.setItem('atlas_access_token', data.access)
-      localStorage.setItem('atlas_refresh_token', data.refresh)
-      // Fetch user profile
-      const { data: user } = await api.get('/auth/me/')
+      const user = await profileFor(data)
       dispatch({ type: 'AUTH_SUCCESS', payload: user })
       return user
     } catch (err) {
@@ -211,6 +235,7 @@ export function AuthProvider({ children }) {
 
   async function loginWithGoogle(credential) {
     dispatch({ type: 'AUTH_LOADING' })
+    beginCredentialLogin()
     try {
       const { data } = await api.post('/auth/google/', { credential })
       if (data.user_exists === false) {
@@ -218,9 +243,7 @@ export function AuthProvider({ children }) {
         dispatch({ type: 'AUTH_ERROR', payload: msg })
         throw new Error(msg)
       }
-      localStorage.setItem('atlas_access_token',  data.access)
-      localStorage.setItem('atlas_refresh_token', data.refresh)
-      const { data: user } = await api.get('/auth/me/')
+      const user = await profileFor(data)
       dispatch({ type: 'AUTH_SUCCESS', payload: user })
       return user
     } catch (err) {
