@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 from django.contrib.auth.hashers import check_password, make_password
 from django.test import SimpleTestCase, TestCase, override_settings
+from rest_framework import serializers
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
 
@@ -17,6 +18,29 @@ from apps.users.serializers import (
 
 
 class FacultyAssignmentSectionTests(SimpleTestCase):
+    def _validate(self, assignments):
+        serializer = FacultyCreateSerializer()
+        serializer.context['request'] = SimpleNamespace(
+            user=SimpleNamespace(institution=object()),
+        )
+        return serializer.validate_assignments(assignments)
+
+    def test_assignments_can_be_omitted_entirely(self):
+        self.assertEqual(self._validate([]), [])
+
+    def test_blank_assignment_rows_are_ignored(self):
+        result = self._validate([
+            {'section': '', 'courses': [{'course_code': '', 'course_title': ''}]},
+            {'section': 'BSIT 4101'},
+        ])
+        self.assertEqual(result, [])
+
+    def test_courses_still_require_a_section(self):
+        with self.assertRaises(serializers.ValidationError):
+            self._validate([
+                {'section': '', 'courses': [{'course_code': 'CS 101', 'course_title': 'Intro'}]},
+            ])
+
     @patch('apps.users.serializers.Section.objects.filter')
     @patch('apps.users.serializers.Section.objects.create')
     def test_assignment_section_name_is_resolved_to_section_instance(

@@ -184,11 +184,23 @@ class YearLevel(models.Model):
         return self.label or f'Year {self.year_number}'
 
 
+YEAR_LEVEL_CHOICES = (
+    (1, '1st Year'),
+    (2, '2nd Year'),
+    (3, '3rd Year'),
+    (4, '4th Year'),
+    (5, '5th Year'),
+    (6, '6th Year'),
+)
+
+
 class Section(models.Model):
     """A section/block (BSCS-1A), usually under a program year level, and the courses it takes.
 
     Sections created ad hoc by name (faculty rosters, course assignment) have no
     program or year level; they are scoped by `institution` instead (null = shared).
+    `year_number` carries the year for those ad-hoc sections, which have no
+    program-owned YearLevel to point at.
     """
     section_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     institution = models.ForeignKey(
@@ -197,6 +209,7 @@ class Section(models.Model):
     )
     program = models.ForeignKey(Program, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
     year_level = models.ForeignKey(YearLevel, on_delete=models.CASCADE, null=True, blank=True, related_name='sections')
+    year_number = models.PositiveSmallIntegerField(null=True, blank=True, choices=YEAR_LEVEL_CHOICES)
     code = models.CharField(max_length=50)
     name = models.CharField(max_length=100, blank=True, default='')
     taken_courses = models.ManyToManyField(
@@ -217,6 +230,14 @@ class Section(models.Model):
     @property
     def section_name(self) -> str:
         return self.code
+
+    @property
+    def year_label(self) -> str:
+        if self.year_number:
+            return dict(YEAR_LEVEL_CHOICES).get(self.year_number, f'Year {self.year_number}')
+        if self.year_level_id:
+            return self.year_level.display_name
+        return ''
 
 
 class CourseCategory(models.TextChoices):

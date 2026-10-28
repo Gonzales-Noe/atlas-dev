@@ -408,6 +408,24 @@ function mergeFields(blueprint, savedFields) {
   return [...merged, ...extras]
 }
 
+function normalizeTableOverride(override) {
+  if (!override || typeof override !== 'object') return null
+  const columns = Array.isArray(override.columns)
+    ? override.columns.map(column => String(column ?? ''))
+    : []
+  if (!columns.length) return null
+  const rows = Array.isArray(override.rows)
+    ? override.rows.map(row => columns.map((_, index) => {
+      const value = Array.isArray(row) ? row[index] : ''
+      return value === null ? null : String(value ?? '')
+    }))
+    : []
+  const rowLabels = Array.isArray(override.rowLabels)
+    ? override.rowLabels.map(label => String(label ?? ''))
+    : []
+  return { columns, rows, rowLabels }
+}
+
 function mergeSection(section, index) {
   const blueprint = findSectionBlueprint(section)
   const savedFields = Array.isArray(section.fields) ? section.fields : []
@@ -426,6 +444,7 @@ function mergeSection(section, index) {
       ? section.table_column_groups
       : [],
     table_rows: Array.isArray(section.table_rows) ? section.table_rows : [],
+    blueprint_tables: normalizeTableOverrides(section.blueprint_tables),
   }
   if (!blueprint) {
     return { ...common, editor: section.editor || null, fields: savedFields, derived: false }
@@ -455,6 +474,45 @@ export function blueprintTableFor(section) {
 export function blueprintTabsFor(section) {
   const blueprint = findSectionBlueprint(section)
   return blueprint?.tabs || []
+}
+
+// Every built-in table an admin can fix, including the ones nested in tabs
+// (Framework Mapping). Keys are stable across institutions.
+export function blueprintTablesWithTabsFor(section) {
+  const blueprint = findSectionBlueprint(section)
+  if (!blueprint) return []
+  const tabTables = (blueprint.tabs || []).map(tab => tab.table).filter(Boolean)
+  return [...(blueprint.tables || []), ...tabTables]
+}
+
+export function normalizeTableOverrides(value) {
+  if (!value || typeof value !== 'object') return {}
+  return Object.entries(value).reduce((out, [key, override]) => {
+    const normalized = normalizeTableOverride(override)
+    if (normalized) out[key] = normalized
+    return out
+  }, {})
+}
+
+// Admin-saved content replaces the descriptor's column names and rows while
+// keeping structural details (group headers, totals, notes) from the blueprint.
+export function applyTableOverride(table, override) {
+  if (!table || !override) return table
+  const normalized = normalizeTableOverride(override)
+  if (!normalized) return table
+  return {
+    ...table,
+    columns: normalized.columns,
+    defaultRows: normalized.rows,
+    rowLabels: table.rowLabels
+      ? {
+        ...table.rowLabels,
+        values: normalized.rowLabels.length
+          ? normalized.rowLabels
+          : normalized.rows.map((_, index) => table.rowLabels.values?.[index] || `Row ${index + 1}`),
+      }
+      : table.rowLabels,
+  }
 }
 
 export function cloneDefaultSyllabusSections() {

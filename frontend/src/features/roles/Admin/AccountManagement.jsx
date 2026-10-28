@@ -50,6 +50,45 @@ function initials(fac) {
   return displayName(fac).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || '–'
 }
 
+const emptyFacultyForm = () => ({
+  full_name: '', email: '', password: '',
+  assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
+})
+
+function createFormsError(forms) {
+  for (const [index, form] of forms.entries()) {
+    const label = form.full_name.trim() || `Faculty ${index + 1}`
+    if (!form.full_name.trim()) return 'Enter a full name for every faculty member.'
+    if (!form.email.trim()) return `Enter an email for ${label}.`
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return `Enter a valid email for ${label}.`
+    if (form.password.length < 8) return `Temporary password for ${label} must be at least 8 characters.`
+    for (const group of form.assignments) {
+      const courses = group.courses.filter(course => course.course_code.trim() || course.course_title.trim())
+      if (courses.length && !group.section.trim()) {
+        return `Add a section for the courses listed under ${label}, or clear those course rows.`
+      }
+      if (courses.some(course => !course.course_code.trim() || !course.course_title.trim())) {
+        return `Each course under ${label} needs both a code and a name.`
+      }
+    }
+  }
+  return ''
+}
+
+function assignmentsPayload(form) {
+  return form.assignments
+    .map(group => ({
+      section: group.section.trim(),
+      courses: group.courses
+        .map(course => ({
+          course_code: course.course_code.trim(),
+          course_title: course.course_title.trim(),
+        }))
+        .filter(course => course.course_code || course.course_title),
+    }))
+    .filter(group => group.section && group.courses.length)
+}
+
 export default function AdminAccountManagement() {
   const [faculty, setFaculty] = useState([])
   const [courses, setCourses] = useState([])
@@ -80,10 +119,8 @@ export default function AdminAccountManagement() {
   const [menuItem, setMenuItem] = useState(null)
   const [sections, setSections] = useState([])
   const [editForm, setEditForm] = useState({ full_name: '', email: '', status: 'active' })
-  const [createForm, setCreateForm] = useState({
-    full_name: '', email: '', password: '',
-    assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
-  })
+  const [createForms, setCreateForms] = useState(() => [emptyFacultyForm()])
+  const [creatingFaculty, setCreatingFaculty] = useState(false)
   const [assignmentForm, setAssignmentForm] = useState({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
   const [customization, setCustomization] = useState({
     header_image_url: '', footer_image_url: '', header_text: '',
@@ -222,37 +259,68 @@ export default function AdminAccountManagement() {
 
   // ── Add faculty (POST /users/faculty/) ────────────────────────────────────
   function handleCreate() {
-    setCreateForm({
-      full_name: '', email: '', password: '',
-      assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
-    })
+    setCreateForms([emptyFacultyForm()])
     setModalError('')
     setCreateDialog(true)
     handleMenuClose()
   }
 
-  async function handleSaveCreate() {
-    setModalError('')
-    try {
-      await api.post('/users/faculty/', {
-        full_name: createForm.full_name,
-        email: createForm.email,
-        password: createForm.password,
-        assignments: createForm.assignments,
-      })
-      setCreateDialog(false)
-      setNotice('Faculty account created.')
-      refreshAssignmentLists().catch(() => {})
-    } catch (err) {
-      const detail = err.response?.data?.detail
-      const errors = err.response?.data
-      let msg = detail
-      if (errors && typeof errors === 'object' && !detail) {
-        msg = Object.entries(errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join('; ')
-      }
-      setModalError(msg || 'Failed to create faculty account.')
-      console.error('Create faculty error:', err.response?.data)
+  function createErrorMessage(err) {
+    const data = err.response?.data
+    if (typeof data === 'string') return data
+    if (typeof data?.detail === 'string') return data.detail
+    if (data && typeof data === 'object') {
+      return Object.entries(data)
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join('; ')
     }
+    return 'Failed to create faculty account.'
+  }
+
+  async function handleSaveCreate() {
+    const validation = createFormsError(createForms)
+    if (validation) {
+      setModalError(validation)
+      return
+    }
+    setModalError('')
+    setCreatingFaculty(true)
+    const failures = []
+    let createdCount = 0
+    for (const [index, form] of createForms.entries()) {
+      try {
+        await api.post('/users/faculty/', {
+          full_name: form.full_name.trim(),
+          email: form.email.trim(),
+          password: form.password,
+          assignments: assignmentsPayload(form),
+        })
+        createdCount += 1
+      } catch (err) {
+        failures.push({
+          index,
+          label: form.email.trim() || form.full_name.trim() || `Faculty ${index + 1}`,
+          message: createErrorMessage(err),
+        })
+        console.error('Create faculty error:', err.response?.data)
+      }
+    }
+    setCreatingFaculty(false)
+    refreshAssignmentLists().catch(() => {})
+
+    if (!failures.length) {
+      setCreateDialog(false)
+      setCreateForms([emptyFacultyForm()])
+      setNotice(createdCount === 1 ? 'Faculty account created.' : `${createdCount} faculty accounts created.`)
+      return
+    }
+
+    setCreateForms(current => current.filter((_, index) => failures.some(item => item.index === index)))
+    setModalError(
+      `${failures.length} of ${createForms.length} account(s) could not be created: `
+      + failures.map(item => `${item.label} — ${item.message}`).join('; '),
+    )
+    if (createdCount) setNotice(`${createdCount} faculty account(s) created.`)
   }
 
   // ── Activate / deactivate (PATCH is_active) ────────────────────────────────
@@ -937,89 +1005,132 @@ export default function AdminAccountManagement() {
 
       {/* Create Dialog */}
       <Dialog open={createDialog} onClose={() => setCreateDialog(false)} maxWidth="md" fullWidth PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}>
-        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Add New Faculty</DialogTitle>
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>
+          {createForms.length > 1 ? `Add ${createForms.length} New Faculty` : 'Add New Faculty'}
+        </DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
             {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
-            <TextField label="Full Name" value={createForm.full_name} onChange={e => setCreateForm({ ...createForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
-            <TextField label="Email" value={createForm.email} onChange={e => setCreateForm({ ...createForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
-            <TextField label="Temporary Password" value={createForm.password} onChange={e => setCreateForm({ ...createForm, password: e.target.value })} fullWidth size="small" type="password" sx={inputSx} />
-            <Divider sx={{ borderColor: 'var(--border-color)' }} />
-            <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Sections and courses</div>
-            {createForm.assignments.map((group, groupIndex) => (
-              <div key={groupIndex} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 12 }}>
-                <Stack spacing={1.5}>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    <TextField
-                      label="Section"
-                      value={group.section}
-                      onChange={event => setCreateForm(current => ({
-                        ...current,
-                        assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, section: event.target.value } : item),
-                      }))}
-                      fullWidth size="small" sx={inputSx}
-                    />
-                    <OutlineBtn
-                      small
-                      disabled={createForm.assignments.length === 1}
-                      onClick={() => setCreateForm(current => ({ ...current, assignments: current.assignments.filter((_, index) => index !== groupIndex) }))}
-                    >Remove section</OutlineBtn>
-                  </Stack>
-                  {group.courses.map((course, courseIndex) => (
-                    <div key={courseIndex} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8 }}>
-                      <TextField label="Course code" value={course.course_code}
-                        onChange={event => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
-                            ...item,
-                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_code: event.target.value } : entry),
-                          } : item),
-                        }))}
-                        size="small" sx={inputSx} />
-                      <TextField label="Course name" value={course.course_title}
-                        onChange={event => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? {
-                            ...item,
-                            courses: item.courses.map((entry, courseNo) => courseNo === courseIndex ? { ...entry, course_title: event.target.value } : entry),
-                          } : item),
-                        }))}
-                        size="small" sx={inputSx} />
-                      <OutlineBtn
-                        small
-                        disabled={group.courses.length === 1}
-                        onClick={() => setCreateForm(current => ({
-                          ...current,
-                          assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: item.courses.filter((_, courseNo) => courseNo !== courseIndex) } : item),
-                        }))}
-                      >Remove</OutlineBtn>
+            {createForms.map((form, formIndex) => (
+              <div key={formIndex} style={{ padding: 14, border: '1px solid var(--border-color)', borderRadius: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>Faculty {formIndex + 1}</div>
+                  {createForms.length > 1 && (
+                    <OutlineBtn small disabled={creatingFaculty}
+                      onClick={() => setCreateForms(current => current.filter((_, index) => index !== formIndex))}>
+                      Remove faculty
+                    </OutlineBtn>
+                  )}
+                </div>
+                <Stack spacing={2}>
+                  <TextField label="Full Name" value={form.full_name}
+                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, full_name: event.target.value } : item))}
+                    fullWidth size="small" sx={inputSx} />
+                  <TextField label="Email" value={form.email}
+                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, email: event.target.value } : item))}
+                    fullWidth size="small" type="email" sx={inputSx} />
+                  <TextField label="Temporary Password" value={form.password}
+                    onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? { ...item, password: event.target.value } : item))}
+                    fullWidth size="small" type="password" sx={inputSx} />
+                  <Divider sx={{ borderColor: 'var(--border-color)' }} />
+                  <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Sections and courses <span style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>(optional)</span>
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    Leave this blank to add the account now and assign sections later.
+                  </div>
+                  {form.assignments.map((group, groupIndex) => (
+                    <div key={groupIndex} style={{ padding: 12, border: '1px solid var(--border-color)', borderRadius: 12 }}>
+                      <Stack spacing={1.5}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <TextField
+                            label="Section (optional)"
+                            value={group.section}
+                            onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                              ...item,
+                              assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? { ...entry, section: event.target.value } : entry),
+                            } : item))}
+                            fullWidth size="small" sx={inputSx}
+                          />
+                          <OutlineBtn
+                            small
+                            disabled={form.assignments.length === 1 || creatingFaculty}
+                            onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                              ...item,
+                              assignments: item.assignments.filter((_, groupNo) => groupNo !== groupIndex),
+                            } : item))}
+                          >Remove section</OutlineBtn>
+                        </Stack>
+                        {group.courses.map((course, courseIndex) => (
+                          <div key={courseIndex} style={{ display: 'grid', gridTemplateColumns: '150px 1fr auto', gap: 8 }}>
+                            <TextField label="Course code" value={course.course_code}
+                              onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                ...item,
+                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                  ...entry,
+                                  courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_code: event.target.value } : courseEntry),
+                                } : entry),
+                              } : item))}
+                              size="small" sx={inputSx} />
+                            <TextField label="Course name" value={course.course_title}
+                              onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                ...item,
+                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                  ...entry,
+                                  courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_title: event.target.value } : courseEntry),
+                                } : entry),
+                              } : item))}
+                              size="small" sx={inputSx} />
+                            <OutlineBtn
+                              small
+                              disabled={group.courses.length === 1 || creatingFaculty}
+                              onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                ...item,
+                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                  ...entry,
+                                  courses: entry.courses.filter((_, courseNo) => courseNo !== courseIndex),
+                                } : entry),
+                              } : item))}
+                            >Remove</OutlineBtn>
+                          </div>
+                        ))}
+                        <OutlineBtn small disabled={creatingFaculty} onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                          ...item,
+                          assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                            ...entry,
+                            courses: [...entry.courses, { course_code: '', course_title: '' }],
+                          } : entry),
+                        } : item))}>
+                          <AddIcon fontSize="small" /> Add course to section
+                        </OutlineBtn>
+                      </Stack>
                     </div>
                   ))}
-                  <OutlineBtn small onClick={() => setCreateForm(current => ({
-                    ...current,
-                    assignments: current.assignments.map((item, index) => index === groupIndex ? { ...item, courses: [...item.courses, { course_code: '', course_title: '' }] } : item),
-                  }))}>
-                    <AddIcon fontSize="small" /> Add course to section
+                  <OutlineBtn small disabled={creatingFaculty} onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                    ...item,
+                    assignments: [...item.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
+                  } : item))}>
+                    <AddIcon fontSize="small" /> Add another section
                   </OutlineBtn>
                 </Stack>
               </div>
             ))}
-            <OutlineBtn onClick={() => setCreateForm(current => ({
-              ...current,
-              assignments: [...current.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
-            }))}>
-              <AddIcon fontSize="small" /> Add another section
+            <OutlineBtn disabled={creatingFaculty} onClick={() => setCreateForms(current => [...current, emptyFacultyForm()])}>
+              <AddIcon fontSize="small" /> Add another faculty
             </OutlineBtn>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
-          <OutlineBtn onClick={() => setCreateDialog(false)}>Cancel</OutlineBtn>
+          <OutlineBtn onClick={() => setCreateDialog(false)} disabled={creatingFaculty}>Cancel</OutlineBtn>
           <PrimaryBtn
             onClick={handleSaveCreate}
-            disabled={!createForm.full_name.trim() || !createForm.email || createForm.password.length < 8
-              || createForm.assignments.some(group => !group.section.trim() || group.courses.some(course => !course.course_code.trim() || !course.course_title.trim()))}
-          >Create Account and Assign Courses</PrimaryBtn>
+            disabled={creatingFaculty || Boolean(createFormsError(createForms))}
+          >
+            {creatingFaculty
+              ? 'Creating…'
+              : createForms.length === 1 ? 'Create Faculty Account' : `Create ${createForms.length} Faculty Accounts`}
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
 
