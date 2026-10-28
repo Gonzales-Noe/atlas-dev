@@ -388,39 +388,152 @@ function SyllabusDraftText({ text, section, sx }) {
   return <MarkdownText text={text} sx={sx} />
 }
 
-const DEFAULT_SO_HEADERS   = ['2', '3']
-const DEFAULT_IGA_HEADERS  = ['2', '3', '4', '5']
-const DEFAULT_CDIO_HEADERS = ['4']
-const DEFAULT_SDG_HEADERS  = ['1', '5']
+const DEFAULT_SO_HEADERS   = ['', '', '', '', '']
+const DEFAULT_IGA_HEADERS  = ['', '', '', '', '', '']
+const DEFAULT_CDIO_HEADERS = ['', '', '']
+const DEFAULT_SDG_HEADERS  = ['', '', '', '']
+const SO_PLACEHOLDERS = [['2', '3'], ['5', '6'], ['5', '6', '', '', '']]
+const IGA_PLACEHOLDERS = [['2', '3', '4', '5'], ['3', '6'], ['3', '6', '', '', '', '']]
+const CDIO_PLACEHOLDERS = [['4'], ['3', '4'], ['3', '4', '']]
+const SDG_PLACEHOLDERS = [['1', '5'], ['3', '4'], ['3', '4', '', '']]
 
 // Sample default rows for the Mapping of AT tables (per the institution's
 // sample syllabus). Only the first ILO rows carry sample values.
 const DEFAULT_SO_CPA_ROWS = [
-  { so_vals: ['WA LA PA', 'LA'],    c: '', p: 'WA PA', a: '' },
-  { so_vals: ['WA LA MA', 'LA'],    c: '', p: 'WA MA', a: 'LA' },
-  { so_vals: ['WA LA FA FP', 'LA FP'], c: '', p: 'WA FA', a: 'LA FP' },
+  { so_vals: ['WA LA PA', 'LA', '', '', ''],    c: '', p: 'WA PA', a: '' },
+  { so_vals: ['WA LA MA', 'LA', '', '', ''],    c: '', p: 'WA MA', a: 'LA' },
+  { so_vals: ['WA LA FA FP', 'LA FP', '', '', ''], c: '', p: 'WA FA', a: 'LA FP' },
 ]
 const DEFAULT_IGA_ROWS = [
-  { vals: ['WA PA', 'LA', 'LA'] },
-  { vals: ['WA MA', 'LA', 'LA'] },
-  { vals: ['WA FA', 'LA FP', 'LA FP'] },
+  { vals: ['WA PA', 'LA', '', '', '', ''] },
+  { vals: ['WA MA', 'LA', '', '', '', ''] },
+  { vals: ['WA FA', 'LA FP', '', '', '', ''] },
 ]
 const DEFAULT_CDIO_SDG_ROWS = [
-  { cdio_vals: ['WA LA PA'],    sdg_vals: ['WA PA', ''] },
-  { cdio_vals: ['WA LA MA'],    sdg_vals: ['WA MA', 'LA'] },
-  { cdio_vals: ['WA LA FA FP'], sdg_vals: ['WA FA', 'LA FP'] },
+  { cdio_vals: ['WA LA PA', '', ''],    sdg_vals: ['WA PA', '', '', ''] },
+  { cdio_vals: ['WA LA MA', '', ''],    sdg_vals: ['WA MA', 'LA', '', ''] },
+  { cdio_vals: ['WA LA FA FP', '', ''], sdg_vals: ['WA FA', 'LA FP', '', ''] },
 ]
 const blankSoCpaRow = () => ({ so_vals: Array(DEFAULT_SO_HEADERS.length).fill(''), c: '', p: '', a: '' })
 const blankIgaRow = () => ({ vals: Array(DEFAULT_IGA_HEADERS.length).fill('') })
 const blankCdioSdgRow = () => ({ cdio_vals: Array(DEFAULT_CDIO_HEADERS.length).fill(''), sdg_vals: Array(DEFAULT_SDG_HEADERS.length).fill('') })
 
+function sameHeaderList(left, right) {
+  return Array.isArray(left)
+    && left.length === right.length
+    && left.every((value, index) => String(value ?? '').trim() === right[index])
+}
+
+function fitMapHeaders(values, fallback, placeholders, source) {
+  const cleaned = (Array.isArray(values) ? values : []).map(value => String(value ?? '').trim())
+  const count = fallback.length
+  const locked = source === 'ollama' || source === 'faculty'
+  const placeholder = (placeholders || []).some(sample => sameHeaderList(cleaned, sample))
+  if (!locked && (!cleaned.some(Boolean) || placeholder)) return Array(count).fill('')
+  const next = cleaned.slice(0, count)
+  while (next.length < count) next.push('')
+  return next
+}
+
+function frameworkCatalog(items, label) {
+  return (items || []).flatMap((item, index) => {
+    const number = String(item?.code || '').replace(/\D/g, '') || String(index + 1)
+    const text = [item?.title, item?.description].map(part => String(part || '').trim()).filter(Boolean).join('. ')
+    return text ? [`${label} ${number}: ${text}`] : []
+  })
+}
+
+function topicBriefLines(chapters) {
+  return (chapters || []).flatMap(chapter => {
+    const title = String(chapter?.topics || '').split('\n').map(line => line.trim()).find(Boolean) || ''
+    if (!title || /^class orientation$/i.test(title)) return []
+    const week = String(chapter?.weeks || '').trim()
+    return [`Topic${week ? ` week ${week}` : ''}: ${title}`]
+  })
+}
+
+function parseFrameworkColumns(text) {
+  const found = { so: [], iga: [], cdio: [], sdg: [] }
+  let any = false
+  String(text || '').split(/\n/).forEach(line => {
+    const match = line.trim().match(/^(SO|IGA|CDIO|SDG)\s*[:\-]\s*(.*)$/i)
+    if (!match) return
+    const numbers = match[2].match(/\d+/g) || []
+    if (numbers.length) any = true
+    found[match[1].toLowerCase()] = numbers
+  })
+  return any ? found : null
+}
+
+function placeFrameworkNumbers(count, numbers, allowed) {
+  const next = Array(count).fill('')
+  const used = new Set()
+  let index = 0
+  ;(numbers || []).forEach(number => {
+    if (index >= count || used.has(number) || (allowed.size && !allowed.has(number))) return
+    used.add(number)
+    next[index] = number
+    index += 1
+  })
+  return next
+}
+
+function frameworkColumnRequest(data) {
+  const ilos = (data?.ilos || []).map(text => String(text || '').trim()).filter(Boolean)
+  const topics = topicBriefLines(data?.tla_chapters)
+  const so = frameworkCatalog(data?.student_outcomes, 'SO')
+  const iga = frameworkCatalog(data?.igas, 'IGA')
+  const cdio = frameworkCatalog(data?.cdio_skills, 'CDIO')
+  const sdg = frameworkCatalog(data?.sdg_skills, 'SDG')
+  if (!ilos.length || !topics.length || !(so.length || iga.length || cdio.length || sdg.length)) return null
+  const allowed = {
+    so: new Set(so.map(line => line.match(/^SO\s+(\d+)/)?.[1]).filter(Boolean)),
+    iga: new Set(iga.map(line => line.match(/^IGA\s+(\d+)/)?.[1]).filter(Boolean)),
+    cdio: new Set(cdio.map(line => line.match(/^CDIO\s+(\d+)/)?.[1]).filter(Boolean)),
+    sdg: new Set(sdg.map(line => line.match(/^SDG\s+(\d+)/)?.[1]).filter(Boolean)),
+  }
+  const brief = [
+    'Student outcomes:',
+    ...so,
+    '',
+    'Institutional graduate attributes:',
+    ...iga,
+    '',
+    'CDIO skills:',
+    ...cdio,
+    '',
+    'SDG skills:',
+    ...sdg,
+    '',
+    'Intended learning outcomes:',
+    ...ilos.map((text, index) => `ILO ${index + 1}: ${text}`),
+    '',
+    'Topics:',
+    ...topics,
+  ].join('\n')
+  return { brief, allowed }
+}
+
+function valuesForHeaders(oldHeaders, oldValues, nextHeaders) {
+  const byKey = new Map()
+  ;(oldHeaders || []).forEach((header, index) => {
+    const key = String(header ?? '').replace(/\D/g, '')
+    if (key && !byKey.has(key)) byKey.set(key, (oldValues || [])[index] || '')
+  })
+  return nextHeaders.map((header, index) => {
+    const key = String(header).replace(/\D/g, '')
+    if (key && byKey.has(key)) return byKey.get(key)
+    return (oldValues || [])[index] || ''
+  })
+}
+
 function frameworkHeaders(state) {
-  const list = (values, fallback) => (values && values.length ? values : [...fallback])
+  const source = state?.framework_column_source || ''
   return {
-    so: list(state.so_headers, DEFAULT_SO_HEADERS),
-    iga: list(state.iga_headers, DEFAULT_IGA_HEADERS),
-    cdio: list(state.cdio_headers, DEFAULT_CDIO_HEADERS),
-    sdg: list(state.sdg_headers, DEFAULT_SDG_HEADERS),
+    so: fitMapHeaders(state?.so_headers, DEFAULT_SO_HEADERS, SO_PLACEHOLDERS, source),
+    iga: fitMapHeaders(state?.iga_headers, DEFAULT_IGA_HEADERS, IGA_PLACEHOLDERS, source),
+    cdio: fitMapHeaders(state?.cdio_headers, DEFAULT_CDIO_HEADERS, CDIO_PLACEHOLDERS, source),
+    sdg: fitMapHeaders(state?.sdg_headers, DEFAULT_SDG_HEADERS, SDG_PLACEHOLDERS, source),
   }
 }
 
@@ -455,15 +568,18 @@ function soColumnsForIlo(chapters, iloIndex, soHeaders) {
     const so = String(chapter.so || '').replace(/\D/g, '')
     if (ilo === want && so) numbers.add(so)
   })
-  if (!numbers.size) return soHeaders.map(() => true)
-  return soHeaders.map(header => numbers.has(String(header).replace(/\D/g, '')))
+  const numbered = header => Boolean(String(header ?? '').replace(/\D/g, ''))
+  if (!numbers.size) return soHeaders.map(numbered)
+  return soHeaders.map(header => numbered(header) && numbers.has(String(header).replace(/\D/g, '')))
 }
 
 function withMappedAssessmentCodes(state, { onlyIfChecked = false } = {}) {
   if (onlyIfChecked && !anyTaskIloChecked(state.ats)) return state
   const headers = frameworkHeaders(state)
   const iloCount = Math.max(Array.isArray(state.ilos) ? state.ilos.length : 0, 1)
-  const fill = (length, text) => Array.from({ length }, () => text)
+  const fillNumbered = (headers, text) => headers.map(header => (
+    String(header ?? '').replace(/\D/g, '') ? text : ''
+  ))
   return {
     ...state,
     so_headers: headers.so,
@@ -471,24 +587,23 @@ function withMappedAssessmentCodes(state, { onlyIfChecked = false } = {}) {
     cdio_headers: headers.cdio,
     sdg_headers: headers.sdg,
     so_cpa_rows: Array.from({ length: iloCount }, (_, index) => {
-      const prev = (state.so_cpa_rows || [])[index] || {}
       const text = iloTaskCodes(state.ats, index)
       const columns = soColumnsForIlo(state.tla_chapters, index, headers.so)
       return {
-        c: prev.c || '',
-        p: prev.p || '',
-        a: prev.a || '',
+        c: text,
+        p: text,
+        a: text,
         so_vals: headers.so.map((_, column) => (columns[column] ? text : '')),
       }
     }),
     iga_rows: Array.from({ length: iloCount }, (_, index) => ({
-      vals: fill(headers.iga.length, iloTaskCodes(state.ats, index)),
+      vals: fillNumbered(headers.iga, iloTaskCodes(state.ats, index)),
     })),
     cdio_sdg_rows: Array.from({ length: iloCount }, (_, index) => {
       const text = iloTaskCodes(state.ats, index)
       return {
-        cdio_vals: fill(headers.cdio.length, text),
-        sdg_vals: fill(headers.sdg.length, text),
+        cdio_vals: fillNumbered(headers.cdio, text),
+        sdg_vals: fillNumbered(headers.sdg, text),
       }
     }),
   }
@@ -867,6 +982,7 @@ const EMPTY_SYLLABUS = {
   tla_chapters: [{ ...EMPTY_CHAPTER }],
   // Schedules & Mappings
   schedule_methods:  [],
+  framework_column_source: '',
   so_headers:        DEFAULT_SO_HEADERS,
   so_cpa_rows:       [...DEFAULT_SO_CPA_ROWS.map(r => ({ ...r, so_vals: [...r.so_vals] })), blankSoCpaRow(), blankSoCpaRow(), blankSoCpaRow(), blankSoCpaRow()],
   iga_headers:       DEFAULT_IGA_HEADERS,
@@ -1560,6 +1676,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   // ── Editable syllabus state ─────────────────────────────────────────────
   const [syllabusData, setSyllabusData] = useState(EMPTY_SYLLABUS)
+  const [frameworkAssigning, setFrameworkAssigning] = useState(false)
+  const [frameworkAssignError, setFrameworkAssignError] = useState('')
   const [adminFormatSections, setAdminFormatSections] = useState([])
   const [syllabusId, setSyllabusId]     = useState(null)
   const [activeTosId, setActiveTosId]   = useState(null)
@@ -1738,30 +1856,31 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
 
     // 3. SO/CPA mapping rows (one per ILO)
-    const soHeaders = raw.so_headers || ['']
+    const columnSource = raw.framework_column_source || ''
+    const soHeaders = fitMapHeaders(raw.so_headers, DEFAULT_SO_HEADERS, SO_PLACEHOLDERS, columnSource)
     const normSoCpa = Array.from({ length: iloCount }, (_, i) => {
       const ex = (raw.so_cpa_rows || [])[i] || {}
       return {
-        so_vals: Array.from({ length: soHeaders.length }, (_, j) => (ex.so_vals || [])[j] || ''),
+        so_vals: valuesForHeaders(raw.so_headers, ex.so_vals, soHeaders),
         c: ex.c || '', p: ex.p || '', a: ex.a || '',
       }
     })
 
     // 4. IGA mapping rows
-    const igaHeaders = raw.iga_headers || ['']
+    const igaHeaders = fitMapHeaders(raw.iga_headers, DEFAULT_IGA_HEADERS, IGA_PLACEHOLDERS, columnSource)
     const normIga = Array.from({ length: iloCount }, (_, i) => {
       const ex = (raw.iga_rows || [])[i] || {}
-      return { vals: Array.from({ length: igaHeaders.length }, (_, j) => (ex.vals || [])[j] || '') }
+      return { vals: valuesForHeaders(raw.iga_headers, ex.vals, igaHeaders) }
     })
 
     // 5. CDIO/SDG mapping rows
-    const cdioHeaders = raw.cdio_headers || ['']
-    const sdgHeaders  = raw.sdg_headers  || ['']
+    const cdioHeaders = fitMapHeaders(raw.cdio_headers, DEFAULT_CDIO_HEADERS, CDIO_PLACEHOLDERS, columnSource)
+    const sdgHeaders  = fitMapHeaders(raw.sdg_headers, DEFAULT_SDG_HEADERS, SDG_PLACEHOLDERS, columnSource)
     const normCdioSdg = Array.from({ length: iloCount }, (_, i) => {
       const ex = (raw.cdio_sdg_rows || [])[i] || {}
       return {
-        cdio_vals: Array.from({ length: cdioHeaders.length }, (_, j) => (ex.cdio_vals || [])[j] || ''),
-        sdg_vals:  Array.from({ length: sdgHeaders.length  }, (_, j) => (ex.sdg_vals  || [])[j] || ''),
+        cdio_vals: valuesForHeaders(raw.cdio_headers, ex.cdio_vals, cdioHeaders),
+        sdg_vals:  valuesForHeaders(raw.sdg_headers, ex.sdg_vals, sdgHeaders),
       }
     })
 
@@ -1838,6 +1957,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         : [{ ...EMPTY_TASK, ilo_values: Array(iloCount).fill('') }],
       tla_chapters: normChaptersResult.length ? normChaptersResult : [{ ...EMPTY_CHAPTER }],
       schedule_methods: normSchedule,
+      framework_column_source: columnSource,
       so_headers:    soHeaders,    so_cpa_rows:   normSoCpa,
       iga_headers:   igaHeaders,   iga_rows:      normIga,
       cdio_headers:  cdioHeaders,  sdg_headers:   sdgHeaders,
@@ -1963,6 +2083,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         arrField: 'ilos',
         arrIndex: index,
       }))
+    }
+    if (activeSyllabusSectionKey === 'mapping-of-at') {
+      const mappingFixed = fixedTableFor('mapping-of-at', 'ilo-so-cpa-map')
+        && fixedTableFor('mapping-of-at', 'ilo-iga-map')
+        && fixedTableFor('mapping-of-at', 'ilo-cdio-sdg-map')
+      if (mappingFixed) return []
+      return [{
+        section: 'framework_columns',
+        label: 'Framework column numbers',
+        fieldType: 'frameworkColumns',
+      }]
     }
     if (activeSyllabusSectionKey === 'tla-activities') {
       if (fixedTableFor('tla-activities', 'tla-table')) return []
@@ -2320,8 +2451,65 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
+  async function assignFrameworkColumns(data = syllabusData) {
+    const request = frameworkColumnRequest(data)
+    if (!courseId || !request) {
+      const message = 'Add the ILOs, topics, and framework statements before assigning columns.'
+      setFrameworkAssignError(message)
+      setAiError(message)
+      return
+    }
+    setFrameworkAssigning(true)
+    setFrameworkAssignError('')
+    setAiError('')
+    const result = await requestSyllabusField(api, {
+      course_id: courseId,
+      section: 'framework_columns',
+      field_label: 'Framework column numbers',
+      existing_content: '',
+      mode: 'generate',
+      provider: 'ollama',
+      top_k: 1,
+      extra_instructions: request.brief,
+    }, text => (parseFrameworkColumns(text) ? text : ''))
+    const parsed = parseFrameworkColumns(result.text)
+    const soHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SO_HEADERS.length, parsed.so, request.allowed.so) : []
+    const igaHeaders = parsed ? placeFrameworkNumbers(DEFAULT_IGA_HEADERS.length, parsed.iga, request.allowed.iga) : []
+    const cdioHeaders = parsed ? placeFrameworkNumbers(DEFAULT_CDIO_HEADERS.length, parsed.cdio, request.allowed.cdio) : []
+    const sdgHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SDG_HEADERS.length, parsed.sdg, request.allowed.sdg) : []
+    const placed = [soHeaders, igaHeaders, cdioHeaders, sdgHeaders].some(list => list.some(Boolean))
+    if (!placed) {
+      throw new Error('Ollama did not return framework column numbers.')
+    }
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setSyllabusData(current => withMappedAssessmentCodes({
+      ...current,
+      framework_column_source: 'ollama',
+      so_headers: soHeaders,
+      iga_headers: igaHeaders,
+      cdio_headers: cdioHeaders,
+      sdg_headers: sdgHeaders,
+    }))
+  }
+
   async function handleGenerateSection() {
     let source = syllabusData
+    if (activeSyllabusSectionKey === 'mapping-of-at') {
+      setAiGenerating(true)
+      setAiError('')
+      try {
+        await assignFrameworkColumns(source)
+      } catch (err) {
+        const message = err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Ollama could not assign the framework columns.'
+        setFrameworkAssignError(String(message))
+        setAiError(String(message))
+      } finally {
+        setFrameworkAssigning(false)
+        setAiGenerating(false)
+      }
+      return
+    }
     if (activeSyllabusSectionKey === 'iloat-references') {
       const expanded = ensureIloCount(source, iloGenerateCount(source.ilos))
       if (expanded !== source) {
@@ -2796,6 +2984,34 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })()
   const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
   const activeSyllabusSectionKey = activeConfiguredSection?.editorKey || activeConfiguredSection?.key || ''
+  const frameworkAssignKey = (() => {
+    if (activeSyllabusSectionKey !== 'mapping-of-at') return ''
+    if (syllabusData.framework_column_source === 'faculty' || syllabusData.framework_column_source === 'ollama') return ''
+    const headers = frameworkHeaders(syllabusData)
+    const blank = [headers.so, headers.iga, headers.cdio, headers.sdg].every(list => list.every(cell => !String(cell).trim()))
+    if (!blank) return ''
+    const ilos = (syllabusData.ilos || []).map(text => String(text || '').trim()).filter(Boolean)
+    const topics = topicBriefLines(syllabusData.tla_chapters)
+    const so = frameworkCatalog(syllabusData.student_outcomes, 'SO')
+    const iga = frameworkCatalog(syllabusData.igas, 'IGA')
+    const cdio = frameworkCatalog(syllabusData.cdio_skills, 'CDIO')
+    const sdg = frameworkCatalog(syllabusData.sdg_skills, 'SDG')
+    if (!ilos.length || !topics.length || !(so.length || iga.length || cdio.length || sdg.length)) return ''
+    return JSON.stringify({ ilos, topics, so, iga, cdio, sdg })
+  })()
+
+  useEffect(() => {
+    if (!frameworkAssignKey || !courseId) return undefined
+    let cancelled = false
+    assignFrameworkColumns().catch(err => {
+      if (cancelled) return
+      const message = err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Ollama could not assign the framework columns.'
+      setFrameworkAssignError(String(message))
+    }).finally(() => {
+      if (!cancelled) setFrameworkAssigning(false)
+    })
+    return () => { cancelled = true }
+  }, [frameworkAssignKey, courseId])
 
   useEffect(() => {
     setSyllabusSub(current => (
@@ -5308,18 +5524,27 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     // ── 7. Mapping of AT ─────────────────────────────────────────────────────
     if (sectionKey === 'mapping-of-at') {
       const iloCount = Math.max(syllabusData.ilos.length, 1)
-      const soHeaders   = (syllabusData.so_headers   && syllabusData.so_headers.length)   ? syllabusData.so_headers   : [...DEFAULT_SO_HEADERS]
-      const igaHeaders  = (syllabusData.iga_headers  && syllabusData.iga_headers.length)  ? syllabusData.iga_headers  : [...DEFAULT_IGA_HEADERS]
-      const cdioHeaders = (syllabusData.cdio_headers && syllabusData.cdio_headers.length) ? syllabusData.cdio_headers : [...DEFAULT_CDIO_HEADERS]
-      const sdgHeaders  = (syllabusData.sdg_headers  && syllabusData.sdg_headers.length)  ? syllabusData.sdg_headers  : [...DEFAULT_SDG_HEADERS]
+      const mappedHeaders = frameworkHeaders(syllabusData)
+      const soHeaders   = mappedHeaders.so
+      const igaHeaders  = mappedHeaders.iga
+      const cdioHeaders = mappedHeaders.cdio
+      const sdgHeaders  = mappedHeaders.sdg
       const mapRows = (rows, blank) => {
         const out = (rows || []).slice(0, iloCount)
         while (out.length < iloCount) out.push(blank())
         return out
       }
-      const soCpaRows   = mapRows(syllabusData.so_cpa_rows,   blankSoCpaRow)
-      const igaRows     = mapRows(syllabusData.iga_rows,      blankIgaRow)
-      const cdioSdgRows = mapRows(syllabusData.cdio_sdg_rows, blankCdioSdgRow)
+      const soCpaRows   = mapRows(syllabusData.so_cpa_rows, blankSoCpaRow).map(row => ({
+        ...row,
+        so_vals: valuesForHeaders(syllabusData.so_headers, row.so_vals, soHeaders),
+      }))
+      const igaRows     = mapRows(syllabusData.iga_rows, blankIgaRow).map(row => ({
+        vals: valuesForHeaders(syllabusData.iga_headers, row.vals, igaHeaders),
+      }))
+      const cdioSdgRows = mapRows(syllabusData.cdio_sdg_rows, blankCdioSdgRow).map(row => ({
+        cdio_vals: valuesForHeaders(syllabusData.cdio_headers, row.cdio_vals, cdioHeaders),
+        sdg_vals: valuesForHeaders(syllabusData.sdg_headers, row.sdg_vals, sdgHeaders),
+      }))
       const updSoCpa = (ri, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({
@@ -5363,6 +5588,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const fixedCdioSdgTable = fixedTableFor('mapping-of-at', 'ilo-cdio-sdg-map')
       return (
         <Stack spacing={2}>
+          {frameworkAssigning ? (
+            <Box sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)' }}>
+              Ollama is matching the framework columns to the ILOs and topics.
+            </Box>
+          ) : null}
+          {frameworkAssignError ? (
+            <Box sx={{ fontSize: '0.82rem', color: '#FCA5A5' }}>{frameworkAssignError}</Box>
+          ) : null}
           <SectionCard title={titleForTable('mapping-of-at', 'ilo-so-cpa-map', 'Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)')}>
             {fixedSoCpaTable ? <FixedBlueprintTable table={fixedSoCpaTable} /> : (
             <Box sx={{ overflowX: 'auto' }}>
@@ -5370,7 +5603,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <thead>
                   <tr style={{ backgroundColor: BG }}>
                     <th style={{ ...TABLE_TH, minWidth: 60 }}>ILOs</th>
-                    <th colSpan={soHeaders.length + 2} style={{ ...TABLE_TH, textAlign: 'center' }}>Student Outcomes (SO)</th>
+                    <th colSpan={soHeaders.length + 3} style={{ ...TABLE_TH, textAlign: 'center' }}>Student Outcomes (SO)</th>
                   </tr>
                   <tr style={{ backgroundColor: BG }}>
                     <th style={TABLE_TH} />
@@ -5378,10 +5611,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <th key={ci} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
                         {inlineInput(h, e => {
                           setIsDirty(true); setSaveSuccess(false)
-                          setSyllabusData(s => ({ ...s, so_headers: s.so_headers.map((x, i) => i === ci ? e.target.value : x) }))
+                          setSyllabusData(s => {
+                            const headers = fitMapHeaders(s.so_headers, DEFAULT_SO_HEADERS, SO_PLACEHOLDERS, s.framework_column_source)
+                            headers[ci] = e.target.value
+                            return { ...s, so_headers: headers, framework_column_source: 'faculty' }
+                          })
                         }, 56, undefined, { numeric: true })}
                       </th>
                     ))}
+                    <th style={{ ...TABLE_TH, minWidth: 60, textAlign: 'center' }}>C</th>
                     <th style={{ ...TABLE_TH, minWidth: 60, textAlign: 'center' }}>P</th>
                     <th style={{ ...TABLE_TH, minWidth: 60, textAlign: 'center' }}>A</th>
                   </tr>
@@ -5395,6 +5633,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           {inlineInput((row.so_vals || [])[ci] || '', e => updSoCpa(ri, 'so_vals', ci, e.target.value), 84)}
                         </td>
                       ))}
+                      <td style={{ ...TABLE_TD, textAlign: 'center' }}>
+                        {inlineInput(row.c || '', e => updSoCpa(ri, 'c', 0, e.target.value), 56)}
+                      </td>
                       <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                         {inlineInput(row.p || '', e => updSoCpa(ri, 'p', 0, e.target.value), 56)}
                       </td>
@@ -5424,7 +5665,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <th key={ci} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
                         {inlineInput(h, e => {
                           setIsDirty(true); setSaveSuccess(false)
-                          setSyllabusData(s => ({ ...s, iga_headers: s.iga_headers.map((x, i) => i === ci ? e.target.value : x) }))
+                          setSyllabusData(s => {
+                            const headers = fitMapHeaders(s.iga_headers, DEFAULT_IGA_HEADERS, IGA_PLACEHOLDERS, s.framework_column_source)
+                            headers[ci] = e.target.value
+                            return { ...s, iga_headers: headers, framework_column_source: 'faculty' }
+                          })
                         }, 56, undefined, { numeric: true })}
                       </th>
                     ))}
@@ -5463,7 +5708,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <th key={`c${ci}`} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
                         {inlineInput(h, e => {
                           setIsDirty(true); setSaveSuccess(false)
-                          setSyllabusData(s => ({ ...s, cdio_headers: s.cdio_headers.map((x, i) => i === ci ? e.target.value : x) }))
+                          setSyllabusData(s => {
+                            const headers = fitMapHeaders(s.cdio_headers, DEFAULT_CDIO_HEADERS, CDIO_PLACEHOLDERS, s.framework_column_source)
+                            headers[ci] = e.target.value
+                            return { ...s, cdio_headers: headers, framework_column_source: 'faculty' }
+                          })
                         }, 56, undefined, { numeric: true })}
                       </th>
                     ))}
@@ -5471,7 +5720,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <th key={`s${ci}`} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
                         {inlineInput(h, e => {
                           setIsDirty(true); setSaveSuccess(false)
-                          setSyllabusData(s => ({ ...s, sdg_headers: s.sdg_headers.map((x, i) => i === ci ? e.target.value : x) }))
+                          setSyllabusData(s => {
+                            const headers = fitMapHeaders(s.sdg_headers, DEFAULT_SDG_HEADERS, SDG_PLACEHOLDERS, s.framework_column_source)
+                            headers[ci] = e.target.value
+                            return { ...s, sdg_headers: headers, framework_column_source: 'faculty' }
+                          })
                         }, 56, undefined, { numeric: true })}
                       </th>
                     ))}
@@ -6698,7 +6951,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
                       : aiPipelineDrafts
                         ? 'Your drafts are ready. Review them before adding them to your syllabus.'
-                        : activeSyllabusSectionKey === 'tla-activities'
+                        : activeSyllabusSectionKey === 'mapping-of-at'
+                          ? 'Match the blank columns to the ILOs and topics from the stored SO, IGA, CDIO, and SDG statements.'
+                          : activeSyllabusSectionKey === 'tla-activities'
                           ? (/\b(internship|ojt|practicum)\b/i.test(`${course?.course_title || ''} ${course?.course_code || ''}`)
                             ? 'Add one row per requirement. A heavier requirement uses one merged cell such as 1-2, not one row for every calendar week.'
                             : 'Add one row per topic, through week 18. A heavier topic uses one merged cell such as 3-4 or 5-6. A lighter topic uses a single week such as 10 or 14.')
@@ -6712,8 +6967,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Button
                     size="small"
                     variant="contained"
-                    disabled={aiGenerating || !aiSectionFields.length}
-                    startIcon={aiGenerating ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
+                    disabled={aiGenerating || frameworkAssigning || !aiSectionFields.length}
+                    startIcon={aiGenerating || frameworkAssigning ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                     onClick={handleGenerateSection}
                     sx={{
                       bgcolor: '#16A34A',
@@ -6724,7 +6979,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       minHeight: 34,
                     }}
                   >
-                    {aiGenerating ? 'Writing…' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                    {aiGenerating || frameworkAssigning ? 'Writing…' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
                   </Button>
                 )}
 

@@ -3988,7 +3988,8 @@ def generate_syllabus_field(request):
     field_label = request.data.get("field_label", "Syllabus Field")
     existing_content = request.data.get("existing_content", "")
     mode = request.data.get("mode", "generate")
-    extra_instructions = str(request.data.get("extra_instructions") or "").strip()[:4000]
+    instruction_limit = 8000 if section == "framework_columns" else 4000
+    extra_instructions = str(request.data.get("extra_instructions") or "").strip()[:instruction_limit]
     provider = request.data.get("provider") or None
     top_k = max(1, int(request.data.get("top_k", 5)))
 
@@ -4021,6 +4022,37 @@ def generate_syllabus_field(request):
         assessment_criteria = _stored_assessment_criteria(course)
 
     try:
+        if section == "framework_columns":
+            system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
+                course_name=course.course_title,
+                course_code=course.course_code,
+                field_label=field_label,
+                section=section,
+                existing_content=existing_content,
+                mode=mode,
+                context_chunks=[],
+                extra_instructions=extra_instructions,
+                course_category=course.category or "professional",
+                assessment_criteria=assessment_criteria,
+            )
+            llm = LLMService()
+            generated_text, provider_used = complete_syllabus_field(
+                llm,
+                section=section,
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                preferred_provider="ollama",
+            )
+            return Response(
+                {
+                    "success": True,
+                    "generated_text": generated_text,
+                    "provider_used": provider_used,
+                    "rag_chunks_used": 0,
+                },
+                status=status.HTTP_200_OK,
+            )
+
         # ── Step 1: Global RAG with progressive summary ────────────────────
         search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
         rag_result = semantic_search_with_summary(
