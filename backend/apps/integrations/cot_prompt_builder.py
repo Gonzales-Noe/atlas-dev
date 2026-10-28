@@ -14,9 +14,79 @@ Generation pipeline:
     4. system_prompt + user_prompt are forwarded to LLMService.generate_response()
 """
 
+import logging
+import re
+
+logger = logging.getLogger(__name__)
+
 # Maximum tokens of RAG context to inject into a prompt.
 # Keeps total prompt within typical 8 K-context LLM windows.
 _CONTEXT_TOKEN_BUDGET: int = 2_000
+
+_INSTRUCTION_ECHO = re.compile(
+    r"\b("
+    r"8\s*[–-]\s*16|7\s*[–-]\s*12|hard cap|bloom'?s?\s+verb|"
+    r"one short sentence|one brief sentence|we need|no second clause|"
+    r"word count|these rules|verb list|do not mention|imperative verb|"
+    r"topic outcomes?\s*\d|output a single|field name|count words"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def field_reply_is_usable(section: str, text: str) -> bool:
+    """False when a field reply is empty or only restates the writing rules."""
+    cleaned = (text or "").strip()
+    if len(cleaned) < 3:
+        return False
+    if _INSTRUCTION_ECHO.search(cleaned):
+        return False
+    if section == "topic_map":
+        return re.search(r"\d+\D+\d+", cleaned) is not None
+    return True
+
+
+def complete_syllabus_field(llm, *, section, messages, system, preferred_provider=None):
+    """Return one field reply, handing the call to Ollama when the cloud reply stops.
+
+    A provider error cannot be retried, so Ollama takes that call. A reply that
+    only restates the rules is tried once more; if that second reply also stops,
+    Ollama takes the call.
+    """
+    max_tokens = CoTPromptBuilder.field_max_tokens(section)
+
+    def call(preferred):
+        return llm.generate_response_with_fallback(
+            messages=messages,
+            preferred_provider=preferred,
+            system=system,
+            max_tokens=max_tokens,
+            return_provider=True,
+        )
+
+    if preferred_provider == "ollama":
+        return call("ollama")
+
+    try:
+        text, provider_used = call(preferred_provider)
+    except Exception as exc:
+        logger.warning("Syllabus field %s stopped and cannot retry (%s); handing to Ollama", section, exc)
+        return call("ollama")
+
+    if field_reply_is_usable(section, text):
+        return text, provider_used
+
+    try:
+        text, provider_used = call(preferred_provider)
+    except Exception as exc:
+        logger.warning("Syllabus field %s retry stopped (%s); handing to Ollama", section, exc)
+        return call("ollama")
+
+    if field_reply_is_usable(section, text):
+        return text, provider_used
+
+    logger.warning("Syllabus field %s retry returned an unusable reply; handing to Ollama", section)
+    return call("ollama")
 
 # How deeply a module should be structured. Chosen by the faculty in the
 # "Generate module" dialog and translated into prompt instructions.

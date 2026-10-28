@@ -13,6 +13,7 @@ from rest_framework.response import Response
 from apps.integrations.cot_prompt_builder import (
     CoTPromptBuilder,
     assign_topic_weeks,
+    complete_syllabus_field,
     syllabus_course_kind,
 )
 from apps.integrations.fixed_syllabus import apply_fixed_content, sections_for_course, seed_course_syllabi
@@ -4062,14 +4063,14 @@ def generate_syllabus_field(request):
             assessment_criteria=assessment_criteria,
         )
 
-        # ── Step 4: Call LLM ─────────────────────────────────────────────
+        # ── Step 4: Call LLM. One cloud retry, then Ollama if the reply stops. ─
         llm = LLMService()
-        generated_text, provider_used = llm.generate_response_with_fallback(
+        generated_text, provider_used = complete_syllabus_field(
+            llm,
+            section=section,
             messages=[{"role": "user", "content": user_prompt}],
-            preferred_provider=provider,
             system=system_prompt,
-            max_tokens=CoTPromptBuilder.field_max_tokens(section),
-            return_provider=True,
+            preferred_provider=provider,
         )
 
         if section == "week_plan":
