@@ -140,6 +140,27 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(generate_response.call_count, 1)
         self.assertEqual(service._completion_budget('groq', 5000, 8192), 2800)
 
+    def test_ollama_takes_over_when_no_online_provider_can_fit_the_prompt(self):
+        service = _service('groq', 'gemma')
+        service.ollama_configured = True
+        big_prompt = 'x' * 4 * 9000
+
+        def no_online_room(provider, prompt_tokens, max_tokens):
+            if provider in ('groq', 'gemma', 'cloudflare', 'openrouter'):
+                return None
+            return max_tokens
+
+        with patch.object(service, '_completion_budget', side_effect=no_online_room), \
+             patch.object(service, 'is_ollama_available', return_value=True), \
+             patch.object(service, 'generate_response', return_value='Draft text') as generate_response:
+            text, provider_used = service.generate_response_with_fallback(
+                [{'role': 'user', 'content': big_prompt}], max_tokens=4096, return_provider=True,
+            )
+
+        self.assertEqual((text, provider_used), ('Draft text', 'ollama'))
+        self.assertEqual(generate_response.call_args.kwargs['provider_choice'], 'ollama')
+        self.assertEqual(generate_response.call_count, 1)
+
 
 class SyllabusFieldPromptTests(SimpleTestCase):
     def test_includes_extra_instructions_in_generated_field_prompt(self):

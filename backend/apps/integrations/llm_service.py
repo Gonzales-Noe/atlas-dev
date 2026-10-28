@@ -326,6 +326,15 @@ class LLMService:
             return None
         return min(max_tokens, room)
 
+    def _later_online_can_fit(self, providers, prompt_tokens, max_tokens):
+        """True when a later online provider still has room for this prompt."""
+        for name in providers:
+            if name not in PROVIDER_SPECS or not self.configured.get(name):
+                continue
+            if self._completion_budget(name, prompt_tokens, max_tokens) is not None:
+                return True
+        return False
+
     def _candidate_models(self, provider, model):
         """The configured model followed by the provider's fallback models."""
         spec = PROVIDER_SPECS[provider]
@@ -475,8 +484,8 @@ class LLMService:
         """
         primary_provider = normalize_provider(preferred_provider) or self.default_provider
         providers_to_try = list(dict.fromkeys([primary_provider, *self.chain]))
-        # Ollama stays last until a reply stops before the answer is written.
-        # That reply is not retried; Ollama takes the same request next.
+        # Ollama stays last until a reply stops, or until every online provider
+        # lacks room for this prompt. Then Ollama takes the same request next.
         if self.ollama_configured and 'ollama' not in providers_to_try:
             providers_to_try.append('ollama')
         prompt_tokens = estimate_tokens(system, *(m.get('content', '') for m in messages))
@@ -496,6 +505,11 @@ class LLMService:
                     continue
                 if self._completion_budget(provider_choice, prompt_tokens, max_tokens) is None:
                     failures.append(f'{provider_choice}: prompt too large for its free tier')
+                    if not self._later_online_can_fit(providers_to_try[index + 1:], prompt_tokens, max_tokens):
+                        providers_to_try = _move_ollama_next(providers_to_try, index)
+                        logger.warning(
+                            "Online providers lack tokens for this prompt; Ollama takes over when it is reachable",
+                        )
                     index += 1
                     continue
             elif provider_choice == 'ollama':
