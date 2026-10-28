@@ -1,0 +1,400 @@
+[
+  {
+    "key": "university-information",
+    "label": "University Information",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "university-information",
+    "derived": false,
+    "fields": [
+      {
+        "key": "vision",
+        "label": "Vision",
+        "type": "longtext",
+        "group": "University Direction",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "mission",
+        "label": "Mission",
+        "type": "longtext",
+        "group": "University Direction",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      }
+    ]
+  },
+  {
+    "key": "course-information",
+    "label": "Course Information",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "course-information",
+    "derived": false,
+    "fields": [
+      {
+        "key": "course-title",
+        "label": "Course Title",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "course-code",
+        "label": "Course Code",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "course-category",
+        "label": "Course Category",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "prerequisites",
+        "label": "Pre-requisite(s)",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "semester-year",
+        "label": "Semester / Year",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "credit-hours",
+        "label": "Credit Hours",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "reference-cmo",
+        "label": "Reference CMO",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "date-prepared",
+        "label": "Date Prepared",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "revision-no",
+        "label": "Revision No.",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "revision-date",
+        "label": "Revision Date",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "period-of-study",
+        "label": "Period of Study",
+        "type": "text",
+        "group": "Course Identification",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "instructor-code",
+        "label": "7.1 Code",
+        "type": "text",
+        "group": "Course Instructor",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "instructor-qualification",
+        "label": "7.2 Title / Qualification",
+        "type": "longtext",
+        "group": "Course Instructor",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "instructor-email",
+        "label": "7.3 Email",
+        "type": "text",
+        "group": "Course Instructor",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "course-rationale-description",
+        "label": "Course Rationale and Description",
+        "type": "longtext",
+        "group": "Course Details",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "contact-hours",
+        "label": "Contact Hours",
+        "type": "text",
+        "group": "Course Details",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "criteria-for-assessment",
+        "label": "Criteria for Assessment",
+        "type": "longtext",
+        "group": "Course Details",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "tla-strategies",
+        "label": "Teaching, Learning, and Assessment Strategies",
+        "type": "longtext",
+        "group": "Course Details",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      }
+    ]
+  },
+  {
+    "key": "iloat-references",
+    "label": "ILO, AT, and References",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "iloat-references",
+    "derived": false,
+    "fields": [
+      {
+        "key": "ilos",
+        "label": "Intended Learning Outcomes",
+        "type": "repeat",
+        "group": "Intended Learning Outcomes (ILO)",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "ats",
+        "label": "Assessment tasks & score distribution",
+        "type": "table",
+        "group": "Assessment Tasks (AT)",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "references",
+        "label": "Books and Other References",
+        "type": "repeat",
+        "group": "Books and Other References",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      }
+    ]
+  },
+  {
+    "key": "framework-mapping",
+    "label": "Framework Mapping",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "framework-mapping",
+    "derived": false,
+    "fields": [
+      {
+        "key": "igas",
+        "label": "Institutional Graduate Attributes (IGA)",
+        "type": "repeat",
+        "group": "Framework statements",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "student-outcomes",
+        "label": "Student Outcomes (SO)",
+        "type": "repeat",
+        "group": "Framework statements",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "cdio-skills",
+        "label": "CDIO Skills",
+        "type": "repeat",
+        "group": "Framework statements",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "sdg-skills",
+        "label": "SDG Skills",
+        "type": "repeat",
+        "group": "Framework statements",
+        "lockable": false,
+        "fixed": false,
+        "content": ""
+      }
+    ]
+  },
+  {
+    "key": "course-policies",
+    "label": "Course Policies",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "course-policies",
+    "derived": false,
+    "fields": [
+      {
+        "key": "class-policy",
+        "label": "Class Policy",
+        "type": "longtext",
+        "group": "B. Course Policies",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "missed-examinations",
+        "label": "Missed Examinations",
+        "type": "longtext",
+        "group": "B. Course Policies",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "academic-dishonesty",
+        "label": "Academic Dishonesty",
+        "type": "longtext",
+        "group": "B. Course Policies",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "dropping",
+        "label": "Dropping",
+        "type": "longtext",
+        "group": "B. Course Policies",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      },
+      {
+        "key": "other-policies",
+        "label": "Other Course Policies and Requirements",
+        "type": "longtext",
+        "group": "C. Other Course Policies and Requirements",
+        "lockable": true,
+        "fixed": false,
+        "content": ""
+      }
+    ]
+  },
+  {
+    "key": "tla-activities",
+    "label": "Teaching, Learning, and Assessment (TLA) Activities",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "tla-activities",
+    "derived": false,
+    "fields": []
+  },
+  {
+    "key": "mapping-of-at",
+    "label": "Mapping of AT",
+    "enabled": true,
+    "is_static": false,
+    "static_content": "",
+    "subsections": [],
+    "table_enabled": false,
+    "table_columns": [],
+    "table_column_groups": [],
+    "table_rows": [],
+    "editor": "mapping-of-at",
+    "derived": false,
+    "fields": []
+  }
+]
