@@ -1,12 +1,13 @@
 // Lecture/Discussion topics for TOS rows and learning modules.
-// Weekly schedule cells mix the topic list and the reading list in one field.
-// Reading lists are not topics. Several lecture rows in the same week become
-// one choice.
+// Topics come from the TLA Activities table. Only rows whose Delivery Method
+// is Lecture/Discussion become modules. The topics cell also holds the
+// reading list, which is not a topic. Several lecture rows in the same week
+// become one choice.
 
 const READING_HEADING = /^(?:required\s+|recommended\s+|supplementary\s+)?(?:reading(?:\s*list)?|readings|references?|bibliography|text\s*books?|textbooks?)\b/i
 
-export function isLectureDiscussionTask(outcomes) {
-  const compact = String(outcomes || '').trim().toLowerCase().replace(/[\s/_-]+/g, '')
+export function isLectureDiscussionDelivery(delivery) {
+  const compact = String(delivery || '').trim().toLowerCase().replace(/[\s/_-]+/g, '')
   return compact === 'lecturediscussion' || (compact.includes('lecture') && compact.includes('discussion'))
 }
 
@@ -53,7 +54,7 @@ function iloKeysFromChapter(chapter) {
 export function collectLectureDiscussionTopics(chapters) {
   const byWeek = new Map()
   ;(chapters || []).forEach((chapter, index) => {
-    if (!isLectureDiscussionTask(chapter?.outcomes)) return
+    if (!isLectureDiscussionDelivery(chapter?.delivery)) return
     const lines = lectureTopicLines(chapter?.topics)
     if (!lines.length) return
     const week = parseInt(chapter?.chapter, 10) || index + 1

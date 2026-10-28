@@ -73,7 +73,7 @@ import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
 import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes } from '../utils/tosFormula'
-import { collectLectureDiscussionTopics, isLectureDiscussionTask, lectureTopicLines } from '../utils/lectureTopics'
+import { collectLectureDiscussionTopics, isLectureDiscussionDelivery, lectureTopicLines } from '../utils/lectureTopics'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
 import WorkspacePageHeader from './WorkspacePageHeader'
@@ -1117,7 +1117,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   // ── Syllabus export & template state (session-based, no DB save) ────────
   const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
-  const [syllabusExporting, setSyllabusExporting] = useState(false)
+  const [syllabusExporting, setSyllabusExporting] = useState(null)
   const [syllabusExportError, setSyllabusExportError] = useState('')
   const [tosExporting, setTosExporting] = useState(false)
   const [tosExportError, setTosExportError] = useState('')
@@ -1777,11 +1777,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   async function handleExportDocx() {
-    if (!courseId) {
-      setSyllabusExportError('Select a course first before exporting.')
+    if (!courseId || syllabusExporting) {
+      if (!courseId) setSyllabusExportError('Select a course first before exporting.')
       return
     }
-    setSyllabusExporting(true)
+    setSyllabusExporting('docx')
     setSyllabusExportError('')
     try {
       const formData = new FormData()
@@ -1802,16 +1802,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } catch (err) {
       setSyllabusExportError(await readExportError(err, 'Failed to export syllabus.'))
     } finally {
-      setSyllabusExporting(false)
+      setSyllabusExporting(null)
     }
   }
 
   async function handleExportPdf() {
-    if (!courseId) {
-      setSyllabusExportError('Select a course first before exporting.')
+    if (!courseId || syllabusExporting) {
+      if (!courseId) setSyllabusExportError('Select a course first before exporting.')
       return
     }
-    setSyllabusExporting(true)
+    setSyllabusExporting('pdf')
     setSyllabusExportError('')
     try {
       const formData = new FormData()
@@ -1826,7 +1826,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } catch (err) {
       setSyllabusExportError(await readExportError(err, 'Failed to export styled PDF.'))
     } finally {
-      setSyllabusExporting(false)
+      setSyllabusExporting(null)
     }
   }
 
@@ -2020,14 +2020,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ))
   }, [configuredSections, moduleTopicSectionKey])
 
-  // Module topics come from the weekly schedule, so the old section picker
+  // Module topics come from TLA Activities, so the old section picker
   // must not block the Module tab.
   useEffect(() => {
     if (activeTab !== 'module') return
     setTopicSourceDialogOpen(false)
   }, [activeTab])
 
-  // A Lecture/Discussion topic queued from the weekly schedule opens the
+  // A Lecture/Discussion topic queued from TLA Activities opens the
   // generate dialog on the Module tab.
   useEffect(() => {
     if (activeTab !== 'module' || !pendingGenerate) return
@@ -2332,8 +2332,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   // ── Module topic sources ──────────────────────────────────────────────────
   // Topics that need a module live inside the Syllabus tab. Depending on the
-  // section they are stored as a table, as free text, or (Weekly Schedule) as
-  // TLA chapter rows. The Module tab picks the section + subsection to read.
+  // section they are stored as a table, as free text, or as TLA Activity rows.
+  // The Module tab reads Lecture/Discussion rows from that table.
   function findColumnIndex(columns, hints) {
     for (const hint of hints) {
       const index = columns.findIndex(col => String(col || '').toLowerCase().includes(hint))
@@ -2442,7 +2442,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return topicsFromText(syllabusData.custom_subsections?.[section.key]?.[subsection.key] || '')
     }
 
-    // Whole section — the Weekly Schedule keeps its topics in the chapter rows.
+    // Whole section — TLA Activities keeps lecture topics in the chapter rows.
     if (section.editorKey === 'tla-activities') {
       const scheduleTopics = collectScheduleTopics()
       if (scheduleTopics.length) return scheduleTopics
@@ -2573,7 +2573,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (!course) return
     const topics = collectScheduleTopics()
     if (!topics.length) {
-      setActionError('No Lecture/Discussion topics in the weekly schedule. Add those rows first. Reading lists are not topics.')
+      setActionError('No Lecture/Discussion topics in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion and add a topic list. Reading lists are not topics.')
       return
     }
     setModuleGeneratingAll(true)
@@ -4552,7 +4552,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <tbody>
                 {chapters.map((ch, i) => {
                   const _weekNum = parseInt(ch.chapter || ch.weeks, 10) || null
-                  const _existingMod = _weekNum
+                  const _lectureTopic = isLectureDiscussionDelivery(ch.delivery)
+                    ? lectureTopicLines(ch.topics).join('; ')
+                    : ''
+                  const _existingMod = _lectureTopic && _weekNum
                     ? (workspaceApi.data?.modules || []).find(m => m.week_number === _weekNum)
                     : null
                   const _btnLabel = _existingMod ? 'View Module' : 'Generate Module'
@@ -4595,18 +4598,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
+                      {_lectureTopic ? (
                       <button
                         type="button"
                         title={_btnLabel}
                         onClick={() => {
                           if (!_existingMod) {
-                            // Queue the topic — the Module tab opens the generate dialog for it.
                             setPendingGenerate({
-                              topic: ch.topics || '',
+                              topic: _lectureTopic,
                               week: _weekNum || 1,
-                              topic_id: `schedule-${i}`,
+                              topic_id: `tla-${i}`,
                             })
-                            setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: ch.topics || '', topic_id: `schedule-${i}` }))
+                            setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: _lectureTopic, topic_id: `tla-${i}` }))
                           } else {
                             setSelectedModule(null); setModuleContent(null); setChatOpen(false)
                           }
@@ -4619,6 +4622,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       >
                         {_existingMod ? <BookOpen size={14} /> : <Zap size={14} />}
                       </button>
+                      ) : null}
                     </td>
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                       <RemoveBtn onClick={() => removeSylItem('tla_chapters', i)} disabled={chapters.length <= 1} />
@@ -5036,7 +5040,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 </Select>
                                 {lectureChoices.length === 0 && (
                                   <div style={{ marginTop: 4, fontSize: '0.65rem', color: '#b45309' }}>
-                                    Add Lecture/Discussion rows on the weekly schedule. Reading lists are not topics.
+                                    Add Lecture/Discussion rows in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion. Reading lists are not topics.
                                   </div>
                                 )}
                                  <div style={{ marginTop: 5, padding: '4px 6px', borderRadius: 5, background: matchedModule ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)', color: matchedModule ? '#15803d' : '#b45309', fontSize: '0.65rem', fontWeight: 600 }}>
@@ -5363,7 +5367,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {/* scrollable content area */}
                 <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
             {course && (
-              <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', gap: 1.5 }}>
+              <Box sx={{ mb: 2, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5, flexWrap: 'wrap' }}>
                 {/* hidden file input for syllabus upload */}
                 <input
                   ref={syllabusUploadRef}
@@ -5372,15 +5376,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   style={{ display: 'none' }}
                   onChange={handleSyllabusUpload}
                 />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Box sx={{ flex: '1 1 180px', minWidth: 0, overflow: 'hidden' }}>
                   <Typography variant="caption"
                     sx={{ color: MAROON, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                     {syllabusData.course_code || course.course_code}
                   </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#1A1A1A', lineHeight: 1.2 }}>
+                  <Typography variant="h6" sx={{ fontWeight: 800, color: '#1A1A1A', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {syllabusData.course_title || course.course_title}
                   </Typography>
                 </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexShrink: 0, position: 'relative', zIndex: 2 }}>
                 <Tooltip title={syllabusUploading ? (syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus…') : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
                   <span>
                     <Button
@@ -5405,13 +5410,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={syllabusExporting ? 'Exporting…' : 'Export syllabus as DOCX'}>
+                <Tooltip title={syllabusExporting === 'docx' ? 'Exporting…' : 'Export syllabus as DOCX'}>
                   <span>
                     <Button
+                      type="button"
                       size="small"
                       variant="outlined"
-                      disabled={syllabusExporting}
-                      startIcon={syllabusExporting ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <InsertDriveFileIcon sx={{ fontSize: '1rem !important' }} />}
+                      disabled={Boolean(syllabusExporting)}
+                      startIcon={syllabusExporting === 'docx' ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <InsertDriveFileIcon sx={{ fontSize: '1rem !important' }} />}
                       onClick={handleExportDocx}
                       sx={{
                         textTransform: 'none',
@@ -5425,16 +5431,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
                       }}
                     >
-                      {syllabusExporting ? 'Exporting…' : 'Export DOCX'}
+                      {syllabusExporting === 'docx' ? 'Exporting…' : 'Export DOCX'}
                     </Button>
                   </span>
                 </Tooltip>
-                <Tooltip title={syllabusExporting ? 'Exporting…' : 'Export PDF using university syllabus style'}>
+                <Tooltip title={syllabusExporting === 'pdf' ? 'Exporting…' : 'Export PDF using university syllabus style'}>
                   <span>
                     <Button
+                      type="button"
                       size="small"
                       variant="outlined"
-                      disabled={syllabusExporting}
+                      disabled={Boolean(syllabusExporting)}
+                      startIcon={syllabusExporting === 'pdf' ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <PictureAsPdfIcon sx={{ fontSize: '1rem !important' }} />}
                       onClick={handleExportPdf}
                       sx={{
                         textTransform: 'none',
@@ -5448,10 +5456,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
                       }}
                     >
-                      Export PDF
+                      {syllabusExporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
                     </Button>
                   </span>
                 </Tooltip>
+                </Box>
               </Box>
             )}
             {syllabusUploadError && (
@@ -5483,7 +5492,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {renderSyllabusSection()}
           </Box>
 
-          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
+          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && aiPipelineDrafts && (
             <Paper
               variant="outlined"
               sx={{
@@ -5546,7 +5555,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {activeSyllabusSectionKey !== 'university-information' && (
+          {activeSyllabusSectionKey !== 'university-information' && activeSyllabusSectionKey !== 'tla-activities' && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -6169,7 +6178,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                        mt: 1.5, pt: 1.5, borderTop: '1px solid rgba(0,0,0,0.07)' }}>
               <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
               <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
-              <Chip size="small" label="Weekly Schedule · Lecture/Discussion"
+              <Chip size="small" label="TLA Activities · Lecture/Discussion"
                 sx={{ height: 24, fontSize: '0.74rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
                       border: '1px solid', borderColor: MAROON_LIGHT }} />
               <Chip size="small"
@@ -6188,7 +6197,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
               <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No Lecture/Discussion topics yet.</Typography>
               <Typography variant="caption" sx={{ color: '#ccc' }}>
-                On the weekly schedule, set the task to Lecture/Discussion and write the topic list. Reading lists are not topics, and two lists in the same week become one module.
+                In Teaching, Learning, and Assessment (TLA) Activities, set Delivery Method to Lecture/Discussion and write the topic list. Reading lists are not topics, and two lists in the same week become one module.
               </Typography>
             </Box>
           ) : (
@@ -6388,7 +6397,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     }}
                     helperText={lectureWeeks.length
                       ? `${lectureWeeks.length} Lecture/Discussion week${lectureWeeks.length === 1 ? '' : 's'}. Same-week lists are one choice.`
-                      : 'No Lecture/Discussion topics on the weekly schedule.'}
+                      : 'No Lecture/Discussion topics in TLA Activities. Set Delivery Method to Lecture/Discussion.'}
                     sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
                     <MenuItem value=""><em>— Select a topic —</em></MenuItem>
                     {lectureWeeks.map(lw => (
