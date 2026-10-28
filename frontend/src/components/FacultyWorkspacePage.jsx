@@ -3161,6 +3161,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     let stalls = 0
     try {
       for (let step = 0; step < 80 && stalls < 2; step += 1) {
+        setAssessmentBatchProgress({
+          generated,
+          requested: planned,
+          detail: generated > 0
+            ? `Writing the next items after ${generated}…`
+            : 'Preparing the assessment items…',
+        })
         const { data } = await api.post('/curriculum/generate-assessment/', {
           course_id: course.course_id,
           assessment_type: blueprint.hasMajorExam ? 'Major Examination' : (assessmentGenTitle || 'Assessment'),
@@ -3179,14 +3186,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         const returnedNow = Array.isArray(data?.items)
           ? data.items.length
           : Number(data?.returned_count ?? data?.batch_generated ?? 0)
+        const savedCount = Number(data?.generated_count)
         const nextPlanned = Number(data?.total_items || planned || 0)
         if (!Number.isFinite(returnedNow) || returnedNow <= 0) stalls += 1
         else stalls = 0
-        generated += Number.isFinite(returnedNow) && returnedNow > 0 ? returnedNow : 0
+        if (Number.isFinite(savedCount) && savedCount >= 0) generated = savedCount
+        else if (Number.isFinite(returnedNow) && returnedNow > 0) generated += returnedNow
         planned = nextPlanned > 0 ? nextPlanned : planned
-        setAssessmentBatchProgress({ generated, requested: planned })
+        setAssessmentBatchProgress({
+          generated,
+          requested: planned,
+          detail: data?.completed
+            ? `${generated} of ${planned || generated} items ready`
+            : `Writing the next items after ${generated}…`,
+        })
         if (latestSummary?.assessment_id && generated > 0) {
-          await handleOpenAssessment(latestSummary)
+          refreshAssessmentItems(latestSummary).catch(() => {})
         }
         if (data?.completed || (planned > 0 && generated >= planned)) break
         if (!data?.success && generated === 0) {
@@ -3335,6 +3350,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     } finally {
       setActionLoading(false)
       setTimeout(() => setAssessmentBatchProgress(null), 1200)
+    }
+  }
+
+  async function refreshAssessmentItems(assessmentSummary) {
+    const { data } = await api.get(`/curriculum/assessment/${assessmentSummary.assessment_id}/`, { timeout: 20000 })
+    if (data?.success && data?.assessment) {
+      setSelectedAssessment(assessmentSummary)
+      setAssessmentDetail(data.assessment)
+      setAssessmentSessionId(data.assessment.assessment_id || assessmentSummary.assessment_id)
     }
   }
 
@@ -3733,7 +3757,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {assessmentBatchProgress && (
               <Box sx={{ p: 1, border: '1px solid rgba(21,128,61,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
                 <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
-                  {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. Still generating...
+                  {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. {assessmentBatchProgress.detail || 'Still generating...'}
                 </Typography>
               </Box>
             )}
@@ -6683,6 +6707,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       if (selectedAssessment && assessmentDetail) {
         return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Stack spacing={2}>
             <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
@@ -6995,6 +7021,49 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Stack>
             )}
           </Stack>
+          </Box>
+          {(actionLoading && assessmentBatchProgress) && (
+            <Box sx={{
+              flexShrink: 0,
+              bgcolor: '#15181A',
+              borderTop: '2px solid rgba(134,239,172,0.65)',
+              px: 2,
+              py: 1,
+            }}>
+              <Stack spacing={0.75}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={16} sx={{ color: '#86EFAC' }} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                      Assessment generation
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
+                      {assessmentBatchProgress.detail
+                        || `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`}
+                    </Typography>
+                  </Box>
+                  {Number(assessmentBatchProgress.requested) > 0 && (
+                    <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+                      {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested}
+                    </Typography>
+                  )}
+                </Box>
+                <LinearProgress
+                  variant={assessmentBatchProgress.requested ? 'determinate' : 'indeterminate'}
+                  value={assessmentBatchProgress.requested
+                    ? (assessmentBatchProgress.generated / Math.max(assessmentBatchProgress.requested, 1)) * 100
+                    : undefined}
+                  sx={{
+                    height: 4,
+                    borderRadius: 4,
+                    bgcolor: 'rgba(255,255,255,0.12)',
+                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                  }}
+                />
+              </Stack>
+            </Box>
+          )}
+          </Box>
         )
       }
 
@@ -7208,9 +7277,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
                     {actionLoading && assessmentBatchProgress
-                      ? (assessmentBatchProgress.requested
-                        ? `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`
-                        : 'Preparing the assessment items…')
+                      ? (assessmentBatchProgress.detail
+                        || (assessmentBatchProgress.requested
+                          ? `Generating ${assessmentBatchProgress.generated} of ${assessmentBatchProgress.requested} items`
+                          : 'Preparing the assessment items…'))
                       : 'Create an assessment from the TOS exam. You can choose the topics before generating.'}
                   </Typography>
                 </Box>
@@ -7758,9 +7828,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* MIDDLE */}
         <Box sx={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          ...(activeTab === 'syllabus' || activeTab === 'module' || (activeTab === 'assessment' && !selectedAssessment) ? {} : { overflow: 'auto', p: 2.5 }),
+          ...(activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
-          {activeTab === 'syllabus' || activeTab === 'module' || (activeTab === 'assessment' && !selectedAssessment)
+          {activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment'
             ? <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
             : renderCenterPanel()
           }
