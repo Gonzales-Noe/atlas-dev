@@ -11,7 +11,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.integrations import indexing, llm_service, pii_masking, rag_service, syllabus_structure, syllabus_style
 from apps.integrations.syllabus_pipeline import _parse_refine_flag
-from apps.integrations.cot_prompt_builder import CoTPromptBuilder
+from apps.integrations.cot_prompt_builder import CoTPromptBuilder, assign_topic_weeks
 from apps.integrations.llm_service import DEFAULT_CHAIN, LLMService, message_text
 from apps.integrations.models import GlobalDocument
 from apps.integrations.views import (
@@ -150,6 +150,161 @@ class SyllabusFieldPromptTests(SimpleTestCase):
         )
 
         self.assertIn('Return five rows as a JSON array.', user_prompt)
+        self.assertNotIn('Be concise but complete', user_prompt)
+
+    def test_syllabus_prompt_asks_only_for_course_cells(self):
+        system, user = CoTPromptBuilder.build_syllabus_prompt(
+            course_name='Science, Technology and Society',
+            course_code='GEd 109',
+            num_weeks=18,
+            context_chunks=[],
+            course_category='ged',
+            assessment_criteria='25% Midterm Examination\n25% Final Examination',
+        )
+
+        self.assertIn('Write only the cells listed, at the length given', system)
+        self.assertNotIn('thorough, well-structured syllabi', system)
+        self.assertIn('Course category: ged', user)
+        self.assertIn('25% Midterm Examination', user)
+        self.assertIn('2–3 sentences', user)
+        self.assertIn('Three lines', user)
+        self.assertIn('week 1 through week 18', user)
+        self.assertIn('5-6', user)
+        self.assertIn('No tools', user)
+        self.assertIn('Do not write Key Learning Activities or Delivery', user)
+        for banned in (
+            'TABLE OF SPECIFICATIONS',
+            'FRAMEWORK ALIGNMENT',
+            'COURSE DESCRIPTION (3–4 sentences)',
+            'Step 6',
+            'Step 7',
+            'Step 8',
+            'Vision',
+        ):
+            self.assertNotIn(banned, user)
+        self.assertIn('Do not print Step 1', user)
+        self.assertEqual(CoTPromptBuilder.SYLLABUS_MAX_TOKENS, 900)
+
+    def test_capstone_stays_professional_and_swaps_the_block(self):
+        _, user = CoTPromptBuilder.build_syllabus_prompt(
+            course_name='Capstone Project 1',
+            course_code='IT 324',
+            num_weeks=18,
+            context_chunks=[],
+            course_category='professional',
+        )
+        self.assertIn('Course category: professional', user)
+        self.assertIn('proposal, completed system, documentation, defense', user)
+        self.assertNotIn('Do not emit 18 topic rows', user)
+
+    def test_internship_does_not_ask_for_a_week_per_row(self):
+        _, user = CoTPromptBuilder.build_syllabus_prompt(
+            course_name='Internship Training',
+            course_code='IT 421',
+            num_weeks=18,
+            context_chunks=[],
+            course_category='professional',
+        )
+        self.assertIn('Course category: professional', user)
+        self.assertIn('Do not emit 18 topic rows', user)
+        self.assertNotIn('Weekly blocks to emit: 18', user)
+
+    def test_field_hints_match_the_length_rules(self):
+        _, tla = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Information Management',
+            course_code='IT 221',
+            field_label='Teaching, Learning, and Assessment Strategies',
+            section='tlas',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            course_category='common',
+            assessment_criteria='40% Laboratory Activities\n30% Case Study',
+        )
+        self.assertIn('Using only these criteria: 40% Laboratory Activities', tla)
+        self.assertIn('Do not add a component', tla)
+        self.assertNotIn('comprehensive', tla.lower())
+
+        _, ilo = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Information Management',
+            course_code='IT 221',
+            field_label='Intended Learning Outcome 1',
+            section='ilo',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            course_category='common',
+        )
+        self.assertIn('One short sentence for Information Management', ilo)
+        self.assertIn('Do not write "students should be able to"', ilo)
+        self.assertIn('Hard cap 18 words', ilo)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('ilo'), 50)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('rationale'), 160)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('tlas'), 220)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('topics'), 180)
+        self.assertEqual(CoTPromptBuilder.field_max_tokens('topic_outcome'), 50)
+
+        _, topics = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Analytics Techniques and Tools',
+            course_code='BAT 404',
+            field_label='Topics / Reading List 1',
+            section='topics',
+            existing_content='',
+            mode='generate',
+            context_chunks=[],
+            course_category='professional',
+        )
+        self.assertIn('First line is the topic title', topics)
+        self.assertIn('Titles only', topics)
+
+    def test_stored_sections_are_not_generated(self):
+        for section in ('contact', 'policies', 'attributes', 'assessment_map'):
+            self.assertNotIn(section, CoTPromptBuilder.GENERATABLE_SYLLABUS_SECTIONS)
+            _, user = CoTPromptBuilder.build_syllabus_field_prompt(
+                course_name='Ethics',
+                course_code='GEd 107',
+                field_label=section,
+                section=section,
+                existing_content='',
+                mode='generate',
+                context_chunks=[],
+            )
+            self.assertIn('Do not generate', user)
+
+
+class TopicWeekPlanTests(SimpleTestCase):
+    def test_single_weeks_run_through_week_18(self):
+        raw = "\n".join(f"1 Topic {number}" for number in range(1, 19))
+        lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
+        self.assertEqual(len(lines), 18)
+        self.assertTrue(lines[0].startswith("1\tTopic 1"))
+        self.assertTrue(lines[9].startswith("10\t"))
+        self.assertTrue(lines[13].startswith("14\t"))
+        self.assertTrue(lines[17].startswith("18\t"))
+
+    def test_heavier_topic_is_one_merged_row(self):
+        raw = "1 Opening\n2 Customer Analytics\n" + "\n".join(["1 Later"] * 15)
+        lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
+        labels = [line.split("\t", 1)[0] for line in lines]
+        self.assertEqual(labels[0], "1")
+        self.assertEqual(labels[1], "2-3")
+        self.assertIn("Customer Analytics", lines[1])
+        self.assertEqual(labels[-1], "18")
+        self.assertEqual(len(lines), 17)
+
+    def test_short_plan_widens_until_the_term_is_covered(self):
+        text = assign_topic_weeks("1 Alpha\n2 Beta\n1 Gamma", term_weeks=6)
+        labels = [line.split("\t", 1)[0] for line in text.splitlines()]
+        self.assertEqual(labels, ["1-2", "3-4", "5-6"])
+
+    def test_internship_plan_is_not_stretched_to_18_weeks(self):
+        text = assign_topic_weeks(
+            "2 Deployment\n1 Narrative Report",
+            term_weeks=18,
+            pad_to_term=False,
+        )
+        labels = [line.split("\t", 1)[0] for line in text.splitlines()]
+        self.assertEqual(labels, ["1-2", "3"])
 
 
 class InstitutionScopedAdminDataTests(SimpleTestCase):

@@ -166,6 +166,142 @@ const EMPTY_TASK    = { code: '', task: '', ird: '', category: '', weight: '', i
 const EMPTY_ATTR    = { code: '', title: '', description: '' }
 const EMPTY_POLICY  = { title: '', content: '' }
 const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', ilo_refs: [], so: '', delivery: '' }
+const ILO_FIELD_COUNT = 3
+
+function iloGenerateCount(ilos) {
+  const count = Array.isArray(ilos) ? ilos.length : 0
+  return Math.max(ILO_FIELD_COUNT, count)
+}
+
+function ensureIloCount(state, count) {
+  const current = Array.isArray(state.ilos) ? state.ilos : []
+  if (current.length >= count) return state
+  const missing = count - current.length
+  const soLen = (state.so_headers || ['']).length
+  const igaLen = (state.iga_headers || ['']).length
+  const cdioLen = (state.cdio_headers || ['']).length
+  const sdgLen = (state.sdg_headers || ['']).length
+  return {
+    ...state,
+    ilos: [...current, ...Array(missing).fill('')],
+    ilo_bloom: [
+      ...(state.ilo_bloom || []),
+      ...Array.from({ length: missing }, () => ({ level: '', verb: '' })),
+    ],
+    assessment_tasks: (state.assessment_tasks || []).map(task => ({
+      ...task,
+      ilo_values: [...(task.ilo_values || []), ...Array(missing).fill('')],
+    })),
+    so_cpa_rows: [
+      ...(state.so_cpa_rows || []),
+      ...Array.from({ length: missing }, () => ({ so_vals: Array(soLen).fill(''), c: '', p: '', a: '' })),
+    ],
+    iga_rows: [
+      ...(state.iga_rows || []),
+      ...Array.from({ length: missing }, () => ({ vals: Array(igaLen).fill('') })),
+    ],
+    cdio_sdg_rows: [
+      ...(state.cdio_sdg_rows || []),
+      ...Array.from({ length: missing }, () => ({
+        cdio_vals: Array(cdioLen).fill(''),
+        sdg_vals: Array(sdgLen).fill(''),
+      })),
+    ],
+  }
+}
+
+function ensureChapterCount(state, count) {
+  const chapters = Array.isArray(state.tla_chapters) ? state.tla_chapters : []
+  if (chapters.length >= count) return state
+  const extra = Array.from({ length: count - chapters.length }, () => ({ ...EMPTY_CHAPTER }))
+  return { ...state, tla_chapters: [...chapters, ...extra] }
+}
+
+function firstSentence(text) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim()
+  if (!clean) return ''
+  const match = clean.match(/^.*?[.!?](?=\s|$)/)
+  return (match ? match[0] : clean).trim()
+}
+
+function shapeRationale(text) {
+  const clean = String(text || '')
+    .replace(/^```[\w]*\n?|```$/g, '')
+    .replace(/^\s*course rationale and description\s*[:\-–]?\s*/i, '')
+    .trim()
+  const sentences = clean.split(/(?<=[.!?])\s+/).map(part => part.trim()).filter(Boolean)
+  if (sentences.length <= 3) return clean
+  return sentences.slice(0, 3).join(' ')
+}
+
+function shapeIlo(text) {
+  let clean = String(text || '')
+    .replace(/```/g, '')
+    .replace(/students (?:should|will) be able to:?/ig, '')
+    .replace(/upon completion of this course,?\s*(?:the students should be able to:?)?/ig, '')
+    .trim()
+  const line = clean
+    .split(/\n+/)
+    .map(part => part.replace(/^\s*(?:ILO\s*\d+\s*[:.\-)]\s*|\d+[.)]\s*|[-*•]\s*)/i, '').trim())
+    .find(Boolean) || clean
+  return firstSentence(line)
+}
+
+function shapeOutcome(text) {
+  const clean = String(text || '').replace(/```/g, '').trim()
+  const line = clean.split(/\n+/).map(part => part.trim()).find(Boolean) || ''
+  return firstSentence(line)
+}
+
+function shapeTopicsBlock(block) {
+  const lines = String(block || '')
+    .split(/\n/)
+    .map(line => line.replace(/\s+$/, ''))
+    .filter(line => line.trim())
+  if (!lines.length) return ''
+  return lines.map((line, index) => {
+    const title = line.trim().replace(/^(?:[-*•–—]|\d+[.)])\s+/, '')
+    if (index === 0 || index === lines.length - 1) return title
+    return `     ${title}`
+  }).join('\n')
+}
+
+function shapeTopicsCell(text) {
+  const stripped = String(text || '').replace(/```[\w]*\n?|```/g, '').trim()
+  const blocks = stripped.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean)
+  return blocks.map(shapeTopicsBlock).filter(Boolean).join('\n\n')
+}
+
+function shapeGeneratedField(section, text) {
+  if (section === 'rationale') return shapeRationale(text)
+  if (section === 'ilo') return shapeIlo(text)
+  if (section === 'topics') return shapeTopicsCell(text)
+  if (section === 'topic_outcome') return shapeOutcome(text)
+  return String(text || '').trim()
+}
+
+function parseAssignedWeekPlan(text) {
+  return String(text || '').split(/\n/).flatMap(line => {
+    const trimmed = line.trim()
+    if (!trimmed) return []
+    const tab = trimmed.indexOf('\t')
+    const weeks = (tab === -1 ? trimmed : trimmed.slice(0, tab)).trim()
+    const title = tab === -1 ? '' : trimmed.slice(tab + 1).trim()
+    if (!/^\d+(?:-\d+)?$/.test(weeks)) return []
+    return [{ weeks, title }]
+  })
+}
+
+function SyllabusDraftText({ text, section, sx }) {
+  if (section === 'topics') {
+    return (
+      <Box component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', m: 0, ...sx }}>
+        {text}
+      </Box>
+    )
+  }
+  return <MarkdownText text={text} sx={sx} />
+}
 
 const DEFAULT_SO_HEADERS   = ['2', '3']
 const DEFAULT_IGA_HEADERS  = ['2', '3', '4', '5']
@@ -1278,7 +1414,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // Normalize raw syllabus data — migrates old formats and initialises all structured fields
   function normalizeSyllabusData(raw) {
     if (!raw) return { ...EMPTY_SYLLABUS }
-    const iloCount = Math.max(1, (raw.ilos || ['']).length)
+    const storedIlos = Array.isArray(raw.ilos) ? raw.ilos : []
+    const iloCount = Math.max(ILO_FIELD_COUNT, storedIlos.length)
 
     // 1. assessment_tasks: old ilo1/ilo2/domain → ilo_values / c / p / a
     const normTasks = (tasks) => (tasks || []).map(t => {
@@ -1386,6 +1523,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return {
       ...EMPTY_SYLLABUS, ...raw,
       rationale: raw.rationale || '',
+      ilos: Array.from({ length: iloCount }, (_, i) => storedIlos[i] || ''),
       ilo_bloom: normIloBloom,
       tos: normTos,
       assessment_tasks: normTasksResult.length
@@ -1484,138 +1622,64 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }))
   }
 
-  function getAiFieldsForCurrentSection() {
-    const simpleFields = (section, fields) => fields
-      .filter(([field]) => {
-        const dataKey = ADMIN_FIXED_FIELDS[field] || field
-        return !Object.prototype.hasOwnProperty.call(fixedFieldRules, dataKey)
-      })
-      .map(([field, label]) => ({
-        section,
-        field,
-        label,
-        fieldType: 'simple',
-      }))
+  function getAiFieldsForCurrentSection(data = syllabusData) {
     if (!activeConfiguredSection || activeConfiguredSection.is_static) return []
+    const locked = field => Object.prototype.hasOwnProperty.call(fixedFieldRules, field)
 
-    const configuredTableFields = []
-    if (!activeConfiguredSection.is_static) {
-      if (activeConfiguredSection.table_enabled
-        && Array.isArray(activeConfiguredSection.table_columns)
-        && activeConfiguredSection.table_columns.length) {
-        configuredTableFields.push({
-          section: activeConfiguredSection.key,
-          label: `${activeConfiguredSection.label} table`,
-          fieldType: 'customTable',
-          tableKey: '__section__',
-          columns: activeConfiguredSection.table_columns,
+    if (activeSyllabusSectionKey === 'course-information') {
+      const fields = []
+      if (!locked('rationale')) {
+        fields.push({
+          section: 'rationale',
+          field: 'rationale',
+          label: 'Course Rationale and Description',
+          fieldType: 'simple',
         })
       }
-      for (const subsection of activeConfiguredSection.subsections || []) {
-        if (subsection.is_static) continue
-        if (subsection.table_enabled
-          && Array.isArray(subsection.table_columns)
-          && subsection.table_columns.length) {
-          configuredTableFields.push({
-            section: activeConfiguredSection.key,
-            label: `${subsection.label || 'Subsection'} table`,
-            fieldType: 'customTable',
-            tableKey: subsection.key,
-            columns: subsection.table_columns,
-          })
-        }
+      if (!locked('tlas')) {
+        fields.push({
+          section: 'tlas',
+          field: 'tlas',
+          label: 'Teaching, Learning, and Assessment Strategies',
+          fieldType: 'simple',
+        })
       }
-    }
-    const withConfiguredTables = fields => [...fields, ...configuredTableFields]
-
-    if (activeSyllabusSectionKey === 'university-information') {
-      return withConfiguredTables(simpleFields('university-information', [
-        ['vision', 'University Vision'],
-        ['mission', 'University Mission'],
-      ]))
-    }
-    if (activeSyllabusSectionKey === 'course-information') {
-      return withConfiguredTables(simpleFields('course-information', [
-        ['rationale', 'Course Rationale and Description'],
-        ['assessment_criteria', 'Criteria for Assessment'],
-        ['tlas', 'Teaching, Learning, and Assessment Strategies'],
-      ]))
+      return fields
     }
     if (activeSyllabusSectionKey === 'iloat-references') {
-      if (fixedTableFor('iloat-references', 'ilo-table')) return withConfiguredTables([])
-      return withConfiguredTables(syllabusData.ilos.map((_, index) => ({
-        section: 'iloat-references',
+      if (fixedTableFor('iloat-references', 'ilo-table')) return []
+      const count = iloGenerateCount(data.ilos)
+      return Array.from({ length: count }, (_, index) => ({
+        section: 'ilo',
         label: `Intended Learning Outcome ${index + 1}`,
         fieldType: 'array',
         arrField: 'ilos',
         arrIndex: index,
-      })))
-    }
-    if (activeSyllabusSectionKey === 'framework-mapping') {
-      const frameworkTableKey = { IGA: 'iga-table', SO: 'so-table', CDIO: 'cdio-table', SDG: 'sdg-table' }[activeFwKey] || 'iga-table'
-      if (fixedTableFor('framework-mapping', frameworkTableKey)) return withConfiguredTables([])
-      const frameworkFields = {
-        IGA: ['igas', 'Institutional Graduate Attribute'],
-        SO: ['student_outcomes', 'Student Outcome'],
-        CDIO: ['cdio_skills', 'CDIO Skill'],
-        SDG: ['sdg_skills', 'SDG Skill'],
-      }
-      const [arrField, label] = frameworkFields[activeFwKey] || frameworkFields.IGA
-      return withConfiguredTables((syllabusData[arrField] || []).map((_, index) => ({
-        section: 'framework-mapping',
-        label: `${label} ${index + 1} Statement`,
-        fieldType: 'arrayObj',
-        arrField,
-        arrIndex: index,
-        arrObjKey: 'description',
-      })))
-    }
-    if (activeSyllabusSectionKey === 'course-policies') {
-      return withConfiguredTables([
-        { section: 'course-policies', label: 'Class Policy', fieldType: 'simple', field: 'class_policy' },
-        { section: 'course-policies', label: 'Missed Examinations', fieldType: 'simple', field: 'missed_examinations' },
-        { section: 'course-policies', label: 'Academic Dishonesty', fieldType: 'simple', field: 'academic_dishonesty' },
-        { section: 'course-policies', label: 'Dropping', fieldType: 'simple', field: 'dropping' },
-        { section: 'course-policies', label: 'Other Course Policies and Requirements', fieldType: 'simple', field: 'other_policies' },
-      ].filter(field => !Object.prototype.hasOwnProperty.call(fixedFieldRules, field.field)))
+      }))
     }
     if (activeSyllabusSectionKey === 'tla-activities') {
-      if (fixedTableFor('tla-activities', 'tla-table')) return withConfiguredTables([])
-      const SCHEDULE_AI_FIELDS = ['topics']
-      const SCHEDULE_FIELD_LABELS = {
-        chapter: 'Week Number',
-        topics: 'Topic / Activity',
-        weeks: 'Weeks',
-        outcomes: 'Task',
-        delivery: 'Delivery',
-        ilo: 'ILOs & pts',
-        so: 'Student Outcomes',
-      }
-      return withConfiguredTables((syllabusData.tla_chapters || []).flatMap((chapter, index) => (
-        SCHEDULE_AI_FIELDS.map(field => ({
-          section: 'tla-activities',
-          label: `Week ${chapter.weeks || index + 1}: ${SCHEDULE_FIELD_LABELS[field] || field}`,
+      if (fixedTableFor('tla-activities', 'tla-table')) return []
+      const chapters = data.tla_chapters?.length ? data.tla_chapters : [{ ...EMPTY_CHAPTER }]
+      return chapters.flatMap((_, index) => ([
+        {
+          section: 'topics',
+          label: `Topics / Reading List ${index + 1}`,
           fieldType: 'arrayObj',
           arrField: 'tla_chapters',
           arrIndex: index,
-          arrObjKey: field,
-        }))
-      )))
+          arrObjKey: 'topics',
+        },
+        {
+          section: 'topic_outcome',
+          label: `Topic Outcomes ${index + 1}`,
+          fieldType: 'arrayObj',
+          arrField: 'tla_chapters',
+          arrIndex: index,
+          arrObjKey: 'outcomes',
+        },
+      ]))
     }
-    if (!activeConfiguredSection.editorKey) {
-      return withConfiguredTables([
-        ...(activeConfiguredSection.subsections || [])
-          .filter(subsection => !subsection.table_enabled)
-          .map(subsection => ({
-            section: activeConfiguredSection.key,
-            label: subsection.label,
-            fieldType: 'customSubsection',
-            field: activeConfiguredSection.key,
-            subsectionKey: subsection.key,
-          })),
-      ])
-    }
-    return configuredTableFields
+    return []
   }
 
   function updateSyllabusWithAiText(current, field, text, tableRows = null) {
@@ -1632,7 +1696,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }
     }
     if (field.fieldType === 'simple') {
-      return { ...current, [field.field]: text }
+      const next = { ...current, [field.field]: text }
+      if (field.field === 'rationale') next.description = text
+      return next
     }
     if (field.fieldType === 'array') {
       return {
@@ -1725,8 +1791,137 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
   }
 
+  async function generateTlaActivities(source) {
+    if (!course) return
+    setAiGenerating(true)
+    setAiError('')
+    setAiPipelineDrafts(null)
+    setAiPipelineProgress({ completed: 0, total: 1, label: 'Weekly topic plan' })
+    try {
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
+      const planResponse = await api.post('/curriculum/generate-syllabus-field/', {
+        course_id: courseId,
+        section: 'week_plan',
+        field_label: 'Weekly topic plan',
+        existing_content: '',
+        mode: 'generate',
+        top_k: 5,
+        extra_instructions: '',
+        assessment_criteria: source.assessment_criteria || '',
+        selected_doc_ids: selectedIds,
+      }, { timeout: 120000 })
+      const plan = parseAssignedWeekPlan(planResponse.data?.generated_text)
+      if (!plan.length) {
+        throw new Error('The weekly plan did not include any topics. Try again.')
+      }
+      setSyllabusData(current => ({
+        ...current,
+        tla_chapters: plan.map((row, index) => ({
+          ...EMPTY_CHAPTER,
+          chapter: String(index + 1),
+          weeks: row.weeks,
+        })),
+      }))
+      setIsDirty(true)
+      setSaveSuccess(false)
+
+      const drafts = plan.map((row, index) => ({
+        section: 'weeks',
+        label: `Weeks ${row.weeks}`,
+        fieldType: 'arrayObj',
+        arrField: 'tla_chapters',
+        arrIndex: index,
+        arrObjKey: 'weeks',
+        text: row.weeks,
+      }))
+      const total = plan.length * 2
+      for (let index = 0; index < plan.length; index += 1) {
+        const row = plan[index]
+        const topicHint = row.title
+          ? `Topic title: ${row.title}. The first line must be this title. This row covers ${row.weeks}. Do not write the week numbers in this cell.`
+          : `This row covers ${row.weeks}. Continue the course sequence. Do not write the week numbers in this cell.`
+        setAiPipelineProgress({ completed: index * 2, total, label: `Topics / Reading List ${row.weeks}` })
+        const topicsResponse = await api.post('/curriculum/generate-syllabus-field/', {
+          course_id: courseId,
+          section: 'topics',
+          field_label: `Topics / Reading List ${index + 1}`,
+          existing_content: '',
+          mode: 'generate',
+          top_k: 5,
+          extra_instructions: topicHint,
+          assessment_criteria: source.assessment_criteria || '',
+          selected_doc_ids: selectedIds,
+        }, { timeout: 120000 })
+        const topicsText = shapeTopicsCell(topicsResponse.data?.generated_text)
+        if (!topicsText) {
+          throw new Error(`The AI did not return topics for weeks ${row.weeks}. Try again.`)
+        }
+        drafts.push({
+          section: 'topics',
+          label: `Topics / Reading List (${row.weeks})`,
+          fieldType: 'arrayObj',
+          arrField: 'tla_chapters',
+          arrIndex: index,
+          arrObjKey: 'topics',
+          text: topicsText,
+        })
+
+        setAiPipelineProgress({ completed: index * 2 + 1, total, label: `Topic Outcomes ${row.weeks}` })
+        const outcomeResponse = await api.post('/curriculum/generate-syllabus-field/', {
+          course_id: courseId,
+          section: 'topic_outcome',
+          field_label: `Topic Outcomes ${index + 1}`,
+          existing_content: '',
+          mode: 'generate',
+          top_k: 5,
+          extra_instructions: `One outcome for the topic in weeks ${row.weeks}.`,
+          assessment_criteria: source.assessment_criteria || '',
+          selected_doc_ids: selectedIds,
+        }, { timeout: 120000 })
+        const outcomeText = shapeOutcome(outcomeResponse.data?.generated_text)
+        if (!outcomeText) {
+          throw new Error(`The AI did not return a topic outcome for weeks ${row.weeks}. Try again.`)
+        }
+        drafts.push({
+          section: 'topic_outcome',
+          label: `Topic Outcomes (${row.weeks})`,
+          fieldType: 'arrayObj',
+          arrField: 'tla_chapters',
+          arrIndex: index,
+          arrObjKey: 'outcomes',
+          text: outcomeText,
+        })
+      }
+      setAiPipelineDrafts(drafts)
+      setAiPipelineProgress({ completed: total, total, label: '' })
+      setAiReviewOpen(true)
+      setAiField(null)
+      notifyGenerationComplete('Syllabus', `${plan.length} topic row${plan.length === 1 ? '' : 's'} generated`)
+    } catch (err) {
+      setAiError(extractApiError(err))
+      setAiPipelineProgress(null)
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
   async function handleGenerateSection() {
-    const fields = getAiFieldsForCurrentSection()
+    let source = syllabusData
+    if (activeSyllabusSectionKey === 'iloat-references') {
+      const expanded = ensureIloCount(source, iloGenerateCount(source.ilos))
+      if (expanded !== source) {
+        source = expanded
+        setSyllabusData(expanded)
+        setIsDirty(true)
+        setSaveSuccess(false)
+      }
+    }
+    if (activeSyllabusSectionKey === 'tla-activities') {
+      if (fixedTableFor('tla-activities', 'tla-table')) return
+      await generateTlaActivities(source)
+      return
+    }
+    const fields = getAiFieldsForCurrentSection(source)
     if (!course || !fields.length) return
     setAiGenerating(true)
     setAiError('')
@@ -1734,20 +1929,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAiPipelineProgress({ completed: 0, total: fields.length, label: fields[0].label })
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
-      const structureInstruction = 'Use a clear, well-organized structure with helpful headings or bullets and an appropriate amount of detail.'
       const drafts = []
       for (let index = 0; index < fields.length; index += 1) {
         const field = fields[index]
         setAiPipelineProgress({ completed: index, total: fields.length, label: field.label })
-        const extraHints = [structureInstruction]
-        if (field.fieldType === 'customTable') {
-          extraHints.push(
-            `Create exactly 5 useful data rows for this table. The column headings, in order, are ${JSON.stringify(field.columns)}. `
-            + `Return only a valid JSON array of 5 arrays. Each inner array must contain exactly ${field.columns.length} strings in the same column order. `
-            + 'Do not include headers, markdown, or commentary.',
-          )
-        }
-        if (field.arrField === 'ilos') {
+        const extraHints = []
+        if (field.section === 'ilo') {
           if (iloBloomVerb) extraHints.push(`Use the Bloom's Taxonomy verb "${iloBloomVerb}".`)
           if (iloFocusText.trim()) extraHints.push(`Focus the intended learning outcome on: ${iloFocusText.trim()}.`)
         }
@@ -1759,9 +1946,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           mode: 'generate',
           top_k: 5,
           extra_instructions: extraHints.join(' '),
+          assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
         }, { timeout: 120000 })
-        const generatedText = String(data.generated_text || '').trim()
+        const generatedText = shapeGeneratedField(field.section, data.generated_text)
         if (!generatedText) {
           throw new Error(`The AI did not return text for "${field.label}". Try generating the section again.`)
         }
@@ -1793,10 +1981,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   function acceptAiDraftsAndContinue() {
     if (!aiPipelineDrafts?.length) return
-    setSyllabusData(current => aiPipelineDrafts.reduce(
-      (next, draft) => updateSyllabusWithAiText(next, draft, draft.text, draft.rows),
-      current,
-    ))
+    setSyllabusData(current => {
+      let next = current
+      const iloNeeded = aiPipelineDrafts
+        .filter(draft => draft.section === 'ilo')
+        .reduce((max, draft) => Math.max(max, (draft.arrIndex ?? 0) + 1), 0)
+      if (iloNeeded) next = ensureIloCount(next, Math.max(ILO_FIELD_COUNT, iloNeeded))
+      const chapterNeeded = aiPipelineDrafts
+        .filter(draft => draft.arrField === 'tla_chapters')
+        .reduce((max, draft) => Math.max(max, (draft.arrIndex ?? 0) + 1), 0)
+      if (chapterNeeded) next = ensureChapterCount(next, chapterNeeded)
+      return aiPipelineDrafts.reduce(
+        (state, draft) => updateSyllabusWithAiText(state, draft, draft.text, draft.rows),
+        next,
+      )
+    })
     setIsDirty(true)
     setSaveSuccess(false)
     setAiPipelineDrafts(null)
@@ -4937,7 +5136,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -5988,7 +6187,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700 }}>
                       {draft.label}
                     </Typography>
-                    <MarkdownText
+                    <SyllabusDraftText
+                      section={draft.section}
                       text={draft.text || 'The AI returned an empty suggestion for this field.'}
                       sx={{ color: 'rgba(255,255,255,0.78)', mt: 0.25 }}
                     />
@@ -6029,7 +6229,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {activeSyllabusSectionKey !== 'university-information' && (
+          {(aiSectionFields.length > 0 || aiPipelineDrafts || aiReviewOpen) && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -6050,7 +6250,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
                       : aiPipelineDrafts
                         ? 'Your drafts are ready. Review them before adding them to your syllabus.'
-                        : aiSectionFields.length
+                        : activeSyllabusSectionKey === 'tla-activities'
+                          ? (/\b(internship|ojt|practicum)\b/i.test(`${course?.course_title || ''} ${course?.course_code || ''}`)
+                            ? 'Add one row per requirement. A heavier requirement uses one merged cell such as 1-2, not one row for every calendar week.'
+                            : 'Add one row per topic, through week 18. A heavier topic uses one merged cell such as 3-4 or 5-6. A lighter topic uses a single week such as 10 or 14.')
+                          : aiSectionFields.length
                           ? `Create ${aiSectionFields.length === 1 ? 'a draft' : `drafts for ${aiSectionFields.length} items`} in ${activeConfiguredSection?.label || 'this section'}. You can review ${aiSectionFields.length === 1 ? 'it' : 'them'} before adding ${aiSectionFields.length === 1 ? 'it' : 'them'}.`
                           : 'Drafting is not available for this section yet.'}
                   </Typography>
@@ -6072,7 +6276,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       minHeight: 34,
                     }}
                   >
-                    {aiGenerating ? 'Writing…' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                    {aiGenerating ? 'Writing…' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
                   </Button>
                 )}
 
@@ -6111,7 +6315,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   {aiError}
                 </Typography>
               )}
-              {!aiPipelineDrafts && activeSyllabusSectionKey === 'iloat' && (
+              {!aiPipelineDrafts && activeSyllabusSectionKey === 'iloat-references' && (
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <Select
                     size="small"
@@ -6248,7 +6452,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           </Table>
                         </TableContainer>
                       ) : (
-                        <MarkdownText
+                        <SyllabusDraftText
+                          section={draft.section}
                           text={draft.text}
                           sx={{ color: '#E5E7EB' }}
                         />
