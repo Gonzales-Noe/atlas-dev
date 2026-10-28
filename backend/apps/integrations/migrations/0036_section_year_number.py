@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('integrations', '0035_institution_customization_document_defaults'),
+        ('integrations', '0037_merge_course_module_and_syllabus_preview'),
     ]
 
     operations = [
