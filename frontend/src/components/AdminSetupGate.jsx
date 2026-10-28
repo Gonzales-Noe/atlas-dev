@@ -11,8 +11,17 @@ import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
 import LoadingState from './LoadingState'
 
 function toMessage(err, fallback) {
+  const status = err?.response?.status
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The server is still starting. Wait a moment, then retry.'
+  }
   const data = err?.response?.data
-  if (typeof data === 'string') return data
+  if (typeof data === 'string') {
+    if (/<\s*html|bad gateway|<\s*title/i.test(data)) {
+      return 'The server is still starting. Wait a moment, then retry.'
+    }
+    return data
+  }
   if (typeof data?.detail === 'string') return data.detail
   return fallback
 }
