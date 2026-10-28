@@ -18,6 +18,7 @@ from apps.integrations.models import (
     UserProfile,
     UserRole,
 )
+from apps.integrations.fixed_syllabus import seed_course_syllabi
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
@@ -482,6 +483,7 @@ class FacultyCreateSerializer(serializers.Serializer):
                     faculty=profile,
                     section=section,
                 )
+                seed_course_syllabi(course)
         return profile
 
 

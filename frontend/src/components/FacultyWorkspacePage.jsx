@@ -83,7 +83,7 @@ import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
 import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
-import { applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
+import { applyFixedSyllabusContent, applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
 
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON = '#16A34A'
@@ -2112,20 +2112,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [adminFixedTables])
 
   // Re-applied after every render so loading a saved syllabus or AI generation
-  // can never overwrite a field the institution fixed.
+  // can never overwrite content the institution fixed. Tables are included,
+  // so a newly opened course already shows the seeded statements.
   useEffect(() => {
-    if (!Object.keys(fixedFieldRules).length) return
-    setSyllabusData(current => {
-      let changed = false
-      const next = { ...current }
-      Object.entries(fixedFieldRules).forEach(([key, content]) => {
-        if (next[key] !== content) {
-          next[key] = content
-          changed = true
-        }
-      })
-      return changed ? next : current
-    })
+    setSyllabusData(current => applyFixedSyllabusContent(current, adminFormatSections))
   })
   const configuredSections = SYLLABUS_SECTIONS.map(section => ({ ...section, editorKey: section.key }))
   const activeConfiguredSection = configuredSections.find(section => section.key === syllabusSub)
@@ -2217,22 +2207,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     seededCourseRef.current = courseId
 
     const saved = apiData.syllabus?.syllabus_content
-    if (saved && typeof saved === 'object') {
-      // Merge saved content with EMPTY_SYLLABUS defaults so new keys are always present, then normalize
+    const hasSaved = saved && typeof saved === 'object'
+    // A course added after the admin locked content may only have the fixed
+    // keys stored. Course identity still comes from the course record.
+    if (!hasSaved && !course) return
+    if (!course) {
       setSyllabusData(normalizeSyllabusData({ ...EMPTY_SYLLABUS, ...saved }))
       setIsDirty(false)
       return
     }
-
-    // No saved content yet — seed from course fields
-    if (!course) return
     const toStr = v => v != null ? String(v) : ''
     const mapAttr = arr => (arr || []).length
       ? arr.map(g => ({ code: g.code || '', title: g.title || '', description: g.description || '' }))
       : [{ ...EMPTY_ATTR }]
     const courseIlos = (course.ilos || []).length ? course.ilos.map(String) : ['']
     const iloCount   = courseIlos.length
-    setSyllabusData(normalizeSyllabusData({
+    const fromCourse = {
       university_name:  course.institution_name || '',
       college:          course.college_name || '',
       program:          course.program_name || '',
@@ -2294,7 +2284,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       cdio_sdg_rows:     course.cdio_sdg_rows     || undefined,
       ats:               course.ats               || undefined,
       custom_sections:   {},
-    }))
+    }
+    setSyllabusData(normalizeSyllabusData(hasSaved ? { ...fromCourse, ...saved } : fromCourse))
     setIsDirty(false)
   }, [workspaceApi.data])
 

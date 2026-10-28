@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.integrations.fixed_syllabus import seed_course_syllabi
 from apps.integrations.models import (
     AuditLog,
     Course,
@@ -331,6 +332,7 @@ class CourseRequestReviewView(AcademicBaseView):
             units=units,
             section=course_request.section,
         )
+        seed_course_syllabi(course)
         CourseLoad.objects.get_or_create(course=course, faculty=course_request.requested_by)
         course_request.status = CourseRequestStatus.APPROVED
         course_request.admin_note = admin_note or None

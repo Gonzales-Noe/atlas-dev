@@ -28,6 +28,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
+from apps.integrations.fixed_syllabus import seed_course_syllabi, seed_institution_syllabi
 from apps.integrations.syllabus_defaults import default_syllabus_sections
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
@@ -1101,6 +1102,7 @@ class FacultyAssignmentsView(APIView):
                 course_title=course_title,
                 description=description or None,
             )
+        seed_course_syllabi(course)
 
         # A handled section takes the course.
         section.taken_courses.add(course)
@@ -1236,6 +1238,7 @@ class InstitutionCustomizationView(APIView):
             if 'syllabus_sections' not in request.data:
                 customization.syllabus_sections = syllabus_template_doc.field_map_to_syllabus_sections(field_map)
         customization.save()
+        seed_institution_syllabi(customization.institution, customization.syllabus_sections)
         return self.get(request)
 
 
