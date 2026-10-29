@@ -257,6 +257,62 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(auths, ['Bearer key-a', 'Bearer key-b', 'Bearer key-c'])
         self.assertEqual(key_cooldown_remaining('openrouter', 'key-a'), 0)
 
+    def test_rate_limit_moves_to_the_next_key_without_other_models(self):
+        service = _service('openrouter')
+        service.api_keys = {
+            'openrouter': ['key-a', 'key-b'],
+            'groq': [],
+            'gemma': [],
+            'cloudflare': [],
+        }
+        rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
+        success = MagicMock(ok=True, status_code=200, headers={})
+        success.json.return_value = {'choices': [{'message': {'content': 'Draft text'}}]}
+
+        with patch.dict(os.environ, {'OPENROUTER_FALLBACK_MODELS': 'other/free-model'}):
+            with patch('apps.integrations.llm_service.requests.post', side_effect=[rate_limited, success]) as post:
+                text, provider_used = service.generate_response_with_fallback(
+                    [{'role': 'user', 'content': 'Hi'}],
+                    preferred_provider='openrouter',
+                    return_provider=True,
+                )
+
+        self.assertEqual((text, provider_used), ('Draft text', 'openrouter'))
+        auths = [call.kwargs['headers']['Authorization'] for call in post.call_args_list]
+        self.assertEqual(auths, ['Bearer key-a', 'Bearer key-b'])
+
+    def test_drained_key_is_skipped_on_the_next_request(self):
+        service = _service('groq')
+        service.api_keys = {
+            'groq': ['key-a', 'key-b'],
+            'openrouter': [],
+            'gemma': [],
+            'cloudflare': [],
+        }
+        drained = MagicMock(ok=True, status_code=200, headers={
+            'x-ratelimit-limit-tokens': '8000',
+            'x-ratelimit-remaining-tokens': '0',
+            'x-ratelimit-reset-tokens': '40s',
+        })
+        drained.json.return_value = {'choices': [{'message': {'content': 'First'}, 'finish_reason': 'stop'}]}
+        nxt = MagicMock(ok=True, status_code=200, headers={})
+        nxt.json.return_value = {'choices': [{'message': {'content': 'Second'}, 'finish_reason': 'stop'}]}
+
+        with patch('apps.integrations.llm_service.requests.post', side_effect=[drained, nxt]) as post:
+            first = service.generate_response_with_fallback(
+                [{'role': 'user', 'content': 'Hi'}],
+                preferred_provider='groq',
+            )
+            second = service.generate_response_with_fallback(
+                [{'role': 'user', 'content': 'Hi'}],
+                preferred_provider='groq',
+            )
+
+        self.assertEqual((first, second), ('First', 'Second'))
+        auths = [call.kwargs['headers']['Authorization'] for call in post.call_args_list]
+        self.assertEqual(auths, ['Bearer key-a', 'Bearer key-b'])
+        self.assertGreater(key_cooldown_remaining('groq', 'key-a'), 0)
+
     def test_large_prompt_skips_groq_and_caps_its_completion_budget(self):
         service = _service('groq', 'gemma')
         big_prompt = 'x' * 4 * 9000
