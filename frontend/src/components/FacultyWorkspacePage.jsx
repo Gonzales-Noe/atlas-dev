@@ -9811,26 +9811,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Button>
           </DialogActions>
         </Dialog>
-
-        <Dialog open={Boolean(confirmDeleteAssessmentId)} onClose={() => setConfirmDeleteAssessmentId(null)} maxWidth="xs" fullWidth>
-          <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Assessment?</DialogTitle>
-          <DialogContent>
-            <DialogContentText sx={{ fontSize: '0.85rem' }}>
-              This will permanently remove the selected assessment and its generated items.
-              You cannot undo this action.
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
-            <Button size="small" onClick={() => setConfirmDeleteAssessmentId(null)}
-              sx={{ textTransform: 'none', color: '#666' }}>Cancel</Button>
-            <Button size="small" variant="contained"
-              disabled={Boolean(deletingAssessmentId)}
-              onClick={() => { const id = confirmDeleteAssessmentId; setConfirmDeleteAssessmentId(null); handleDeleteAssessment(id) }}
-              sx={{ bgcolor: '#c62828', '&:hover': { bgcolor: '#b71c1c' }, textTransform: 'none', fontWeight: 600 }}>
-              {deletingAssessmentId ? 'Deleting…' : 'Delete'}
-            </Button>
-          </DialogActions>
-        </Dialog>
       </>
     )
   }
@@ -10013,6 +9993,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           </Box>
         )}
+      <Dialog open={Boolean(confirmDeleteAssessmentId)} onClose={() => setConfirmDeleteAssessmentId(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Assessment?</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ fontSize: '0.85rem' }}>
+            This will permanently remove the selected assessment and its generated items.
+            You cannot undo this action.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+          <Button size="small" onClick={() => setConfirmDeleteAssessmentId(null)}
+            sx={{ textTransform: 'none', color: '#666' }}>Cancel</Button>
+          <Button size="small" variant="contained"
+            disabled={Boolean(deletingAssessmentId)}
+            onClick={() => { const id = confirmDeleteAssessmentId; setConfirmDeleteAssessmentId(null); handleDeleteAssessment(id) }}
+            sx={{ bgcolor: '#c62828', '&:hover': { bgcolor: '#b71c1c' }, textTransform: 'none', fontWeight: 600 }}>
+            {deletingAssessmentId ? 'Deleting…' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={answerSheetDialogOpen} onClose={() => setAnswerSheetDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Answer Sheet Configuration</DialogTitle>
         <DialogContent dividers>
