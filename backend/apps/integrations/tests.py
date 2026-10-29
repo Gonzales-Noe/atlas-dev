@@ -411,14 +411,16 @@ class TopicWeekPlanTests(SimpleTestCase):
         self.assertTrue(lines[1].startswith("1\tTopic 1"))
         self.assertTrue(lines[10].startswith("10\t"))
         self.assertTrue(lines[14].startswith("14\t"))
-        self.assertTrue(lines[18].startswith("18\t"))
+        self.assertTrue(lines[17].startswith("17\t"))
+        self.assertEqual(lines[-1], "18\tFinal Examination and Submission of Requirements")
+        self.assertNotIn("Topic 18", assign_topic_weeks(raw, term_weeks=18))
 
     def test_model_orientation_is_not_counted_as_a_content_week(self):
         raw = "1 Class Orientation\n" + "\n".join(f"1 Topic {number}" for number in range(1, 19))
         lines = assign_topic_weeks(raw, term_weeks=18).splitlines()
         self.assertEqual(lines[0], "1\tClass Orientation")
         self.assertTrue(lines[1].startswith("1\tTopic 1"))
-        self.assertTrue(lines[-1].startswith("18\t"))
+        self.assertEqual(lines[-1], "18\tFinal Examination and Submission of Requirements")
         self.assertEqual(len(lines), 19)
 
     def test_heavier_topic_is_one_merged_row(self):
@@ -430,7 +432,7 @@ class TopicWeekPlanTests(SimpleTestCase):
         self.assertEqual(labels[1], "1")
         self.assertEqual(labels[2], "2-3")
         self.assertIn("Customer Analytics", lines[2])
-        self.assertEqual(labels[-1], "18")
+        self.assertEqual(lines[-1], "18\tFinal Examination and Submission of Requirements")
         self.assertEqual(len(lines), 18)
 
     def test_short_plan_widens_until_the_term_is_covered(self):

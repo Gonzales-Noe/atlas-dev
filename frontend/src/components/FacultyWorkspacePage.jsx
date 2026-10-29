@@ -319,6 +319,10 @@ function parseTopicMap(text, count, iloNumbers, soNumbers) {
   return pairs.slice(0, count)
 }
 
+function topicLineTitle(line) {
+  return String(line || '').trim().replace(/^(?:[-*•–—]|\d+[.)])\s+/, '')
+}
+
 function shapeTopicsBlock(block) {
   const lines = String(block || '')
     .split(/\n/)
@@ -326,16 +330,90 @@ function shapeTopicsBlock(block) {
     .filter(line => line.trim())
   if (!lines.length) return ''
   return lines.map((line, index) => {
-    const title = line.trim().replace(/^(?:[-*•–—]|\d+[.)])\s+/, '')
+    const title = topicLineTitle(line)
     if (index === 0 || index === lines.length - 1) return title
     return `     ${title}`
   }).join('\n')
 }
 
-function shapeTopicsCell(text) {
+function shapeTopicsCell(text, options) {
   const stripped = String(text || '').replace(/```[\w]*\n?|```/g, '').trim()
-  const blocks = stripped.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean)
-  return blocks.map(shapeTopicsBlock).filter(Boolean).join('\n\n')
+  if (!options || !options.span) {
+    const blocks = stripped.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean)
+    return blocks.map(shapeTopicsBlock).filter(Boolean).join('\n\n')
+  }
+  const parsed = []
+  let sawBlank = false
+  stripped.split(/\n/).forEach(raw => {
+    if (!raw.trim()) {
+      if (parsed.length) sawBlank = true
+      return
+    }
+    const title = topicLineTitle(raw)
+    if (!title) return
+    parsed.push({
+      indented: /^\s+/.test(raw) || /^[-*•–—]/.test(raw.trim()),
+      title,
+      afterBlank: sawBlank,
+    })
+    sawBlank = false
+  })
+  if (!parsed.length) return ''
+  if (options.span <= 1) {
+    const sub = parsed.slice(1).find(row => row.indented) || parsed[1]
+    return sub?.title ? `${parsed[0].title}\n     ${sub.title}` : parsed[0].title
+  }
+  let activity = ''
+  let body = parsed
+  if (options.activity) {
+    const splitAt = parsed.findIndex(row => row.afterBlank && !row.indented)
+    if (splitAt > 0) {
+      activity = parsed[splitAt].title
+      body = parsed.slice(0, splitAt)
+    } else if (!parsed[parsed.length - 1].indented && parsed.length > 2) {
+      activity = parsed[parsed.length - 1].title
+      body = parsed.slice(0, -1)
+    }
+  }
+  const topics = []
+  body.forEach(row => {
+    if (!row.indented || !topics.length) {
+      if (topics.length < 3) topics.push({ title: row.title, subs: [] })
+      return
+    }
+    const current = topics[topics.length - 1]
+    if (current.subs.length < 2) current.subs.push(row.title)
+  })
+  if (topics.length && topics.every(topic => !topic.subs.length) && body.length > 1) {
+    topics.length = 0
+    for (let index = 0; index < body.length && topics.length < 3; index += 2) {
+      const sub = body[index + 1]?.title
+      topics.push({ title: body[index].title, subs: sub ? [sub] : [] })
+    }
+  }
+  const lines = topics.flatMap(topic => [topic.title, ...topic.subs.map(sub => `     ${sub}`)])
+  return activity ? `${lines.join('\n')}\n\n${activity}` : lines.join('\n')
+}
+
+function weekSpan(label) {
+  const range = String(label || '').trim().match(/^(\d+)\s*-\s*(\d+)$/)
+  if (!range) return 1
+  return Math.max(1, Number(range[2]) - Number(range[1]) + 1)
+}
+
+const FINAL_WEEK_TOPICS = 'Final Examination and Submission of Requirements'
+const FINAL_WEEK_OUTCOME = 'Complete the final examination and submit the requirements.'
+
+function isFinalWeekRow(row) {
+  const weeks = String(row?.weeks || '').trim()
+  const title = String(row?.title || '').trim().toLowerCase()
+  return weeks === '18' || /(?:^|-)18$/.test(weeks) || title.includes('final examination') || title.includes('submission of requirements')
+}
+
+function writingStillRunning(generating, assigning, progress) {
+  if (!(generating || assigning)) return false
+  if (progress?.total > 0 && progress.completed >= progress.total) return false
+  return true
 }
 
 function shapeGeneratedField(section, text) {
@@ -733,7 +811,7 @@ const DEFAULT_GRADING_ROWS = [
   { grade: '5.0',  rating: 'Failing',      range: 'Below 75' },
   { grade: 'INC',  rating: 'Incomplete',   range: '' },
 ]
-const TLA_WEEK_COUNT = 17
+const TLA_WEEK_COUNT = 18
 const TLA_DEFAULT_CHAPTER_ROWS = 8
 const ASSESSMENT_SCHEDULE_DEFAULT_ROWS = 6
 
@@ -2402,6 +2480,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             topics: ORIENTATION_TOPICS,
             outcomes: ORIENTATION_OUTCOME,
             delivery: ORIENTATION_DELIVERY,
+          } : isFinalWeekRow(row) ? {
+            topics: FINAL_WEEK_TOPICS,
+            outcomes: FINAL_WEEK_OUTCOME,
           } : {}),
         })),
       }))
@@ -2420,7 +2501,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         text: row.weeks,
       }))
       const topicLabels = []
-      const contentCount = plan.filter(row => !isClassOrientationTitle(row.title)).length
+      const contentCount = plan.filter(row => !isClassOrientationTitle(row.title) && !isFinalWeekRow(row)).length
       const total = contentCount * 2 + 1
       let completed = 0
       for (let index = 0; index < plan.length; index += 1) {
@@ -2458,9 +2539,42 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           )
           continue
         }
-        const topicHint = row.title
-          ? `Topic title: ${row.title}. The first line must be this title. This row covers week ${row.weeks}. Do not write the week numbers in this cell.`
-          : `This row covers week ${row.weeks}. Continue the course sequence. Do not write the week numbers in this cell.`
+        if (isFinalWeekRow(row)) {
+          topicLabels.push(FINAL_WEEK_TOPICS)
+          drafts.push(
+            {
+              section: 'topics',
+              label: `Topics / Reading List (${row.weeks || '18'})`,
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: 'topics',
+              text: FINAL_WEEK_TOPICS,
+            },
+            {
+              section: 'topic_outcome',
+              label: `Topic Outcomes (${row.weeks || '18'})`,
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: 'outcomes',
+              text: FINAL_WEEK_OUTCOME,
+            },
+          )
+          continue
+        }
+        const span = weekSpan(row.weeks)
+        const withActivity = span >= 2
+        const topicHint = [
+          row.title
+            ? `Topic title: ${row.title}. The first line must be this title.`
+            : 'Continue the course sequence.',
+          `This row covers week ${row.weeks}.`,
+          withActivity
+            ? 'This topic spans two weeks. Write 1 to 3 topic titles. Under each title, indent 1 or 2 subtopic titles. Then a blank line and one activity title for the whole cell. Only one activity.'
+            : 'This topic covers one week. Write the topic title, then one indented subtopic. No activity.',
+          'Titles only. No sentences. Do not write the week numbers in this cell.',
+        ].join(' ')
         setAiPipelineProgress({ completed, total, label: `Topics / Reading List ${row.weeks}` })
         const topicsResult = await requestSyllabusField(api, {
           course_id: courseId,
@@ -2472,7 +2586,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           extra_instructions: topicHint,
           assessment_criteria: source.assessment_criteria || '',
           selected_doc_ids: selectedIds,
-        }, shapeTopicsCell)
+        }, text => shapeTopicsCell(text, { span, activity: withActivity }))
         const topicsText = topicsResult.text
         if (!topicsText) {
           throw new Error(`The AI did not return topics for weeks ${row.weeks}. Try again.`)
@@ -2579,7 +2693,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )
       })
       setAiPipelineDrafts(drafts)
-      setAiPipelineProgress({ completed: total, total, label: '' })
+      setAiPipelineProgress(null)
+      setAiGenerating(false)
       setAiReviewOpen(true)
       setAiField(null)
       notifyGenerationComplete('Syllabus', `${plan.length} topic row${plan.length === 1 ? '' : 's'} generated`)
@@ -2707,7 +2822,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         }
       }
       setAiPipelineDrafts(drafts)
-      setAiPipelineProgress({ completed: fields.length, total: fields.length, label: '' })
+      setAiPipelineProgress(null)
+      setAiGenerating(false)
       setAiReviewOpen(true)
       setAiField(null)
       notifyGenerationComplete('Syllabus', `${fields.length} section${fields.length === 1 ? '' : 's'} generated`)
@@ -7094,8 +7210,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     Writing assistant
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
-                    {aiGenerating
-                      ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress)
+                      ? `Writing ${Math.min((aiPipelineProgress?.completed || 0) + 1, aiPipelineProgress?.total || aiSectionFields.length || 1)} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
                       : aiPipelineDrafts
                         ? 'Your drafts are ready. Review them before adding them to your syllabus.'
                         : activeSyllabusSectionKey === 'mapping-of-at'
@@ -7114,8 +7230,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Button
                     size="small"
                     variant="contained"
-                    disabled={aiGenerating || frameworkAssigning || !aiSectionFields.length}
-                    startIcon={aiGenerating || frameworkAssigning ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
+                    disabled={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) || !aiSectionFields.length}
+                    startIcon={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                     onClick={handleGenerateSection}
                     sx={{
                       bgcolor: '#16A34A',
@@ -7126,7 +7242,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       minHeight: 34,
                     }}
                   >
-                    {aiGenerating || frameworkAssigning ? 'Writing…' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? 'Writing…' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
                   </Button>
                 )}
 
@@ -7148,17 +7264,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 )}
               </Box>
 
-              {aiGenerating && aiPipelineProgress && (
-                <LinearProgress
-                  variant="determinate"
-                  value={(aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100}
-                  sx={{
-                    height: 4,
-                    borderRadius: 4,
-                    bgcolor: 'rgba(255,255,255,0.12)',
-                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
-                  }}
-                />
+              {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) && aiPipelineProgress && (
+                <Box sx={{ height: 4, borderRadius: 4, bgcolor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                  <Box sx={{
+                    height: '100%',
+                    width: `${Math.min(92, (aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100)}%`,
+                    bgcolor: '#86EFAC',
+                    transition: 'width 0.2s linear',
+                  }} />
+                </Box>
               )}
               {aiError && (
                 <Typography role="alert" variant="caption" sx={{ color: '#FCA5A5' }}>
@@ -7185,27 +7299,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             }}
           >
             <DialogTitle id="ai-draft-review-title" sx={{ pb: 0.75, fontWeight: 800 }}>
-              {aiGenerating ? 'Creating your drafts' : 'Review your drafts'}
+              {writingStillRunning(aiGenerating, false, aiPipelineProgress) ? 'Creating your drafts' : 'Review your drafts'}
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'rgba(255,255,255,0.12)' }}>
               <DialogContentText sx={{ color: '#D1D5DB', mb: 2 }}>
-                {aiGenerating
-                  ? `Writing ${aiPipelineProgress?.completed + 1 || 1} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                {writingStillRunning(aiGenerating, false, aiPipelineProgress)
+                  ? `Writing ${Math.min((aiPipelineProgress?.completed || 0) + 1, aiPipelineProgress?.total || aiSectionFields.length || 1)} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
                   : 'Check the suggestions below. You can add them to your syllabus, remove them, or try again.'}
               </DialogContentText>
-              {aiGenerating ? (
-                <LinearProgress
-                  variant={aiPipelineProgress?.total ? 'determinate' : 'indeterminate'}
-                  value={aiPipelineProgress?.total
-                    ? (aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100
-                    : undefined}
-                  sx={{
-                    height: 5,
-                    borderRadius: 4,
-                    bgcolor: 'rgba(255,255,255,0.12)',
-                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
-                  }}
-                />
+              {writingStillRunning(aiGenerating, false, aiPipelineProgress) ? (
+                <Box sx={{ height: 5, borderRadius: 4, bgcolor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+                  <Box sx={{
+                    height: '100%',
+                    width: `${aiPipelineProgress?.total ? Math.min(92, (aiPipelineProgress.completed / aiPipelineProgress.total) * 100) : 30}%`,
+                    bgcolor: '#86EFAC',
+                  }} />
+                </Box>
               ) : (
                 <Stack spacing={1.5}>
                   {(aiPipelineDrafts || []).map((draft, index) => (
@@ -7292,7 +7401,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <span>
                     <IconButton
                       aria-label="Add drafts to syllabus and continue"
-                      disabled={aiGenerating || !aiPipelineDrafts?.length}
+                      disabled={writingStillRunning(aiGenerating, false, aiPipelineProgress) || !aiPipelineDrafts?.length}
                       onClick={acceptAiDraftsAndContinue}
                       sx={{ color: '#86EFAC', bgcolor: 'rgba(22,163,74,0.16)', '&:hover': { bgcolor: 'rgba(22,163,74,0.3)' } }}
                     >
@@ -7304,7 +7413,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <span>
                     <IconButton
                       aria-label="Remove generated drafts"
-                      disabled={aiGenerating || !aiPipelineDrafts?.length}
+                      disabled={writingStillRunning(aiGenerating, false, aiPipelineProgress) || !aiPipelineDrafts?.length}
                       onClick={discardAiDrafts}
                       sx={{ color: '#FCA5A5', bgcolor: 'rgba(239,68,68,0.12)', '&:hover': { bgcolor: 'rgba(239,68,68,0.24)' } }}
                     >
@@ -7316,7 +7425,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <span>
                     <IconButton
                       aria-label="Create drafts again"
-                      disabled={aiGenerating || !aiSectionFields.length}
+                      disabled={writingStillRunning(aiGenerating, false, aiPipelineProgress) || !aiSectionFields.length}
                       onClick={regenerateAiDrafts}
                       sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}
                     >
