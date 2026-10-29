@@ -52,6 +52,22 @@ from .docx_builders import (
     has_tos,
     make_landscape,
 )
+from .assessment_qa import (
+    apply_source_results,
+    approval_blockers,
+    check_against_blueprint,
+    parse_source_results,
+    source_batches,
+    source_check_prompt,
+)
+from .consistency_checker import (
+    apply_topic_judgments,
+    check_consistency,
+    checked_now,
+    parse_topic_judgments,
+    stamp_module_ilos,
+    topic_review_prompts,
+)
 from .metrics import compute_metrics
 from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, GenerateSyllabusSerializer
 
@@ -783,6 +799,12 @@ def generate_module(request):
             if "id" not in st:
                 st["id"] = f"st_{idx}"
 
+        module_content = stamp_module_ilos(
+            module_content,
+            latest_syllabus_for_data.syllabus_content if latest_syllabus_for_data else {},
+            week_number,
+        )
+
         # ── Step 6: Save to DB ─────────────────────────────────────────────
         syllabus = (
             Syllabus.objects.filter(course=course, status="Draft")
@@ -888,6 +910,74 @@ def save_module_content(request, module_id):
     module.save(update_fields=["module_content", "status"])
 
     return Response({"success": True, "module_id": str(module.module_id)})
+
+
+def _clear_assessment_qa(assessment, update_fields):
+    """Drop a stored quality report after an item changes."""
+    if getattr(assessment, 'qa_report', None):
+        assessment.qa_report = None
+        if 'qa_report' not in update_fields:
+            update_fields.append('qa_report')
+    return update_fields
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def check_syllabus_module_consistency(request, course_id):
+    """Compare lecture weeks, ILO codes, and saved modules for one course."""
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    syllabus = (
+        Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
+        .order_by('-generated_at', '-syllabus_id')
+        .first()
+    )
+    if not syllabus or not isinstance(syllabus.syllabus_content, dict):
+        return Response(
+            {'success': False, 'detail': 'Save a syllabus before checking alignment.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    modules = [
+        {
+            'module_id': str(module.module_id),
+            'module_title': module.module_title,
+            'week_number': module.week_number,
+            'module_content': module.module_content if isinstance(module.module_content, dict) else {},
+        }
+        for module in Module.objects.filter(syllabus__course=course).order_by('week_number', '-generated_at')
+    ]
+    report = check_consistency(syllabus.syllabus_content, modules)
+    use_cot = bool(request.data.get('use_cot', True))
+    cot_error = ''
+    if use_cot and report.get('needs_review'):
+        try:
+            system_prompt, user_prompt = topic_review_prompts(report)
+            llm = LLMService()
+            raw = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': user_prompt}],
+                preferred_provider=request.data.get('provider') or None,
+                system=system_prompt,
+                max_tokens=700,
+            )
+            report = apply_topic_judgments(report, parse_topic_judgments(raw))
+        except Exception as exc:
+            logger.exception('Topic wording review failed for course %s', course_id)
+            cot_error = str(exc)
+    report['checked_at'] = checked_now()
+    if cot_error:
+        report['cot_error'] = cot_error
+
+    content = dict(syllabus.syllabus_content)
+    content['consistency_report'] = report
+    syllabus.syllabus_content = content
+    syllabus.save(update_fields=['syllabus_content'])
+    return Response({'success': True, 'report': report}, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -2262,6 +2352,8 @@ def _assessment_detail_payload(assessment):
     items_qs = AssessmentItem.objects.filter(assessment=assessment)
     raw_items = []
     target_totals = []
+    qa_report = assessment.qa_report if isinstance(assessment.qa_report, dict) else None
+    qa_items = (qa_report or {}).get('items') if isinstance((qa_report or {}).get('items'), dict) else {}
     for item in items_qs:
         metadata = item.rubric if isinstance(item.rubric, dict) else {}
         target_total = _to_int(metadata.get('assessment_total_items'), 0)
@@ -2285,6 +2377,7 @@ def _assessment_detail_payload(assessment):
                 'matched_module_id': metadata.get('matched_module_id'),
                 'matched_module_title': metadata.get('matched_module_title') or '',
                 'matched_module_week': metadata.get('matched_module_week'),
+                'qa': qa_items.get(str(item.item_id)),
             }
         )
 
@@ -2300,6 +2393,7 @@ def _assessment_detail_payload(assessment):
         'items': raw_items,
         'total_items': len(raw_items),
         'target_total_items': max(target_totals) if target_totals else len(raw_items),
+        'qa_report': qa_report,
     }
 
 
@@ -2881,10 +2975,14 @@ Requirements:
         next_item_number = _next_missing_item_number(target_assessment, total_generated)
 
         next_status = 'Generated' if next_item_number is None else 'Draft'
+        update_fields = []
         if target_assessment.status != next_status:
             target_assessment.status = next_status
             target_assessment.generated_at = timezone.now()
-            target_assessment.save(update_fields=['status', 'generated_at'])
+            update_fields.extend(['status', 'generated_at'])
+        update_fields = _clear_assessment_qa(target_assessment, update_fields)
+        if update_fields:
+            target_assessment.save(update_fields=update_fields)
 
         return Response(
             {
@@ -2995,7 +3093,15 @@ Requirements:
         if final_counters.get('is_complete'):
             target_assessment.status = 'Generated'
             target_assessment.generated_at = timezone.now()
-            target_assessment.save(update_fields=['status', 'generated_at'])
+            update_fields = _clear_assessment_qa(target_assessment, ['status', 'generated_at'])
+            target_assessment.save(update_fields=update_fields)
+        elif target_assessment.qa_report or str(target_assessment.status or '').lower() == 'approved':
+            target_assessment.qa_report = None
+            update_fields = ['qa_report']
+            if str(target_assessment.status or '').lower() == 'approved':
+                target_assessment.status = 'Draft'
+                update_fields.append('status')
+            target_assessment.save(update_fields=update_fields)
 
         return Response(
             {
@@ -3215,10 +3321,14 @@ Return JSON only.
         def _incremental_payload(batch_generated, saved_count, missing, detail=''):
             completed = not missing
             next_status = 'Generated' if completed else 'Draft'
+            update_fields = []
             if incremental_assessment.status != next_status:
                 incremental_assessment.status = next_status
                 incremental_assessment.generated_at = timezone.now()
-                incremental_assessment.save(update_fields=['status', 'generated_at'])
+                update_fields.extend(['status', 'generated_at'])
+            update_fields = _clear_assessment_qa(incremental_assessment, update_fields)
+            if update_fields:
+                incremental_assessment.save(update_fields=update_fields)
             return {
                 'success': batch_generated > 0 or completed,
                 'incremental': True,
@@ -3541,6 +3651,197 @@ def get_assessment_detail(request, assessment_id):
     )
 
 
+def _load_faculty_assessment(request, assessment_id):
+    if not _is_faculty_user(request):
+        return None, _faculty_only_response()
+    try:
+        assessment = Assessment.objects.select_related('course').get(assessment_id=assessment_id)
+    except Assessment.DoesNotExist:
+        return None, Response(
+            {'success': False, 'detail': 'Assessment not found.'},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    _, error_response = _get_assigned_course_or_403(request, assessment.course.course_id)
+    if error_response:
+        return None, error_response
+    return assessment, None
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def run_assessment_qa(request, assessment_id):
+    """Check saved items against the TOS blueprint and the retrieved source passages."""
+    assessment, error_response = _load_faculty_assessment(request, assessment_id)
+    if error_response:
+        return error_response
+
+    course = assessment.course
+    latest_syllabus = (
+        Syllabus.objects.filter(course=course)
+        .order_by('-generated_at', '-syllabus_id')
+        .first()
+    )
+    if not latest_syllabus or not isinstance(latest_syllabus.syllabus_content, dict):
+        return Response(
+            {'success': False, 'detail': 'Save a syllabus with a TOS before running the quality check.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    syllabus_content = latest_syllabus.syllabus_content
+    saved_rows = []
+    exam_code = ''
+    exam_label = ''
+    for item in AssessmentItem.objects.filter(assessment=assessment):
+        rubric = item.rubric if isinstance(item.rubric, dict) else {}
+        exam_code = exam_code or str(rubric.get('assessment_code') or '')
+        exam_label = exam_label or str(rubric.get('exam_label') or '')
+        saved_rows.append({
+            'item_id': str(item.item_id),
+            'item_number': _to_int(rubric.get('item_number'), 0),
+            'section_title': rubric.get('section_title') or '',
+            'bloom_level': rubric.get('bloom_level') or '',
+            'ilo_refs': rubric.get('ilo_refs') or [],
+            'question_text': item.question_text,
+            'choices': rubric.get('choices') or [],
+            'correct_answer': rubric.get('correct_answer') or '',
+            'answer_key': rubric.get('answer_key') or '',
+        })
+    if not saved_rows:
+        return Response(
+            {'success': False, 'detail': 'This assessment has no items to check.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    source = _derive_assessment_source(
+        syllabus_content,
+        source_exam_code=exam_code,
+        source_exam_label=exam_label or assessment.title,
+    )
+    if not source.get('topic_rows'):
+        return Response(
+            {'success': False, 'detail': 'No TOS topics found for this assessment.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    sections = _build_sectioned_assessment_payload(
+        source['topic_rows'],
+        assessment.assessment_type or source.get('assessment_type') or 'quiz',
+        source.get('total_items') or len(saved_rows),
+        ilos=syllabus_content.get('ilos') or [],
+        ilo_bloom=syllabus_content.get('ilo_bloom') or [],
+        assessment_label=source.get('assessment_name') or assessment.title,
+    )
+    structural = check_against_blueprint(sections, saved_rows)
+    section_matches = _match_sections_to_course_modules(course, sections)
+    results = []
+    errors = []
+    llm = LLMService()
+    top_k = max(1, _to_int(request.data.get('top_k'), 3))
+    for batch in source_batches(structural):
+        topic = batch['topic']
+        matched = section_matches.get(_normalize_topic_key(topic))
+        excerpt = _module_prompt_excerpt(matched) if matched else ''
+        try:
+            search_query = f"{course.course_title} {topic}"
+            global_rag = semantic_search_with_summary(
+                search_query, institution_id=request.user.institution_id, top_k=top_k,
+            )
+            course_rag = course_semantic_search_with_summary(
+                query=search_query,
+                course=course,
+                top_k=top_k,
+                selected_doc_ids=None,
+            )
+            chunks = (course_rag.get('chunks') or []) + (global_rag.get('chunks') or [])
+            if chunks:
+                chunk_text = CoTPromptBuilder._format_context(chunks, "")
+            else:
+                chunk_text = "No source passage was retrieved."
+            passages = "\n\n".join(part for part in (chunk_text, excerpt) if part)
+            system_prompt, user_prompt = source_check_prompt(topic, batch['items'], passages)
+            raw = llm.generate_response_with_fallback(
+                messages=[{'role': 'user', 'content': user_prompt}],
+                preferred_provider=request.data.get('provider') or None,
+                system=system_prompt,
+                max_tokens=1200,
+            )
+            results.extend(parse_source_results(raw))
+        except Exception as exc:
+            logger.exception('Assessment source check failed for %s', topic)
+            errors.append(str(exc))
+
+    report = apply_source_results(structural, results, error='; '.join(errors))
+    report['checked_at'] = checked_now()
+    if errors:
+        report['source_error'] = '; '.join(errors)
+    assessment.qa_report = report
+    assessment.status = 'Draft'
+    assessment.save(update_fields=['qa_report', 'status'])
+    return Response(
+        {'success': True, 'qa_report': report, 'assessment': _assessment_detail_payload(assessment)},
+        status=status.HTTP_200_OK,
+    )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def approve_assessment(request, assessment_id):
+    """Record faculty approval once every item passed or carries an override note."""
+    assessment, error_response = _load_faculty_assessment(request, assessment_id)
+    if error_response:
+        return error_response
+
+    notes = request.data.get('notes') or {}
+    if not isinstance(notes, dict):
+        return Response(
+            {'success': False, 'detail': 'notes must be an object of item id to override note.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    allocation_note = str(request.data.get('allocation_note') or '').strip()
+    blockers = approval_blockers(assessment.qa_report, notes, allocation_note)
+    if blockers:
+        return Response(
+            {'success': False, 'detail': 'The assessment is not ready to approve.', 'blockers': blockers},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    report = dict(assessment.qa_report or {})
+    items = {}
+    for item_id, record in (report.get('items') or {}).items():
+        next_record = dict(record)
+        note = str(notes.get(item_id) or '').strip()
+        if note and not next_record.get('passed'):
+            next_record['override_note'] = note
+        items[item_id] = next_record
+    report['items'] = items
+    report['approval'] = {
+        'approved_by': getattr(request.user, 'email', '') or '',
+        'approved_at': timezone.now().isoformat(),
+        'notes': {key: str(value).strip() for key, value in notes.items() if str(value).strip()},
+        'allocation_note': allocation_note,
+    }
+    report['ready_to_approve'] = True
+    assessment.qa_report = report
+    assessment.status = 'Approved'
+    assessment.save(update_fields=['qa_report', 'status'])
+    try:
+        AuditLog.objects.create(
+            user=request.user,
+            action_type='assessment_approved',
+            resource_type='assessment',
+            resource_id=assessment.assessment_id,
+            details={
+                'override_count': len(report['approval']['notes']),
+                'allocation_note': allocation_note,
+            },
+        )
+    except Exception:
+        logger.exception('Could not write the assessment approval audit log')
+    return Response(
+        {'success': True, 'assessment': _assessment_detail_payload(assessment)},
+        status=status.HTTP_200_OK,
+    )
+
+
 def _apply_item_answer_to_sheets(item):
     """Copy the item's correct answer into the answer key of every bubble sheet
     for its assessment, then re-score the scanned sheets."""
@@ -3650,6 +3951,13 @@ def update_assessment_item(request, item_id):
 
     with transaction.atomic():
         item.save(update_fields=update_fields)
+        assessment = item.assessment
+        qa_fields = _clear_assessment_qa(assessment, [])
+        if (assessment.status or '').lower() == 'approved':
+            assessment.status = 'Draft'
+            qa_fields.append('status')
+        if qa_fields:
+            assessment.save(update_fields=qa_fields)
         if 'correct_answer' in data:
             _apply_item_answer_to_sheets(item)
 
@@ -3707,6 +4015,14 @@ def export_assessment_docx(request):
         _, error_response = _get_assigned_course_or_403(request, assessment.course.course_id)
         if error_response:
             return error_response
+        if str(assessment.status or '').lower() != 'approved':
+            return Response(
+                {
+                    'success': False,
+                    'error': 'Approve the assessment after the quality check before exporting.',
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
         payload = _assessment_detail_payload(assessment)
 
     if payload is None:

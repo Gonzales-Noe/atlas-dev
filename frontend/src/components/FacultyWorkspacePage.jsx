@@ -1320,7 +1320,7 @@ function sameAiField(field, selected) {
   return false
 }
 
-function TopicsCell({ value, onChange, onFocus, selected }) {
+function TopicsCell({ value, onChange, onPointerDown, selected }) {
   const ref = useRef(null)
   useLayoutEffect(() => {
     const el = ref.current
@@ -1333,7 +1333,8 @@ function TopicsCell({ value, onChange, onFocus, selected }) {
       ref={ref}
       value={value}
       onChange={onChange}
-      onFocus={onFocus}
+      data-ai-field="true"
+      onPointerDown={onPointerDown}
       style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
     />
   )
@@ -1961,6 +1962,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [moduleContent, setModuleContent]           = useState(null) // JSON content
   const [moduleContentDirty, setModuleContentDirty] = useState(false)
   const [moduleSaving, setModuleSaving]             = useState(false)
+  const [consistencyReport, setConsistencyReport]   = useState(null)
+  const [consistencyChecking, setConsistencyChecking] = useState(false)
+  const [qaRunning, setQaRunning]                   = useState(false)
+  const [approveOpen, setApproveOpen]               = useState(false)
+  const [approveNotes, setApproveNotes]             = useState({})
+  const [allocationNote, setAllocationNote]         = useState('')
+  const [approving, setApproving]                   = useState(false)
   const [moduleExporting, setModuleExporting]       = useState(false)
   const [expandedSubtopics, setExpandedSubtopics]   = useState(new Set())
   const [subtopicGenerating, setSubtopicGenerating] = useState(null)
@@ -3349,6 +3357,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     ))
   }, [workspaceApi.data, courseId])
 
+  useEffect(() => {
+    const stored = workspaceApi.data?.syllabus?.syllabus_content?.consistency_report
+    setConsistencyReport(stored && typeof stored === 'object' ? stored : null)
+  }, [courseId, workspaceApi.data?.syllabus?.syllabus_content?.consistency_report?.checked_at])
+
   // The module topic source is locked per course the first time the faculty
   // confirms it — pull it back from the course record on every load.
   useEffect(() => {
@@ -3514,8 +3527,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
   useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
 
-  // Clear AI field selection when the syllabus section tab changes
-  useEffect(() => { setAiField(null) }, [syllabusSub])
+  // A field stays selected only while it is the one you clicked. Another section,
+  // or a click anywhere else in this section, returns the button to generating all.
+  useEffect(() => { setAiField(null) }, [syllabusSub, activeTab])
+  useEffect(() => {
+    if (!aiField) return undefined
+    const clearUnlessField = (event) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-ai-field], [data-ai-regenerate]')) return
+      setAiField(null)
+    }
+    document.addEventListener('pointerdown', clearUnlessField)
+    return () => document.removeEventListener('pointerdown', clearUnlessField)
+  }, [aiField])
 
   // ── Auto-sync Major Examination tasks → TOS when the TOS tab opens ──
   useEffect(() => {
@@ -3907,6 +3931,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       learning_objectives: [],
       subtopics: [],
       short_activity: null,
+      ilo_refs: Array.isArray(content.ilo_refs) ? content.ilo_refs : [],
     }
     setSelectedModule({
       module_id: data.module_id,
@@ -3957,6 +3982,77 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         completed: total,
         total,
       })
+    }
+  }
+
+  async function handleCheckAlignment() {
+    if (!courseId || consistencyChecking) return
+    setConsistencyChecking(true)
+    setActionError('')
+    try {
+      const { data } = await api.post(`/curriculum/course/${courseId}/consistency-check/`, {
+        use_cot: true,
+      }, { timeout: 120000 })
+      const report = data.report || null
+      setConsistencyReport(report)
+      if (report) setSyllabusData(current => ({ ...current, consistency_report: report }))
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setConsistencyChecking(false)
+    }
+  }
+
+  async function handleRunAssessmentQa() {
+    const assessmentId = assessmentDetail?.assessment_id
+    if (!assessmentId || qaRunning) return
+    setQaRunning(true)
+    setActionError('')
+    try {
+      const { data } = await api.post(`/curriculum/assessment/${assessmentId}/qa/`, {}, { timeout: 300000 })
+      if (data.assessment) {
+        setAssessmentDetail(data.assessment)
+        setSelectedAssessment(current => ({ ...(current || {}), status: data.assessment.status }))
+      }
+      workspaceApi.execute()
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setQaRunning(false)
+    }
+  }
+
+  function openApproveDialog() {
+    const items = assessmentDetail?.qa_report?.items || {}
+    const notes = {}
+    Object.values(items).forEach(record => {
+      if (record?.item_id && record.override_note) notes[record.item_id] = record.override_note
+    })
+    setApproveNotes(notes)
+    setAllocationNote(assessmentDetail?.qa_report?.approval?.allocation_note || '')
+    setApproveOpen(true)
+  }
+
+  async function handleApproveAssessment() {
+    const assessmentId = assessmentDetail?.assessment_id
+    if (!assessmentId || approving) return
+    setApproving(true)
+    setActionError('')
+    try {
+      const { data } = await api.post(`/curriculum/assessment/${assessmentId}/approve/`, {
+        notes: approveNotes,
+        allocation_note: allocationNote,
+      })
+      if (data.assessment) {
+        setAssessmentDetail(data.assessment)
+        setSelectedAssessment(current => ({ ...(current || {}), status: data.assessment.status }))
+      }
+      setApproveOpen(false)
+      workspaceApi.execute()
+    } catch (err) {
+      setActionError(extractApiError(err))
+    } finally {
+      setApproving(false)
     }
   }
 
@@ -5642,11 +5738,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <SectionCard title="University Direction">
             <SylField rules={fixedFieldRules} fieldKey="vision" label={labelFor('vision', 'Vision')} multiline minRows={3}
               value={syllabusData.vision || ''} onChange={e => setSyl('vision', e.target.value)}
-              onFocus={() => setAiField({ section: 'university-information', label: 'Vision', fieldType: 'simple', field: 'vision' })} />
+              data-ai-field="true" onPointerDown={() => setAiField({ section: 'university-information', label: 'Vision', fieldType: 'simple', field: 'vision' })} />
             <Box sx={{ mt: 2 }}>
               <SylField rules={fixedFieldRules} fieldKey="mission" label={labelFor('mission', 'Mission')} multiline minRows={4}
                 value={syllabusData.mission || ''} onChange={e => setSyl('mission', e.target.value)}
-                onFocus={() => setAiField({ section: 'university-information', label: 'Mission', fieldType: 'simple', field: 'mission' })} />
+                data-ai-field="true" onPointerDown={() => setAiField({ section: 'university-information', label: 'Mission', fieldType: 'simple', field: 'mission' })} />
             </Box>
           </SectionCard>
         </>
@@ -5691,7 +5787,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <SectionCard title="Course Details">
             <SylField rules={fixedFieldRules} fieldKey="course-rationale-description" label={labelFor('course-rationale-description', 'Course Rationale and Description')} multiline minRows={5}
               value={syllabusData.rationale || ''} onChange={setRationaleDescription}
-              onFocus={() => setAiField({ section: 'course-information', label: 'Course Rationale and Description', fieldType: 'simple', field: 'rationale' })} />
+              data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-information', label: 'Course Rationale and Description', fieldType: 'simple', field: 'rationale' })} />
             <Box sx={{ mt: 2, maxWidth: 340 }}>
               <SylField rules={fixedFieldRules} fieldKey="contact-hours" label={labelFor('contact-hours', 'Contact Hours')}
                 value={syllabusData.contact_hours || ''} onChange={e => setSyl('contact_hours', e.target.value)} />
@@ -5699,12 +5795,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{ mt: 2 }}>
               <SylField rules={fixedFieldRules} fieldKey="criteria-for-assessment" label={labelFor('criteria-for-assessment', 'Criteria for Assessment')} multiline minRows={3}
                 value={syllabusData.assessment_criteria || ''} onChange={e => setSyl('assessment_criteria', e.target.value)}
-                onFocus={() => setAiField({ section: 'course-information', label: 'Criteria for Assessment', fieldType: 'simple', field: 'assessment_criteria' })} />
+                data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-information', label: 'Criteria for Assessment', fieldType: 'simple', field: 'assessment_criteria' })} />
             </Box>
             <Box sx={{ mt: 2 }}>
               <SylField rules={fixedFieldRules} fieldKey="tla-strategies" label={labelFor('tla-strategies', 'Teaching, Learning, and Assessment Strategies')} multiline minRows={5}
                 value={syllabusData.tlas || ''} onChange={e => setSyl('tlas', e.target.value)}
-                onFocus={() => setAiField({ section: 'course-information', label: 'Teaching, Learning, and Assessment Strategies', fieldType: 'simple', field: 'tlas' })} />
+                data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-information', label: 'Teaching, Learning, and Assessment Strategies', fieldType: 'simple', field: 'tlas' })} />
             </Box>
           </SectionCard>
         </>
@@ -5738,7 +5834,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, flexShrink: 0, height: 22, fontSize: '0.7rem', mt: 0.8 }} />
                     <LField label={`ILO ${i + 1}`} multiline minRows={2}
                       value={ilo} onChange={e => setSylArr('ilos', i, e.target.value)}
-                      onFocus={() => setAiField({ section: 'iloat-references', label: `ILO ${i + 1}`, fieldType: 'array', arrField: 'ilos', arrIndex: i })} />
+                      data-ai-field="true" onPointerDown={() => setAiField({ section: 'iloat-references', label: `ILO ${i + 1}`, fieldType: 'array', arrField: 'ilos', arrIndex: i })} />
                     <RemoveBtn onClick={() => removeIlo(i)} disabled={syllabusData.ilos.length <= 1} />
                   </Box>
                 </Box>
@@ -5776,7 +5872,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Typography variant="body2" sx={{ color: MAROON, fontWeight: 700, minWidth: 22, flexShrink: 0 }}>{i + 1}.</Typography>
                   <LField label={`Reference ${i + 1}`} value={ref}
                     onChange={e => setSylArr('references', i, e.target.value)}
-                    onFocus={() => setAiField({ section: 'iloat-references', label: `Reference ${i + 1}`, fieldType: 'array', arrField: 'references', arrIndex: i })} />
+                    data-ai-field="true" onPointerDown={() => setAiField({ section: 'iloat-references', label: `Reference ${i + 1}`, fieldType: 'array', arrField: 'references', arrIndex: i })} />
                   <RemoveBtn onClick={() => removeSylItem('references', i)} disabled={syllabusData.references.length <= 1} />
                 </Box>
               ))}
@@ -5841,7 +5937,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         onChange={e => setSylArrObj(activeFw.itemsField, i, 'description', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 34) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 34) + 'px'; } }}
-                        onFocus={() => setAiField({ section: 'framework-mapping', label: `${activeFw.label} ${item.code || i + 1} Statement`, fieldType: 'arrayObj', arrField: activeFw.itemsField, arrIndex: i, arrObjKey: 'description' })}
+                        data-ai-field="true" onPointerDown={() => setAiField({ section: 'framework-mapping', label: `${activeFw.label} ${item.code || i + 1} Statement`, fieldType: 'arrayObj', arrField: activeFw.itemsField, arrIndex: i, arrObjKey: 'description' })}
                         style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '34px' }}
                       />
                     </td>
@@ -6159,7 +6255,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <TopicsCell
                         value={ch.topics || ''}
                         selected={sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'topics' })}
-                        onFocus={() => setAiField({ section: 'topics', label: `Topics / Reading List ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'topics' })}
+                        data-ai-field="true" onPointerDown={() => setAiField({ section: 'topics', label: `Topics / Reading List ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'topics' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
                       />
                     </td>
@@ -6169,7 +6265,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.outcomes || ''}
-                        onFocus={() => setAiField({ section: 'topic_outcome', label: `Topic Outcomes ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' })}
+                        data-ai-field="true" onPointerDown={() => setAiField({ section: 'topic_outcome', label: `Topic Outcomes ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
@@ -6914,7 +7010,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   label={labelFor(fieldKey, label)} multiline minRows={3}
                   value={syllabusData[dataKey] || ''}
                   onChange={e => setSyl(dataKey, e.target.value)}
-                  onFocus={() => setAiField({ section: 'course-policies', label, fieldType: 'simple', field: dataKey })} />
+                  data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-policies', label, fieldType: 'simple', field: dataKey })} />
               ))}
             </Stack>
           </SectionCard>
@@ -6924,7 +7020,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               label={labelFor('other-policies', 'Other Course Policies and Requirements')} multiline minRows={4}
               value={syllabusData.other_policies || ''}
               onChange={e => setSyl('other_policies', e.target.value)}
-              onFocus={() => setAiField({ section: 'course-policies', label: 'Other Course Policies and Requirements', fieldType: 'simple', field: 'other_policies' })} />
+              data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-policies', label: 'Other Course Policies and Requirements', fieldType: 'simple', field: 'other_policies' })} />
           </SectionCard>
         </Stack>
       )
@@ -7310,6 +7406,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Button
                     size="small"
                     variant="contained"
+                    data-ai-regenerate="true"
                     disabled={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) || (!focusedAiField && !aiSectionFields.length)}
                     startIcon={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                     onClick={() => focusedAiField ? generateOneField(focusedAiField) : handleGenerateSection()}
@@ -7849,9 +7946,47 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
                         color: moduleTopics.length ? MAROON : '#888',
                         border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
+                <Button size="small" disabled={consistencyChecking || lectureTopics.length === 0}
+                  onClick={handleCheckAlignment}
+                  sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
+                        fontSize: '0.75rem', px: 1.25, py: 0.3, '&:hover': { bgcolor: '#14532D' },
+                        '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
+                  {consistencyChecking ? 'Checking…' : 'Check alignment'}
+                </Button>
               </Box>
             </Box>
           </Paper>
+          {consistencyReport?.summary && (
+            <Alert severity={consistencyReport.summary.aligned === consistencyReport.summary.weeks && !consistencyReport.summary.orphans ? 'success' : 'warning'}
+              sx={{ fontSize: '0.8rem' }}>
+              {consistencyReport.summary.aligned} of {consistencyReport.summary.weeks} lecture weeks align with their module
+              {consistencyReport.summary.missing ? ` · ${consistencyReport.summary.missing} missing` : ''}
+              {consistencyReport.summary.issues ? ` · ${consistencyReport.summary.issues} with gaps` : ''}
+              {consistencyReport.summary.orphans ? ` · ${consistencyReport.summary.orphans} outside the timeline` : ''}.
+              {consistencyReport.cot_error ? ' Wording review could not finish, so close titles were left for you.' : ''}
+            </Alert>
+          )}
+          {consistencyReport?.rows?.some(row => row.status !== 'aligned') && (
+            <Stack spacing={0.6}>
+              {consistencyReport.rows.filter(row => row.status !== 'aligned').map(row => (
+                <Box key={`align-${row.week}`} sx={{ px: 1.25, py: 0.8, borderRadius: 1.25, bgcolor: '#1A1A1F', border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700 }}>
+                    Week {row.week} · {row.status === 'missing' ? 'No module' : 'Needs a look'}
+                  </Typography>
+                  {row.checks.filter(check => !check.ok).map(check => (
+                    <Typography key={check.code} variant="caption" sx={{ display: 'block', color: '#F0F0F2' }}>
+                      {check.detail}
+                    </Typography>
+                  ))}
+                </Box>
+              ))}
+              {(consistencyReport.orphans || []).map(orphan => (
+                <Typography key={orphan.module_id} variant="caption" sx={{ color: '#F0F0F2' }}>
+                  {orphan.detail} ({orphan.module_title || 'Untitled'})
+                </Typography>
+              ))}
+            </Stack>
+          )}
           {lectureTopics.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
@@ -7863,6 +7998,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           ) : (
             <Stack spacing={1}>
               {lectureTopics.map(topic => {
+                const alignment = (consistencyReport?.rows || []).find(row => row.week === topic.week)
                 const existingMod = modules.find(m => !deletedModuleIds.has(String(m.module_id)) && m.week_number === topic.week)
                   || modules.find(m => !deletedModuleIds.has(String(m.module_id)) && String(m.module_title || '').trim() === topic.topic)
                 const isGenerating = moduleGeneratingTopic.has(topic.week)
@@ -7879,6 +8015,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       sx={{ height: 18, fontSize: '0.65rem', color: existingMod ? '#2e7d32' : '#F0F0F2',
                         bgcolor: existingMod ? 'rgba(46,125,50,0.12)' : 'rgba(255,255,255,0.08)',
                         border: '1px solid rgba(255,255,255,0.12)' }} />
+                    {alignment && (
+                      <Chip
+                        label={alignment.status === 'aligned' ? 'Aligned' : alignment.status === 'missing' ? 'Missing' : 'Gap'}
+                        size="small"
+                        sx={{
+                          height: 18, fontSize: '0.65rem', fontWeight: 700,
+                          color: alignment.status === 'aligned' ? '#166534' : '#9A3412',
+                          bgcolor: alignment.status === 'aligned' ? 'rgba(22,163,74,0.15)' : 'rgba(251,146,60,0.16)',
+                        }}
+                      />
+                    )}
                     {!existingMod ? (
                       <Tooltip title={`Generate AI module for Week ${topic.week}`}>
                         <IconButton size="small" disabled={isGenerating}
@@ -8220,14 +8367,48 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 const returnedCount = Array.isArray(assessmentDetail.items) ? assessmentDetail.items.length : 0
                 const explicitTarget = Number(assessmentDetail.target_total_items || 0)
                 const totalTarget = explicitTarget > 0 ? explicitTarget : null
+                const approved = String(assessmentDetail.status || '').toLowerCase() === 'approved'
+                const qaSummary = assessmentDetail.qa_report?.summary
                 return (
-                  <Chip
-                    size="small"
-                    label={totalTarget !== null ? `${returnedCount}/${totalTarget} items` : `${returnedCount} items`}
-                    sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
-                  />
+                  <>
+                    <Chip
+                      size="small"
+                      label={totalTarget !== null ? `${returnedCount}/${totalTarget} items` : `${returnedCount} items`}
+                      sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
+                    />
+                    <Chip
+                      size="small"
+                      label={approved ? 'Approved' : (assessmentDetail.status || 'Draft')}
+                      sx={{
+                        height: 22, fontSize: '0.68rem', fontWeight: 700,
+                        bgcolor: approved ? 'rgba(22,163,74,0.15)' : 'rgba(255,255,255,0.08)',
+                        color: approved ? '#166534' : '#F0F0F2',
+                      }}
+                    />
+                    {qaSummary && (
+                      <Chip
+                        size="small"
+                        label={`${qaSummary.passed}/${qaSummary.items} passed QA`}
+                        sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON }}
+                      />
+                    )}
+                  </>
                 )
               })()}
+              <Button size="small" disabled={qaRunning || !(assessmentDetail.items || []).length}
+                onClick={handleRunAssessmentQa}
+                sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
+                      fontSize: '0.75rem', px: 1.25, py: 0.35, '&:hover': { bgcolor: '#14532D' },
+                      '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
+                {qaRunning ? 'Checking…' : 'Check items'}
+              </Button>
+              <Button size="small" disabled={qaRunning || approving || !assessmentDetail.qa_report}
+                onClick={openApproveDialog}
+                sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
+                      fontSize: '0.75rem', px: 1.25, py: 0.35, borderWidth: '1px', borderStyle: 'solid',
+                      '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
+                {String(assessmentDetail.status || '').toLowerCase() === 'approved' ? 'Approved' : 'Approve'}
+              </Button>
               <Button
                 size="small"
                 startIcon={<PictureAsPdfIcon sx={{ fontSize: '0.85rem !important' }} />}
@@ -8262,9 +8443,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </MenuItem>
               </Menu>
 
+              <Tooltip title={String(assessmentDetail.status || '').toLowerCase() === 'approved' ? 'Export DOCX' : 'Approve the assessment after the quality check before exporting.'}>
+              <span>
               <Button size="small" startIcon={<InsertDriveFileIcon sx={{ fontSize: '0.85rem !important' }} />}
                 endIcon={<ExpandMoreIcon sx={{ fontSize: '0.85rem !important' }} />}
-                disabled={assessmentExporting}
+                disabled={assessmentExporting || String(assessmentDetail.status || '').toLowerCase() !== 'approved'}
                 onClick={(e) => setExportMenuAnchor(e.currentTarget)}
                 sx={{
                   borderColor: MAROON,
@@ -8280,6 +8463,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 }}>
                 {assessmentExporting ? 'Exporting…' : 'Export DOCX'}
               </Button>
+              </span>
+              </Tooltip>
               <Menu
                 anchorEl={exportMenuAnchor}
                 open={Boolean(exportMenuAnchor)}
@@ -8300,6 +8485,50 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Menu>
             </Box>
 
+            {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
+              <Alert severity="warning" sx={{ fontSize: '0.8rem' }}>
+                {(assessmentDetail.qa_report.allocation_details || []).join(' ')}
+              </Alert>
+            )}
+            <Dialog open={approveOpen} onClose={() => { if (!approving) setApproveOpen(false) }} maxWidth="sm" fullWidth>
+              <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Approve assessment</DialogTitle>
+              <DialogContent>
+                <Stack spacing={1.5} sx={{ mt: 0.5 }}>
+                  <DialogContentText sx={{ fontSize: '0.84rem' }}>
+                    {assessmentDetail.qa_report?.ready_to_approve
+                      ? 'Every item matches its TOS cell and the keyed answer is supported by the source passages.'
+                      : 'Write a note for each item that did not pass. The note is stored with your approval.'}
+                  </DialogContentText>
+                  {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
+                    <TextField
+                      label="Why the TOS counts still stand"
+                      value={allocationNote}
+                      onChange={e => setAllocationNote(e.target.value)}
+                      fullWidth size="small" multiline minRows={2}
+                    />
+                  )}
+                  {Object.values(assessmentDetail.qa_report?.items || {})
+                    .filter(record => !record.passed)
+                    .sort((a, b) => (a.item_number || 0) - (b.item_number || 0))
+                    .map(record => (
+                      <TextField
+                        key={record.item_id}
+                        label={`Item ${record.item_number}`}
+                        helperText={[...(record.details || []), record.evidence].filter(Boolean).join(' ')}
+                        value={approveNotes[record.item_id] || ''}
+                        onChange={e => setApproveNotes(current => ({ ...current, [record.item_id]: e.target.value }))}
+                        fullWidth size="small" multiline minRows={2}
+                      />
+                    ))}
+                </Stack>
+              </DialogContent>
+              <DialogActions>
+                <Button onClick={() => setApproveOpen(false)} disabled={approving} sx={{ textTransform: 'none' }}>Cancel</Button>
+                <Button onClick={handleApproveAssessment} disabled={approving} sx={{ textTransform: 'none', bgcolor: MAROON, color: '#fff', '&:hover': { bgcolor: '#14532D' } }}>
+                  {approving ? 'Saving…' : 'Approve'}
+                </Button>
+              </DialogActions>
+            </Dialog>
             {(assessmentDetail.items || []).length === 0 ? (
               <SectionCard title="Assessment Items">
                 <Typography variant="body2" sx={{ color: '#999' }}>
@@ -8333,6 +8562,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             label={item.bloom_level}
                             sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.66rem' }}
                           />
+                        )}
+                        {item.qa && (
+                          <Tooltip title={[...(item.qa.details || []), item.qa.evidence].filter(Boolean).join(' ')}>
+                            <Chip
+                              size="small"
+                              label={item.qa.passed ? 'Passed' : (item.qa.override_note ? 'Noted' : 'Review')}
+                              sx={{
+                                height: 20, fontSize: '0.66rem', fontWeight: 700,
+                                bgcolor: item.qa.passed ? 'rgba(22,163,74,0.15)' : 'rgba(251,146,60,0.16)',
+                                color: item.qa.passed ? '#166534' : '#9A3412',
+                              }}
+                            />
+                          </Tooltip>
                         )}
                         <Box sx={{ flex: 1 }} />
                         {!isEditing ? (
