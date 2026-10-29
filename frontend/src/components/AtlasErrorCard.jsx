@@ -2,7 +2,7 @@ import { Box, Button, Typography } from '@mui/material'
 
 import atlasMascot from '../assets/atlas.webp'
 
-export const ATLAS_STARTING_MESSAGE = 'The server is still waking up. Give it a moment, then try again.'
+export const ATLAS_STARTING_MESSAGE = 'Things are still getting ready. Give it a moment, then try again.'
 
 export function plainServerMessage(err, fallback = ATLAS_STARTING_MESSAGE) {
   const status = err?.response?.status
@@ -51,13 +51,15 @@ export default function AtlasErrorCard({
         alt="ATLAS"
         sx={{ width: 148, height: 'auto', flexShrink: 0, alignSelf: 'center', imageRendering: 'pixelated' }}
       />
-      <Box sx={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column' }}>
-        <Typography sx={{ color: '#86EFAC', fontWeight: 800, fontSize: '1.05rem', mb: 0.75 }}>
-          {title}
-        </Typography>
-        <Typography sx={{ color: '#E5E7EB', fontSize: '0.95rem', lineHeight: 1.5 }}>
-          {message}
-        </Typography>
+      <Box sx={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', position: 'relative', textAlign: 'left' }}>
+        <Box sx={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)' }}>
+          <Typography sx={{ color: '#86EFAC', fontWeight: 800, fontSize: '1.4rem', mb: 0.75 }}>
+            {title}
+          </Typography>
+          <Typography sx={{ color: '#E5E7EB', fontSize: '1.2rem', lineHeight: 1.5 }}>
+            {message}
+          </Typography>
+        </Box>
         {onRetry ? (
           <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 'auto', pt: 2 }}>
             <Button
