@@ -25,6 +25,7 @@ import LinearProgress from '@mui/material/LinearProgress'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Snackbar from '@mui/material/Snackbar'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
@@ -2141,6 +2142,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [saveLoading, setSaveLoading]   = useState(false)
   const [saveError, setSaveError]       = useState('')
   const [saveSuccess, setSaveSuccess]   = useState(false)
+  const [buttonNotice, setButtonNotice] = useState(null)
 
   // ── AI footer state ─────────────────────────────────────────────────────
   // aiField: null | { section, label, fieldType, field, arrField, arrIndex, arrObjKey }
@@ -3755,6 +3757,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   // Auto-clear transient notifications
   useEffect(() => { if (!actionError) return; const t = setTimeout(() => setActionError(''), 3000); return () => clearTimeout(t) }, [actionError])
+
+  function showButtonNotice(message, severity = 'success') {
+    if (!message) return
+    setButtonNotice({ message, severity, key: Date.now() })
+  }
+
+  useEffect(() => { if (actionError) showButtonNotice(actionError, 'error') }, [actionError])
+  useEffect(() => { if (aiError) showButtonNotice(aiError, 'error') }, [aiError])
+  useEffect(() => { if (uploadError) showButtonNotice(uploadError, 'error') }, [uploadError])
+  useEffect(() => { if (frameworkAssignError) showButtonNotice(frameworkAssignError, 'error') }, [frameworkAssignError])
+  useEffect(() => { if (topicSourceError) showButtonNotice(topicSourceError, 'error') }, [topicSourceError])
+  useEffect(() => { if (syllabusUploadError) showButtonNotice(syllabusUploadError, 'error') }, [syllabusUploadError])
+  useEffect(() => { if (syllabusExportError) showButtonNotice(syllabusExportError, 'error') }, [syllabusExportError])
+  useEffect(() => {
+    if (!syllabusUploadSuccess) return
+    showButtonNotice('Syllabus imported. Review the fields below and save when ready.')
+  }, [syllabusUploadSuccess])
   useEffect(() => { if (!aiError) return; const t = setTimeout(() => setAiError(''), 4000); return () => clearTimeout(t) }, [aiError])
   useEffect(() => { if (!syllabusUploadSuccess) return; const t = setTimeout(() => setSyllabusUploadSuccess(false), 5000); return () => clearTimeout(t) }, [syllabusUploadSuccess])
 
@@ -3856,9 +3875,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
     setSaveError('')
+    const saveLabel = activeTab === 'tos' ? 'Table of specifications' : 'Syllabus'
+    const reportSaveIssue = (message) => {
+      setSaveError(message)
+      showButtonNotice(message, 'error')
+    }
     if (course?.can_edit_syllabus === false) {
       setIsDirty(false)
-      setSaveError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      reportSaveIssue('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
       return
     }
     const missingRequiredSubsections = configuredSections.flatMap(section => {
@@ -3877,7 +3901,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         .map(subsection => `${section.label}: ${subsection.label}`)
     })
     if (missingRequiredSubsections.length) {
-      setSaveError(`Complete required fields: ${missingRequiredSubsections.join(', ')}.`)
+      reportSaveIssue(`Complete required fields: ${missingRequiredSubsections.join(', ')}.`)
       return
     }
     const restored = applyFixedSyllabusContent(syllabusForPersist(), adminFormatSections)
@@ -3894,10 +3918,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setSyllabusId(data.syllabus_id)
       setIsDirty(false)
       setSaveSuccess(true)
+      showButtonNotice(`${saveLabel} saved.`)
       markStepDone('syllabus', true)
       workspaceApi.execute()
     } catch (err) {
-      setSaveError(extractApiError(err))
+      reportSaveIssue(extractApiError(err) || `Could not save the ${saveLabel.toLowerCase()}.`)
     } finally {
       setSaveLoading(false)
     }
@@ -4405,9 +4430,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setSelectedAssessment(current => ({ ...(current || {}), status: data.assessment.status }))
       }
       setApproveOpen(false)
+      showButtonNotice('Assessment approved.')
       workspaceApi.execute()
     } catch (err) {
-      setActionError(extractApiError(err))
+      setActionError(extractApiError(err) || 'Could not approve this assessment.')
     } finally {
       setApproving(false)
     }
@@ -4589,9 +4615,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       await api.put(`/curriculum/module/${selectedModule.module_id}/save/`, { module_content: moduleContent })
       setModuleContentDirty(false)
+      showButtonNotice('Module saved.')
       workspaceApi.execute()
       markStepDone('module', true)
-    } catch (err) { setActionError(extractApiError(err)) }
+    } catch (err) {
+      setActionError(extractApiError(err) || 'Could not save the module.')
+    }
     finally { setModuleSaving(false) }
   }
 
@@ -5329,17 +5358,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         })
         setEditingItemId(null)
         setEditingItemDraft(null)
+        showButtonNotice('Item saved.')
       } else {
-        setActionError(data.detail || 'Failed to save item.')
+        setActionError(data.detail || 'Could not save this item.')
       }
     } catch (err) {
       const statusCode = err?.response?.status
       const responseText = typeof err?.response?.data === 'string' ? err.response.data : ''
-      if (statusCode === 404 && responseText.includes('Page not found')) {
-        setActionError('Save endpoint is unavailable on the running backend. Restart the Django API server, then try saving again.')
-      } else {
-        setActionError(extractApiError(err) || 'Failed to save item.')
-      }
+      setActionError(statusCode === 404 && responseText.includes('Page not found')
+        ? 'Saving is unavailable right now. Restart the server, then try again.'
+        : (extractApiError(err) || 'Could not save this item.'))
     } finally {
       setItemSaving(false)
     }
@@ -5827,7 +5855,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   async function handleSaveAnswerSheet() {
-    if (!courseId || !assessmentDetail?.assessment_id) return
+    if (!courseId || !assessmentDetail?.assessment_id) {
+      showButtonNotice('Open an assessment before saving the answer sheet.', 'error')
+      return
+    }
     setAnswerSheetSaving(true)
     setActionError('')
     try {
@@ -5858,8 +5889,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setAnswerSheetTemplate(r?.data?.template || null)
       }
       setAnswerSheetDialogOpen(false)
+      showButtonNotice('Answer sheet saved.')
     } catch (err) {
-      setActionError(extractApiError(err) || 'Failed to save answer sheet.')
+      setActionError(extractApiError(err) || 'Could not save the answer sheet.')
     } finally {
       setAnswerSheetSaving(false)
     }
@@ -6397,9 +6429,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.7)' }}>
               Ollama is matching the framework columns to the ILOs and topics.
             </Box>
-          ) : null}
-          {frameworkAssignError ? (
-            <Box sx={{ fontSize: '0.82rem', color: '#FCA5A5' }}>{frameworkAssignError}</Box>
           ) : null}
           <SectionCard title={titleForTable('mapping-of-at', 'ilo-so-cpa-map', 'Table 1. STUDENT OUTCOMES (SO): Mapping of Assessment Tasks (AT)')}>
             {fixedSoCpaTable ? <FixedBlueprintTable table={fixedSoCpaTable} /> : (
@@ -7631,15 +7660,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               </Box>
             )}
-            {syllabusUploadError && (
-              <AutoAlert message={syllabusUploadError} onClose={() => setSyllabusUploadError('')} sx={{ mb: 1.5 }} />
-            )}
-            {syllabusUploadSuccess && (
-              <AutoAlert message="Syllabus imported! Review the fields below and save when ready." severity="success" onClose={() => setSyllabusUploadSuccess(false)} sx={{ mb: 1.5 }} />
-            )}
-            {syllabusExportError && (
-              <AutoAlert message={syllabusExportError} onClose={() => setSyllabusExportError('')} sx={{ mb: 1.5 }} />
-            )}
             <Box sx={{ borderBottom: '2px solid rgba(0,0,0,0.08)', mb: 2.5 }}>
               <Tabs
                 value={syllabusSub}
@@ -7711,17 +7731,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               display: 'flex', alignItems: 'center', gap: 2,
               zIndex: 30,
             }}>
-              {saveError
-                ? <>
-                    <Typography variant="caption" sx={{ color: '#FCA5A5', flex: 1 }}>{saveError}</Typography>
-                    <IconButton size="small" onClick={() => setSaveError('')} sx={{ color: '#FCA5A5', p: 0.25 }}>
-                      <span style={{ fontSize: '0.9rem', lineHeight: 1 }}>✕</span>
-                    </IconButton>
-                  </>
-                : <Typography variant="caption" sx={{ color: '#E5E7EB', flex: 1 }}>
-                    You have unsaved changes in this syllabus.
-                  </Typography>
-              }
+              <Typography variant="caption" sx={{ color: '#E5E7EB', flex: 1 }}>
+                You have unsaved changes in this syllabus.
+              </Typography>
               <Button variant="outlined" size="small" disabled={saveLoading}
                 onClick={() => { setIsDirty(false); setSaveSuccess(false); workspaceApi.execute() }}
                 sx={{ textTransform: 'none', borderColor: '#ccc', color: '#666', borderRadius: 1.5 }}>
@@ -7817,11 +7829,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     transition: 'width 0.2s linear',
                   }} />
                 </Box>
-              )}
-              {aiError && (
-                <Typography role="alert" variant="caption" sx={{ color: '#FCA5A5' }}>
-                  {aiError}
-                </Typography>
               )}
             </Stack>
           </Box>
@@ -7930,11 +7937,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   Adding the table drafts will replace the existing rows in those tables.
                 </Alert>
               )}
-              {aiError && (
-                <Alert severity="error" sx={{ mt: 2 }}>
-                  {aiError}
-                </Alert>
-              )}
             </DialogContent>
             <DialogActions sx={{ px: 2.5, py: 1.5, justifyContent: 'space-between' }}>
               <Typography variant="caption" sx={{ color: '#9CA3AF' }}>
@@ -7981,17 +7983,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </DialogActions>
           </Dialog>
 
-          {/* Saved confirmation — auto-dismissed after 3 s */}
-          {saveSuccess && !isDirty && (
-            <Box sx={{ flexShrink: 0 }}>
-              <AutoAlert
-                message="Syllabus saved successfully."
-                severity="success"
-                onClose={() => setSaveSuccess(false)}
-                sx={{ borderRadius: 0, borderTop: '1px solid #A5D6A7' }}
-              />
-            </Box>
-          )}
         </Box>
       )
     }
@@ -8022,8 +8013,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Box sx={{ position: 'relative' }}>
             <Stack spacing={2}>
-              <AutoAlert message={actionError} onClose={() => setActionError('')} />
-
               {/* Header bar */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                 <Tooltip title="Back to modules list">
@@ -8295,7 +8284,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
         <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
         <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
           <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, px: 1.5, py: 0.85 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.25, flexWrap: 'wrap' }}>
               <Typography variant="subtitle2"
@@ -8528,9 +8516,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       </LField>
                     </>
                   )}
-                  {topicSourceError && (
-                    <Typography variant="caption" sx={{ color: 'error.main' }}>{topicSourceError}</Typography>
-                  )}
                   <Alert severity="info" sx={{ fontSize: '0.78rem', alignItems: 'center' }}>
                     Module generation stays locked until you confirm a section.
                   </Alert>
@@ -8649,8 +8634,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   ))}
                 </LField>
 
-                {actionError && <AutoAlert message={actionError} onClose={() => setActionError('')} />}
-
                 {(actionLoading || moduleGeneratingAll) && (
                   <Box sx={{ textAlign: 'center', py: 1 }}>
                     <Typography variant="caption" sx={{ color: '#888', display: 'block' }}>
@@ -8689,7 +8672,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     if (activeTab === 'tos') {
       return (
         <Stack spacing={2} sx={{ height: '100%', overflow: 'auto' }}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
             <Box>
               <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
@@ -8738,7 +8720,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Stack spacing={2}>
-            <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
               <Tooltip title="Back to assessments list">
                 <IconButton
@@ -9182,7 +9163,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
             <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, px: 1.5, py: 0.85 }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
@@ -9467,7 +9447,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       return (
         <Stack spacing={2}>
-          <AutoAlert message={actionError} onClose={() => setActionError('')} />
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Tooltip title="Back to assessments list">
               <IconButton size="small"
@@ -9667,9 +9646,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       return (
         <BubbleSheetPanel
-          courseId={courseId} 
+          courseId={courseId}
           assessments={workspaceApi.data?.assessments || []}
           onModifyTemplate={handleModifyBubbleSheet}
+          onNotice={showButtonNotice}
         />
       )
     }
@@ -10139,6 +10119,20 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Button>
         </DialogActions>
       </Dialog>
+      <Snackbar
+        key={buttonNotice?.key}
+        open={Boolean(buttonNotice)}
+        autoHideDuration={3000}
+        onClose={(_, reason) => { if (reason !== 'clickaway') setButtonNotice(null) }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={buttonNotice?.severity || 'success'}
+          onClose={() => setButtonNotice(null)}
+        >
+          {buttonNotice?.message}
+        </Alert>
+      </Snackbar>
     </Box>
   </Box>
   )}
