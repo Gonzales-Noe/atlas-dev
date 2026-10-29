@@ -40,6 +40,7 @@ const GET_CACHE_SKIP = [
   '/integrations/traffic',
   '/integrations/llm-health',
   '/integrations/rag-documents',
+  '/integrations/course-rag-documents',
 ]
 
 function requestPath(config) {
