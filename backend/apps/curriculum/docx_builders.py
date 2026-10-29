@@ -154,14 +154,14 @@ def _add_image_paragraph(container, image_bytes, width_inches=3.2):
 def apply_page_header_footer(doc, branding=None):
     """Stamp header/footer branding onto every section of the document.
 
-    ``branding`` is an optional dict with ``header_text`` / ``footer_text`` and
+    ``branding`` is an optional dict with ``header_text`` and
     ``header_image`` / ``footer_image`` (data: URLs or plain text). New sections
     inherit from the previous one, but we set each explicitly so a mid-document
-    landscape section also carries the branding.
+    landscape section also carries the branding. The footer itself only carries
+    the page number: institution footer text is not printed.
     """
     branding = branding or {}
     header_text = _text(branding.get('header_text'))
-    footer_text = _text(branding.get('footer_text'))
     header_image = _decode_data_url(branding.get('header_image'))
     footer_image = _decode_data_url(branding.get('footer_image'))
 
@@ -185,20 +185,13 @@ def apply_page_header_footer(doc, branding=None):
         footer.is_linked_to_previous = False
         for para in list(footer.paragraphs):
             para._element.getparent().remove(para._element)
-        if footer_text:
-            para = footer.add_paragraph(footer_text)
-            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            for run in para.runs:
-                run.font.size = Pt(8)
-                run.font.color.rgb = GREY
         if footer_image:
             _add_image_paragraph(footer, footer_image)
 
         # Page numbers, so printed copies can be ordered.
-        if footer.paragraphs:
-            para = footer.add_paragraph()
-            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            _add_page_number_field(para)
+        para = footer.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        _add_page_number_field(para)
 
 
 def _add_page_number_field(paragraph):

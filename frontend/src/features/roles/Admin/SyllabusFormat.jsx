@@ -109,6 +109,7 @@ function chipSx(color) {
 
 export default function SyllabusFormat() {
   const [customization, setCustomization] = useState({
+    header_image_url: '',
     header_text: '',
     footer_text: '',
     syllabus_template_name: '',
@@ -116,6 +117,7 @@ export default function SyllabusFormat() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [headerBusy, setHeaderBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -599,6 +601,49 @@ export default function SyllabusFormat() {
     }
   }
 
+  async function saveHeaderImage(nextUrl) {
+    // Persist the header on its own so the upload is not blocked by section
+    // validation, and so the image applies to every institution's exports.
+    const previous = customization.header_image_url || ''
+    setError('')
+    setNotice('')
+    setHeaderBusy(true)
+    setCustomization(current => ({ ...current, header_image_url: nextUrl }))
+    try {
+      const { data } = await api.patch('/users/institution-customization/', { header_image_url: nextUrl })
+      setCustomization(current => ({
+        ...current,
+        header_image_url: data?.header_image_url ?? nextUrl,
+      }))
+      setNotice(nextUrl
+        ? 'Header template saved. Every exported DOCX and PDF uses it as the letterhead.'
+        : 'Header template removed. Exports use the generated text letterhead again.')
+      return true
+    } catch (err) {
+      setCustomization(current => ({ ...current, header_image_url: previous }))
+      setError(err.response?.data?.detail || 'Could not save the header template.')
+      return false
+    } finally {
+      setHeaderBusy(false)
+    }
+  }
+
+  function readHeaderFile(file) {
+    if (!file) return
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG or WebP image for the header.')
+      return
+    }
+    if (file.size > 1024 * 1024) {
+      setError('Keep the header image under 1 MB so it can be saved with the format.')
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => { saveHeaderImage(String(reader.result || '')) }
+    reader.onerror = () => setError('Could not read that image. Try another file.')
+    reader.readAsDataURL(file)
+  }
+
   async function save(nextSections = sections) {
     // onClick={save} would pass the click event; always resolve a real array.
     const source = Array.isArray(nextSections) ? nextSections : sections
@@ -656,8 +701,10 @@ export default function SyllabusFormat() {
     try {
       // Do not echo syllabus_field_map. The save endpoint used to rebuild
       // sections from that map and drop the table cells just written above.
+      // The header template is saved on its own as soon as it is uploaded.
       const customizationFields = { ...customization }
       delete customizationFields.syllabus_field_map
+      delete customizationFields.header_image_url
       const response = await api.patch('/users/institution-customization/', {
         ...customizationFields,
         syllabus_sections: payload,
@@ -1529,59 +1576,128 @@ export default function SyllabusFormat() {
       {loading ? (
         <LoadingState label="Loading the syllabus format…" />
       ) : (
-        <Box sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', lg: '300px minmax(0, 1fr)' },
-          gap: 2.5,
-          alignItems: 'start',
-        }}>
+        <Stack spacing={2.5}>
           <GlassCard>
-            <Stack spacing={1.75}>
-              <Box>
-                <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
-                  Faculty sections
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                  Same sections Faculty see in the Syllabus workspace. Pick one to manage its content.
-                </Typography>
-              </Box>
-
-              <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.75 }}>
-                <Chip size="small" label={`${sections.length} sections`} sx={{ height: 22, fontSize: '0.68rem', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }} variant="outlined" />
-                <Chip size="small" label={`${visibleCount} visible`} sx={chipSx('#86EFAC')} variant="outlined" />
-                <Chip size="small" label={`${fixedCount} fixed`} sx={chipSx('#FFB74D')} variant="outlined" />
+            <Stack spacing={1.5}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1.5}
+                alignItems={{ sm: 'center' }}
+                justifyContent="space-between"
+              >
+                <Box>
+                  <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
+                    Document header
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                    Upload one header template. It becomes the letterhead of every exported DOCX and PDF for this
+                    institution — no text is added beside it. Only admins see this setting; Faculty never upload one.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                  <OutlineBtn
+                    small
+                    disabled={headerBusy}
+                    onClick={() => document.getElementById('syllabus-header-upload')?.click()}
+                  >
+                    <CloudUploadIcon sx={{ fontSize: '1rem' }} />
+                    {headerBusy
+                      ? 'Saving header…'
+                      : (customization.header_image_url ? 'Replace header' : 'Upload header')}
+                  </OutlineBtn>
+                  {customization.header_image_url && (
+                    <OutlineBtn small disabled={headerBusy} onClick={() => saveHeaderImage('')}>
+                      Remove
+                    </OutlineBtn>
+                  )}
+                </Stack>
               </Stack>
-
-              <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
-                <CloudUploadIcon sx={{ fontSize: '1rem' }} />
-                {templateImport.busy ? 'Analyzing template…' : 'Import syllabus file'}
-              </OutlineBtn>
               <input
-                id="syllabus-template-import"
+                id="syllabus-header-upload"
                 hidden
                 type="file"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={event => { importTemplate(event.target.files?.[0]); event.target.value = '' }}
+                accept="image/png,image/jpeg,image/webp"
+                onChange={event => { readHeaderFile(event.target.files?.[0]); event.target.value = '' }}
               />
-              {customization.syllabus_template_name && (
+              {customization.header_image_url ? (
+                <Box
+                  sx={{
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 2,
+                    p: 1,
+                    bgcolor: '#fff',
+                    maxWidth: 760,
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src={customization.header_image_url}
+                    alt="Header template preview"
+                    sx={{ display: 'block', width: '100%', height: 'auto' }}
+                  />
+                </Box>
+              ) : (
                 <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
-                  Template: {customization.syllabus_template_name}
+                  No header template yet. Exports fall back to the generated Batangas State University letterhead.
                 </Typography>
               )}
-              {templateImport.message && <Alert severity={templateImport.severity}>{templateImport.message}</Alert>}
-
-              <Divider />
-              <Stack spacing={1}>
-                {sections.map(renderNavItem)}
-              </Stack>
-              <OutlineBtn small sx={{ width: 'fit-content', alignSelf: 'flex-start' }} onClick={addSection}>
-                <AddIcon fontSize="small" /> Add section
-              </OutlineBtn>
             </Stack>
           </GlassCard>
 
-          {renderSectionPanel()}
-        </Box>
+          <Box sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', lg: '300px minmax(0, 1fr)' },
+            gap: 2.5,
+            alignItems: 'start',
+          }}>
+            <GlassCard>
+              <Stack spacing={1.75}>
+                <Box>
+                  <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
+                    Faculty sections
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                    Same sections Faculty see in the Syllabus workspace. Pick one to manage its content.
+                  </Typography>
+                </Box>
+
+                <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.75 }}>
+                  <Chip size="small" label={`${sections.length} sections`} sx={{ height: 22, fontSize: '0.68rem', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }} variant="outlined" />
+                  <Chip size="small" label={`${visibleCount} visible`} sx={chipSx('#86EFAC')} variant="outlined" />
+                  <Chip size="small" label={`${fixedCount} fixed`} sx={chipSx('#FFB74D')} variant="outlined" />
+                </Stack>
+
+                <OutlineBtn small disabled={templateImport.busy} onClick={() => document.getElementById('syllabus-template-import')?.click()}>
+                  <CloudUploadIcon sx={{ fontSize: '1rem' }} />
+                  {templateImport.busy ? 'Analyzing template…' : 'Import syllabus file'}
+                </OutlineBtn>
+                <input
+                  id="syllabus-template-import"
+                  hidden
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  onChange={event => { importTemplate(event.target.files?.[0]); event.target.value = '' }}
+                />
+                {customization.syllabus_template_name && (
+                  <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                    Template: {customization.syllabus_template_name}
+                  </Typography>
+                )}
+                {templateImport.message && <Alert severity={templateImport.severity}>{templateImport.message}</Alert>}
+
+                <Divider />
+                <Stack spacing={1}>
+                  {sections.map(renderNavItem)}
+                </Stack>
+                <OutlineBtn small sx={{ width: 'fit-content', alignSelf: 'flex-start' }} onClick={addSection}>
+                  <AddIcon fontSize="small" /> Add section
+                </OutlineBtn>
+              </Stack>
+            </GlassCard>
+
+            {renderSectionPanel()}
+          </Box>
+        </Stack>
       )}
 
       {renderTableEditor()}
