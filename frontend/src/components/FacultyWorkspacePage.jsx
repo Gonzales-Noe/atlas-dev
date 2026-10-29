@@ -1610,6 +1610,185 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
   )
 }
 
+const DISTRIBUTION_NOTE = 'All internal assessments with feedback will be made available within 2 week after each assessment submission except Final Project.'
+
+function AssessmentDistributionMap({ title, ilos, ats, setAts }) {
+  const iloIds = ilos.map(ilo => ilo.id)
+  const rows = []
+  ;(ats || []).forEach((component, componentIndex) => {
+    ;(component.subs || []).forEach((sub, subIndex) => {
+      rows.push({ componentIndex, subIndex, sub })
+    })
+  })
+
+  const patchSub = (componentIndex, subIndex, recipe) => {
+    setAts(current => (current || []).map((component, index) => {
+      if (index !== componentIndex) return component
+      return {
+        ...component,
+        subs: (component.subs || []).map((sub, subAt) => (
+          subAt === subIndex ? recipe(sub) : sub
+        )),
+      }
+    }))
+  }
+
+  const blankSub = (count) => ({
+    code: `T${count}`,
+    label: 'New task',
+    weight: 0,
+    ird: '',
+    c: '',
+    p: '',
+    a: '',
+    ilos: [],
+    scores: Object.fromEntries(iloIds.map(id => [id, 0])),
+    iloTotals: Object.fromEntries(iloIds.map(id => [id, 0])),
+  })
+
+  const addRow = () => {
+    setAts(current => {
+      const list = current || []
+      if (!list.length) {
+        return [{
+          code: 'C1',
+          label: 'New component',
+          weight: 0,
+          subs: [blankSub(1)],
+        }]
+      }
+      const last = list.length - 1
+      return list.map((component, index) => (
+        index === last
+          ? { ...component, subs: [...(component.subs || []), blankSub((component.subs || []).length + 1)] }
+          : component
+      ))
+    })
+  }
+
+  const removeRow = (componentIndex, subIndex) => {
+    setAts(current => (current || []).flatMap((component, index) => {
+      if (index !== componentIndex) return [component]
+      const subs = (component.subs || []).filter((_, at) => at !== subIndex)
+      return subs.length ? [{ ...component, subs }] : []
+    }))
+  }
+
+  const setIloScore = (componentIndex, subIndex, iloId, raw) => {
+    const digits = String(raw || '').replace(/\D/g, '')
+    patchSub(componentIndex, subIndex, sub => {
+      const current = sub.ilos || []
+      const nextIlos = digits
+        ? (current.includes(iloId) ? current : [...current, iloId])
+        : current.filter(id => id !== iloId)
+      return {
+        ...sub,
+        ilos: nextIlos,
+        scores: { ...(sub.scores || {}), [iloId]: digits ? parseInt(digits, 10) : 0 },
+      }
+    })
+  }
+
+  const iloShown = (sub, iloId) => {
+    const checked = (sub.ilos || []).includes(iloId)
+    const score = parseInt(sub.scores?.[iloId], 10) || 0
+    if (!checked && !score) return ''
+    return String(score)
+  }
+
+  const domainShown = value => {
+    const number = parseInt(value, 10)
+    return number ? String(number) : ''
+  }
+
+  const sum = (read) => rows.reduce((total, row) => total + (parseInt(read(row.sub), 10) || 0), 0)
+  const head = { ...TABLE_TH, textAlign: 'center' }
+  const cell = { ...TABLE_TD, textAlign: 'center' }
+
+  return (
+    <SectionCard
+      title={title || 'Table 2: Assessment Method and Distribution Map'}
+      action={<AddRowBtn label="Add row" onClick={addRow} />}
+    >
+      <Box sx={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
+          <thead>
+            <tr>
+              <th colSpan={4} style={head}>Assessment Tasks (AT) Distribution</th>
+              <th colSpan={Math.max(iloIds.length, 1)} style={head}>Intended Learning Outcomes (per ILO)</th>
+              <th colSpan={3} style={head}>Domains</th>
+              <th style={{ ...head, borderRight: 'none' }} />
+            </tr>
+            <tr>
+              {['Code', 'Assessment Tasks', 'I/R/D', '(%)'].map(label => (
+                <th key={label} style={head}>{label}</th>
+              ))}
+              {iloIds.map((_, index) => (
+                <th key={`ilo-${index}`} style={{ ...head, minWidth: 48 }}>{index + 1}</th>
+              ))}
+              {['C', 'P', 'A'].map(label => (
+                <th key={label} style={{ ...head, minWidth: 48 }}>{label}</th>
+              ))}
+              <th style={{ ...head, borderRight: 'none' }} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(row => (
+              <tr key={`${row.componentIndex}-${row.subIndex}`}>
+                <td style={cell}>{inlineInput(row.sub.code || '', event => patchSub(row.componentIndex, row.subIndex, sub => ({ ...sub, code: event.target.value })), 64)}</td>
+                <td style={{ ...cell, textAlign: 'left', minWidth: 160 }}>{inlineInput(row.sub.label || '', event => patchSub(row.componentIndex, row.subIndex, sub => ({ ...sub, label: event.target.value })), 150)}</td>
+                <td style={cell}>{inlineInput(row.sub.ird || '', event => patchSub(row.componentIndex, row.subIndex, sub => ({ ...sub, ird: event.target.value })), 56)}</td>
+                <td style={cell}>{inlineInput(String(parseInt(row.sub.weight, 10) || 0), event => patchSub(row.componentIndex, row.subIndex, sub => ({ ...sub, weight: parseInt(event.target.value.replace(/\D/g, ''), 10) || 0 })), 52, undefined, { numeric: true })}</td>
+                {iloIds.map(iloId => (
+                  <td key={iloId} style={cell}>
+                    {inlineInput(
+                      iloShown(row.sub, iloId),
+                      event => setIloScore(row.componentIndex, row.subIndex, iloId, event.target.value),
+                      48,
+                      undefined,
+                      { numeric: true },
+                    )}
+                  </td>
+                ))}
+                {['c', 'p', 'a'].map(key => (
+                  <td key={key} style={cell}>
+                    {inlineInput(
+                      domainShown(row.sub[key]),
+                      event => patchSub(row.componentIndex, row.subIndex, sub => ({
+                        ...sub,
+                        [key]: event.target.value.replace(/\D/g, ''),
+                      })),
+                      48,
+                      undefined,
+                      { numeric: true },
+                    )}
+                  </td>
+                ))}
+                <td style={{ ...cell, borderRight: 'none' }}>
+                  <RemoveBtn onClick={() => removeRow(row.componentIndex, row.subIndex)} disabled={!rows.length} />
+                </td>
+              </tr>
+            ))}
+            <tr>
+              <td colSpan={3} style={{ ...cell, fontWeight: 700, textAlign: 'right' }}>Total (auto)</td>
+              <td style={{ ...cell, fontWeight: 700 }}>{sum(sub => sub.weight)}</td>
+              {iloIds.map(iloId => <td key={`total-${iloId}`} style={cell} />)}
+              {['c', 'p', 'a'].map(key => (
+                <td key={`total-${key}`} style={{ ...cell, fontWeight: 700 }}>{sum(sub => sub[key])}</td>
+              ))}
+              <td style={{ ...cell, borderRight: 'none' }} />
+            </tr>
+            <tr>
+              <td style={{ ...cell, fontWeight: 700 }}>Note:</td>
+              <td colSpan={4 + iloIds.length + 3} style={{ ...cell, textAlign: 'left', borderRight: 'none' }}>{DISTRIBUTION_NOTE}</td>
+            </tr>
+          </tbody>
+        </table>
+      </Box>
+    </SectionCard>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
   const navigate = useNavigate()
@@ -5388,6 +5567,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const fixedIloTable = fixedTableFor('iloat-references', 'ilo-table')
       const fixedAtTable = fixedTableFor('iloat-references', 'at-distribution-map')
       const fixedReferenceTable = fixedTableFor('iloat-references', 'books-references')
+      const setAssessmentTasks = updater => {
+        setIsDirty(true); setSaveSuccess(false)
+        setSyllabusData(s => {
+          const ats = typeof updater === 'function' ? updater(s.ats || []) : updater
+          let next = { ...s, ats }
+          if (anyTaskIloChecked(ats) || anyTaskIloChecked(s.ats)) next = withMappedAssessmentCodes(next)
+          return syncScheduleMethodsFromTasks(next)
+        })
+      }
       return (
         <>
           <SectionCard title={titleForTable('iloat-references', 'ilo-table', 'Table 1: Intended Learning Outcomes (ILO)')}
@@ -5415,19 +5603,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <FixedBlueprintTable table={fixedAtTable} />
             </SectionCard>
           ) : (
+          <>
           <PEAAssessmentCard
             ilos={syllabusData.ilos.map((_, idx) => ({ id: `ILO${idx + 1}` }))}
             ats={syllabusData.ats || []}
-            setAts={updater => {
-              setIsDirty(true); setSaveSuccess(false)
-              setSyllabusData(s => {
-                const ats = typeof updater === 'function' ? updater(s.ats || []) : updater
-                let next = { ...s, ats }
-                if (anyTaskIloChecked(ats) || anyTaskIloChecked(s.ats)) next = withMappedAssessmentCodes(next)
-                return syncScheduleMethodsFromTasks(next)
-              })
-            }}
+            setAts={setAssessmentTasks}
           />
+          <AssessmentDistributionMap
+            title={titleForTable('iloat-references', 'at-distribution-map', 'Table 2: Assessment Method and Distribution Map')}
+            ilos={syllabusData.ilos.map((_, idx) => ({ id: `ILO${idx + 1}` }))}
+            ats={syllabusData.ats || []}
+            setAts={setAssessmentTasks}
+          />
+          </>
           )}
 
           <SectionCard title={titleForTable('iloat-references', 'books-references', 'Table 3: Books and Other References')}

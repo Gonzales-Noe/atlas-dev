@@ -3,28 +3,15 @@
 // first-time setup wizard has been completed.
 
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Box } from '@mui/material'
+import { Box } from '@mui/material'
 
 import { useAuth } from '../store/authStore'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
 import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
 import LoadingState from './LoadingState'
+import AtlasErrorCard, { plainServerMessage } from './AtlasErrorCard'
 
-function toMessage(err, fallback) {
-  const status = err?.response?.status
-  if (status === 502 || status === 503 || status === 504) {
-    return 'The server is still starting. Wait a moment, then retry.'
-  }
-  const data = err?.response?.data
-  if (typeof data === 'string') {
-    if (/<\s*html|bad gateway|<\s*title/i.test(data)) {
-      return 'The server is still starting. Wait a moment, then retry.'
-    }
-    return data
-  }
-  if (typeof data?.detail === 'string') return data.detail
-  return fallback
-}
+const SETUP_MESSAGE = 'ATLAS could not check whether your school setup is finished. Try again in a moment.'
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()
@@ -48,7 +35,7 @@ export default function AdminSetupGate({ children }) {
     } catch (err) {
       setStatusKnown(false)
       setNeedsSetup(false)
-      setError(toMessage(err, 'Could not verify setup status.'))
+      setError(plainServerMessage(err, SETUP_MESSAGE))
     } finally {
       setChecking(false)
     }
@@ -88,13 +75,7 @@ export default function AdminSetupGate({ children }) {
   if (!statusKnown && error) {
     return (
       <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 3, background: 'var(--bg-page)' }}>
-        <Alert
-          severity="error"
-          action={<button onClick={check} style={{ background: 'none', border: 'none', color: 'inherit', fontWeight: 700, cursor: 'pointer' }}>Retry</button>}
-          sx={{ maxWidth: 560 }}
-        >
-          {error} Admin modules remain locked until setup status can be verified.
-        </Alert>
+        <AtlasErrorCard message={error} onRetry={check} />
       </Box>
     )
   }
