@@ -82,6 +82,12 @@ def parse_tla_rows(text, count):
     return rows[:count]
 
 
+def module_max_tokens(subtopic_count):
+    """Enough for one chapter's JSON, and small enough that the call returns."""
+    count = max(1, int(subtopic_count or 1))
+    return min(1400, 480 + 160 * count)
+
+
 def map_max_tokens(row_count):
     """Digit lines only. A single index is a handful of tokens; a table is still small."""
     count = max(1, int(row_count or 1))

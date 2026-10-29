@@ -25,7 +25,7 @@ class GenerateSyllabusSerializer(serializers.Serializer):
 class GenerateModuleSerializer(serializers.Serializer):
     course_id = serializers.UUIDField(required=True)
     course_name = serializers.CharField(required=True, max_length=255)
-    module_title = serializers.CharField(required=True, max_length=255)
+    module_title = serializers.CharField(required=True, max_length=2000)
     week_number = serializers.IntegerField(required=False, default=1, min_value=1, max_value=52)
     provider = serializers.ChoiceField(
         choices=PROVIDER_CHOICES, required=False, allow_null=True, default=None
@@ -55,6 +55,12 @@ class GenerateModuleSerializer(serializers.Serializer):
     )
     activity_title = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=300
+    )
+    neighbors = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, max_length=300),
+        required=False,
+        allow_empty=True,
+        default=list,
     )
     syllabus_context = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=8000

@@ -54,6 +54,25 @@ class TlaBatchTests(SimpleTestCase):
         self.assertIn("Addressing", parsed[0]["topics"])
         self.assertEqual(parsed[0]["outcome"], "Describe a network.")
 
+    def test_module_prompt_uses_the_brief_and_neighbors_only(self):
+        _system, user = CoTPromptBuilder.build_module_json_prompt(
+            course_name="Introduction to HCI",
+            module_title="HCI Foundations",
+            week_number=1,
+            module_number=1,
+            context_chunks=[{"text": "raw passage that should stay out"}],
+            syllabus_subtopics=["HCI History", "Core Concepts"],
+            activity_title="Interface critique",
+            course_brief="HCI covers history and interaction models.",
+            neighbor_titles=["Software", "The Internet"],
+        )
+        self.assertIn("Course brief:", user)
+        self.assertIn("HCI covers history", user)
+        self.assertIn("Interface critique", user)
+        self.assertIn("Software", user)
+        self.assertNotIn("raw passage that should stay out", user)
+        self.assertNotIn("REFERENCE MATERIAL FROM KNOWLEDGE BASE", user)
+
     def test_index_map_stays_a_small_token_cap(self):
         self.assertEqual(map_max_tokens(1), 16)
         self.assertEqual(map_max_tokens(18), 96)
