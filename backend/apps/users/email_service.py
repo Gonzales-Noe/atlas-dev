@@ -76,6 +76,7 @@ def send_templated_email(
     context: dict,
     recipient_list,
     from_email=None,
+    reply_to=None,
     fail_silently: bool = False,
 ) -> bool:
     """Send a branded HTML email. Returns True on success."""
@@ -87,6 +88,7 @@ def send_templated_email(
         body=text_body,
         from_email=sender,
         to=list(recipient_list),
+        reply_to=list(reply_to or []),
         alternatives=[(html_body, 'text/html')],
     )
     try:
@@ -121,7 +123,8 @@ def send_contact_notification(
     submitted_at: str,
 ) -> bool:
     """Notify the ATLAS team about a new contact form submission."""
-    recipients = [r.strip() for r in getattr(settings, 'ATLAS_CONTACT_EMAILS', 'atlasdegdev@gmail.com').split(',') if r.strip()]
+    recipients = [r.strip() for r in getattr(settings, 'ATLAS_CONTACT_EMAILS', 'atlas.hybrid.dev@gmail.com').split(',') if r.strip()]
+    sender = (getattr(settings, 'EMAIL_HOST_USER', '') or '').strip() or None
     return send_templated_email(
         subject=f'ATLAS Contact Form - {name}',
         template_name='email/contact_notification.html',
@@ -134,17 +137,34 @@ def send_contact_notification(
             'text_body': f'Contact form submission from {name} <{email}> of {institution}:\n\n{message}',
         },
         recipient_list=recipients,
+        from_email=sender,
+        reply_to=[email],
     )
+
+
+def _contact_inbox() -> str:
+    raw = getattr(settings, 'ATLAS_CONTACT_EMAILS', 'atlas.hybrid.dev@gmail.com')
+    return next((part.strip() for part in str(raw).split(',') if part.strip()), 'atlas.hybrid.dev@gmail.com')
 
 
 def send_contact_confirmation(name: str, email: str) -> bool:
-    """Send a branded confirmation back to the person who submitted the form."""
+    """Automatic reply to the address on the demo form."""
+    inbox = _contact_inbox()
+    home_url = getattr(settings, 'BASE_URL', '').rstrip('/') or '/'
+    sender = (getattr(settings, 'EMAIL_HOST_USER', '') or '').strip() or None
     return send_templated_email(
-        subject='Thanks for reaching out to ATLAS!',
+        subject='We received your ATLAS request',
         template_name='email/contact_confirmation.html',
         context={
-            'user_name': name,
-            'text_body': f'Thanks {name}! We received your message and our team will get back to you within 24 hours.',
+            'home_url': home_url,
+            'contact_email': inbox,
+            'text_body': (
+                'We received your ATLAS request and will reply within 24 hours. '
+                f'You can also write to {inbox}.'
+            ),
         },
         recipient_list=[email],
+        from_email=sender,
+        reply_to=[inbox],
     )
+

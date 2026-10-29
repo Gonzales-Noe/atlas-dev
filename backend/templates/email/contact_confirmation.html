@@ -1,30 +1,28 @@
 {# backend/templates/email/contact_confirmation.html #}
 {% extends "email/atlas_base.html" %}
-{% load static %}
 
-{% block title %}Thanks for contacting ATLAS{% endblock %}
+{% block title %}We received your ATLAS request{% endblock %}
 
 {% block content %}
   <h1 style="margin: 0 0 16px; font-size: 22px; font-weight: 800; color: #F0F0F0; text-align: center;">
-    Thanks, <span style="color: #86EFAC;">{{ user_name }}</span>!
+    We received your <span style="color: #86EFAC;">request</span>
   </h1>
 
   <p style="margin: 0 0 20px; color: rgba(255,255,255,0.7); text-align: center; line-height: 1.6;">
-    We've received your message and our team is reviewing it. We'll get back to you
-    within <strong style="color: #F0F0F0;">24 hours</strong> at the email you provided.
+    We received your request. The ATLAS team will reply within
+    <strong style="color: #F0F0F0;">24 hours</strong>.
   </p>
 
   <p style="margin: 0 0 8px; color: rgba(255,255,255,0.55); text-align: center; font-size: 14px; line-height: 1.6;">
-    In the meantime, you can explore ATLAS or reach out directly at
-    <a href="mailto:atlasdegdev@gmail.com" style="color: #86EFAC; text-decoration: none;">atlasdegdev@gmail.com</a>.
+    You can also write to
+    <a href="mailto:{{ contact_email }}" style="color: #86EFAC; text-decoration: none;">{{ contact_email }}</a>.
   </p>
 
-  <!-- CTA -->
   <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
     <tr>
       <td class="btn-cell" align="center" style="padding-top: 16px;">
         <a href="{{ home_url }}" class="btn-inner" style="display: inline-block; background: linear-gradient(135deg, #15803D, #16A34A); color: #FFFFFF; text-decoration: none; border-radius: 12px; padding: 14px 32px; font-size: 15px; font-weight: 700;">
-          Explore ATLAS &rarr;
+          Visit ATLAS
         </a>
       </td>
     </tr>

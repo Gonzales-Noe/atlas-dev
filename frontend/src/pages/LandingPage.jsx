@@ -7,6 +7,19 @@ import delacion from '../assets/Delacion.webp'
 import esperida from '../assets/Esperida.webp'
 import gonzales from '../assets/Gonzales.webp'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import {
+  BarChart3,
+  Check,
+  ClipboardList,
+  Clock,
+  FileCheck,
+  GraduationCap,
+  LayoutDashboard,
+  Mail,
+  MapPin,
+  Server,
+  Star,
+} from 'lucide-react'
 
 import InstallAppButton from '../components/InstallAppButton'
 
@@ -27,24 +40,6 @@ function useInView(threshold = 0.15) {
     return () => observer.disconnect()
   }, [threshold])
   return [ref, inView]
-}
-
-// ── Animated counter ─────────────────────────────────────────────────────────
-function AnimatedNumber({ target, suffix = '', duration = 1800 }) {
-  const [count, setCount] = useState(0)
-  const [ref, inView] = useInView()
-  useEffect(() => {
-    if (!inView) return
-    let start = 0
-    const step = target / (duration / 16)
-    const timer = setInterval(() => {
-      start += step
-      if (start >= target) { setCount(target); clearInterval(timer) }
-      else setCount(Math.floor(start))
-    }, 16)
-    return () => clearInterval(timer)
-  }, [inView, target, duration])
-  return <span ref={ref}>{count.toLocaleString()}{suffix}</span>
 }
 
 // ── Floating orb ─────────────────────────────────────────────────────────────
@@ -81,102 +76,88 @@ function GlassCard({ children, style, className = '' }) {
   )
 }
 
-// ── Pricing data ─────────────────────────────────────────────────────────────
-const PLANS = [
+// ── Institutional packages ───────────────────────────────────────────────────
+const PACKAGES = [
   {
     name: 'Starter',
-    price: '₱2,499',
-    period: '/30 days',
-    tagline: 'For small departments getting started',
+    tagline: 'A private server and database to begin.',
     color: 'rgba(21,128,61,0.25)',
     border: 'rgba(22,163,74,0.4)',
     glow: 'rgba(21,128,61,0.15)',
     features: [
-      'Up to 10 faculty accounts',
-      'Unlimited course creation',
-      'OBE syllabus generator',
-      'ILO-mapped assessments',
-      'Built-in gradebook',
-      'Email support',
+      'Syllabus, modules, and assessments',
+      'OMR scanning',
+      'Course analytics',
+      'Backups and business-day support',
     ],
-    cta: 'Get Started',
-    popular: false,
+    featured: false,
   },
   {
     name: 'Professional',
-    price: '₱6,999',
-    period: '/30 days',
-    tagline: 'For growing institutions',
+    tagline: 'A larger private deployment for the whole institution.',
     color: 'rgba(21,128,61,0.35)',
     border: 'rgba(134,239,172,0.6)',
     glow: 'rgba(22,163,74,0.25)',
+    badge: 'Recommended',
     features: [
-      'Up to 50 faculty accounts',
-      'Everything in Starter',
-      'Performance analytics dashboard',
-      'Bloom\'s Taxonomy tagging',
-      'Admin dashboard & reports',
-      'Priority support',
-      'Custom branding',
+      'A larger private server and database',
+      'Web and Mobile for the whole institution',
+      'Analytics across programs',
+      'Exam-week scanning and priority support',
     ],
-    cta: 'BUY NOW',
-    popular: true,
+    featured: true,
   },
   {
-    name: 'Free Trial',
-    price: 'Free',
-    period: '/7 days',
-    tagline: 'Try ATLAS with no credit card required',
+    name: 'Custom',
+    tagline: 'Capacity that grows as you do.',
     color: 'rgba(20,83,45,0.2)',
     border: 'rgba(134,239,172,0.3)',
     glow: 'rgba(21,128,61,0.1)',
     features: [
-      'Up to 2 faculty accounts',
-      '5 syllabus generations per faculty',
-      'Syllabus module only',
-      'No AI generation in other modules',
-      'Upgrade manually whenever you are ready',
+      'Servers and databases added as you grow',
+      'More faculty, more sites, same privacy',
+      'Reports across sites, data kept separate',
+      'Support and updates matched to your calendar',
     ],
-    cta: 'Start Free Trial',
-    popular: false,
+    featured: false,
   },
 ]
 
 const FEATURES = [
   {
-    icon: '🎓',
+    icon: GraduationCap,
     title: 'Set Up Your Course',
     desc: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course.',
     accent: 'rgba(21,128,61,0.3)',
   },
   {
-    icon: '📋',
+    icon: ClipboardList,
     title: 'Generate Your Syllabus & Modules',
     desc: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials, not generic templates.',
     accent: 'rgba(21,128,61,0.3)',
   },
   {
-    icon: '✅',
+    icon: FileCheck,
     title: 'Build Your Assessments',
-    desc: "Generate ILO-mapped exams in multiple formats. Every item is tagged by Bloom's Taxonomy level and comes with an automated answer key or essay rubric.",
+    desc: "Generate ILO-mapped exams, then scan bubble sheets on ATLAS Mobile. Every item is tagged by Bloom's Taxonomy level and comes with an answer key or essay rubric.",
     accent: 'rgba(20,83,45,0.3)',
   },
   {
-    icon: '📊',
-    title: 'Performance Analytics',
-    desc: 'Use the built-in ATLAS gradebook. The system computes weighted scores, identifies which learning outcomes your class is struggling with, and tells you exactly what to do next.',
+    icon: BarChart3,
+    title: 'Descriptive Analytics',
+    desc: 'See which learning outcomes a course, college, or campus is struggling with. Reports stay on your deployment and sit beside live grading, so login and scoring stay responsive.',
     accent: 'rgba(22,163,74,0.3)',
   },
   {
-    icon: '🏫',
+    icon: LayoutDashboard,
     title: 'Admin Dashboard',
     desc: 'Provision faculty accounts, monitor institutional performance, and generate compliance reports — all from a unified dashboard built for academic leaders.',
     accent: 'rgba(21,128,61,0.3)',
   },
   {
-    icon: '⚡',
-    title: 'Instant Deployment',
-    desc: 'No complex setup. Approved institutions receive credentials within 2–3 business days and can deploy faculty accounts on the same day.',
+    icon: Server,
+    title: 'Private Deployment',
+    desc: 'Each institution receives its own server, database, and web address. When more faculty or another campus needs access, that deployment is enlarged. Your data stays on your system.',
     accent: 'rgba(134,239,172,0.3)',
   },
 ]
@@ -195,7 +176,7 @@ const TESTIMONIALS = [
     stars: 5,
   },
   {
-    quote: "Our department adopted ATLAS mid-semester. Provisioning our faculty was straightforward, and they were generating exams and syllabi on the same day. The onboarding friction was genuinely minimal.",
+    quote: "Our college runs ATLAS on its own deployment. Faculty generate syllabi and exams in the workspace, and our course records stay with the college.",
     author: 'College Head',
     role: 'College of Information',
     stars: 5,
@@ -211,7 +192,7 @@ const TEAM = [
 // ── NAV LINKS (mirrored from sign-in/sign-up pages) ──────────────────────────
 const NAV_LINKS = [
   { label: 'HOME', href: '#home' },
-  { label: 'PRICING', href: '#pricing' },
+  { label: 'PACKAGES', href: '#pricing' },
   { label: 'CONTACT', href: '#contact' },
 ]
 
@@ -224,7 +205,7 @@ export default function LandingPage() {
   const [activeSection, setActiveSection] = useState('home')
   const pageRef = useRef(null)
   const [authModal, setAuthModal] = useState(null) // 'signin', 'signup', 'reset', null
-  const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', message: '' })
+  const [contactForm, setContactForm] = useState({ name: '', email: '', institution: '', package: '', message: '', leave_blank: '' })
   const [contactStatus, setContactStatus] = useState({ type: '', message: '' })
   const [contactSubmitting, setContactSubmitting] = useState(false)
 
@@ -276,6 +257,17 @@ export default function LandingPage() {
     setMobileOpen(false)
   }
 
+  function requestQuote(packageName) {
+    setContactForm(prev => {
+      const auto = /^We would like a quote for the .+ package\.$/
+      const nextMessage = !prev.message.trim() || auto.test(prev.message.trim())
+        ? `We would like a quote for the ${packageName} package.`
+        : prev.message
+      return { ...prev, package: packageName, message: nextMessage }
+    })
+    scrollTo('contact')
+  }
+
   function handleContactChange(event) {
     const { name, value } = event.target
     setContactForm(prev => ({ ...prev, [name]: value }))
@@ -288,10 +280,15 @@ export default function LandingPage() {
     const trimmedName = contactForm.name.trim()
     const trimmedEmail = contactForm.email.trim()
     const trimmedInstitution = contactForm.institution.trim()
+    const trimmedPackage = contactForm.package.trim()
     const trimmedMessage = contactForm.message.trim()
 
     if (!trimmedName || !trimmedEmail || !trimmedInstitution || !trimmedMessage) {
       setContactStatus({ type: 'error', message: 'Please fill in every field before sending your message.' })
+      return
+    }
+    if (trimmedName.length > 120 || trimmedInstitution.length > 200 || trimmedMessage.length > 2000) {
+      setContactStatus({ type: 'error', message: 'One of the fields is too long. Shorten it and try again.' })
       return
     }
 
@@ -300,6 +297,7 @@ export default function LandingPage() {
       setContactStatus({ type: 'error', message: 'Please enter a valid institutional email address.' })
       return
     }
+    const knownPackage = PACKAGES.some((plan) => plan.name === trimmedPackage)
 
     setContactSubmitting(true)
     setContactStatus({ type: '', message: '' })
@@ -309,14 +307,15 @@ export default function LandingPage() {
         name: trimmedName,
         email: trimmedEmail,
         institution: trimmedInstitution,
-        message: trimmedMessage,
+        message: knownPackage ? `Package: ${trimmedPackage}\n\n${trimmedMessage}` : trimmedMessage,
+        leave_blank: contactForm.leave_blank,
       })
       .then(({ data }) => {
         setContactStatus({
           type: 'success',
           message: data?.detail || `Thanks, ${trimmedName}! Your message has been sent to the ATLAS team.`,
         })
-        setContactForm({ name: '', email: '', institution: '', message: '' })
+        setContactForm({ name: '', email: '', institution: '', package: '', message: '', leave_blank: '' })
       })
       .catch((err) => {
         const detail = err?.response?.data?.detail
@@ -506,20 +505,12 @@ export default function LandingPage() {
           background: rgba(21,128,61,0.08);
         }
 
-        .check-icon::before {
-          content: '✓';
-          display: inline-block;
-          width: 20px;
-          height: 20px;
-          background: rgba(22,163,74,0.2);
-          border: 1px solid rgba(22,163,74,0.4);
-          border-radius: 50%;
-          font-size: 11px;
-          line-height: 20px;
-          text-align: center;
-          color: #86EFAC;
-          margin-right: 10px;
-          flex-shrink: 0;
+        .contact-honeypot {
+          position: absolute;
+          left: -10000px;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
         }
 
         .mobile-menu {
@@ -548,6 +539,7 @@ export default function LandingPage() {
           .section-title { font-size: 2rem !important; }
           .features-grid { grid-template-columns: 1fr !important; }
           .pricing-grid { grid-template-columns: 1fr !important; }
+          .contact-grid { grid-template-columns: 1fr !important; gap: 2.5rem !important; }
           .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
           .testimonials-grid { grid-template-columns: 1fr !important; }
           .team-grid { grid-template-columns: 1fr !important; }
@@ -671,6 +663,17 @@ export default function LandingPage() {
         .contact-input::placeholder {
           color: rgba(255,255,255,0.3);
         }
+        select.contact-input {
+          appearance: none;
+          background-image: linear-gradient(45deg, transparent 50%, rgba(134,239,172,0.8) 50%), linear-gradient(135deg, rgba(134,239,172,0.8) 50%, transparent 50%);
+          background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
+          background-size: 6px 6px, 6px 6px;
+          background-repeat: no-repeat;
+        }
+        .contact-input option {
+          background: #0A0A0B;
+          color: #F0F0F0;
+        }
 
         .divider {
           width: 60px;
@@ -792,8 +795,8 @@ export default function LandingPage() {
                 <button className="atlas-btn-outline" onClick={() => setAuthModal('signin')} style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
                   SIGN IN
                 </button>
-                <button className="atlas-btn-primary" onClick={() => setAuthModal('signup')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
-                  SIGN UP
+                <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
+                  REQUEST A DEMO
                 </button>
               </>
             )}
@@ -834,8 +837,8 @@ export default function LandingPage() {
             <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
               SIGN IN
             </button>
-            <button className="atlas-btn-primary" onClick={() => { setAuthModal('signup'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-              SIGN UP
+            <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+              REQUEST A DEMO
             </button>
           </div>
         </div>
@@ -861,7 +864,7 @@ export default function LandingPage() {
           <div className="hero-text-content">
             <div className="hero-badge" style={{ margin: '0 0 1.5rem' }}>
               <span style={{ width: 6, height: 6, background: '#86EFAC', borderRadius: '50%', display: 'inline-block' }} />
-              NOW AVAILABLE FOR PHILIPPINE HIGHER EDUCATION
+              PRIVATE DEPLOYMENT FOR PHILIPPINE HIGHER EDUCATION
             </div>
 
             <h1 className="hero-title" style={{
@@ -884,42 +887,44 @@ export default function LandingPage() {
               margin: '0 0 2rem',
               maxWidth: '100%',
             }}>
-              The AI-powered OBE platform built for Philippine Higher Education —
-              syllabus generation, assessment building, and performance analytics in one place.
+              A private deployment for your institution. ATLAS Web and Mobile include CHED OBE-aligned syllabi, modules, and assessments, OMR scanning, and descriptive analytics.
             </p>
 
             <div className="hero-cta-group">
-              <button className="atlas-btn-primary subtle-neon-glow" onClick={handleGetStarted} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
-                Join ATLAS Now!
+              <button className="atlas-btn-primary subtle-neon-glow" onClick={() => scrollTo('contact')} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
+                Request an Institutional Demo
               </button>
               <button
                 className="atlas-btn-outline"
-                onClick={() => scrollTo('features')}
+                onClick={() => scrollTo('pricing')}
                 style={{ padding: '0.9rem 2rem', fontSize: '1rem' }}
               >
-                See How It Works ↓
+                View Packages
               </button>
             </div>
+            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', lineHeight: 1.6, margin: '1.25rem 0 0', maxWidth: 560 }}>
+              Each university receives its own private ATLAS deployment. Capacity is sized to the campus, then expanded when more faculty or another campus needs access.
+            </p>
 
             {/* Floating stats chips */}
-            <div className="stats-chips" style={{ display: 'flex', gap: '.5rem', marginTop: '3rem', flexWrap: 'nowrap' }}>
+            <div className="stats-chips" style={{ display: 'flex', gap: '.5rem', marginTop: '2rem', flexWrap: 'wrap' }}>
               {[
-                { label: 'CHED OBE-Compliant', icon: '✓' },
-                { label: 'Bloom\'s Taxonomy Tagged', icon: '✓' },
-                { label: 'Built-in Gradebook', icon: '✓' },
-              ].map(({ label, icon }) => (
+                'CHED OBE-aligned',
+                'ATLAS Mobile OMR',
+                'Your own server and database',
+              ].map((label) => (
                 <div key={label} style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
                   borderRadius: 100,
-                  padding: '7px 9px',
+                  padding: '7px 12px',
                   fontSize: '0.78rem',
                   color: 'rgba(255,255,255,0.6)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
                 }}>
-                  <span style={{ color: '#86EFAC' }}>{icon}</span>
+                  <Check size={14} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
                   {label}
                 </div>
               ))}
@@ -956,16 +961,16 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
             {[
-              { value: 20, suffix: 'min', label: 'Syllabus ready in', prefix: '<' },
-              { value: 95, suffix: '%', label: 'Faculty satisfaction rate' },
-              { value: 500, suffix: '+', label: 'Courses generated' },
-              { value: 3, suffix: ' days', label: 'From signup to live' },
-            ].map(({ value, suffix, label, prefix }, i) => (
+              { title: 'Your server', label: 'Application traffic stays on a machine dedicated to your institution' },
+              { title: 'Your database', label: 'Courses, grades, scans, and exam keys never leave your deployment' },
+              { title: 'Web and Mobile', label: 'Syllabus, modules, assessments, and OMR on one private stack' },
+              { title: 'Sized to you', label: 'More faculty or another campus expands your deployment' },
+            ].map(({ title, label }, i) => (
               <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
-                <div style={{ fontSize: '2.4rem', fontWeight: 800, color: '#86EFAC', lineHeight: 1 }}>
-                  {prefix || ''}{statsInView && <AnimatedNumber target={value} suffix={suffix} />}
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#86EFAC', lineHeight: 1.3 }}>
+                  {title}
                 </div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.5rem' }}>{label}</div>
+                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.55rem', lineHeight: 1.5 }}>{label}</div>
               </div>
             ))}
           </div>
@@ -999,10 +1004,9 @@ export default function LandingPage() {
                   border: '1px solid rgba(22,163,74,0.25)',
                   borderRadius: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '1.5rem',
                   marginBottom: '1.2rem',
                 }}>
-                  {f.icon}
+                  <f.icon size={22} color="#86EFAC" strokeWidth={1.75} aria-hidden="true" />
                 </div>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#F0F0F0' }}>{f.title}</h3>
                 <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
@@ -1030,8 +1034,10 @@ export default function LandingPage() {
           >
             {TESTIMONIALS.map((t, i) => (
               <div key={i} className={`testimonial-card fade-up neon-border-glow ${testimonialsInView ? 'visible' : ''}`}>
-                <div style={{ color: '#BBF7D0', fontSize: '1rem', marginBottom: '1rem', letterSpacing: 2 }}>
-                  {'★'.repeat(t.stars)}
+                <div style={{ display: 'flex', gap: 4, marginBottom: '1rem' }} aria-label={`${t.stars} stars`}>
+                  {Array.from({ length: t.stars }, (_, star) => (
+                    <Star key={star} size={16} color="#86EFAC" fill="#86EFAC" aria-hidden="true" />
+                  ))}
                 </div>
                 <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
                   "{t.quote}"
@@ -1061,14 +1067,14 @@ export default function LandingPage() {
       <section id="pricing" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
         <Orb style={{ width: 600, height: 600, background: 'rgba(21,128,61,0.12)', bottom: -200, left: -150 }} />
 
-        <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
+        <div style={{ maxWidth: 1180, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PRICING</p>
+            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PACKAGES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
-              Simple, Institutional Pricing
+              A Private Deployment for Your Institution
             </h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.75rem', fontSize: '0.95rem' }}>
-              Billed per institution. Faculty access included.
+            <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.75rem', fontSize: '0.95rem', maxWidth: 720, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7 }}>
+              Starter, Professional, or Custom. Setup, an annual license, and maintenance are quoted together.
             </p>
             <div className="divider" />
           </div>
@@ -1076,60 +1082,59 @@ export default function LandingPage() {
           <div
             ref={pricingRef}
             className="pricing-grid"
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem', alignItems: 'center' }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem', alignItems: 'stretch' }}
           >
-            {PLANS.map((plan, i) => (
+            {PACKAGES.map((plan) => (
               <div
-                key={i}
-                className={`pricing-card fade-up neon-border-glow ${pricingInView ? 'visible' : ''} ${plan.popular ? 'popular' : ''}`}
+                key={plan.name}
+                className={`pricing-card fade-up neon-border-glow ${pricingInView ? 'visible' : ''} ${plan.featured ? 'popular' : ''}`}
                 style={{
                   border: `1px solid ${plan.border}`,
                   background: plan.color,
-                  boxShadow: plan.popular ? `0 0 60px ${plan.glow}` : 'none',
-                  transform: plan.popular ? 'scale(1.04)' : 'scale(1)',
+                  boxShadow: plan.featured ? `0 0 60px ${plan.glow}` : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
               >
-                {plan.popular && <div className="popular-badge">✦ MOST POPULAR</div>}
+                {plan.badge && <div className="popular-badge">{plan.badge}</div>}
 
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: '#86EFAC', margin: '0 0 0.4rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#86EFAC', margin: '0 0 0.4rem' }}>
                     {plan.name}
                   </h3>
-                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem', margin: '0 0 1.2rem' }}>{plan.tagline}</p>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
-                    <span style={{ fontSize: '2.8rem', fontWeight: 800, color: '#F0F0F0', lineHeight: 1 }}>{plan.price}</span>
-                    {plan.period && <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.9rem' }}>{plan.period}</span>}
-                  </div>
+                  <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
                 </div>
 
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem', marginBottom: '2rem' }}>
-                  {plan.features.map((feat, j) => (
-                    <div key={j} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
-                      <span className="check-icon" />
-                      <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.88rem', lineHeight: 1.5 }}>{feat}</span>
-                    </div>
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.15rem', marginBottom: '1.5rem', flex: 1 }}>
+                  {plan.features.map((feat) => (
+                        <div key={feat} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
+                          <span style={{
+                            width: 20, height: 20, borderRadius: '50%',
+                            background: 'rgba(22,163,74,0.2)',
+                            border: '1px solid rgba(22,163,74,0.4)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            marginRight: 10, flexShrink: 0, marginTop: 1,
+                          }}>
+                            <Check size={12} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
+                          </span>
+                          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
+                        </div>
                   ))}
                 </div>
 
                 <button
-                  className={plan.popular ? 'atlas-btn-primary' : 'atlas-btn-outline'}
-                  onClick={() => {
-                    localStorage.setItem(
-                      'atlas_selected_plan',
-                      plan.name === 'Free Trial' ? 'Starter' : plan.name
-                    )
-                    setAuthModal('signup')
-                  }}
-                  style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700 }}
+                  className={plan.featured ? 'atlas-btn-primary' : 'atlas-btn-outline'}
+                  onClick={() => requestQuote(plan.name)}
+                  style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700, marginTop: 'auto' }}
                 >
-                  {plan.cta}
+                  Request a quote
                 </button>
               </div>
             ))}
           </div>
 
-          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem', marginTop: '2.5rem' }}>
-            All plans include faculty access · No setup fees · Cancel anytime
+          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', marginTop: '2.5rem', lineHeight: 1.7, maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
+            Each school gets its own ATLAS. When you outgrow a package, that deployment expands with you.
           </p>
         </div>
       </section>
@@ -1176,33 +1181,33 @@ export default function LandingPage() {
         <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -100, right: -100 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
+          <div className="contact-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
             <div>
               <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
               <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
-                Ready to Transform<br />
-                <span className="glow-text">Your Institution?</span>
+                Request an<br />
+                <span className="glow-text">Institutional Demo</span>
               </h2>
               <p style={{ color: 'rgba(255,255,255,0.55)', lineHeight: 1.8, fontSize: '0.95rem', marginBottom: '2rem' }}>
-                Get in touch with our team to learn how ATLAS can help your institution
-                meet CHED OBE requirements while cutting faculty workload in half.
+                Tell us which package fits your institution: Starter, Professional, or Custom.
+                We size a private ATLAS deployment to that package, then expand it when you need more room.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                 {[
-                  { icon: '📧', label: 'Email', value: 'atlasdegdev@gmail.com' },
-                  { icon: '📍', label: 'Location', value: 'Lipa City, Batangas, Philippines' },
-                  { icon: '⏱️', label: 'Response Time', value: 'Within 24 hours' },
-                ].map(({ icon, label, value }) => (
+                  { icon: Mail, label: 'Email', value: 'atlas.hybrid.dev@gmail.com' },
+                  { icon: MapPin, label: 'Location', value: 'Lipa City, Batangas, Philippines' },
+                  { icon: Clock, label: 'Response Time', value: 'Within 24 hours' },
+                ].map(({ icon: Icon, label, value }) => (
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{
                       width: 40, height: 40, borderRadius: 10,
                       background: 'rgba(22,163,74,0.15)',
                       border: '1px solid rgba(22,163,74,0.3)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '1.1rem', flexShrink: 0,
+                      flexShrink: 0,
                     }}>
-                      {icon}
+                      <Icon size={18} color="#86EFAC" strokeWidth={1.75} aria-hidden="true" />
                     </div>
                     <div>
                       <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>{label}</div>
@@ -1214,12 +1219,22 @@ export default function LandingPage() {
             </div>
 
             <GlassCard style={{ padding: '2.5rem' }}>
-              <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F0F0F0' }}>Send us a message</h3>
-                <input className="contact-input" name="name" value={contactForm.name} onChange={handleContactChange} placeholder="Your Name" />
-                <input className="contact-input" name="email" type="email" value={contactForm.email} onChange={handleContactChange} placeholder="Institutional Email" />
-                <input className="contact-input" name="institution" value={contactForm.institution} onChange={handleContactChange} placeholder="Institution Name" />
-                <textarea className="contact-input" name="message" rows={4} value={contactForm.message} onChange={handleContactChange} placeholder="How can we help?" />
+              <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', position: 'relative' }}>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F0F0F0' }}>Request a demo or quote</h3>
+                <input className="contact-input" name="name" value={contactForm.name} onChange={handleContactChange} placeholder="Your Name" maxLength={120} autoComplete="name" />
+                <input className="contact-input" name="email" type="email" value={contactForm.email} onChange={handleContactChange} placeholder="Institutional Email" maxLength={254} autoComplete="email" />
+                <input className="contact-input" name="institution" value={contactForm.institution} onChange={handleContactChange} placeholder="Institution Name" maxLength={200} autoComplete="organization" />
+                <div className="contact-honeypot" aria-hidden="true">
+                  <label htmlFor="leave_blank">Leave this blank</label>
+                  <input id="leave_blank" name="leave_blank" tabIndex={-1} autoComplete="off" value={contactForm.leave_blank} onChange={handleContactChange} />
+                </div>
+                <select className="contact-input" name="package" value={contactForm.package} onChange={handleContactChange}>
+                  <option value="">Package of interest</option>
+                  {PACKAGES.map((plan) => (
+                    <option key={plan.name} value={plan.name}>{plan.name}</option>
+                  ))}
+                </select>
+                <textarea className="contact-input" name="message" rows={4} maxLength={2000} value={contactForm.message} onChange={handleContactChange} placeholder="Tell us about your institution" />
                 {contactStatus.message && (
                   <div style={{
                     padding: '0.7rem 0.9rem',
@@ -1236,12 +1251,14 @@ export default function LandingPage() {
                     alignItems: 'center',
                     gap: 8,
                   }}>
-                    <span style={{ fontSize: '1rem' }}>{contactStatus.type === 'success' ? '✓' : '!'}</span>
+                    {contactStatus.type === 'success'
+                      ? <Check size={16} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
+                      : <span style={{ fontSize: '1rem' }}>!</span>}
                     <span>{contactStatus.message}</span>
                   </div>
                 )}
                 <button type="submit" className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }} disabled={contactSubmitting}>
-                  {contactSubmitting ? 'Sending...' : 'Send Message'}
+                  {contactSubmitting ? 'Sending...' : 'Request an Institutional Demo'}
                 </button>
               </form>
             </GlassCard>
@@ -1257,7 +1274,7 @@ export default function LandingPage() {
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <img src={atlasLogo} alt="ATLAS" width={640} height={188} loading="lazy" decoding="async" style={{ height: 24 }} />
+            <img src={atlasLogo} alt="ATLAS" width={640} height={188} loading="lazy" decoding="async" style={{ height: 28, width: 'auto', objectFit: 'contain', display: 'block' }} />
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>

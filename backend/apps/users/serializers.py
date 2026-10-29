@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core import signing
@@ -550,30 +552,56 @@ class StudentDetailsUpdateSerializer(serializers.Serializer):
     courses_enrolled = serializers.JSONField(required=False)
 
 
+_CONTACT_TAG = re.compile(r'<[^>]*>')
+_CONTACT_CONTROL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
+
+def _contact_single_line(value, max_len, label):
+    value = _CONTACT_TAG.sub('', value or '')
+    value = _CONTACT_CONTROL.sub('', value).replace('\r', ' ').replace('\n', ' ')
+    value = re.sub(r'\s+', ' ', value).strip()
+    if not value:
+        raise serializers.ValidationError(f'{label} is required.')
+    if len(value) > max_len:
+        raise serializers.ValidationError(f'{label} is too long.')
+    return value
+
+
 class ContactFormSerializer(serializers.Serializer):
     """Validates the public contact form submitted from the landing page."""
-    name = serializers.CharField(max_length=255)
-    email = serializers.EmailField()
-    institution = serializers.CharField(max_length=255)
-    message = serializers.CharField()
+    name = serializers.CharField(max_length=120)
+    email = serializers.EmailField(max_length=254)
+    institution = serializers.CharField(max_length=200)
+    message = serializers.CharField(max_length=2000)
+    # Honeypot. Browsers leave it empty; a filled value is discarded before mail is sent.
+    leave_blank = serializers.CharField(required=False, allow_blank=True, max_length=200)
 
     def validate_name(self, value):
-        value = ''.join(char for char in value.strip() if char.isprintable() and char not in '\r\n')
-        if not value:
-            raise serializers.ValidationError('Name is required.')
-        return value
+        return _contact_single_line(value, 120, 'Name')
 
     def validate_institution(self, value):
-        value = ''.join(char for char in value.strip() if char.isprintable() and char not in '\r\n')
-        if not value:
-            raise serializers.ValidationError('Institution is required.')
+        return _contact_single_line(value, 200, 'Institution')
+
+    def validate_email(self, value):
+        value = (value or '').strip().lower()
+        if any(char in value for char in '\r\n\x00'):
+            raise serializers.ValidationError('Enter a valid email address.')
         return value
 
     def validate_message(self, value):
-        value = value.strip()
+        value = _CONTACT_TAG.sub('', value or '')
+        value = _CONTACT_CONTROL.sub('', value).replace('\r\n', '\n').replace('\r', '\n').strip()
+        value = re.sub(r'\n{4,}', '\n\n\n', value)
         if not value:
             raise serializers.ValidationError('Message is required.')
+        if len(value) > 2000:
+            raise serializers.ValidationError('Message is too long.')
+        if len(re.findall(r'https?://', value, flags=re.IGNORECASE)) > 5:
+            raise serializers.ValidationError('Message has too many links.')
         return value
+
+    def validate_leave_blank(self, value):
+        return (value or '').strip()[:200]
 
 
 class ProfileSettingsUpdateSerializer(serializers.Serializer):

@@ -1,3 +1,4 @@
+import ipaddress
 import logging
 
 from django.core.cache import cache
@@ -59,12 +60,22 @@ _GENERATION_MARKERS = (
 )
 
 
+def _is_trusted_proxy(peer):
+    """Docker and loopback peers are nginx. A public peer must not supply the client IP."""
+    try:
+        ip = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    return ip.is_private or ip.is_loopback
+
+
 def _client_ip(request):
-    # nginx sets this from the socket address, not from a client-supplied list.
+    # nginx overwrites X-Real-IP with the socket address. Trust it only from that proxy.
+    peer = (request.META.get('REMOTE_ADDR') or '').strip()
     real_ip = (request.META.get('HTTP_X_REAL_IP') or '').strip()
-    if real_ip:
-        return real_ip
-    return request.META.get('REMOTE_ADDR') or 'unknown'
+    if real_ip and _is_trusted_proxy(peer):
+        return real_ip[:64]
+    return (peer or 'unknown')[:64]
 
 
 def _rate_identity(request):
@@ -93,7 +104,7 @@ def _limit_for(path, method):
     return None
 
 
-def _within_limit(bucket, identity, limit, window):
+def _within_limit(bucket, identity, limit, window, fail_closed=False):
     key = f'atlas:throttle:{bucket}:{identity}'
     try:
         if cache.add(key, 1, timeout=window):
@@ -105,8 +116,8 @@ def _within_limit(bucket, identity, limit, window):
             return True
         return count <= limit
     except Exception:
-        logger.exception('Rate-limit cache is unavailable; allowing the request.')
-        return True
+        logger.exception('Rate-limit cache is unavailable for %s.', bucket)
+        return False if fail_closed else True
 
 
 class SensitiveEndpointThrottleMiddleware:
@@ -119,7 +130,7 @@ class SensitiveEndpointThrottleMiddleware:
         rule = _limit_for(request.path, request.method)
         if rule is not None:
             name, limit, window = rule
-            if not _within_limit(name, _rate_identity(request), limit, window):
+            if not _within_limit(name, _rate_identity(request), limit, window, fail_closed=(name == 'contact')):
                 return JsonResponse(
                     {'detail': 'Too many attempts. Please wait and try again.'},
                     status=429,
