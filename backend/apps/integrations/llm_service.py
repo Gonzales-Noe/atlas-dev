@@ -344,6 +344,19 @@ def _start_key_cooldown(provider, api_key, seconds, reason):
     logger.warning("LLM provider '%s' key %s paused for %ss: %s", provider, slot[-4:], seconds, reason)
 
 
+def remember_key_quota(provider, api_key, payload):
+    """Quota for one account. The provider cache keeps the latest account for older readers."""
+    stored = dict(payload)
+    stored['checked_at'] = datetime.now(timezone.utc).isoformat()
+    cache.set(f'llm:quota:{_key_slot(provider, api_key)}', stored, timeout=_QUOTA_CACHE_SECONDS)
+    remember_provider_quota(provider, stored)
+    return stored
+
+
+def stored_key_quota(provider, api_key):
+    return cache.get(f'llm:quota:{_key_slot(provider, api_key)}')
+
+
 def _classify_http_error(status_code, body):
     text = (body or '').lower()
     if status_code == 402 or 'insufficient' in text or 'credit' in text or 'quota' in text:
@@ -464,57 +477,113 @@ class LLMService:
             row['reset_in_seconds'] = remaining
         return row
 
-    def _probe_chat_quota(self, provider):
-        """One short call so the rate-limit headers can be read."""
+    def _probe_one_key(self, provider, api_key):
+        """One short call on this account so its rate-limit headers can be read."""
         try:
-            self.generate_response(
+            self._chat_completion(
+                provider,
+                self.models[provider],
                 [{'role': 'user', 'content': 'Reply with OK.'}],
-                provider_choice=provider,
-                max_tokens=16,
+                16,
+                api_key=api_key,
             )
-        except ProviderError:
-            pass
+        except ProviderError as exc:
+            if exc.kind in COOLDOWN_SECONDS:
+                _start_key_cooldown(
+                    provider, api_key, exc.retry_after or COOLDOWN_SECONDS[exc.kind], exc,
+                )
+            if exc.kind == 'unavailable' and not stored_key_quota(provider, api_key):
+                return {
+                    'status': 'unreachable',
+                    'quota_kind': 'none',
+                    'detail': 'The provider did not answer.',
+                }
         except Exception as exc:
             logger.warning("LLM health probe for '%s' failed: %s", provider, exc)
-        return stored_provider_quota(provider)
+        return stored_key_quota(provider, api_key)
 
-    def _openrouter_health(self):
-        row = self._blank_health('openrouter', 'healthy', '')
-        if not self.configured.get('openrouter'):
-            row['status'] = 'not_configured'
-            row['detail'] = 'API key is not set.'
-            return row
+    def _read_openrouter_key(self, api_key):
+        """Daily free-model balance for one OpenRouter account."""
         try:
             response = requests.get(
                 'https://openrouter.ai/api/v1/key',
-                headers={'Authorization': f"Bearer {self.keys_for('openrouter')[0]}"},
+                headers={'Authorization': f'Bearer {api_key}'},
                 timeout=20,
             )
         except requests.exceptions.RequestException as exc:
-            row['status'] = 'unreachable'
-            row['detail'] = f'Could not read the key quota: {exc.__class__.__name__}'
-            return self._apply_cooldown(row)
+            return {
+                'status': 'unreachable',
+                'quota_kind': 'none',
+                'detail': f'Could not read the key quota: {exc.__class__.__name__}',
+            }
         if not response.ok:
             snapshot = quota_from_headers('openrouter', response.headers, response.status_code)
-            row.update(snapshot)
-            row['detail'] = 'The key quota could not be read.'
-            remember_provider_quota('openrouter', row)
-            return self._apply_cooldown(row)
+            snapshot['detail'] = 'The key quota could not be read.'
+            remember_key_quota('openrouter', api_key, snapshot)
+            if snapshot['status'] in ('limited', 'blocked'):
+                kind = 'auth' if snapshot['status'] == 'blocked' else 'rate_limited'
+                _start_key_cooldown('openrouter', api_key, COOLDOWN_SECONDS[kind], snapshot['detail'])
+            return snapshot
         daily = (response.json().get('data') or {}).get('free_model_daily_requests') or {}
         remaining = _as_int(daily.get('remaining'))
         limit = _as_int(daily.get('limit'))
-        row['quota_kind'] = 'requests'
-        row['requests_limit'] = limit
-        row['requests_remaining'] = remaining
-        row['detail'] = 'Daily free-model requests. This key does not publish a token balance.'
+        snapshot = {
+            'provider': 'openrouter',
+            'status': 'limited' if remaining == 0 else 'healthy',
+            'quota_kind': 'requests',
+            'tokens_limit': None,
+            'tokens_remaining': None,
+            'requests_limit': limit,
+            'requests_remaining': remaining,
+            'reset_in_seconds': None,
+            'resets_at': None,
+            'detail': 'Daily free-model requests. This key does not publish a token balance.',
+        }
         if remaining == 0:
-            row['status'] = 'limited'
             tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0,
             )
-            row['resets_at'] = tomorrow.isoformat()
-            row['reset_in_seconds'] = max(0, int((tomorrow - datetime.now(timezone.utc)).total_seconds()))
-        remember_provider_quota('openrouter', row)
+            snapshot['resets_at'] = tomorrow.isoformat()
+            snapshot['reset_in_seconds'] = max(0, int((tomorrow - datetime.now(timezone.utc)).total_seconds()))
+            _start_key_cooldown(
+                'openrouter', api_key,
+                snapshot['reset_in_seconds'] or COOLDOWN_SECONDS['quota'],
+                'daily free-model requests are used up',
+            )
+        remember_key_quota('openrouter', api_key, snapshot)
+        return snapshot
+
+    def _account_health(self, name, api_key, index, total, refresh):
+        """Health for one API key. Several keys on a provider are separate accounts."""
+        cooling = key_cooldown_remaining(name, api_key)
+        cached = stored_key_quota(name, api_key)
+        if cached is None and total == 1:
+            cached = stored_provider_quota(name)
+        if (refresh or not cached) and not cooling:
+            if name == 'openrouter':
+                cached = self._read_openrouter_key(api_key) or cached
+            else:
+                cached = self._probe_one_key(name, api_key) or cached
+        if not cached:
+            detail = 'This account is paused.' if cooling else 'No token balance has been published yet.'
+            row = self._blank_health(name, 'limited' if cooling else 'healthy', detail)
+        else:
+            row = self._blank_health(name, cached.get('status') or 'healthy', cached.get('detail') or '')
+            for field in (
+                'status', 'quota_kind', 'tokens_limit', 'tokens_remaining',
+                'requests_limit', 'requests_remaining', 'resets_at', 'reset_in_seconds',
+                'detail', 'checked_at',
+            ):
+                if field in cached:
+                    row[field] = cached[field]
+        spec = PROVIDER_SPECS[name]
+        row['id'] = name if total == 1 else f'{name}-{index}'
+        row['instance'] = index
+        row['instances'] = total
+        row['label'] = spec.label
+        row['model'] = self.models[name]
+        row['configured'] = True
+        row['cooldown_seconds'] = max(key_cooldown_remaining(name, api_key), provider_cooldown_remaining(name))
         return self._apply_cooldown(row)
 
     def _ollama_health(self):
@@ -548,40 +617,29 @@ class LLMService:
         return row
 
     def llm_health(self, refresh=False):
-        """Health, unused quota, and the time a reached limit returns."""
+        """Health, unused quota, and the time a reached limit returns.
+
+        Each API key is its own account, so a provider with several keys
+        is listed once per account.
+        """
         rows = []
         for name in list(PROVIDER_SPECS) + ['ollama']:
             if name == 'ollama':
-                rows.append(self._ollama_health())
+                row = self._ollama_health()
+                row['instance'] = 1
+                row['instances'] = 1
+                rows.append(row)
                 continue
-            if name == 'openrouter':
-                cached = stored_provider_quota(name)
-                if cached and not refresh:
-                    cached['cooldown_seconds'] = provider_cooldown_remaining(name)
-                    rows.append(self._apply_cooldown(cached))
-                else:
-                    rows.append(self._openrouter_health())
+            keys = self.keys_for(name) if self.configured.get(name) else []
+            if not keys:
+                row = self._blank_health(name, 'not_configured', 'API key is not set.')
+                row['instance'] = 1
+                row['instances'] = 0
+                rows.append(row)
                 continue
-            if not self.configured.get(name):
-                rows.append(self._blank_health(name, 'not_configured', 'API key is not set.'))
-                continue
-            cached = stored_provider_quota(name)
-            if refresh or not cached:
-                self._probe_chat_quota(name)
-                cached = stored_provider_quota(name)
-            if not cached:
-                row = self._blank_health(name, 'healthy', 'No token balance has been published yet.')
-                row['checked_at'] = datetime.now(timezone.utc).isoformat()
-                rows.append(self._apply_cooldown(row))
-                continue
-            cached['id'] = name
-            cached['label'] = PROVIDER_SPECS[name].label
-            cached['model'] = self.models[name]
-            cached['configured'] = True
-            cached['cooldown_seconds'] = provider_cooldown_remaining(name)
-            if cached.get('quota_kind') == 'none':
-                cached['detail'] = cached.get('detail') or 'This provider does not publish a token balance.'
-            rows.append(self._apply_cooldown(cached))
+            total = len(keys)
+            for index, api_key in enumerate(keys, start=1):
+                rows.append(self._account_health(name, api_key, index, total, refresh))
         return rows
 
     def _check_ollama_availability(self):
@@ -746,7 +804,10 @@ class LLMService:
             raise ProviderError(provider, f'request failed: {exc}', kind='unavailable') from exc
 
         snapshot = quota_from_headers(provider, response.headers, response.status_code)
-        remember_provider_quota(provider, snapshot)
+        if api_key:
+            remember_key_quota(provider, api_key, snapshot)
+        else:
+            remember_provider_quota(provider, snapshot)
 
         if not response.ok:
             retry_after = response.headers.get('retry-after')
