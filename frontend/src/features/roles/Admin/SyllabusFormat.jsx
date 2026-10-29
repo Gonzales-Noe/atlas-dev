@@ -7,6 +7,7 @@ import AddIcon from '@mui/icons-material/Add'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
+import DragIndicatorIcon from '@mui/icons-material/DragIndicator'
 import EditOutlinedIcon from '@mui/icons-material/EditOutlined'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
@@ -82,16 +83,19 @@ const emptySection = () => ({
   table_rows: [],
 })
 
-const emptySubsection = () => ({
+const emptySubsection = (after = '') => ({
   key: `field-${Date.now()}`,
   label: '',
   required: false,
-  is_static: false,
+  // New fields are authored by the admin by default. Turn Fixed off to let
+  // Faculty complete the field instead.
+  is_static: true,
   static_content: '',
   table_enabled: false,
   table_columns: [],
   table_column_groups: [],
   table_rows: [],
+  after,
 })
 
 const emptyTableRow = columns => ({ fixed: false, values: Array.from({ length: columns }, () => '') })
@@ -126,6 +130,9 @@ export default function SyllabusFormat() {
   const [fieldDraft, setFieldDraft] = useState('')
   const [labelEditor, setLabelEditor] = useState(null)
   const [labelDraft, setLabelDraft] = useState('')
+  const [draggedFieldKey, setDraggedFieldKey] = useState('')
+  const [draggedTableKey, setDraggedTableKey] = useState('')
+  const [draggedSubsectionKey, setDraggedSubsectionKey] = useState('')
   const dirtyRef = useRef(false)
   const savingRef = useRef(false)
 
@@ -226,12 +233,13 @@ export default function SyllabusFormat() {
     })
   }
 
-  function addSubsection(sectionIndex) {
+  function addSubsection(sectionIndex, insertIndex = null, after = '') {
     const section = sections[sectionIndex]
     if (!section) return
-    updateSection(sectionIndex, {
-      subsections: [...(section.subsections || []), emptySubsection()],
-    })
+    const nextSubsections = [...(section.subsections || [])]
+    const at = insertIndex == null ? nextSubsections.length : Math.min(insertIndex, nextSubsections.length)
+    nextSubsections.splice(at, 0, emptySubsection(after))
+    updateSection(sectionIndex, { subsections: nextSubsections })
   }
 
   function removeSubsection(sectionIndex, subsectionIndex) {
@@ -270,6 +278,83 @@ export default function SyllabusFormat() {
       return { ...current, syllabus_sections: next }
     })
     setActiveIndex(target)
+  }
+
+  function moveKey(list, draggedKey, targetKey, keyOf = item => item?.key) {
+    const from = list.findIndex(item => keyOf(item) === draggedKey)
+    const to = list.findIndex(item => keyOf(item) === targetKey)
+    if (from < 0 || to < 0 || from === to) return list
+    const next = [...list]
+    const [moved] = next.splice(from, 1)
+    next.splice(to, 0, moved)
+    return next
+  }
+
+  function reorderFields(draggedKey, targetKey) {
+    if (!draggedKey || !targetKey || draggedKey === targetKey) return
+    const fields = activeSection?.fields || []
+    const dragged = fields.find(field => field.key === draggedKey)
+    const target = fields.find(field => field.key === targetKey)
+    // Fields render inside their blueprint group, so only allow reordering
+    // against a field in the same group.
+    if (!dragged || !target || (dragged.group || '') !== (target.group || '')) return
+    updateSection(activeIndex, { fields: moveKey(fields, draggedKey, targetKey) })
+  }
+
+  function reorderSubsections(draggedKey, targetKey) {
+    if (!draggedKey || !targetKey || draggedKey === targetKey) return
+    const list = activeSection?.subsections || []
+    const dragged = list.find(subsection => subsection.key === draggedKey)
+    const target = list.find(subsection => subsection.key === targetKey)
+    if (!dragged || !target) return
+    // Follow the field the target is anchored to so a drag across fields moves
+    // the field to the new location instead of staying under its old field.
+    const withAnchor = list.map(subsection => (
+      subsection.key === draggedKey ? { ...subsection, after: target.after || '' } : subsection
+    ))
+    updateSection(activeIndex, { subsections: moveKey(withAnchor, draggedKey, targetKey) })
+  }
+
+  function tableKeysForSection() {
+    const tabTables = activeBlueprintTabs.map(tab => tab.table).filter(Boolean)
+    return [...activeBlueprintTables, ...tabTables].map(table => table.key)
+  }
+
+  function reorderTables(draggedKey, targetKey) {
+    if (!draggedKey || !targetKey || draggedKey === targetKey) return
+    const keys = tableKeysForSection()
+    if (!keys.includes(draggedKey) || !keys.includes(targetKey)) return
+    const saved = (activeSection?.table_order || []).filter(key => keys.includes(key))
+    const current = [...saved, ...keys.filter(key => !saved.includes(key))]
+    updateSection(activeIndex, { table_order: moveKey(current, draggedKey, targetKey) })
+  }
+
+  function orderTables(tables) {
+    const order = activeSection?.table_order || []
+    if (!order.length) return tables
+    const rank = new Map(order.map((key, index) => [key, index]))
+    return [...tables].sort((a, b) => (
+      (rank.has(a.key) ? rank.get(a.key) : Number.MAX_SAFE_INTEGER)
+      - (rank.has(b.key) ? rank.get(b.key) : Number.MAX_SAFE_INTEGER)
+    ))
+  }
+
+  function dragHandleProps(kind, key) {
+    return {
+      draggable: true,
+      onDragStart: event => {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('text/plain', key)
+        if (kind === 'field') setDraggedFieldKey(key)
+        if (kind === 'table') setDraggedTableKey(key)
+        if (kind === 'subsection') setDraggedSubsectionKey(key)
+      },
+      onDragEnd: () => {
+        if (kind === 'field') setDraggedFieldKey('')
+        if (kind === 'table') setDraggedTableKey('')
+        if (kind === 'subsection') setDraggedSubsectionKey('')
+      },
+    }
   }
 
   function openTable(sectionIndex, subsectionIndex = null) {
@@ -873,10 +958,32 @@ export default function SyllabusFormat() {
     const tableDriven = field.type === 'repeat' || field.type === 'table'
     const fixedContent = (entry.content || '').trim()
     return (
-      <Box key={field.key} sx={{ py: 1, borderBottom: '1px solid var(--border-color)' }}>
+      <Box
+        key={field.key}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
+        onDrop={event => {
+          event.preventDefault()
+          reorderFields(event.dataTransfer.getData('text/plain'), field.key)
+        }}
+        sx={{
+          py: 1,
+          borderBottom: '1px solid var(--border-color)',
+          opacity: draggedFieldKey === field.key ? 0.45 : 1,
+          transition: 'opacity 150ms',
+        }}
+      >
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
+              <Tooltip title="Drag to reorder">
+                <span
+                  {...dragHandleProps('field', field.key)}
+                  aria-label={`Reorder ${label}`}
+                  style={{ display: 'inline-flex', cursor: 'grab', color: 'var(--text-tertiary)', flexShrink: 0 }}
+                >
+                  <DragIndicatorIcon sx={{ fontSize: '1rem' }} />
+                </span>
+              </Tooltip>
               <Typography sx={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)' }}>
                 {label}
               </Typography>
@@ -953,11 +1060,35 @@ export default function SyllabusFormat() {
                   </IconButton>
                 </Tooltip>
               )}
+              {!activeSection.derived && (
+                <Tooltip title={`Add a field after ${label}`}>
+                  <IconButton
+                    size="small"
+                    aria-label={`Add a field after ${label}`}
+                    onClick={() => addSubsection(activeIndex, null, field.key)}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Stack>
           ) : (
-            <Chip size="small" variant="outlined"
-              label={activeSection.derived ? 'Auto-generated' : 'Faculty fills'}
-              sx={{ height: 22, fontSize: '0.68rem', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }} />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Chip size="small" variant="outlined"
+                label={activeSection.derived ? 'Auto-generated' : 'Faculty fills'}
+                sx={{ height: 22, fontSize: '0.68rem', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }} />
+              {!activeSection.derived && (
+                <Tooltip title={`Add a field after ${label}`}>
+                  <IconButton
+                    size="small"
+                    aria-label={`Add a field after ${label}`}
+                    onClick={() => addSubsection(activeIndex, null, field.key)}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+            </Stack>
           )}
         </Stack>
       </Box>
@@ -1006,10 +1137,33 @@ export default function SyllabusFormat() {
       : view.columns
 
     return (
-      <Box key={table.key} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
+      <Box
+        key={table.key}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
+        onDrop={event => {
+          event.preventDefault()
+          reorderTables(event.dataTransfer.getData('text/plain'), table.key)
+        }}
+        sx={{
+          border: '1px solid var(--border-color)',
+          borderRadius: 2,
+          overflow: 'hidden',
+          opacity: draggedTableKey === table.key ? 0.45 : 1,
+          transition: 'opacity 150ms',
+        }}
+      >
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0, flex: 1 }}>
+              <Tooltip title="Drag to reorder">
+                <span
+                  {...dragHandleProps('table', table.key)}
+                  aria-label={`Reorder ${table.title}`}
+                  style={{ display: 'inline-flex', cursor: 'grab', color: 'var(--text-tertiary)', flexShrink: 0 }}
+                >
+                  <DragIndicatorIcon sx={{ fontSize: '1rem' }} />
+                </span>
+              </Tooltip>
               <TextField
                 size="small"
                 value={activeSection?.table_titles?.[table.key] ?? table.title}
@@ -1216,7 +1370,131 @@ export default function SyllabusFormat() {
           </Stack>
         </Box>
         <Stack spacing={2} sx={{ p: 2 }}>
-          {activeBlueprintTabs.map(tab => renderBlueprintTable(tab.table))}
+          {orderTables(activeBlueprintTabs.map(tab => tab.table).filter(Boolean)).map(renderBlueprintTable)}
+        </Stack>
+      </Box>
+    )
+  }
+
+  function subsectionIndexOf(subsection) {
+    return (activeSection?.subsections || []).findIndex(item => item.key === subsection.key)
+  }
+
+  function subsectionsAfter(fieldKey) {
+    return (activeSection?.subsections || []).filter(subsection => (subsection.after || '') === fieldKey)
+  }
+
+  const builtinFieldKeys = new Set((activeSection?.fields || []).map(field => field.key))
+  const looseSubsections = (activeSection?.subsections || []).filter(subsection => (
+    !subsection.after || !builtinFieldKeys.has(subsection.after)
+  ))
+
+  function renderSubsectionCard(subsection) {
+    const subsectionIndex = subsectionIndexOf(subsection)
+    if (subsectionIndex < 0) return null
+    return (
+      <Box
+        key={subsection.key || subsectionIndex}
+        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = 'move' }}
+        onDrop={event => {
+          event.preventDefault()
+          reorderSubsections(event.dataTransfer.getData('text/plain'), subsection.key)
+        }}
+        sx={{
+          border: '1px solid var(--border-color)',
+          borderRadius: 2,
+          p: 1.5,
+          mt: 1,
+          ml: subsection.after ? 2 : 0,
+          opacity: draggedSubsectionKey === subsection.key ? 0.45 : 1,
+          transition: 'opacity 150ms',
+        }}
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
+          <Tooltip title="Drag to reorder">
+            <span
+              {...dragHandleProps('subsection', subsection.key)}
+              aria-label={`Reorder ${subsection.label || 'field'}`}
+              style={{ display: 'inline-flex', cursor: 'grab', color: 'var(--text-tertiary)', flexShrink: 0 }}
+            >
+              <DragIndicatorIcon sx={{ fontSize: '1rem' }} />
+            </span>
+          </Tooltip>
+          <TextField
+            size="small"
+            fullWidth
+            label="Field name"
+            placeholder="e.g. Course Requirements"
+            value={subsection.label || ''}
+            onChange={event => updateSubsection(activeIndex, subsectionIndex, { label: event.target.value })}
+            sx={inputSx}
+          />
+          <FormControlLabel
+            sx={{ m: 0, whiteSpace: 'nowrap' }}
+            control={<Switch size="small" checked={Boolean(subsection.is_static)} onChange={event => updateSubsection(activeIndex, subsectionIndex, { is_static: event.target.checked })} />}
+            label={<Typography variant="caption" sx={{ fontWeight: 700, color: subsection.is_static ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
+          />
+          {subsection.is_static && (
+            <Tooltip title="Edit fixed content">
+              <IconButton
+                size="small"
+                aria-label={`Edit fixed content for ${subsection.label || 'field'}`}
+                onClick={() => openSubsectionEditor(subsection, subsectionIndex)}
+                sx={{ color: '#FFB74D' }}
+              >
+                <EditOutlinedIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
+          <FormControlLabel
+            sx={{ m: 0, whiteSpace: 'nowrap' }}
+            control={<Switch size="small" checked={Boolean(subsection.required)} onChange={event => updateSubsection(activeIndex, subsectionIndex, { required: event.target.checked })} />}
+            label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Required</Typography>}
+          />
+          <Tooltip title="Add a field below this one">
+            <IconButton
+              size="small"
+              aria-label={`Add a field after ${subsection.label || 'field'}`}
+              onClick={() => addSubsection(activeIndex, subsectionIndex + 1, subsection.after || '')}
+            >
+              <AddIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <IconButton size="small" aria-label={`Remove ${subsection.label || 'field'}`} onClick={() => removeSubsection(activeIndex, subsectionIndex)}>
+            <DeleteOutlinedIcon fontSize="small" />
+          </IconButton>
+        </Stack>
+        {subsection.is_static && !(subsection.static_content || '').trim() && (
+          <Typography variant="caption" sx={{ color: '#FFB74D', display: 'block', mt: 1 }}>
+            Use Edit to add the content Faculty will see.
+          </Typography>
+        )}
+        {subsection.is_static && (subsection.static_content || '').trim() && (
+          <Typography
+            variant="caption"
+            sx={{
+              display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+              overflow: 'hidden', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
+              mt: 1, px: 1, py: 0.5, borderRadius: 1, bgcolor: 'var(--input-bg)',
+            }}
+          >
+            {subsection.static_content}
+          </Typography>
+        )}
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+          <FormControlLabel
+            sx={{ m: 0 }}
+            control={<Switch size="small" checked={Boolean(subsection.table_enabled)} onChange={event => toggleTable(activeIndex, subsectionIndex, event.target.checked)} />}
+            label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Use a table</Typography>}
+          />
+          {subsection.table_enabled && (
+            <>
+              <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                {subsection.table_columns.map(column => column || 'Untitled').join(' · ') || 'No columns yet'}
+              </Typography>
+              <OutlineBtn small onClick={() => openTable(activeIndex, subsectionIndex)}>Table settings</OutlineBtn>
+            </>
+          )}
         </Stack>
       </Box>
     )
@@ -1225,6 +1503,8 @@ export default function SyllabusFormat() {
   function renderGroups() {
     const knownKeys = new Set(activeBlueprintGroups.flatMap(group => (group.fields || []).map(item => item.key)))
     const extras = (activeSection.fields || []).filter(field => !knownKeys.has(field.key))
+    const fieldRank = new Map((activeSection.fields || []).map((field, index) => [field.key, index]))
+    const rankOf = field => (fieldRank.has(field.key) ? fieldRank.get(field.key) : Number.MAX_SAFE_INTEGER)
     return (
       <Stack spacing={2}>
         {activeBlueprintGroups.map(group => (
@@ -1242,7 +1522,12 @@ export default function SyllabusFormat() {
               </Stack>
             </Box>
             <Box sx={{ px: 2, py: 1 }}>
-              {group.fields.map(renderField)}
+              {[...group.fields].sort((a, b) => rankOf(a) - rankOf(b)).map(field => (
+                <Box key={field.key}>
+                  {renderField(field)}
+                  {subsectionsAfter(field.key).map(renderSubsectionCard)}
+                </Box>
+              ))}
               {!group.fields.length && (
                 <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', py: 1 }}>
                   No fields in this group.
@@ -1258,7 +1543,14 @@ export default function SyllabusFormat() {
                 Additional fields
               </Typography>
             </Box>
-            <Box sx={{ px: 2, py: 1 }}>{extras.map(renderField)}</Box>
+            <Box sx={{ px: 2, py: 1 }}>
+              {extras.map(field => (
+                <Box key={field.key}>
+                  {renderField(field)}
+                  {subsectionsAfter(field.key).map(renderSubsectionCard)}
+                </Box>
+              ))}
+            </Box>
           </Box>
         )}
       </Stack>
@@ -1361,16 +1653,29 @@ export default function SyllabusFormat() {
 
         <GlassCard>
           <Stack spacing={2}>
-            <Box>
-              <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
-                Faculty workspace content
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                {activeSection.derived
-                  ? 'These items are computed from the syllabus. Faculty cannot type into them.'
-                  : 'The fields below mirror the Faculty Syllabus module. Faculty fill them by default; turn on Fixed to supply content they cannot edit.'}
-              </Typography>
-            </Box>
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1.5}
+              alignItems={{ sm: 'flex-start' }}
+              justifyContent="space-between"
+            >
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
+                  Faculty workspace content
+                </Typography>
+                <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                  {activeSection.derived
+                    ? 'These items are computed from the syllabus. Faculty cannot type into them.'
+                    : 'The fields below mirror the Faculty Syllabus module. Faculty fill them by default; turn on Fixed to supply content they cannot edit. Use the + button on a field to add a field right below it. Drag the handle to reorder fields and tables.'}
+                </Typography>
+              </Box>
+              {!activeSection.derived && (
+                <OutlineBtn small onClick={() => addSubsection(activeIndex)}
+                  style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  <AddIcon fontSize="small" /> Add field
+                </OutlineBtn>
+              )}
+            </Stack>
             {activeBlueprintGroups.length
               ? renderGroups()
               : (
@@ -1378,104 +1683,41 @@ export default function SyllabusFormat() {
                   This is a custom section. Add answer fields below; Faculty will see them as text boxes or tables in the Syllabus workspace.
                 </Alert>
               )}
+            {!activeSection.derived && (
+              <Box sx={{ border: '1px solid var(--border-color)', borderRadius: 2.5, overflow: 'hidden' }}>
+                <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }} justifyContent="space-between">
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                        Added fields
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                        New fields start fixed so you can supply the content. Turn Fixed off to let Faculty complete them.
+                      </Typography>
+                    </Box>
+                    <OutlineBtn small onClick={() => addSubsection(activeIndex)}
+                      style={{ flexShrink: 0, whiteSpace: 'nowrap' }}>
+                      <AddIcon fontSize="small" /> Add field
+                    </OutlineBtn>
+                  </Stack>
+                </Box>
+                <Box sx={{ px: 2, py: 1 }}>
+                  {looseSubsections.length ? looseSubsections.map(renderSubsectionCard) : (
+                    <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', py: 1 }}>
+                      No added fields yet. Use the + button on any field above to add one right below it.
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            )}
             {activeBlueprintTabs.length > 0 && renderBlueprintTabs()}
             {activeBlueprintTables.length > 0 && (
               <Stack spacing={2}>
-                {activeBlueprintTables.map(renderBlueprintTable)}
+                {orderTables(activeBlueprintTables).map(renderBlueprintTable)}
               </Stack>
             )}
           </Stack>
         </GlassCard>
-
-        {!activeSection.derived && (
-          <GlassCard>
-            <Stack spacing={1.5}>
-              <Box>
-                <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
-                  Additional answer fields
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                  Extra fields that Faculty complete. Mark one as fixed to supply the content yourself, or add a table.
-                </Typography>
-              </Box>
-              {(activeSection.subsections || []).map((subsection, subsectionIndex) => (
-                <Box key={subsection.key || subsectionIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, p: 1.5 }}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
-                    <TextField
-                      size="small"
-                      fullWidth
-                      label="Field name"
-                      placeholder="e.g. Course Requirements"
-                      value={subsection.label || ''}
-                      onChange={event => updateSubsection(activeIndex, subsectionIndex, { label: event.target.value })}
-                      sx={inputSx}
-                    />
-                    <FormControlLabel
-                      sx={{ m: 0, whiteSpace: 'nowrap' }}
-                      control={<Switch size="small" checked={Boolean(subsection.is_static)} onChange={event => updateSubsection(activeIndex, subsectionIndex, { is_static: event.target.checked })} />}
-                      label={<Typography variant="caption" sx={{ fontWeight: 700, color: subsection.is_static ? '#FFB74D' : 'var(--text-secondary)' }}>Fixed</Typography>}
-                    />
-                    {subsection.is_static && (
-                      <Tooltip title="Edit fixed content">
-                        <IconButton
-                          size="small"
-                          aria-label={`Edit fixed content for ${subsection.label || 'field'}`}
-                          onClick={() => openSubsectionEditor(subsection, subsectionIndex)}
-                          sx={{ color: '#FFB74D' }}
-                        >
-                          <EditOutlinedIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    )}
-                    <FormControlLabel
-                      sx={{ m: 0, whiteSpace: 'nowrap' }}
-                      control={<Switch size="small" checked={Boolean(subsection.required)} onChange={event => updateSubsection(activeIndex, subsectionIndex, { required: event.target.checked })} />}
-                      label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Required</Typography>}
-                    />
-                    <IconButton size="small" aria-label={`Remove ${subsection.label || 'field'}`} onClick={() => removeSubsection(activeIndex, subsectionIndex)}>
-                      <DeleteOutlinedIcon fontSize="small" />
-                    </IconButton>
-                  </Stack>
-                  {subsection.is_static && !(subsection.static_content || '').trim() && (
-                    <Typography variant="caption" sx={{ color: '#FFB74D', display: 'block', mt: 1 }}>
-                      Use Edit to add the content Faculty will see.
-                    </Typography>
-                  )}
-                  {subsection.is_static && (subsection.static_content || '').trim() && (
-                    <Typography
-                      variant="caption"
-                      sx={{
-                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap',
-                        mt: 1, px: 1, py: 0.5, borderRadius: 1, bgcolor: 'var(--input-bg)',
-                      }}
-                    >
-                      {subsection.static_content}
-                    </Typography>
-                  )}
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
-                    <FormControlLabel
-                      sx={{ m: 0 }}
-                      control={<Switch size="small" checked={Boolean(subsection.table_enabled)} onChange={event => toggleTable(activeIndex, subsectionIndex, event.target.checked)} />}
-                      label={<Typography variant="caption" sx={{ fontWeight: 700, color: 'var(--text-secondary)' }}>Use a table</Typography>}
-                    />
-                    {subsection.table_enabled && (
-                      <>
-                        <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
-                          {subsection.table_columns.map(column => column || 'Untitled').join(' · ') || 'No columns yet'}
-                        </Typography>
-                        <OutlineBtn small onClick={() => openTable(activeIndex, subsectionIndex)}>Table settings</OutlineBtn>
-                      </>
-                    )}
-                  </Stack>
-                </Box>
-              ))}
-              <OutlineBtn small sx={{ width: 'fit-content', alignSelf: 'flex-start' }} onClick={() => addSubsection(activeIndex)}>
-                <AddIcon fontSize="small" /> Add field
-              </OutlineBtn>
-            </Stack>
-          </GlassCard>
-        )}
 
         {!activeSection.derived && (
           <GlassCard>
