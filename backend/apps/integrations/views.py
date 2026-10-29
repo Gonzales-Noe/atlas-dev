@@ -406,10 +406,8 @@ def list_course_rag_documents(request):
     files = CourseFile.objects.filter(course=course, uploader=request.user).order_by('-records_id')
     payload = []
     for record in files:
-        if indexing.is_stale_course_file(record):
-            record.rag_status = RagStatusEnum.FAILED
-            record.error_message = indexing.STALE_PROCESSING_MESSAGE
-            record.save(update_fields=['rag_status', 'error_message'])
+        record = indexing.resume_course_file_if_needed(record)
+        progress = indexing.course_index_progress(record.records_id)
         parent_count = ParentChunk.objects.filter(records=record).count()
         child_count = ChildChunk.objects.filter(parent__records=record).count()
         payload.append(
@@ -418,6 +416,8 @@ def list_course_rag_documents(request):
                 'storage_path': record.storage_path,
                 'rag_status': record.rag_status,
                 'error_message': record.error_message,
+                'index_done': progress.get('done'),
+                'index_total': progress.get('total'),
                 'parent_chunks': parent_count,
                 'child_chunks': child_count,
             }

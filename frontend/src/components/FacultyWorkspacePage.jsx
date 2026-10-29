@@ -9757,7 +9757,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       {doc.storage_path || doc.file_name || 'Unnamed file'}
                     </Typography>
                     <Tooltip title={doc.rag_status === 'FAILED' ? (doc.error_message || 'Indexing failed. Upload the file again.') : ''}>
-                      <Chip label={doc.rag_status === 'PROCESSING' ? 'INDEXING…' : (doc.rag_status || 'OK')} size="small"
+                      <Chip label={doc.rag_status === 'PROCESSING' ? (doc.index_total ? `INDEXING ${doc.index_done || 0}/${doc.index_total}` : 'INDEXING…') : (doc.rag_status || 'OK')} size="small"
                         sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
                              bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : doc.rag_status === 'FAILED' ? '#FFEBEE' : '#FFF3E0',
                              color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : doc.rag_status === 'FAILED' ? '#C62828' : '#E65100' }} />

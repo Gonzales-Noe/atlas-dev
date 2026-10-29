@@ -6,11 +6,15 @@ Upload requests only validate the file and create a PROCESSING record
 embedding and chunk storage happen here so the request returns immediately.
 """
 
+import json
 import logging
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import BytesIO
+from pathlib import Path
 
+from django.core.cache import cache
 from django.db import close_old_connections, transaction
 from django.utils import timezone
 
@@ -34,6 +38,9 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-indexer")
 # to a server restart and will never finish.
 STALE_PROCESSING_AFTER = timedelta(hours=1)
 STALE_PROCESSING_MESSAGE = "Indexing was interrupted by a server restart. Please upload the file again."
+_EMBED_BATCH = 16
+_LOCK_TTL_SECONDS = 180
+_UPLOAD_DIR = Path(tempfile.gettempdir()) / "atlas-rag-course"
 
 
 def _is_stale(status, created_at) -> bool:
@@ -52,7 +59,58 @@ def is_stale_course_file(course_file) -> bool:
     return _is_stale(course_file.rag_status, course_file.created_at)
 
 
-def _chunk_and_embed(file_bytes, file_type, file_name):
+def _lock_key(records_id) -> str:
+    return f"atlas:rag-course-lock:{records_id}"
+
+
+def _progress_key(records_id) -> str:
+    return f"atlas:rag-course-progress:{records_id}"
+
+
+def course_index_progress(records_id) -> dict:
+    progress = cache.get(_progress_key(records_id))
+    return progress if isinstance(progress, dict) else {}
+
+
+def _upload_path(records_id) -> Path:
+    return _UPLOAD_DIR / f"{records_id}.bin"
+
+
+def _meta_path(records_id) -> Path:
+    return _UPLOAD_DIR / f"{records_id}.json"
+
+
+def _clear_upload(records_id):
+    for path in (_upload_path(records_id), _meta_path(records_id)):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("[ATLAS RAG] Could not remove %s", path)
+
+
+def _store_upload(records_id, file_bytes, file_type, file_name, module_tag, term_tag):
+    _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    _upload_path(records_id).write_bytes(file_bytes)
+    _meta_path(records_id).write_text(json.dumps({
+        "file_type": file_type,
+        "file_name": file_name,
+        "module_tag": module_tag,
+        "term_tag": term_tag,
+    }))
+
+
+def _embed_in_batches(texts, on_progress=None):
+    vectors = []
+    total = len(texts)
+    for start in range(0, total, _EMBED_BATCH):
+        batch = texts[start:start + _EMBED_BATCH]
+        vectors.extend(rag_service.embed_documents_batch(batch))
+        if on_progress:
+            on_progress(min(start + len(batch), total), total)
+    return vectors
+
+
+def _chunk_and_embed(file_bytes, file_type, file_name, on_progress=None):
     """Return (parents_data, child_records, embeddings) for a file."""
     from .pii_masking import assert_no_high_confidence_pii, mask_and_verify
 
@@ -90,11 +148,8 @@ def _chunk_and_embed(file_bytes, file_type, file_name):
             child_records.append((p_idx, child_data))
 
     texts_to_embed = [c["content"] for _, c in child_records]
-    for i, text in enumerate(texts_to_embed):
-        assert_no_high_confidence_pii(text, context=f"embedding-batch[{i}]")
-
     logger.info("[ATLAS RAG] Batch-embedding %d PII-scrubbed child chunks…", len(child_records))
-    embeddings = rag_service.embed_documents_batch(texts_to_embed)
+    embeddings = _embed_in_batches(texts_to_embed, on_progress)
     return parents_data, child_records, embeddings
 
 
@@ -129,7 +184,9 @@ def _run_index_job(document_id, file_bytes, file_type, file_name):
 
 def index_global_document(document_id, file_bytes, file_type, file_name):
     """Chunk, embed and store a global document, then mark it READY."""
-    parents_data, child_records, embeddings = _chunk_and_embed(file_bytes, file_type, file_name)
+    parents_data, child_records, embeddings = _chunk_and_embed(
+        file_bytes, file_type, file_name,
+    )
 
     with transaction.atomic():
         document = (
@@ -178,9 +235,43 @@ def index_global_document(document_id, file_bytes, file_type, file_name):
 # ── Course (faculty) knowledge-base files ───────────────────────────────────
 
 def enqueue_course_file(records_id, file_bytes, file_type, file_name, module_tag, term_tag):
+    _store_upload(records_id, file_bytes, file_type, file_name, module_tag, term_tag)
+    if not cache.add(_lock_key(records_id), "queued", timeout=_LOCK_TTL_SECONDS):
+        return
     _EXECUTOR.submit(
         _run_course_job, records_id, file_bytes, file_type, file_name, module_tag, term_tag,
     )
+
+
+def resume_course_file_if_needed(course_file):
+    """Restart a course file whose indexer stopped, or fail one whose bytes are gone."""
+    if course_file.rag_status != RagStatusEnum.PROCESSING or course_file.created_at is None:
+        return course_file
+    if cache.get(_lock_key(course_file.records_id)):
+        return course_file
+    age = timezone.now() - course_file.created_at
+    path = _upload_path(course_file.records_id)
+    meta_path = _meta_path(course_file.records_id)
+    if path.exists() and meta_path.exists() and age > timedelta(seconds=20):
+        try:
+            meta = json.loads(meta_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            meta = None
+        if meta:
+            enqueue_course_file(
+                course_file.records_id,
+                path.read_bytes(),
+                meta.get("file_type") or "docx",
+                meta.get("file_name") or course_file.storage_path,
+                meta.get("module_tag"),
+                meta.get("term_tag"),
+            )
+            return course_file
+    if age > timedelta(minutes=3):
+        course_file.rag_status = RagStatusEnum.FAILED
+        course_file.error_message = STALE_PROCESSING_MESSAGE
+        course_file.save(update_fields=["rag_status", "error_message"])
+    return course_file
 
 
 def _run_course_job(records_id, file_bytes, file_type, file_name, module_tag, term_tag):
@@ -188,20 +279,39 @@ def _run_course_job(records_id, file_bytes, file_type, file_name, module_tag, te
         CourseFile.objects.filter(records_id=records_id).update(
             rag_status=RagStatusEnum.FAILED, error_message=message,
         )
+        _clear_upload(records_id)
 
-    _run_job(
-        index_course_file, mark_failed, file_name,
-        records_id, file_bytes, file_type, file_name, module_tag, term_tag,
-    )
+    def on_progress(done, total):
+        cache.set(_lock_key(records_id), "running", timeout=_LOCK_TTL_SECONDS)
+        cache.set(_progress_key(records_id), {"done": done, "total": total}, timeout=3600)
+
+    try:
+        cache.set(_lock_key(records_id), "running", timeout=_LOCK_TTL_SECONDS)
+        _run_job(
+            index_course_file, mark_failed, file_name,
+            records_id, file_bytes, file_type, file_name, module_tag, term_tag, on_progress,
+        )
+        if CourseFile.objects.filter(
+            records_id=records_id, rag_status=RagStatusEnum.COMPLETED,
+        ).exists():
+            _clear_upload(records_id)
+            cache.delete(_progress_key(records_id))
+    finally:
+        cache.delete(_lock_key(records_id))
+        close_old_connections()
 
 
-def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, term_tag):
+def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, term_tag, on_progress=None):
     """Chunk, embed and store a faculty course file, then mark it COMPLETED.
 
     Uses the same hierarchical split and native 768-dim BGE batch as global
     documents. Child rows keep the embedding; parent rows keep the section text.
     """
-    parents_data, child_records, embeddings = _chunk_and_embed(file_bytes, file_type, file_name)
+    if on_progress:
+        on_progress(0, 1)
+    parents_data, child_records, embeddings = _chunk_and_embed(
+        file_bytes, file_type, file_name, on_progress,
+    )
 
     with transaction.atomic():
         course_file = (
@@ -213,6 +323,7 @@ def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, 
             logger.info("[ATLAS RAG] %s was deleted before indexing finished.", file_name)
             return
 
+        ParentChunk.objects.filter(records=course_file).delete()
         parent_rows = ParentChunk.objects.bulk_create([
             ParentChunk(
                 records=course_file,

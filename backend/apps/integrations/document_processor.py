@@ -384,15 +384,18 @@ class DocumentProcessor:
 
     @staticmethod
     def _docx_table_to_markdown(table):
+        # Walk each row's cells once. row.cells rebuilds the merged grid and
+        # can sit on a learning-module table long enough that indexing looks stuck.
         rows = []
-        for row in table.rows:
-            try:
-                cells = row.cells
-            except Exception:
-                continue
-            rows.append([
-                " ".join(cell.text.split()).replace("|", "\\|") for cell in cells
-            ])
+        for tr in table._tbl.tr_lst:
+            cells = []
+            for tc in tr.tc_lst:
+                parts = [
+                    node.text for node in tc.iter()
+                    if node.tag.endswith("}t") and node.text
+                ]
+                cells.append(" ".join("".join(parts).split()).replace("|", "\\|"))
+            rows.append(cells)
         rows = [r for r in rows if any(r)]
         if not rows:
             return ""

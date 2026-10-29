@@ -1240,3 +1240,23 @@ class PiiMaskingTests(SimpleTestCase):
         self.assertIn(pii_masking.PHONE_PLACEHOLDER, embedded_text)
         embed.assert_called_once()
         self.assertNotIn('09181234567', embed.call_args.args[0][0])
+
+    def test_docx_table_becomes_markdown_without_expanding_merged_cells(self):
+        from docx import Document
+
+        from apps.integrations.document_processor import DocumentProcessor
+
+        doc = Document()
+        table = doc.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = 'Topic'
+        table.cell(0, 1).text = 'Activity'
+        table.cell(1, 0).text = 'HCI history'
+        table.cell(1, 1).text = 'Interface critique'
+        buf = BytesIO()
+        doc.save(buf)
+        buf.seek(0)
+        pages = DocumentProcessor.extract_markdown_from_docx(buf)
+        markdown = pages[0][0]
+        self.assertIn('HCI history', markdown)
+        self.assertIn('Interface critique', markdown)
+        self.assertIn('|', markdown)
