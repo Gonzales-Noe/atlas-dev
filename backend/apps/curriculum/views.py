@@ -62,7 +62,12 @@ from .consistency_checker import (
     apply_topic_judgments,
     check_consistency,
     checked_now,
+    is_orientation_or_exam,
+    lecture_weeks,
+    lock_module_outline,
+    outline_subtopics,
     parse_topic_judgments,
+    parse_topics_cell,
     stamp_module_ilos,
     topic_review_prompts,
 )
@@ -631,23 +636,23 @@ def generate_syllabus(request):
         )
 
 
-def _is_lecture_discussion_delivery(value):
-    compact = "".join(ch for ch in str(value or "").lower() if ch.isalnum())
-    return compact == "lecturediscussion" or ("lecture" in compact and "discussion" in compact)
-
-
 def _week_topic_from_chapters(chapters, week_number):
-    """Return the TLA Activities topic for ``week_number``.
+    """Return the Topics / Reading List cell for ``week_number``.
 
-    Only rows whose delivery method is Lecture/Discussion are used. A row
-    keeps the week(s) it covers in ``weeks`` ("2", "2-3") and its own row
-    number in ``chapter`` ("1"). The UI sends the chapter number as the week
-    number, so both are matched before falling back to a range hit.
+    Delivery method is ignored. Class orientation and examination rows are
+    skipped. A row keeps the week(s) it covers in ``weeks`` ("2", "2-3") and
+    its own row number in ``chapter`` ("1"). The UI sends the chapter number
+    as the week number, so both are matched before falling back to a range hit.
     """
-    chapters = [
-        entry for entry in (chapters or [])
-        if _is_lecture_discussion_delivery(entry.get("delivery"))
-    ]
+    kept = []
+    for entry in chapters or []:
+        if not isinstance(entry, dict):
+            continue
+        parsed = parse_topics_cell(entry.get("topics"))
+        if not parsed["lines"] or is_orientation_or_exam(parsed["title"]):
+            continue
+        kept.append(entry)
+    chapters = kept
     if not chapters:
         return ""
     target = str(week_number)
@@ -779,6 +784,8 @@ def generate_module(request):
     syllabus_ilos: list = []
     week_topic: str = explicit_topic
     section_context: str = explicit_context
+    outline_subs = [str(item).strip() for item in (data.get("subtopics") or []) if str(item).strip()]
+    outline_activity = str(data.get("activity_title") or "").strip()
     latest_syllabus_for_data = (
         Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
         .order_by("-syllabus_id")
@@ -789,7 +796,21 @@ def generate_module(request):
         if not course_description:
             course_description = sc.get("description") or ""
         syllabus_ilos = [str(i) for i in (sc.get("ilos") or []) if i]
-        if not week_topic:
+        week_row = next(
+            (row for row in lecture_weeks(sc) if row["week"] == int(week_number)),
+            None,
+        )
+        if week_row:
+            saved_title = str(week_row.get("title") or "").strip()
+            if saved_title and (not module_title or module_title == saved_title or module_title.startswith(saved_title)):
+                module_title = saved_title
+            if not outline_subs:
+                outline_subs = outline_subtopics(week_row)
+            if not outline_activity:
+                outline_activity = str(week_row.get("activity") or "").strip()
+            if not week_topic:
+                week_topic = str(week_row.get("topic") or "").strip()
+        elif not week_topic:
             week_topic = _week_topic_from_chapters(sc.get("tla_chapters") or [], week_number)
         if not section_context:
             section_context = _section_context_from_syllabus(sc, section_key, subsection_key)
@@ -830,6 +851,8 @@ def generate_module(request):
             subsection_label=subsection_label,
             section_context=section_context,
             structuring_level=structuring_level,
+            syllabus_subtopics=outline_subs,
+            activity_title=outline_activity,
         )
 
         # ── Step 4: LLM call with auto-fallback ────────────────────────────
@@ -856,6 +879,13 @@ def generate_module(request):
                 module_content = json.loads(match.group(0))
             else:
                 raise ValueError("LLM did not return valid JSON.")
+
+        module_content = lock_module_outline(
+            module_content,
+            module_title,
+            outline_subs,
+            outline_activity,
+        )
 
         # Ensure subtopic IDs are present
         for idx, st in enumerate(module_content.get("subtopics", [])):
@@ -4509,15 +4539,34 @@ def generate_syllabus_field(request):
                 status=status.HTTP_200_OK,
             )
 
-        search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
-        reference = generation_reference(
-            search_query,
-            course=course,
-            institution_id=request.user.institution_id,
-            top_k=top_k,
-            selected_doc_ids=selected_doc_ids,
-        )
-        source_chunks = reference["source_chunks"]
+        course_brief = ""
+        brief_cached = False
+        if section == "topic_map":
+            source_chunks = []
+            context_summary = ""
+        elif section in {"week_plan", "topics", "topic_outcome"}:
+            from apps.integrations.course_brief import get_course_brief
+
+            course_brief, brief_cached = get_course_brief(
+                course,
+                institution_id=request.user.institution_id,
+                selected_doc_ids=selected_doc_ids,
+                llm=LLMService(),
+                provider=provider,
+            )
+            source_chunks = []
+            context_summary = ""
+        else:
+            search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
+            reference = generation_reference(
+                search_query,
+                course=course,
+                institution_id=request.user.institution_id,
+                top_k=top_k,
+                selected_doc_ids=selected_doc_ids,
+            )
+            source_chunks = reference["source_chunks"]
+            context_summary = reference["structure_summary"]
 
         system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name=course.course_title,
@@ -4527,10 +4576,11 @@ def generate_syllabus_field(request):
             existing_content=existing_content,
             mode=mode,
             context_chunks=source_chunks,
-            context_summary=reference["structure_summary"],
+            context_summary=context_summary,
             extra_instructions=extra_instructions,
             course_category=course.category or "professional",
             assessment_criteria=assessment_criteria,
+            course_brief=course_brief,
         )
 
         # ── Step 4: Call LLM. One cloud retry, then Ollama if the reply stops. ─
@@ -4564,12 +4614,226 @@ def generate_syllabus_field(request):
                 "generated_text": generated_text,
                 "provider_used": provider_used,
                 "rag_chunks_used": len(source_chunks),
+                "brief_cached": brief_cached,
             },
             status=status.HTTP_200_OK,
         )
 
     except Exception as exc:
         logger.exception("Error in generate_syllabus_field for course %r", course_id)
+        return Response(
+            {"success": False, "error": "Something went wrong. Please try again."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+def _tla_rows_from_request(raw_rows):
+    rows = []
+    for item in raw_rows or []:
+        if not isinstance(item, dict):
+            continue
+        weeks = str(item.get("weeks") or "").strip()
+        title = str(item.get("title") or "").strip()
+        try:
+            span = int(item.get("span") or 1)
+        except (TypeError, ValueError):
+            span = 1
+        rows.append({"weeks": weeks, "title": title, "span": 2 if span >= 2 else 1})
+    return rows
+
+
+def _tla_neighbors_from_request(raw_neighbors):
+    neighbors = []
+    for item in raw_neighbors or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        if not title:
+            continue
+        neighbors.append({
+            "weeks": str(item.get("weeks") or "").strip(),
+            "title": title,
+        })
+    return neighbors[:2]
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_tla(request):
+    """Generate the TLA table in a few calls that share one cached course brief.
+
+    ``stage`` is ``plan`` (topic titles), ``rows`` (up to five topic cells and
+    their outcomes), or ``map`` (ILO and SO indexes, no course brief).
+    """
+    from apps.integrations.course_brief import get_course_brief
+    from apps.integrations.tla_generation import (
+        TLA_BATCH,
+        build_tla_rows_prompt,
+        map_max_tokens,
+        parse_tla_rows,
+    )
+
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+
+    course_id = request.data.get("course_id")
+    stage = str(request.data.get("stage") or "").strip().lower()
+    if not course_id:
+        return Response(
+            {"success": False, "detail": "course_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if stage not in {"plan", "rows", "map"}:
+        return Response(
+            {"success": False, "detail": "stage must be plan, rows, or map."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
+    trial_response = trial_generation_gate(request.user, syllabus_generation=True)
+    if trial_response:
+        return trial_response
+
+    provider = request.data.get("provider") or None
+    selected_doc_ids = [str(uid) for uid in (request.data.get("selected_doc_ids") or [])]
+    llm = LLMService()
+
+    try:
+        if stage == "map":
+            topics = [str(item).strip() for item in (request.data.get("topics") or []) if str(item).strip()]
+            ilos = [str(item).strip() for item in (request.data.get("ilos") or []) if str(item).strip()]
+            sos = [str(item).strip() for item in (request.data.get("sos") or []) if str(item).strip()]
+            instructions = "\n".join([
+                "Intended learning outcomes:",
+                *ilos,
+                "",
+                "Student outcomes:",
+                *sos,
+                "",
+                "Topics, in order:",
+                *topics,
+            ])
+            system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
+                course_name=course.course_title,
+                course_code=course.course_code,
+                field_label="ILO and SO mapping",
+                section="topic_map",
+                existing_content="",
+                mode="generate",
+                context_chunks=[],
+                extra_instructions=instructions,
+                course_category=course.category or "professional",
+            )
+            generated_text, provider_used = complete_syllabus_field(
+                llm,
+                section="topic_map",
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                preferred_provider=provider,
+                max_tokens=map_max_tokens(len(topics)),
+            )
+            return Response(
+                {
+                    "success": True,
+                    "generated_text": generated_text,
+                    "provider_used": provider_used,
+                    "brief_cached": False,
+                    "rag_chunks_used": 0,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        course_brief, brief_cached = get_course_brief(
+            course,
+            institution_id=request.user.institution_id,
+            selected_doc_ids=selected_doc_ids,
+            llm=llm,
+            provider=provider,
+        )
+
+        if stage == "plan":
+            system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
+                course_name=course.course_title,
+                course_code=course.course_code,
+                field_label="Weekly topic plan",
+                section="week_plan",
+                existing_content="",
+                mode="generate",
+                context_chunks=[],
+                course_category=course.category or "professional",
+                assessment_criteria=str(request.data.get("assessment_criteria") or ""),
+                course_brief=course_brief,
+            )
+            generated_text, provider_used = complete_syllabus_field(
+                llm,
+                section="week_plan",
+                messages=[{"role": "user", "content": user_prompt}],
+                system=system_prompt,
+                preferred_provider=provider,
+            )
+            _stored, kind = syllabus_course_kind(
+                course.course_title, course.course_code, course.category or "professional",
+            )
+            generated_text = assign_topic_weeks(
+                generated_text,
+                term_weeks=18,
+                pad_to_term=kind != "internship",
+            )
+            return Response(
+                {
+                    "success": True,
+                    "generated_text": generated_text,
+                    "provider_used": provider_used,
+                    "brief_cached": brief_cached,
+                    "rag_chunks_used": 0,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        rows = _tla_rows_from_request(request.data.get("rows"))
+        if not rows or len(rows) > TLA_BATCH:
+            return Response(
+                {"success": False, "detail": f"rows must contain 1 to {TLA_BATCH} items."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        neighbors = _tla_neighbors_from_request(request.data.get("neighbors"))
+        system_prompt, user_prompt = build_tla_rows_prompt(
+            course.course_title,
+            course.course_code,
+            course_brief,
+            rows,
+            neighbors,
+        )
+        generated_text, provider_used = complete_syllabus_field(
+            llm,
+            section="tla_rows",
+            messages=[{"role": "user", "content": user_prompt}],
+            system=system_prompt,
+            preferred_provider=provider,
+            max_tokens=min(720, 140 * len(rows)),
+        )
+        parsed = parse_tla_rows(generated_text, len(rows))
+        if len(parsed) != len(rows):
+            return Response(
+                {"success": False, "error": "The topic batch was not readable. Try again."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response(
+            {
+                "success": True,
+                "rows": parsed,
+                "provider_used": provider_used,
+                "brief_cached": brief_cached,
+                "rag_chunks_used": 0,
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception:
+        logger.exception("Error in generate_tla for course %r", course_id)
         return Response(
             {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

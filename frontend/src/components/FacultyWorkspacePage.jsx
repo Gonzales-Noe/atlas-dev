@@ -73,7 +73,7 @@ import api from '../config/api'
 import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
 import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes } from '../utils/tosFormula'
-import { collectLectureDiscussionTopics, isLectureDiscussionDelivery, lectureTopicLines } from '../utils/lectureTopics'
+import { collectLectureDiscussionTopics } from '../utils/lectureTopics'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
 import WorkspacePageHeader from './WorkspacePageHeader'
@@ -534,6 +534,15 @@ function parseAssignedWeekPlan(text) {
     if (!/^\d+(?:-\d+)?$/.test(weeks)) return []
     return [{ weeks, title: plainTopicTitle(title) }]
   })
+}
+
+async function requestTla(api, body) {
+  const { data } = await api.post('/curriculum/generate-tla/', body, { timeout: 120000 })
+  if (!data?.success) {
+    const message = data?.error || data?.detail || 'The weekly table could not be generated. Try again.'
+    throw new Error(message)
+  }
+  return data
 }
 
 async function requestSyllabusField(api, body, shape) {
@@ -2638,18 +2647,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAiPipelineProgress({ completed: 0, total: 1, label: 'Weekly topic plan' })
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
-      const planResult = await requestSyllabusField(api, {
+      const planResult = await requestTla(api, {
         course_id: courseId,
-        section: 'week_plan',
-        field_label: 'Weekly topic plan',
-        existing_content: '',
-        mode: 'generate',
-        top_k: 5,
-        extra_instructions: '',
+        stage: 'plan',
         assessment_criteria: source.assessment_criteria || '',
         selected_doc_ids: selectedIds,
-      }, text => (parseAssignedWeekPlan(text).length ? text : ''))
-      const plan = parseAssignedWeekPlan(planResult.data?.generated_text)
+      })
+      const plan = parseAssignedWeekPlan(planResult.generated_text)
       if (!plan.length) {
         throw new Error('The weekly plan did not include any topics. Try again.')
       }
@@ -2684,13 +2688,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         text: row.weeks,
       }))
       const topicLabels = []
-      const contentCount = plan.filter(row => !isClassOrientationTitle(row.title) && !isFinalWeekRow(row)).length
-      const total = contentCount * 2 + 1
-      let completed = 0
-      for (let index = 0; index < plan.length; index += 1) {
-        const row = plan[index]
+      const contentRows = []
+      plan.forEach((row, index) => {
         if (isClassOrientationTitle(row.title)) {
-          topicLabels.push(ORIENTATION_TOPICS)
+          topicLabels[index] = ORIENTATION_TOPICS
           drafts.push(
             {
               section: 'topics',
@@ -2720,10 +2721,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               text: ORIENTATION_DELIVERY,
             },
           )
-          continue
+          return
         }
         if (isFinalWeekRow(row)) {
-          topicLabels.push(FINAL_WEEK_TOPICS)
+          topicLabels[index] = FINAL_WEEK_TOPICS
           drafts.push(
             {
               section: 'topics',
@@ -2744,104 +2745,85 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               text: FINAL_WEEK_OUTCOME,
             },
           )
-          continue
+          return
         }
-        const span = weekSpan(row.weeks)
-        const withActivity = span >= 2
-        const topicHint = [
-          row.title
-            ? `Topic title: ${row.title}. The first line must be this title.`
-            : 'Continue the course sequence.',
-          `This row covers week ${row.weeks}.`,
-          withActivity
-            ? 'This topic spans two weeks. Write 1 to 3 topic titles. Under each title, indent 1 or 2 subtopic titles. Then a blank line and one activity title for the whole cell. Only one activity.'
-            : 'This topic covers one week. Write the topic title, then one indented subtopic. No activity.',
-          'Titles only. No sentences. Do not write the week numbers in this cell.',
-        ].join(' ')
-        setAiPipelineProgress({ completed, total, label: `Topics / Reading List ${row.weeks}` })
-        const topicsResult = await requestSyllabusField(api, {
-          course_id: courseId,
-          section: 'topics',
-          field_label: `Topics / Reading List ${index + 1}`,
-          existing_content: '',
-          mode: 'generate',
-          top_k: 5,
-          extra_instructions: topicHint,
-          assessment_criteria: source.assessment_criteria || '',
-          selected_doc_ids: selectedIds,
-        }, text => shapeTopicsCell(text, { span, activity: withActivity }))
-        const topicsText = topicsResult.text
-        if (!topicsText) {
-          throw new Error(`The AI did not return topics for weeks ${row.weeks}. Try again.`)
-        }
-        topicLabels.push(topicsText.split('\n').map(line => line.trim()).find(Boolean) || row.title || 'Topic')
-        drafts.push({
-          section: 'topics',
-          label: `Topics / Reading List (${row.weeks})`,
-          fieldType: 'arrayObj',
-          arrField: 'tla_chapters',
-          arrIndex: index,
-          arrObjKey: 'topics',
-          text: topicsText,
+        contentRows.push({ index, row, span: weekSpan(row.weeks) })
+      })
+      const batchCount = Math.ceil(contentRows.length / 5) || 0
+      const total = batchCount + 1
+      let completed = 0
+      for (let start = 0; start < contentRows.length; start += 5) {
+        const batch = contentRows.slice(start, start + 5)
+        const before = contentRows[start - 1]
+        const after = contentRows[start + 5]
+        const neighbors = [before, after].filter(Boolean).map(item => ({
+          weeks: item.row.weeks,
+          title: item.row.title,
+        }))
+        const firstWeeks = batch[0].row.weeks
+        const lastWeeks = batch[batch.length - 1].row.weeks
+        setAiPipelineProgress({
+          completed,
+          total,
+          label: firstWeeks === lastWeeks ? `Topics ${firstWeeks}` : `Topics ${firstWeeks}–${lastWeeks}`,
         })
-        completed += 1
-
-        const topicName = row.title || topicLabels[index]
-        setAiPipelineProgress({ completed, total, label: `Topic Outcomes ${row.weeks}` })
-        const outcomeResult = await requestSyllabusField(api, {
+        const batchResult = await requestTla(api, {
           course_id: courseId,
-          section: 'topic_outcome',
-          field_label: 'Topic outcome',
-          existing_content: '',
-          mode: 'generate',
-          top_k: 5,
-          extra_instructions: `Topic: ${topicName}.`,
-          assessment_criteria: source.assessment_criteria || '',
+          stage: 'rows',
           selected_doc_ids: selectedIds,
-        }, shapeOutcome)
-        const outcomeText = outcomeResult.text
-        if (!outcomeText) {
-          throw new Error(`The AI did not return a topic outcome for weeks ${row.weeks}. Try again.`)
-        }
-        drafts.push({
-          section: 'topic_outcome',
-          label: `Topic Outcomes (${row.weeks})`,
-          fieldType: 'arrayObj',
-          arrField: 'tla_chapters',
-          arrIndex: index,
-          arrObjKey: 'outcomes',
-          text: outcomeText,
+          rows: batch.map(item => ({
+            weeks: item.row.weeks,
+            title: item.row.title,
+            span: item.span,
+          })),
+          neighbors,
+        })
+        batch.forEach((item, offset) => {
+          const generated = (batchResult.rows || [])[offset] || {}
+          const withActivity = item.span >= 2
+          const topicsText = shapeTopicsCell(generated.topics, { span: item.span, activity: withActivity })
+          const outcomeText = shapeOutcome(generated.outcome)
+          if (!topicsText || !outcomeText) {
+            throw new Error(`The AI did not return topics for weeks ${item.row.weeks}. Try again.`)
+          }
+          topicLabels[item.index] = topicsText.split('\n').map(line => line.trim()).find(Boolean) || item.row.title || 'Topic'
+          drafts.push(
+            {
+              section: 'topics',
+              label: `Topics / Reading List (${item.row.weeks})`,
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: item.index,
+              arrObjKey: 'topics',
+              text: topicsText,
+            },
+            {
+              section: 'topic_outcome',
+              label: `Topic Outcomes (${item.row.weeks})`,
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: item.index,
+              arrObjKey: 'outcomes',
+              text: outcomeText,
+            },
+          )
         })
         completed += 1
       }
 
       const ilos = iloChoices(source.ilos)
       const sos = soChoices(source.student_outcomes, source.so_headers)
-      const mapInstructions = [
-        'Intended learning outcomes:',
-        ...ilos.map(row => `${row.number}. ${row.text}`),
-        '',
-        'Student outcomes:',
-        ...sos.map(row => `${row.number}. ${row.text}`),
-        '',
-        'Topics, in order:',
-        ...topicLabels.map((title, index) => `${index + 1}. ${title}`),
-      ].join('\n')
       setAiPipelineProgress({ completed, total, label: 'ILO and SO mapping' })
       let mapText = ''
       try {
-        const mapResult = await requestSyllabusField(api, {
+        const mapResult = await requestTla(api, {
           course_id: courseId,
-          section: 'topic_map',
-          field_label: 'ILO and SO mapping',
-          existing_content: '',
-          mode: 'generate',
-          top_k: 5,
-          extra_instructions: mapInstructions,
-          assessment_criteria: source.assessment_criteria || '',
-          selected_doc_ids: selectedIds,
+          stage: 'map',
+          ilos: ilos.map(row => `${row.number}. ${row.text}`),
+          sos: sos.map(row => `${row.number}. ${row.text}`),
+          topics: topicLabels.map((title, index) => `${index + 1}. ${title || plan[index]?.title || 'Topic'}`),
         })
-        mapText = mapResult.text || ''
+        mapText = mapResult.generated_text || ''
       } catch {
         mapText = ''
       }
@@ -3600,8 +3582,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setTopicSourceDialogOpen(false)
   }, [activeTab])
 
-  // A Lecture/Discussion topic queued from TLA Activities opens the
-  // generate dialog on the Module tab.
+  // A topic queued from TLA Activities opens the generate dialog on the Module tab.
   useEffect(() => {
     if (activeTab !== 'module' || !pendingGenerate) return
     setModuleParams(p => ({
@@ -3928,7 +3909,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Module topic sources ──────────────────────────────────────────────────
   // Topics that need a module live inside the Syllabus tab. Depending on the
   // section they are stored as a table, as free text, or as TLA Activity rows.
-  // The Module tab reads Lecture/Discussion rows from that table.
+  // The Module tab reads Topics / Reading List rows from that table.
   function findColumnIndex(columns, hints) {
     for (const hint of hints) {
       const index = columns.findIndex(col => String(col || '').toLowerCase().includes(hint))
@@ -3986,7 +3967,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       section_key: section?.key || 'tla-activities',
       section_label: section?.label || 'Teaching, Learning, and Assessment (TLA) Activities',
       subsection_key: '',
-      subsection_label: 'Lecture/Discussion',
+      subsection_label: 'Topics / Reading List',
     }
   }
 
@@ -4404,13 +4385,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
-        module_title: params.module_title,
+        module_title: topic?.title || params.module_title,
         week_number: week,
         section_key: source.section_key,
         section_label: source.section_label,
         subsection_key: source.subsection_key,
         subsection_label: source.subsection_label,
         topic: topic?.topic || params.module_title,
+        subtopics: topic?.subtopics || [],
+        activity_title: topic?.activity || '',
         syllabus_context: topic?.context || '',
         structuring_level: params.structuring_level || 'standard',
         provider: params.provider,
@@ -4436,7 +4419,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     const topics = collectScheduleTopics()
     if (!topics.length) {
       setGenerateDialogOpen(false)
-      setActionError('No Lecture/Discussion topics in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion and add a topic list. Reading lists are not topics.')
+      setActionError('No topics in Teaching, Learning, and Assessment (TLA) Activities. Add a Topics / Reading List. Class orientation, examinations, and reading lists are not modules.')
       return
     }
     const source = lectureTopicSource()
@@ -4448,7 +4431,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     })
     setGenerateDialogOpen(false)
     if (!topicsWithoutModules.length) {
-      setActionError('Every Lecture/Discussion week already has a module.')
+      setActionError('Every topic already has a module.')
       return
     }
     setModuleGeneratingAll(true)
@@ -4475,13 +4458,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           await api.post('/curriculum/generate-module/', {
             course_id: course.course_id,
             course_name: course.course_title,
-            module_title: topic.topic,
+            module_title: topic.title || topic.topic,
             week_number: week,
             section_key: source.section_key,
             section_label: source.section_label,
             subsection_key: source.subsection_key,
             subsection_label: source.subsection_label,
             topic: topic.topic,
+            subtopics: topic.subtopics || [],
+            activity_title: topic.activity || '',
             syllabus_context: topic.context || '',
             structuring_level: moduleParams.structuring_level || 'standard',
             provider: moduleParams.provider || 'auto',
@@ -7034,7 +7019,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 </Select>
                                 {lectureChoices.length === 0 && (
                                   <div style={{ marginTop: 4, fontSize: '0.65rem', color: '#b45309' }}>
-                                    Add Lecture/Discussion rows in Teaching, Learning, and Assessment (TLA) Activities. Set Delivery Method to Lecture/Discussion. Reading lists are not topics.
+                                    Add a Topics / Reading List in Teaching, Learning, and Assessment (TLA) Activities. Class orientation, examinations, and reading lists are not topics.
                                   </div>
                                 )}
                                  <div style={{ marginTop: 5, padding: '4px 6px', borderRadius: 5, background: matchedModule ? 'rgba(22,163,74,0.08)' : 'rgba(217,119,6,0.08)', color: matchedModule ? '#15803d' : '#b45309', fontSize: '0.65rem', fontWeight: 600 }}>
@@ -7340,7 +7325,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {moduleGenProgress?.label || 'Module generation'}
               </Typography>
               <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
-                {moduleGenProgress?.detail || 'Create a module from a Lecture/Discussion topic. You can choose the week before generating.'}
+                {moduleGenProgress?.detail || 'Create a module from a Topics / Reading List row. You can choose the week before generating.'}
               </Typography>
             </Box>
             {total > 0 && (
@@ -8257,7 +8242,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
                 <MenuBookIcon sx={{ fontSize: '1rem', color: MAROON }} />
                 <Typography variant="caption" sx={{ color: '#666', fontWeight: 700 }}>Topics from</Typography>
-                <Chip size="small" label="TLA Activities · Lecture/Discussion"
+                <Chip size="small" label="TLA Activities · Topics / Reading List"
                   sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON,
                         border: '1px solid', borderColor: MAROON_LIGHT }} />
                 <Chip size="small"
@@ -8285,15 +8270,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {lectureTopics.length === 0 && savedModules.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
-              <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No Lecture/Discussion topics yet.</Typography>
+              <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No topics yet.</Typography>
               <Typography variant="caption" sx={{ color: '#ccc' }}>
-                In Teaching, Learning, and Assessment (TLA) Activities, set Delivery Method to Lecture/Discussion and write the topic list. Reading lists are not topics, and two lists in the same week become one module.
+                Write a Topics / Reading List in Teaching, Learning, and Assessment (TLA) Activities. Class orientation and examinations are left out. Reading lists are not topics, and two lists in the same week become one module.
               </Typography>
             </Box>
           ) : lectureTopics.length === 0 ? (
             <Stack spacing={1}>
               <Typography variant="caption" sx={{ color: '#aaa' }}>
-                These modules are still saved. They are hidden from the topic list because the syllabus has no Lecture/Discussion rows right now.
+                These modules are still saved. They are hidden from the topic list because the syllabus has no topic rows right now.
               </Typography>
               {savedModules.map(existingMod => (
                 <Box key={existingMod.module_id}
@@ -8352,9 +8337,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)' }}>
                     <Chip label={'Wk ' + topic.week} size="small"
                       sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
-                    <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600, minWidth: 0 }}>
-                      {topic.topic}
-                    </Typography>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="body2" sx={{ color: '#F0F0F2', fontWeight: 600 }}>
+                        {topic.topic}
+                      </Typography>
+                      {topic.activity ? (
+                        <Typography variant="caption" sx={{ color: '#BBF7D0', display: 'block' }}>
+                          Activity: {topic.activity}
+                        </Typography>
+                      ) : null}
+                    </Box>
                     <Chip label={existingMod ? 'Module Ready' : 'No Module'} size="small"
                       sx={{ height: 18, fontSize: '0.65rem', color: existingMod ? '#2e7d32' : '#F0F0F2',
                         bgcolor: existingMod ? 'rgba(46,125,50,0.12)' : 'rgba(255,255,255,0.08)',
@@ -8533,7 +8525,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Stack spacing={2} sx={{ mt: 0.5 }}>
                 {generateDialogMode === 'all' ? (
                   <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
-                    One module for each of the {moduleTopics.length} Lecture/Discussion weeks. Lists in the same week are already combined. Reading lists are not included.
+                    One module for each of the {moduleTopics.length} topics. Each module expands that chapter’s topics, subtopics, and activity. Lists in the same week are already combined. Class orientation, examinations, and reading lists are not included.
                   </Alert>
                 ) : (
                   <LField select label="Module Topic" value={moduleParams.module_title}
@@ -8547,8 +8539,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       }))
                     }}
                     helperText={lectureWeeks.length
-                      ? `${lectureWeeks.length} Lecture/Discussion week${lectureWeeks.length === 1 ? '' : 's'}. Same-week lists are one choice.`
-                      : 'No Lecture/Discussion topics in TLA Activities. Set Delivery Method to Lecture/Discussion.'}
+                      ? `${lectureWeeks.length} topic${lectureWeeks.length === 1 ? '' : 's'}. Same-week lists are one choice. The module keeps that row’s activity.`
+                      : 'No topics in TLA Activities. Add a Topics / Reading List. Class orientation and examinations are left out.'}
                     sx={{ '& .MuiInputBase-root': { fontSize: '0.9rem' } }}>
                     <MenuItem value=""><em>— Select a topic —</em></MenuItem>
                     {lectureWeeks.map(lw => (

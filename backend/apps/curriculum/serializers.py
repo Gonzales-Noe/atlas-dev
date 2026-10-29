@@ -47,6 +47,15 @@ class GenerateModuleSerializer(serializers.Serializer):
     subsection_key = serializers.CharField(required=False, allow_blank=True, default="", max_length=120)
     subsection_label = serializers.CharField(required=False, allow_blank=True, default="", max_length=255)
     topic = serializers.CharField(required=False, allow_blank=True, default="", max_length=2000)
+    subtopics = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, max_length=300),
+        required=False,
+        allow_empty=True,
+        default=list,
+    )
+    activity_title = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=300
+    )
     syllabus_context = serializers.CharField(
         required=False, allow_blank=True, default="", max_length=8000
     )

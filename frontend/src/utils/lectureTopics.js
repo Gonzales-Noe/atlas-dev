@@ -1,8 +1,8 @@
-// Lecture/Discussion topics for TOS rows and learning modules.
-// Topics come from the TLA Activities table. Only rows whose Delivery Method
-// is Lecture/Discussion become modules. The topics cell also holds the
-// reading list, which is not a topic. Several lecture rows in the same week
-// become one choice.
+// Topics for TOS rows and learning modules.
+// A module comes from a Topics / Reading List cell. Delivery method does not
+// decide that. Class orientation and examination rows are not topics. A
+// reading list is not a topic. The activity is the last unindented line,
+// kept apart from the topic and subtopic lines.
 
 const READING_HEADING = /^(?:required\s+|recommended\s+|supplementary\s+)?(?:reading(?:\s*list)?|readings|references?|bibliography|text\s*books?|textbooks?)\b/i
 
@@ -11,32 +11,75 @@ export function isLectureDiscussionDelivery(delivery) {
   return compact === 'lecturediscussion' || (compact.includes('lecture') && compact.includes('discussion'))
 }
 
+export function isOrientationOrExam(title) {
+  const text = String(title || '').trim().toLowerCase().replace(/\s+/g, ' ')
+  if (!text) return false
+  if (text === 'class orientation' || text === 'orientation' || text === 'introduction to the course' || text.startsWith('class orientation')) {
+    return true
+  }
+  if (/\b(?:midterm|final|prelim(?:inary)?|comprehensive)\b.{0,40}\bexam/.test(text)) return true
+  if (/^(?:the\s+)?exam(?:ination)?$/.test(text)) return true
+  if (text.includes('submission of requirements') && text.includes('exam')) return true
+  return false
+}
+
 function isReadingHeading(line) {
   return READING_HEADING.test(String(line || '').trim())
 }
 
 export function lectureTopicLines(raw) {
+  return parseTopicsCell(raw).lines
+}
+
+export function parseTopicsCell(raw) {
   const kept = []
   let skipping = false
-  for (const rawLine of String(raw || '').split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) continue
-    const stripped = line.replace(/^\s*(?:[-*•–—]|\d+[.)])\s*/, '').trim()
-    if (!stripped) continue
+  String(raw || '').split(/\r?\n/).forEach(rawLine => {
+    if (!rawLine.trim()) return
+    const indented = /^[ \t]/.test(rawLine)
+    const stripped = rawLine.trim().replace(/^(?:[-*•–—]|\d+[.)])\s*/, '').trim()
+    if (!stripped) return
     if (isReadingHeading(stripped)) {
       skipping = true
-      continue
+      return
     }
     if (/^(topics?|lecture(?:\s*\/\s*discussion)?|discussion)\s*:/i.test(stripped)) {
       skipping = false
       const rest = stripped.replace(/^.*?:\s*/, '').trim()
-      if (rest && !isReadingHeading(rest)) kept.push(rest)
-      continue
+      if (rest && !isReadingHeading(rest)) kept.push({ indented: false, text: rest })
+      return
     }
-    if (skipping) continue
-    kept.push(stripped)
+    if (skipping) return
+    kept.push({ indented, text: stripped })
+  })
+  const lines = kept.map(item => item.text)
+  if (!kept.length) {
+    return { title: '', subtopics: [], activity: '', lines: [], structured: false }
   }
-  return kept
+  const unindented = kept.map((item, index) => (item.indented ? -1 : index)).filter(index => index >= 0)
+  const indentedTexts = kept.filter(item => item.indented).map(item => item.text)
+  if (indentedTexts.length && unindented.length) {
+    const title = kept[unindented[0]].text
+    const activity = unindented.length >= 2 ? kept[unindented[unindented.length - 1]].text : ''
+    const end = unindented.length >= 2 ? unindented[unindented.length - 1] : kept.length
+    const subtopics = kept
+      .filter((item, index) => item.indented && index > unindented[0] && index < end)
+      .map(item => item.text)
+    return {
+      title,
+      subtopics: subtopics.length ? subtopics : indentedTexts,
+      activity,
+      lines,
+      structured: true,
+    }
+  }
+  return {
+    title: lines[0],
+    subtopics: [],
+    activity: '',
+    lines,
+    structured: false,
+  }
 }
 
 function iloKeysFromChapter(chapter) {
@@ -51,35 +94,45 @@ function iloKeysFromChapter(chapter) {
   return keys
 }
 
+function outlineLines(parsed) {
+  return parsed.lines.filter(line => line !== parsed.activity)
+}
+
 export function collectLectureDiscussionTopics(chapters) {
   const byWeek = new Map()
   ;(chapters || []).forEach((chapter, index) => {
-    if (!isLectureDiscussionDelivery(chapter?.delivery)) return
-    const lines = lectureTopicLines(chapter?.topics)
-    if (!lines.length) return
+    const parsed = parseTopicsCell(chapter?.topics)
+    if (!parsed.lines.length || isOrientationOrExam(parsed.title)) return
     const week = parseInt(chapter?.chapter, 10) || index + 1
     const existing = byWeek.get(week)
     const ilos = iloKeysFromChapter(chapter)
+    const body = outlineLines(parsed)
     if (!existing) {
       byWeek.set(week, {
-        id: `lecture-week-${week}`,
+        id: `topic-week-${week}`,
         week,
-        lines: [...lines],
-        topic: lines.join('; '),
+        title: parsed.title,
+        subtopics: body.slice(1),
+        activity: parsed.activity,
+        lines: [...body],
+        topic: body.join('; '),
         ilos,
-        context: 'Lecture/Discussion',
+        context: String(chapter?.topics || ''),
       })
       return
     }
-    lines.forEach((line) => {
+    body.forEach((line) => {
       if (!existing.lines.some(item => item.toLowerCase() === line.toLowerCase())) {
         existing.lines.push(line)
       }
     })
+    existing.subtopics = existing.lines.slice(1)
+    if (parsed.activity) existing.activity = parsed.activity
     ilos.forEach((key) => {
       if (!existing.ilos.includes(key)) existing.ilos.push(key)
     })
     existing.topic = existing.lines.join('; ')
+    if (!existing.context) existing.context = String(chapter?.topics || '')
   })
   return [...byWeek.values()].sort((left, right) => left.week - right.week)
 }
