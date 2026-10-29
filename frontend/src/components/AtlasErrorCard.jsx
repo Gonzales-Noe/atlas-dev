@@ -35,7 +35,7 @@ export default function AtlasErrorCard({
         width: '100%',
         maxWidth: 560,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'stretch',
         gap: 2.5,
         flexWrap: 'wrap',
         p: 3,
@@ -49,23 +49,25 @@ export default function AtlasErrorCard({
         component="img"
         src={atlasMascot}
         alt="ATLAS"
-        sx={{ width: 148, height: 'auto', flexShrink: 0, imageRendering: 'pixelated' }}
+        sx={{ width: 148, height: 'auto', flexShrink: 0, alignSelf: 'center', imageRendering: 'pixelated' }}
       />
-      <Box sx={{ flex: '1 1 220px' }}>
+      <Box sx={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column' }}>
         <Typography sx={{ color: '#86EFAC', fontWeight: 800, fontSize: '1.05rem', mb: 0.75 }}>
           {title}
         </Typography>
-        <Typography sx={{ color: '#E5E7EB', fontSize: '0.95rem', lineHeight: 1.5, mb: onRetry ? 2 : 0 }}>
+        <Typography sx={{ color: '#E5E7EB', fontSize: '0.95rem', lineHeight: 1.5 }}>
           {message}
         </Typography>
         {onRetry ? (
-          <Button
-            variant="contained"
-            onClick={onRetry}
-            sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#166534' }, textTransform: 'none', fontWeight: 700 }}
-          >
-            {retryLabel}
-          </Button>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 'auto', pt: 2 }}>
+            <Button
+              variant="contained"
+              onClick={onRetry}
+              sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#166534' }, textTransform: 'none', fontWeight: 700 }}
+            >
+              {retryLabel}
+            </Button>
+          </Box>
         ) : null}
       </Box>
     </Box>
