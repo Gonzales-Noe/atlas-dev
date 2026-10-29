@@ -200,7 +200,7 @@ def faculty_course_workspace(request, course_id):
     assessments = (
         Assessment.objects.filter(course=course)
         .order_by('-generated_at', '-assessment_id')
-        .values('assessment_id', 'title', 'assessment_type', 'term', 'status', 'generated_at')
+        .values('assessment_id', 'title', 'assessment_type', 'term', 'status', 'generated_at', 'qa_report')
     )
     customization = InstitutionCustomization.objects.filter(
         institution_id=request.user.institution_id,

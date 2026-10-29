@@ -1977,6 +1977,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [moduleSaving, setModuleSaving]             = useState(false)
   const [consistencyReport, setConsistencyReport]   = useState(null)
   const [consistencyChecking, setConsistencyChecking] = useState(false)
+  const [closedCheckPanels, setClosedCheckPanels]   = useState({})
   const [qaRunning, setQaRunning]                   = useState(false)
   const [approveOpen, setApproveOpen]               = useState(false)
   const [approveNotes, setApproveNotes]             = useState({})
@@ -4003,6 +4004,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }, { timeout: 120000 })
       const report = data.report || null
       setConsistencyReport(report)
+      setClosedCheckPanels(current => ({ ...current, [`module:${courseId}`]: false }))
       if (report) setSyllabusData(current => ({ ...current, consistency_report: report }))
     } catch (err) {
       setActionError(extractApiError(err))
@@ -4011,17 +4013,137 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
-  async function handleRunAssessmentQa() {
-    const assessmentId = assessmentDetail?.assessment_id
-    if (!assessmentId || qaRunning) return
+  function renderCheckResultsPanel(title, body, panelKey) {
+    if (!body || closedCheckPanels[panelKey]) return null
+    return (
+      <Box sx={{
+        flexShrink: 0,
+        maxHeight: 240,
+        display: 'flex',
+        flexDirection: 'column',
+        bgcolor: '#12141A',
+        borderTop: '1px solid rgba(134,239,172,0.35)',
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, pt: 0.75 }}>
+          <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 800 }}>
+            {title}
+          </Typography>
+          <IconButton
+            size="small"
+            aria-label="Close check results"
+            onClick={() => setClosedCheckPanels(current => ({ ...current, [panelKey]: true }))}
+            sx={{ color: 'rgba(255,255,255,0.72)', p: 0.4 }}
+          >
+            <CloseIcon sx={{ fontSize: '1rem' }} />
+          </IconButton>
+        </Box>
+        <Box sx={{ overflow: 'auto', px: 2, pb: 1 }}>
+          <Stack spacing={0.75}>{body}</Stack>
+        </Box>
+      </Box>
+    )
+  }
+
+  function renderModuleCheckSummary() {
+    if (!consistencyReport?.summary) return null
+    const summary = consistencyReport.summary
+    const aligned = summary.aligned === summary.weeks && !summary.orphans
+    const problems = (consistencyReport.rows || []).filter(row => row.status !== 'aligned')
+    return (
+      <>
+        <Alert severity={aligned ? 'success' : 'warning'} sx={{ fontSize: '0.8rem' }}>
+          {summary.aligned} of {summary.weeks} lecture weeks align with their module
+          {summary.missing ? ` · ${summary.missing} missing` : ''}
+          {summary.issues ? ` · ${summary.issues} with gaps` : ''}
+          {summary.orphans ? ` · ${summary.orphans} outside the timeline` : ''}.
+          {consistencyReport.cot_error ? ' Wording review could not finish, so close titles were left for you.' : ''}
+        </Alert>
+        {(problems.length > 0 || (consistencyReport.orphans || []).length > 0) && (
+          <Stack spacing={0.6}>
+            {problems.map(row => (
+              <Box key={`align-${row.week}`} sx={{ px: 1.25, py: 0.8, borderRadius: 1.25, bgcolor: '#1A1A1F', border: '1px solid rgba(255,255,255,0.09)' }}>
+                <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700 }}>
+                  Week {row.week} · {row.status === 'missing' ? 'No module' : 'Needs a look'}
+                </Typography>
+                {(row.checks || []).filter(check => !check.ok).map(check => (
+                  <Typography key={check.code} variant="caption" sx={{ display: 'block', color: '#F0F0F2' }}>
+                    {check.detail}
+                  </Typography>
+                ))}
+              </Box>
+            ))}
+            {(consistencyReport.orphans || []).map(orphan => (
+              <Typography key={orphan.module_id} variant="caption" sx={{ color: '#F0F0F2' }}>
+                {orphan.detail} ({orphan.module_title || 'Untitled'})
+              </Typography>
+            ))}
+          </Stack>
+        )}
+      </>
+    )
+  }
+
+  function renderAssessmentCheckFindings(report, title) {
+    if (!report?.summary) return null
+    const failed = Object.values(report.items || {})
+      .filter(record => record && !record.passed)
+      .sort((a, b) => (a.item_number || 0) - (b.item_number || 0))
+    const allPassed = report.summary.passed === report.summary.items && report.allocation_ok
+    const heading = title ? `${title}: ` : ''
+    return (
+      <>
+        <Alert severity={allPassed ? 'success' : 'warning'} sx={{ fontSize: '0.8rem' }}>
+          {heading}{report.summary.passed} of {report.summary.items} items passed the check
+          {report.summary.failed ? ` · ${report.summary.failed} need a look` : ''}
+          {!report.allocation_ok ? ' · TOS counts do not match' : ''}.
+        </Alert>
+        {(failed.length > 0 || !report.allocation_ok) && (
+          <Stack spacing={0.6}>
+            {!report.allocation_ok && (
+              <Box sx={{ px: 1.25, py: 0.8, borderRadius: 1.25, bgcolor: '#1A1A1F', border: '1px solid rgba(255,255,255,0.09)' }}>
+                <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700 }}>
+                  {title ? `${title} · ` : ''}TOS counts
+                </Typography>
+                <Typography variant="caption" sx={{ display: 'block', color: '#F0F0F2' }}>
+                  {(report.allocation_details || []).join(' ') || 'The item counts do not match the table of specifications.'}
+                </Typography>
+              </Box>
+            )}
+            {failed.map(record => (
+              <Box key={record.item_id || record.item_number} sx={{ px: 1.25, py: 0.8, borderRadius: 1.25, bgcolor: '#1A1A1F', border: '1px solid rgba(255,255,255,0.09)' }}>
+                <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700 }}>
+                  {title ? `${title} · ` : ''}Item {record.item_number}
+                  {record.override_note ? ' · Noted' : ' · Needs a look'}
+                </Typography>
+                {[...(record.details || []), record.evidence].filter(Boolean).map((line, lineIndex) => (
+                  <Typography key={`${record.item_id || record.item_number}-${lineIndex}`} variant="caption" sx={{ display: 'block', color: '#F0F0F2' }}>
+                    {line}
+                  </Typography>
+                ))}
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </>
+    )
+  }
+
+  async function handleRunAssessmentQa(assessmentId) {
+    const id = typeof assessmentId === 'string' ? assessmentId : assessmentDetail?.assessment_id
+    if (!id || qaRunning) return
     setQaRunning(true)
     setActionError('')
     try {
-      const { data } = await api.post(`/curriculum/assessment/${assessmentId}/qa/`, {}, { timeout: 300000 })
-      if (data.assessment) {
+      const { data } = await api.post(`/curriculum/assessment/${id}/qa/`, {}, { timeout: 300000 })
+      if (data.assessment && String(assessmentDetail?.assessment_id || '') === String(data.assessment.assessment_id)) {
         setAssessmentDetail(data.assessment)
         setSelectedAssessment(current => ({ ...(current || {}), status: data.assessment.status }))
       }
+      setClosedCheckPanels(current => ({
+        ...current,
+        [`assessment-list:${courseId}`]: false,
+        [`assessment-open:${id}`]: false,
+      }))
       workspaceApi.execute()
     } catch (err) {
       setActionError(extractApiError(err))
@@ -7971,37 +8093,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Box>
             </Box>
           </Paper>
-          {consistencyReport?.summary && (
-            <Alert severity={consistencyReport.summary.aligned === consistencyReport.summary.weeks && !consistencyReport.summary.orphans ? 'success' : 'warning'}
-              sx={{ fontSize: '0.8rem' }}>
-              {consistencyReport.summary.aligned} of {consistencyReport.summary.weeks} lecture weeks align with their module
-              {consistencyReport.summary.missing ? ` · ${consistencyReport.summary.missing} missing` : ''}
-              {consistencyReport.summary.issues ? ` · ${consistencyReport.summary.issues} with gaps` : ''}
-              {consistencyReport.summary.orphans ? ` · ${consistencyReport.summary.orphans} outside the timeline` : ''}.
-              {consistencyReport.cot_error ? ' Wording review could not finish, so close titles were left for you.' : ''}
-            </Alert>
-          )}
-          {consistencyReport?.rows?.some(row => row.status !== 'aligned') && (
-            <Stack spacing={0.6}>
-              {consistencyReport.rows.filter(row => row.status !== 'aligned').map(row => (
-                <Box key={`align-${row.week}`} sx={{ px: 1.25, py: 0.8, borderRadius: 1.25, bgcolor: '#1A1A1F', border: '1px solid rgba(255,255,255,0.09)' }}>
-                  <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700 }}>
-                    Week {row.week} · {row.status === 'missing' ? 'No module' : 'Needs a look'}
-                  </Typography>
-                  {row.checks.filter(check => !check.ok).map(check => (
-                    <Typography key={check.code} variant="caption" sx={{ display: 'block', color: '#F0F0F2' }}>
-                      {check.detail}
-                    </Typography>
-                  ))}
-                </Box>
-              ))}
-              {(consistencyReport.orphans || []).map(orphan => (
-                <Typography key={orphan.module_id} variant="caption" sx={{ color: '#F0F0F2' }}>
-                  {orphan.detail} ({orphan.module_title || 'Untitled'})
-                </Typography>
-              ))}
-            </Stack>
-          )}
           {lectureTopics.length === 0 && savedModules.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
@@ -8345,6 +8436,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           </Dialog>
         </Stack>
         </Box>
+        {renderCheckResultsPanel('Alignment check', renderModuleCheckSummary(), `module:${courseId}`)}
         {renderModuleGenFooter({ showCreate: true })}
         </Box>
       )
@@ -8432,7 +8524,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 const explicitTarget = Number(assessmentDetail.target_total_items || 0)
                 const totalTarget = explicitTarget > 0 ? explicitTarget : null
                 const approved = String(assessmentDetail.status || '').toLowerCase() === 'approved'
-                const qaSummary = assessmentDetail.qa_report?.summary
                 return (
                   <>
                     <Chip
@@ -8449,13 +8540,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         color: approved ? '#166534' : '#F0F0F2',
                       }}
                     />
-                    {qaSummary && (
-                      <Chip
-                        size="small"
-                        label={`${qaSummary.passed}/${qaSummary.items} passed QA`}
-                        sx={{ height: 22, fontSize: '0.68rem', fontWeight: 700, bgcolor: MAROON_LIGHT, color: MAROON }}
-                      />
-                    )}
                   </>
                 )
               })()}
@@ -8549,11 +8633,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Menu>
             </Box>
 
-            {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
-              <Alert severity="warning" sx={{ fontSize: '0.8rem' }}>
-                {(assessmentDetail.qa_report.allocation_details || []).join(' ')}
-              </Alert>
-            )}
             <Dialog open={approveOpen} onClose={() => { if (!approving) setApproveOpen(false) }} maxWidth="sm" fullWidth>
               <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Approve assessment</DialogTitle>
               <DialogContent>
@@ -8792,6 +8871,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Stack>
           </Box>
+          {renderCheckResultsPanel('Assessment check', renderAssessmentCheckFindings(assessmentDetail.qa_report), `assessment-open:${assessmentDetail.assessment_id}`)}
           {(actionLoading && assessmentBatchProgress) && (
             <Box sx={{
               flexShrink: 0,
@@ -8842,12 +8922,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
           <Stack spacing={2}>
           <AutoAlert message={actionError} onClose={() => setActionError('')} />
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, px: 1.5, py: 0.85 }}>
               <Typography variant="subtitle2"
                 sx={{ fontWeight: 700, color: '#444', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                 Assessments
               </Typography>
-            </Box>
+            </Paper>
 
             {!canGenerateAssessment && (
               <Alert severity="info" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
@@ -9014,6 +9094,28 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       </Box>
                       <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500, ml: 1, textTransform: 'uppercase' }}>{a.title}</Typography>
                     </Box>
+                    {a.qa_report?.summary && (
+                      <Chip
+                        label={a.qa_report.summary.passed === a.qa_report.summary.items && a.qa_report.allocation_ok ? 'Passed' : 'Review'}
+                        size="small"
+                        sx={{
+                          height: 18, fontSize: '0.65rem', fontWeight: 700,
+                          color: a.qa_report.summary.passed === a.qa_report.summary.items && a.qa_report.allocation_ok ? '#166534' : '#9A3412',
+                          bgcolor: a.qa_report.summary.passed === a.qa_report.summary.items && a.qa_report.allocation_ok ? 'rgba(22,163,74,0.15)' : 'rgba(251,146,60,0.16)',
+                        }}
+                      />
+                    )}
+                    <Button size="small" disabled={qaRunning}
+                      onClick={e => {
+                        e.stopPropagation()
+                        handleRunAssessmentQa(String(a.assessment_id))
+                      }}
+                      sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
+                            fontSize: '0.72rem', px: 1.1, py: 0.2, minWidth: 0,
+                            '&:hover': { bgcolor: '#14532D' },
+                            '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
+                      {qaRunning ? 'Checking…' : 'Check'}
+                    </Button>
                     <Chip label={a.status} size="small" sx={{ height: 18, fontSize: '0.65rem', color: '#F0F0F2', bgcolor: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }} />
                     <IconButton
                       size="small"
@@ -9031,6 +9133,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Stack>
           </Box>
+          {assessments.some(a => a.qa_report?.summary) && renderCheckResultsPanel(
+            'Assessment checks',
+            assessments.map(a => (
+              <React.Fragment key={`qa-${a.assessment_id}`}>
+                {renderAssessmentCheckFindings(a.qa_report, a.title)}
+              </React.Fragment>
+            )),
+            `assessment-list:${courseId}`,
+          )}
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
