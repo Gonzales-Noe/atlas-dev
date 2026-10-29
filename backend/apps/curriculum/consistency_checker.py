@@ -86,6 +86,68 @@ def is_lecture_discussion(delivery):
     return compact == 'lecturediscussion' or ('lecture' in compact and 'discussion' in compact)
 
 
+def is_orientation_or_exam(title):
+    """Class orientation and examination rows are not teaching topics."""
+    text = re.sub(r'\s+', ' ', str(title or '').strip().lower())
+    if not text:
+        return False
+    if text in {'class orientation', 'orientation', 'introduction to the course'} or text.startswith('class orientation'):
+        return True
+    if re.search(r'\b(?:midterm|final|prelim(?:inary)?|comprehensive)\b.{0,40}\bexam', text):
+        return True
+    if re.fullmatch(r'(?:the\s+)?exam(?:ination)?', text):
+        return True
+    if 'submission of requirements' in text and 'exam' in text:
+        return True
+    return False
+
+
+def outline_subtopics(row):
+    """Topic and subtopic lines, without the separated activity."""
+    activity = str((row or {}).get('activity') or '')
+    title = str((row or {}).get('title') or '')
+    subs = []
+    seen_title = False
+    for line in (row or {}).get('lines') or []:
+        text = str(line or '').strip()
+        if not text:
+            continue
+        if not seen_title and text == title:
+            seen_title = True
+            continue
+        if activity and text == activity:
+            continue
+        subs.append(text)
+    return subs
+
+
+def lock_module_outline(module_content, title, subtopics, activity):
+    """Keep the module on the syllabus topic, subtopics, and activity."""
+    content = dict(module_content or {})
+    topic_title = str(title or '').strip()
+    if topic_title:
+        content['module_title'] = topic_title
+    expected = [str(item).strip() for item in (subtopics or []) if str(item).strip()]
+    generated = content.get('subtopics') if isinstance(content.get('subtopics'), list) else []
+    if expected:
+        locked = []
+        for index, name in enumerate(expected):
+            source = generated[index] if index < len(generated) and isinstance(generated[index], dict) else {}
+            locked.append({
+                'id': str(source.get('id') or f'st_{index}'),
+                'title': name,
+                'content': str(source.get('content') or '').strip(),
+            })
+        content['subtopics'] = locked
+    activity_title = str(activity or '').strip()
+    if activity_title:
+        short = content.get('short_activity') if isinstance(content.get('short_activity'), dict) else {}
+        short = dict(short)
+        short['title'] = activity_title
+        content['short_activity'] = short
+    return content
+
+
 def verb_levels(text):
     match = re.match(r'[A-Za-z]+', str(text or '').strip())
     if not match:
@@ -186,15 +248,19 @@ def _week_number(chapter, index):
 
 
 def lecture_weeks(syllabus_content):
-    """One row per lecture/discussion week, matching the Module tab."""
+    """One row per Topics / Reading List chapter, matching the Module tab.
+
+    Delivery method is not used. Class orientation and examination rows are
+    left out. The activity line stays separate from the topic lines.
+    """
     content = syllabus_content if isinstance(syllabus_content, dict) else {}
     chapters = content.get('tla_chapters') or []
     by_week = {}
     for index, chapter in enumerate(chapters):
-        if not isinstance(chapter, dict) or not is_lecture_discussion(chapter.get('delivery')):
+        if not isinstance(chapter, dict):
             continue
         parsed = parse_topics_cell(chapter.get('topics'))
-        if not parsed['lines']:
+        if not parsed['lines'] or is_orientation_or_exam(parsed['title']):
             continue
         week = _week_number(chapter, index)
         refs = ilo_numbers(chapter.get('ilo'))
@@ -234,7 +300,8 @@ def lecture_weeks(syllabus_content):
     rows = []
     for week in sorted(by_week):
         row = by_week[week]
-        row['topic'] = '; '.join(row['lines'])
+        body = [line for line in row['lines'] if line != row.get('activity')]
+        row['topic'] = '; '.join(body)
         rows.append(row)
     return rows
 
@@ -502,7 +569,7 @@ def check_consistency(syllabus_content, modules):
             'module_id': module_id,
             'module_title': module.get('module_title') or '',
             'week_number': week,
-            'detail': f"Week {week or '—'} is not a Lecture/Discussion row on the syllabus.",
+            'detail': f"Week {week or '—'} is not a topic row on the syllabus.",
         })
 
     return {

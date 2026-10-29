@@ -14,6 +14,7 @@ Generation pipeline:
     4. system_prompt + user_prompt are forwarded to LLMService.generate_response()
 """
 
+import json
 import logging
 import re
 
@@ -43,19 +44,23 @@ def field_reply_is_usable(section: str, text: str) -> bool:
         return False
     if section == "topic_map":
         return re.search(r"\d+\D+\d+", cleaned) is not None
+    if section == "tla_rows":
+        return '"topics"' in cleaned or cleaned.startswith("[") or cleaned.startswith("{")
+    if section == "tla_brief":
+        return len(cleaned) >= 40
     if section == "framework_columns":
         return bool(re.search(r"\b(SO|IGA|CDIO|SDG)\b", cleaned, re.IGNORECASE) and re.search(r"\d", cleaned))
     return True
 
 
-def complete_syllabus_field(llm, *, section, messages, system, preferred_provider=None):
+def complete_syllabus_field(llm, *, section, messages, system, preferred_provider=None, max_tokens=None):
     """Return one field reply, handing the call to Ollama when the cloud reply stops.
 
     A provider error cannot be retried, so Ollama takes that call. A reply that
     only restates the rules is tried once more; if that second reply also stops,
     Ollama takes the call.
     """
-    max_tokens = CoTPromptBuilder.field_max_tokens(section)
+    max_tokens = max_tokens or CoTPromptBuilder.field_max_tokens(section)
 
     def call(preferred):
         return llm.generate_response_with_fallback(
@@ -481,17 +486,19 @@ class CoTPromptBuilder:
     _FIELD_MAX_TOKENS = {
         "rationale": 160,
         "tlas": 220,
-        "ilo": 50,
-        "topics": 180,
-        "topic_outcome": 50,
-        "week_plan": 400,
-        "topic_map": 200,
+        "ilo": 60,
+        "topics": 120,
+        "topic_outcome": 60,
+        "week_plan": 360,
+        "topic_map": 96,
         "framework_columns": 120,
+        "tla_brief": 700,
+        "tla_rows": 720,
     }
 
     @classmethod
     def field_max_tokens(cls, section: str) -> int:
-        return cls._FIELD_MAX_TOKENS[section]
+        return cls._FIELD_MAX_TOKENS.get(section, 60)
 
     # ------------------------------------------------------------------
     # Shared helpers
@@ -752,6 +759,8 @@ OUTPUT — Return the module plan using exactly this structure:
         subsection_label: str = "",
         section_context: str = "",
         structuring_level: str = "standard",
+        syllabus_subtopics: list = None,
+        activity_title: str = "",
     ) -> tuple:
         """
         Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
@@ -795,6 +804,74 @@ OUTPUT — Return the module plan using exactly this structure:
             (structuring_level or "standard").strip().lower(),
             MODULE_STRUCTURING_LEVELS["standard"],
         )
+        outline = [str(item).strip() for item in (syllabus_subtopics or []) if str(item).strip()]
+        activity = str(activity_title or "").strip()
+        if outline:
+            subtopic_blocks = []
+            for index, name in enumerate(outline):
+                subtopic_blocks.append(
+                    "    {\n"
+                    f'      "id": "st_{index}",\n'
+                    f'      "title": {json.dumps(name)},\n'
+                    '      "content": "..."\n'
+                    "    }"
+                )
+            subtopic_json = ",\n".join(subtopic_blocks)
+            step4 = (
+                "Step 4 — Expand each syllabus subtopic below, in this order. "
+                "Copy each title exactly. Write "
+                f"{level['paragraphs']} paragraphs for each title. "
+                "Do not add, drop, or rename a subtopic."
+            )
+            subtopic_rule = (
+                f"- The \"subtopics\" array must contain exactly {len(outline)} items, "
+                "in the syllabus order, with the titles copied exactly."
+            )
+        else:
+            subtopic_json = """    {
+      "id": "st_0",
+      "title": "...",
+      "content": "..."
+    },
+    {
+      "id": "st_1",
+      "title": "...",
+      "content": "..."
+    },
+    {
+      "id": "st_2",
+      "title": "...",
+      "content": "..."
+    }"""
+            step4 = (
+                f"Step 4 — Break \"{module_title}\" into {level['subtopics']} logical subtopics. "
+                f"For each, write {level['paragraphs']} paragraphs of content grounded in the "
+                f"reference material and course context, matching the \"{level['label']}\" depth "
+                "requested above."
+            )
+            subtopic_rule = f"- The \"subtopics\" array MUST have at least {level['min_items']} items."
+        if activity:
+            step5 = (
+                f"Step 5 — The short activity is \"{activity}\". "
+                "Copy that title exactly. Write the steps for that activity. "
+                "Do not invent a different activity."
+            )
+            activity_json = json.dumps(activity)
+        else:
+            step5 = (
+                "Step 5 — Design a short formative activity (15-20 min) aligned to this module's "
+                "objectives and the Course ILOs."
+            )
+            activity_json = '"..."'
+        outline_block = ""
+        if outline or activity:
+            lines = ["SYLLABUS OUTLINE (copy these titles; expand them, do not replace them):"]
+            lines.append(f"Topic: {module_title}")
+            for index, name in enumerate(outline, 1):
+                lines.append(f"Subtopic {index}: {name}")
+            if activity:
+                lines.append(f"Activity: {activity}")
+            outline_block = "\n" + "\n".join(lines) + "\n"
 
         # Build the COURSE DATA block from real syllabus data
         course_data_parts = []
@@ -860,21 +937,18 @@ Step 1 — Analyse the reference material and COURSE DATA above to identify the 
 concepts specific to "{module_title}" in {course_name}.{ilo_step}
 Step 3 — Write a 2-3 sentence introduction that places this module in the context of \
 {course_name}. Be specific — do NOT use generic filler.
-Step 4 — Break "{module_title}" into {level['subtopics']} logical subtopics. For each, write \
-{level['paragraphs']} paragraphs of content grounded in the reference material and course \
-context, matching the "{level['label']}" depth requested above.
-Step 5 — Design a short formative activity (15-20 min) aligned to this module's \
-objectives and the Course ILOs.
-
+{step4}
+{step5}
+{outline_block}
 OUTPUT RULES:
 - Respond with ONLY valid JSON — no markdown, no preamble, no text outside the braces.
 - Every string value must be specific to {course_name} and "{module_title}".
 - Replace every "..." in the template below with real content.
-- The "subtopics" array MUST have at least {level['min_items']} items.
+{subtopic_rule}
 
 {{
   "module_number": {module_number},
-  "module_title": "{module_title}",
+  "module_title": {json.dumps(module_title)},
   "introduction": "...",
   "learning_objectives": [
     "...",
@@ -883,24 +957,10 @@ OUTPUT RULES:
   ],
   "ilo_refs": [1],
   "subtopics": [
-    {{
-      "id": "st_0",
-      "title": "...",
-      "content": "..."
-    }},
-    {{
-      "id": "st_1",
-      "title": "...",
-      "content": "..."
-    }},
-    {{
-      "id": "st_2",
-      "title": "...",
-      "content": "..."
-    }}
+{subtopic_json}
   ],
   "short_activity": {{
-    "title": "...",
+    "title": {activity_json},
     "description": "...",
     "duration": "15 minutes"
   }}
@@ -1154,6 +1214,7 @@ OUTPUT — Return the assessment using exactly this structure:
         extra_instructions: str = "",
         course_category: str = "professional",
         assessment_criteria: str = "",
+        course_brief: str = "",
     ) -> tuple:
         """
         Build a prompt to generate or continue a single syllabus field.
@@ -1196,6 +1257,23 @@ OUTPUT — Return the assessment using exactly this structure:
         field_line = _category_field_line(kind, section)
         subject = f"\n\nSubject matter:\n{field_line}" if field_line else ""
         verbs = _ILO_VERBS.get(kind, _ILO_VERBS["professional"])
+        brief = (course_brief or "").strip()
+        brief_block = f"Course brief:\n{brief}\n\n" if brief else ""
+
+        if section == "week_plan":
+            system = (
+                "You write the topic titles for a university course. "
+                "Reply with the plan only. Do not repeat these instructions."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                f"{brief_block}"
+                f"{hint}\n"
+            )
+            if extra_instructions:
+                user += f"\n{extra_instructions}\n"
+            return system, user
 
         if section == "ilo":
             system = (
@@ -1226,6 +1304,7 @@ OUTPUT — Return the assessment using exactly this structure:
             user = (
                 f"Course: {course_name}\n"
                 f"Course code: {course_code or 'N/A'}\n\n"
+                f"{brief_block}"
                 "A one-week topic is the topic title, then one indented subtopic. No activity.\n"
                 "A two-week topic is 1 to 3 topic titles. Under each title, indent 1 or 2 subtopic titles. "
                 "Then a blank line and one activity title for the whole cell. Only one activity.\n"
@@ -1247,6 +1326,7 @@ OUTPUT — Return the assessment using exactly this structure:
             user = (
                 f"Course: {course_name}\n"
                 f"Course code: {course_code or 'N/A'}\n\n"
+                f"{brief_block}"
                 "Write what the student does with this topic.\n"
                 "Start with an imperative verb. One clause. 7–12 words. One period.\n"
                 "Plain text. No markdown, vertical bars, or other symbols.\n"

@@ -14,6 +14,8 @@ from apps.curriculum.assessment_qa import (
 from apps.curriculum.consistency_checker import (
     apply_topic_judgments,
     check_consistency,
+    lecture_weeks,
+    lock_module_outline,
     parse_topics_cell,
     stamp_module_ilos,
 )
@@ -150,6 +152,54 @@ class ConsistencyCheckerTests(SimpleTestCase):
         week_one = next(row for row in updated['rows'] if row['week'] == 1)
         self.assertEqual(week_one['status'], 'aligned')
         self.assertFalse(week_one['needs_topic_review'])
+
+    def test_topic_rows_ignore_delivery_and_skip_orientation_and_exams(self):
+        weeks = lecture_weeks({
+            'tla_chapters': [
+                {
+                    'chapter': '1',
+                    'delivery': 'Lecture/Discussion',
+                    'topics': 'Class Orientation',
+                    'ilo': '1',
+                },
+                {
+                    'chapter': '2',
+                    'delivery': 'Laboratory',
+                    'topics': 'Networks\n     Addressing\nLab 2',
+                    'ilo': '1',
+                },
+                {
+                    'chapter': '3',
+                    'delivery': 'Lecture/Discussion',
+                    'topics': 'Final Examination and Submission of Requirements',
+                    'ilo': '1',
+                },
+            ],
+        })
+        self.assertEqual([row['week'] for row in weeks], [2])
+        self.assertEqual(weeks[0]['title'], 'Networks')
+        self.assertEqual(weeks[0]['subtopics'], ['Addressing'])
+        self.assertEqual(weeks[0]['activity'], 'Lab 2')
+        self.assertNotIn('Lab 2', weeks[0]['topic'])
+
+    def test_outline_lock_keeps_the_syllabus_activity(self):
+        locked = lock_module_outline(
+            {
+                'subtopics': [{'title': 'Other name', 'content': 'Expanded notes.'}],
+                'short_activity': {
+                    'title': 'Mapping Global Information Flows',
+                    'description': 'Students map the flows.',
+                },
+            },
+            title='Globalization and Communication',
+            subtopics=['Digital media networks'],
+            activity='Case Study Presentation',
+        )
+        self.assertEqual(locked['module_title'], 'Globalization and Communication')
+        self.assertEqual(locked['subtopics'][0]['title'], 'Digital media networks')
+        self.assertEqual(locked['subtopics'][0]['content'], 'Expanded notes.')
+        self.assertEqual(locked['short_activity']['title'], 'Case Study Presentation')
+        self.assertEqual(locked['short_activity']['description'], 'Students map the flows.')
 
     def test_stamp_copies_week_ilo_codes(self):
         stamped = stamp_module_ilos({'learning_objectives': ['Explain.']}, SYLLABUS, 1)
