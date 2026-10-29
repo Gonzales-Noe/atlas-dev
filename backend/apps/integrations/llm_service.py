@@ -630,9 +630,11 @@ class LLMService:
                 last_error = exc
         raise last_error
 
-    def _chat_completion(self, provider, model, payload_messages, max_tokens):
+    def _chat_completion(self, provider, model, payload_messages, max_tokens, extra_body=None):
         body = {'model': model, 'messages': payload_messages, 'max_tokens': max_tokens}
-        if 'gpt-oss' in model:
+        if extra_body:
+            body.update(extra_body)
+        elif 'gpt-oss' in model:
             # Reasoning tokens count toward max_tokens; keep them small.
             body['reasoning_effort'] = 'low'
 
@@ -717,6 +719,41 @@ class LLMService:
                 if content.strip():
                     return content
         raise ProviderError('ollama', f'unexpected response: {str(data)[:300]}')
+
+    def generate_quick_json(self, messages, system=None, max_tokens=1024):
+        """One Groq call that does not reason and does not fall through to Ollama.
+
+        Used for short verdicts. The primary model answers directly. If that
+        model is rejected, GPT-OSS 20B runs once with low reasoning.
+        """
+        if not self.configured.get('groq'):
+            raise ValueError('Groq is not configured.')
+        payload_messages = ([{'role': 'system', 'content': system}] if system else []) + list(messages)
+        primary = (os.environ.get('QA_GROQ_MODEL') or 'qwen/qwen3.8-27b').strip()
+        models = [primary]
+        if 'openai/gpt-oss-20b' not in models:
+            models.append('openai/gpt-oss-20b')
+        last_error = None
+        for model in models:
+            extra = {
+                'temperature': 0,
+                'response_format': {'type': 'json_object'},
+            }
+            tokens = max_tokens
+            if model.startswith('qwen/'):
+                extra['reasoning_effort'] = 'none'
+            elif 'gpt-oss' in model:
+                extra['reasoning_effort'] = 'low'
+                extra['include_reasoning'] = False
+                tokens = max(max_tokens, 1024)
+            try:
+                return self._chat_completion('groq', model, payload_messages, tokens, extra_body=extra)
+            except ProviderError as exc:
+                last_error = exc
+                if exc.kind in ('auth', 'quota'):
+                    raise
+                logger.warning('Quick Groq model %s failed: %s', model, exc)
+        raise last_error or ValueError('Groq did not return a verdict.')
 
     def generate_response(self, messages, provider_choice=None, system=None, max_tokens=1024):
         """

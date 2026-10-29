@@ -13,8 +13,8 @@ from apps.curriculum.consistency_checker import titles_match, verb_levels
 
 logger = logging.getLogger(__name__)
 
-SOURCE_CHECK_WORKERS = 3
-_PASSAGE_CHAR_LIMIT = 1600
+SOURCE_CHECK_WORKERS = 2
+_PASSAGE_CHAR_LIMIT = 700
 
 BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
 SOURCE_LABELS = {'supported', 'unsupported', 'contradicted'}
@@ -216,24 +216,31 @@ def source_batches(report, size=8):
     return batches
 
 
-def pack_source_batches(batches, size=8):
+def pack_source_batches(batches, size=8, char_budget=0):
     """Join topic batches into one model call until the next batch would pass `size` items.
 
     ``source_batches`` already slices a long topic. This only combines shorter ones.
+    ``char_budget`` splits a group before the prompt gets large enough to slow the reply.
     """
     packed = []
     current = []
     count = 0
+    chars = 0
     for batch in batches or []:
         item_count = len(batch.get('items') or [])
         if item_count <= 0:
             continue
-        if current and count + item_count > size:
+        weight = len(str(batch.get('passages') or '')) + 180 * item_count
+        over_size = current and count + item_count > size
+        over_chars = current and char_budget and chars + weight > char_budget
+        if over_size or over_chars:
             packed.append(current)
             current = []
             count = 0
+            chars = 0
         current.append(batch)
         count += item_count
+        chars += weight
     if current:
         packed.append(current)
     return packed
