@@ -1118,7 +1118,8 @@ OUTPUT — Return the assessment using exactly this structure:
             "1 is one week. 2 is a heavier topic that merges two weeks. "
             "The numbers must add up to 17. Week 18 is not a topic. "
             "The first content topic is still week 1. "
-            "Titles only. No sentences. Do not write week numbers or the word weeks."
+            "Titles only. No sentences. Do not write week numbers or the word weeks. "
+            "Plain text only. Do not use vertical bars or markdown."
         ),
         'contact': (
             "Do not generate. Criteria for Assessment is entered by the faculty."
@@ -1230,6 +1231,7 @@ OUTPUT — Return the assessment using exactly this structure:
                 "Then a blank line and one activity title for the whole cell. Only one activity.\n"
                 "Do not put an activity on a one-week topic.\n"
                 "First line is the topic title. Titles only. No sentences. Do not write week numbers.\n"
+                "Plain text only. Do not use vertical bars, asterisks, hashes, bullets, or numbering.\n"
             )
             if extra_instructions:
                 user += f"\n{extra_instructions}\n"
@@ -1247,6 +1249,7 @@ OUTPUT — Return the assessment using exactly this structure:
                 f"Course code: {course_code or 'N/A'}\n\n"
                 "Write what the student does with this topic.\n"
                 "Start with an imperative verb. One clause. 7–12 words. One period.\n"
+                "Plain text. No markdown, vertical bars, or other symbols.\n"
                 "Do not mention these rules. Do not copy the shape example.\n\n"
                 "Shape only, from a different course: Compare two sorting methods on a small data set.\n"
                 f"Outcome for {course_name}:"
