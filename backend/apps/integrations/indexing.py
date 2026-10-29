@@ -37,9 +37,9 @@ _EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rag-indexer")
 # Indexing runs in-process; a record still PROCESSING after this long was lost
 # to a server restart and will never finish.
 STALE_PROCESSING_AFTER = timedelta(hours=1)
-STALE_PROCESSING_MESSAGE = "Indexing was interrupted by a server restart. Please upload the file again."
+STALE_PROCESSING_MESSAGE = "Reading this file was interrupted. Please upload it again."
 _EMBED_BATCH = 16
-_LOCK_TTL_SECONDS = 180
+_LOCK_TTL_SECONDS = 900
 _UPLOAD_DIR = Path(tempfile.gettempdir()) / "atlas-rag-course"
 
 
@@ -102,8 +102,12 @@ def _store_upload(records_id, file_bytes, file_type, file_name, module_tag, term
 def _embed_in_batches(texts, on_progress=None):
     vectors = []
     total = len(texts)
+    if on_progress and total:
+        on_progress(0, total)
     for start in range(0, total, _EMBED_BATCH):
         batch = texts[start:start + _EMBED_BATCH]
+        if on_progress:
+            on_progress(start, total)
         vectors.extend(rag_service.embed_documents_batch(batch))
         if on_progress:
             on_progress(min(start + len(batch), total), total)
@@ -307,8 +311,6 @@ def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, 
     Uses the same hierarchical split and native 768-dim BGE batch as global
     documents. Child rows keep the embedding; parent rows keep the section text.
     """
-    if on_progress:
-        on_progress(0, 1)
     parents_data, child_records, embeddings = _chunk_and_embed(
         file_bytes, file_type, file_name, on_progress,
     )
