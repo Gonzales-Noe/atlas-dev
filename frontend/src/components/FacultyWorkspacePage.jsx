@@ -2040,8 +2040,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusUploadSuccess, setSyllabusUploadSuccess] = useState(false)
   const [activeFwKey, setActiveFwKey] = useState('SO')
 
-  // ── Syllabus export & template state (session-based, no DB save) ────────
-  const [syllabusTemplateFile, setSyllabusTemplateFile] = useState(null)  // session-only
+  // ── Syllabus export state (session-based, no DB save) ──────────────────
   const [syllabusExporting, setSyllabusExporting] = useState(null)
   const [syllabusExportError, setSyllabusExportError] = useState('')
   const [tosExporting, setTosExporting] = useState(false)
@@ -3081,9 +3080,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const formData = new FormData()
       formData.append('course_id', courseId)
       formData.append('syllabus_data', JSON.stringify(syllabusForPersist()))
-      if (syllabusTemplateFile) {
-        formData.append('template', syllabusTemplateFile)
-      }
 
       const response = await api.post('/curriculum/export-syllabus-docx/', formData, {
         headers: { 'Content-Type': undefined },
@@ -3091,8 +3087,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         timeout: 120000,
       })
 
-      const isXlsx = syllabusTemplateFile?.name?.toLowerCase().endsWith('.xlsx')
-      await downloadSyllabusBlob(response, isXlsx ? 'xlsx' : 'docx')
+      await downloadSyllabusBlob(response, 'docx')
     } catch (err) {
       setSyllabusExportError(await readExportError(err, 'Failed to export syllabus.'))
     } finally {
@@ -9450,42 +9445,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Button>
           </DialogActions>
         </Dialog>
-
-        {/* ── Templates Section (lower right) ──────────────────────────────────────── */}
-        <Divider sx={{ my: 2 }} />
-        <Typography variant="caption"
-          sx={{ fontWeight: 700, color: '#888', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.62rem', display: 'block', mb: 1.5 }}>
-          Export Templates
-        </Typography>
-
-        <Stack spacing={1.5}>
-          <Box>
-            <Typography variant="caption" sx={{ color: '#666', display: 'block', mb: 0.75, fontSize: '0.75rem' }}>
-              Upload a DOCX or XLSX template with {'{{fieldName}}'} placeholders. Leave empty for default format.
-            </Typography>
-            <Button variant="outlined" component="label" fullWidth
-              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5, fontSize: '0.8rem',
-                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
-              {syllabusTemplateFile ? '✓ Template Loaded' : 'Choose Template'}
-              <input hidden type="file"
-                accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                onChange={e => setSyllabusTemplateFile(e.target.files?.[0] || null)} />
-            </Button>
-            {syllabusTemplateFile && (
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.75, px: 1, py: 0.5, bgcolor: MAROON_LIGHT, borderRadius: 1 }}>
-                <InsertDriveFileIcon sx={{ fontSize: 14, color: MAROON, flexShrink: 0 }} />
-                <Typography variant="caption" sx={{ color: '#333', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.7rem' }}>
-                  {syllabusTemplateFile.name}
-                </Typography>
-                <IconButton size="small"
-                  onClick={() => setSyllabusTemplateFile(null)}
-                  sx={{ p: 0.25, color: MAROON, flexShrink: 0 }}>
-                  <CloseIcon sx={{ fontSize: 14 }} />
-                </IconButton>
-              </Box>
-            )}
-          </Box>
-        </Stack>
       </>
     )
   }
