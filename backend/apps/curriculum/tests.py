@@ -749,3 +749,26 @@ class ModuleTeachingTextTests(SimpleTestCase):
         self.assertNotIn('introduction', _exam_wording(
             'What benefit is mentioned in the HCI introduction?'
         ).lower())
+
+    def test_remember_slot_rejects_a_create_stem(self):
+        section = {
+            'section_title': 'HCI',
+            'items': [{
+                'item_number': 6,
+                'bloom_level': 'Remember',
+                'bloom_verb': 'identify',
+                'ilo_refs': [],
+            }],
+        }
+        generated = {
+            'items': [{
+                'item_number': 6,
+                'question_text': 'Design a brief inclusive feature for a public kiosk.',
+                'choices': ['A. Large button', 'B. More graphics', 'C. A longer password', 'D. Faster menus'],
+                'correct_answer': 'A',
+                'answer_key': 'A large control fits limited motor ability.',
+            }],
+        }
+        accepted, retry = _collect_section_items(section, generated)
+        self.assertEqual(accepted, {})
+        self.assertEqual(retry, [6])
