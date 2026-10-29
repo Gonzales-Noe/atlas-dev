@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, Button, Container, Typography, Grid, Card, CardContent, AppBar, Toolbar, Stack } from '@mui/material'
 import { useAuth } from '../store/authStore'
-import atlasLogo from '../assets/atlas-logo.png'
+import atlasLogo from '../assets/atlas-logo.webp'
 
 export default function LandingPage() {
   const navigate = useNavigate()

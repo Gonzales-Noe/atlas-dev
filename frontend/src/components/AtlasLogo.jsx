@@ -1,6 +1,6 @@
 import React from 'react'
 import Box from '@mui/material/Box'
-import atlasLogo from '../assets/atlas-logo.png'
+import atlasLogo from '../assets/atlas-logo.webp'
 
 export default function AtlasLogo({
   className,

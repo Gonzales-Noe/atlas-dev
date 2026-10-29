@@ -28,6 +28,71 @@ const api = axios.create({
 let sessionGeneration = 0
 let refreshPromise = null
 
+const GET_CACHE_TTL_MS = 12000
+const GET_CACHE_LIMIT = 40
+const getResponseCache = new Map()
+
+const GET_CACHE_SKIP = [
+  '/auth/token',
+  '/auth/google',
+  '/auth/password-reset',
+  '/grading/jobs',
+  '/integrations/traffic',
+  '/integrations/llm-health',
+  '/integrations/rag-documents',
+]
+
+function requestPath(config) {
+  return `${config?.url || ''}`
+}
+
+function shouldCacheGet(config) {
+  if (!config || config.atlasCache === false) return false
+  const method = (config.method || 'get').toLowerCase()
+  if (method !== 'get') return false
+  if (config.responseType && config.responseType !== 'json') return false
+  const path = requestPath(config)
+  return !GET_CACHE_SKIP.some((part) => path.includes(part))
+}
+
+function getCacheKey(config) {
+  const auth = config.headers?.Authorization || config.headers?.authorization || ''
+  const params = config.params ? JSON.stringify(config.params) : ''
+  return `${config.baseURL || ''}${config.url || ''}|${params}|${auth}`
+}
+
+function readGetCache(config) {
+  if (!shouldCacheGet(config)) return null
+  const key = getCacheKey(config)
+  const hit = getResponseCache.get(key)
+  if (!hit) return null
+  if (Date.now() - hit.at > GET_CACHE_TTL_MS) {
+    getResponseCache.delete(key)
+    return null
+  }
+  return hit
+}
+
+function storeGetCache(config, data, status) {
+  if (!shouldCacheGet(config)) return
+  try {
+    if (JSON.stringify(data).length > 100000) return
+  } catch {
+    return
+  }
+  const key = getCacheKey(config)
+  if (getResponseCache.has(key)) getResponseCache.delete(key)
+  getResponseCache.set(key, { at: Date.now(), data, status })
+  while (getResponseCache.size > GET_CACHE_LIMIT) {
+    const oldest = getResponseCache.keys().next().value
+    getResponseCache.delete(oldest)
+  }
+}
+
+function clearGetCache() {
+  getResponseCache.clear()
+}
+
 function requestUrl(config) {
   return `${config?.baseURL || ''}${config?.url || ''}`
 }
@@ -87,6 +152,17 @@ api.interceptors.request.use(
     if (token && !isDemoToken(token)) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    const cached = readGetCache(config)
+    if (cached) {
+      config.adapter = async () => ({
+        data: cached.data,
+        status: cached.status,
+        statusText: 'OK',
+        headers: {},
+        config,
+        request: null,
+      })
+    }
     return config
   },
   (error) => Promise.reject(error)
@@ -94,7 +170,12 @@ api.interceptors.request.use(
 
 // ── Response interceptor: handle 401 → refresh token ─────────────────────
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = (response.config?.method || 'get').toLowerCase()
+    if (method === 'get') storeGetCache(response.config, response.data, response.status)
+    else clearGetCache()
+    return response
+  },
   async (error) => {
     reportServerError(error)
     const originalRequest = error.config

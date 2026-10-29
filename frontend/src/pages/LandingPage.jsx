@@ -1,17 +1,18 @@
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import api from '../config/api'
-import atlasLogo from '../assets/atlas-logo.png'
-import atlasHero from '../assets/atlas.png'
-import delacion from '../assets/Delacion.png'
-import esperida from '../assets/Esperida.png'
-import gonzales from '../assets/Gonzales.jpg'
-import { useEffect, useRef, useState } from 'react'
+import atlasLogo from '../assets/atlas-logo.webp'
+import atlasHero from '../assets/atlas.webp'
+import delacion from '../assets/Delacion.webp'
+import esperida from '../assets/Esperida.webp'
+import gonzales from '../assets/Gonzales.webp'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 
-import SignInPage from './auth/signInPage'
-import SignUpPage from './auth/signUpPage'
-import PasswordResetPage from './auth/passwordReset'
 import InstallAppButton from '../components/InstallAppButton'
+
+const SignInPage = lazy(() => import('./auth/signInPage'))
+const SignUpPage = lazy(() => import('./auth/signUpPage'))
+const PasswordResetPage = lazy(() => import('./auth/passwordReset'))
 
 // ── Scroll-triggered animation hook ─────────────────────────────────────────
 function useInView(threshold = 0.15) {
@@ -346,8 +347,6 @@ export default function LandingPage() {
 
       {/* ── GLOBAL STYLES ─────────────────────────────────────────────────── */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Serif+Display&display=swap');
-
         * { box-sizing: border-box; }
 
         html { scroll-behavior: smooth; }
@@ -931,6 +930,10 @@ export default function LandingPage() {
             <img
               src={atlasHero}
               alt="ATLAS Platform Character"
+              width={720}
+              height={1207}
+              decoding="async"
+              fetchPriority="high"
               style={{
                 width: '100%',
                 maxWidth: 360,
@@ -1158,7 +1161,7 @@ export default function LandingPage() {
                   margin: '0 auto 1.5rem',
                   overflow: 'hidden',
                 }}>
-                  <img src={member.image} alt={member.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
+                  <img src={member.image} alt={member.name} width={800} height={1000} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
                 <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
                 <p style={{ color: '#86EFAC', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
@@ -1254,7 +1257,7 @@ export default function LandingPage() {
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <img src={atlasLogo} alt="ATLAS" style={{ height: 24 }} />
+            <img src={atlasLogo} alt="ATLAS" width={640} height={188} loading="lazy" decoding="async" style={{ height: 24 }} />
             <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
@@ -1266,6 +1269,7 @@ export default function LandingPage() {
       </footer>
 
       {/* ── AUTH MODALS ─────────────────────────────────────────────────────── */}
+      <Suspense fallback={null}>
       {authModal === 'signin' && (
         <SignInPage isModal onClose={() => setAuthModal(null)} onSwitch={setAuthModal} />
       )}
@@ -1275,6 +1279,7 @@ export default function LandingPage() {
       {authModal === 'reset' && (
         <PasswordResetPage isModal onClose={() => setAuthModal(null)} onSwitch={setAuthModal} />
       )}
+      </Suspense>
     </div>
   )
 }

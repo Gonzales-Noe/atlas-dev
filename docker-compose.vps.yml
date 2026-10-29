@@ -67,6 +67,7 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL}
+        VITE_ASSET_BASE: ${VITE_ASSET_BASE:-/}
     container_name: atlas_frontend
     depends_on:
       - backend

@@ -7,7 +7,11 @@ import { applyStoredThemePreference } from './utils/userPreferences.js'
 import { registerServiceWorker } from './utils/pwaInstall.js'
 
 applyStoredThemePreference()
-registerServiceWorker()
+if (typeof window.requestIdleCallback === 'function') {
+  window.requestIdleCallback(() => registerServiceWorker(), { timeout: 3000 })
+} else {
+  window.addEventListener('load', () => registerServiceWorker(), { once: true })
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

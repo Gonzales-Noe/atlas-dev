@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import {
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
   InputLabel, Select, FormControl, CircularProgress, Button, Box, Tooltip,
@@ -21,6 +21,8 @@ import StarIcon from '@mui/icons-material/Star'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
+import useDebouncedValue from '../../../hooks/useDebouncedValue'
+import RouteSkeleton from '../../../components/RouteSkeleton'
 import {
   analyzeSyllabusTemplate,
   BUILTIN_SYLLABUS_EDITORS,
@@ -104,6 +106,9 @@ export default function AdminAccountManagement() {
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [page, setPage] = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(10)
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
 
   const [createDialog, setCreateDialog] = useState(false)
   const [editDialog, setEditDialog] = useState(false)
@@ -194,8 +199,12 @@ export default function AdminAccountManagement() {
   }
 
   // ── Filtering ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    setPage(0)
+  }, [debouncedSearch, roleFilter, statusFilter])
+
   const filtered = faculty.filter(fac => {
-    const q = searchTerm.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     const matchSearch = !q
       || fac.email?.toLowerCase().includes(q)
       || displayName(fac).toLowerCase().includes(q)
@@ -204,6 +213,9 @@ export default function AdminAccountManagement() {
     const matchStatus = !statusFilter || (statusFilter === 'active' ? fac.is_active : !fac.is_active)
     return matchSearch && matchRole && matchStatus
   })
+  const maxPage = Math.max(0, Math.ceil(filtered.length / rowsPerPage) - 1)
+  const safePage = Math.min(page, maxPage)
+  const pageRows = filtered.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage)
 
   const assignmentsFor = userId => assignments.filter(item => item.faculty_id === userId)
   // One syllabus author per course: the star is read-only while someone else owns it.
@@ -827,7 +839,14 @@ export default function AdminAccountManagement() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {!loading && filtered.map(fac => (
+              {loading && (
+                <TableRow>
+                  <TableCell colSpan={5} sx={{ borderBottom: 'none', p: 0 }}>
+                    <RouteSkeleton compact />
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading && pageRows.map(fac => (
                 <TableRow key={fac.user_id} sx={{ '&:last-child td': { borderBottom: 'none !important' } }}>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -949,11 +968,19 @@ export default function AdminAccountManagement() {
             No accounts match your search.
           </div>
         )}
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)', fontSize: '0.9rem' }}>
-            Loading faculty accounts…
-          </div>
-        )}
+        <TablePagination
+          rowsPerPageOptions={[10, 25, 50]}
+          component="div"
+          count={filtered.length}
+          rowsPerPage={rowsPerPage}
+          page={safePage}
+          onPageChange={(_, nextPage) => setPage(nextPage)}
+          onRowsPerPageChange={(event) => {
+            setRowsPerPage(parseInt(event.target.value, 10))
+            setPage(0)
+          }}
+          sx={{ borderTop: '1px solid var(--border-color) !important', color: 'var(--text-secondary)' }}
+        />
       </GlassCard>
 
       {/* Detail Dialog */}

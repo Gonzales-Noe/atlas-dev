@@ -85,6 +85,16 @@ SECURE_HSTS_PRELOAD = True
 # Set REDIS_HOST to a real Redis host when you add Render Redis / VPS Redis.
 _redis_host = os.environ.get('REDIS_HOST', '').strip()
 if _redis_host and _redis_host not in ('localhost', '127.0.0.1'):
+    # DB 1 keeps Django's cache off the Channels keyspace on DB 0.
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': f'redis://{_redis_host}:{os.environ.get("REDIS_PORT", "6379")}/1',
+            'KEY_PREFIX': 'atlas',
+            'TIMEOUT': 300,
+        },
+    }
+if _redis_host and _redis_host not in ('localhost', '127.0.0.1'):
     CHANNEL_LAYERS = {
         'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',

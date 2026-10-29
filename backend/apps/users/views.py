@@ -4,7 +4,6 @@ import hashlib
 import hmac
 import json
 import logging
-import secrets
 import uuid
 from datetime import timedelta
 from io import BytesIO
@@ -41,6 +40,7 @@ from apps.integrations.trial import (
     trial_is_active,
 )
 
+from .otp import OTP_ATTEMPT_LIMIT, OTP_LOCK_SECONDS, OTP_TTL_SECONDS, generate_otp, otp_matches, same_secret
 from .serializers import (
     PASSWORD_RESET_CACHE_PREFIX,
     PASSWORD_RESET_SALT,
@@ -77,8 +77,16 @@ def _otp_cache_key(email):
     return f'{PASSWORD_RESET_CACHE_PREFIX}{email.lower()}'
 
 
-def _generate_otp():
-    return f'{secrets.randbelow(10000):04d}'
+def _otp_attempts_key(email):
+    return f'{PASSWORD_RESET_CACHE_PREFIX}attempts:{email.lower()}'
+
+
+def _otp_lock_key(email):
+    return f'{PASSWORD_RESET_CACHE_PREFIX}lock:{email.lower()}'
+
+
+def _reset_grant_key(email):
+    return f'{PASSWORD_RESET_CACHE_PREFIX}grant:{email.lower()}'
 
 
 def _to_database_role(role_value):
@@ -500,10 +508,10 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data['email']
 
         profile = UserProfile.objects.filter(email__iexact=email, is_active=True).first()
-        otp = None
-        if profile:
-            otp = _generate_otp()
-            cache.set(_otp_cache_key(email), otp, timeout=600)
+        if profile and not cache.get(_otp_lock_key(email)):
+            otp = generate_otp()
+            cache.set(_otp_cache_key(email), otp, timeout=OTP_TTL_SECONDS)
+            cache.delete(_otp_attempts_key(email))
             # Send the branded OTP email through the shared email service so the
             # structure, logo and footer stay consistent with the rest of ATLAS.
             from .email_service import send_password_reset_otp
@@ -513,10 +521,7 @@ class PasswordResetRequestView(APIView):
                 user_name=profile.name or '',
             )
 
-        response_payload = {'detail': 'If the account exists, a reset code has been generated.'}
-        if settings.DEBUG and otp is not None:
-            response_payload['debug_otp'] = otp
-        return Response(response_payload)
+        return Response({'detail': 'If the account exists, a reset code has been generated.'})
 
 
 class PasswordResetVerifyView(APIView):
@@ -529,11 +534,36 @@ class PasswordResetVerifyView(APIView):
         email = serializer.validated_data['email']
         otp = serializer.validated_data['otp']
 
-        cached_otp = cache.get(_otp_cache_key(email))
-        if not cached_otp or cached_otp != otp:
-            return Response({'detail': 'Invalid or expired OTP.'}, status=status.HTTP_400_BAD_REQUEST)
+        if cache.get(_otp_lock_key(email)):
+            return Response(
+                {'detail': 'Too many attempts. Request a new code later.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
 
+        cached_otp = cache.get(_otp_cache_key(email))
+        if not cached_otp or not otp_matches(cached_otp, otp):
+            try:
+                attempts = cache.incr(_otp_attempts_key(email))
+            except ValueError:
+                cache.set(_otp_attempts_key(email), 1, timeout=OTP_TTL_SECONDS)
+                attempts = 1
+            if attempts >= OTP_ATTEMPT_LIMIT:
+                cache.delete(_otp_cache_key(email))
+                cache.delete(_otp_attempts_key(email))
+                cache.set(_otp_lock_key(email), 1, timeout=OTP_LOCK_SECONDS)
+                return Response(
+                    {'detail': 'Too many attempts. Request a new code later.'},
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            return Response(
+                {'detail': 'Invalid or expired code.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cache.delete(_otp_cache_key(email))
+        cache.delete(_otp_attempts_key(email))
         reset_token = signing.dumps({'email': email}, salt=PASSWORD_RESET_SALT)
+        cache.set(_reset_grant_key(email), reset_token, timeout=1800)
         return Response({'reset_token': reset_token})
 
 
@@ -555,6 +585,11 @@ class PasswordResetConfirmView(APIView):
             return Response({'detail': 'Invalid or expired reset token.'}, status=status.HTTP_400_BAD_REQUEST)
 
         email = payload.get('email')
+        submitted = serializer.validated_data['reset_token']
+        issued = cache.get(_reset_grant_key(email))
+        if not issued or not same_secret(issued, submitted):
+            return Response({'detail': 'Invalid or expired reset token.'}, status=status.HTTP_400_BAD_REQUEST)
+
         profile = UserProfile.objects.filter(email__iexact=email, is_active=True).first()
         if not profile:
             return Response({'detail': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
@@ -562,19 +597,47 @@ class PasswordResetConfirmView(APIView):
         profile.password_hash = make_password(serializer.validated_data['new_password'])
         profile.save(update_fields=['password_hash'])
         cache.delete(_otp_cache_key(email))
+        cache.delete(_otp_attempts_key(email))
+        cache.delete(_reset_grant_key(email))
         return Response({'detail': 'Password updated successfully.'})
+
+
+_DASHBOARD_CACHE_SECONDS = 15
+
+
+def _dashboard_cache_get(key):
+    try:
+        return cache.get(key)
+    except Exception:
+        logger.warning('Dashboard cache read failed for %s', key, exc_info=True)
+        return None
+
+
+def _dashboard_cache_set(key, value):
+    try:
+        cache.set(key, value, timeout=_DASHBOARD_CACHE_SECONDS)
+    except Exception:
+        logger.warning('Dashboard cache write failed for %s', key, exc_info=True)
 
 
 class DashboardSummaryView(APIView):
     def get(self, request):
+        cache_key = f'dashboard:summary:{request.user.user_id}'
+        cached = _dashboard_cache_get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         role = normalize_role(request.user.role)
         if role == 'admin':
-            return Response(self._admin_summary(request))
-        if role == 'superadmin':
-            return Response(self._superadmin_summary(request))
-        if role == 'student':
-            return Response(self._student_summary(request))
-        return Response(self._faculty_summary(request))
+            payload = self._admin_summary(request)
+        elif role == 'superadmin':
+            payload = self._superadmin_summary(request)
+        elif role == 'student':
+            payload = self._student_summary(request)
+        else:
+            payload = self._faculty_summary(request)
+        _dashboard_cache_set(cache_key, payload)
+        return Response(payload)
 
     def _faculty_summary(self, request):
         faculty = request.user
@@ -999,7 +1062,6 @@ class FacultyAssignmentsView(APIView):
             sections = sections.filter(
                 Q(institution=request.user.institution)
                 | Q(program__institution=request.user.institution)
-                | Q(institution__isnull=True, program__isnull=True)
             )
 
         course_queryset = Course.objects.order_by('course_code')
@@ -1397,14 +1459,9 @@ class SyllabusTemplatePreviewView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        if file_type in {'pdf', 'docx'}:
-            is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
-            if not is_valid:
-                return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            max_bytes = getattr(DocumentProcessor, 'MAX_FILE_SIZE', 20 * 1024 * 1024)
-            if uploaded_file.size and uploaded_file.size > max_bytes:
-                return Response({'detail': 'File is too large.'}, status=status.HTTP_400_BAD_REQUEST)
+        is_valid, error_message = DocumentProcessor.validate_file(uploaded_file, file_type)
+        if not is_valid:
+            return Response({'detail': error_message}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             uploaded_file.seek(0)

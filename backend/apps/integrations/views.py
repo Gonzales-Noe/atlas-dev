@@ -1,5 +1,6 @@
 import logging
 
+from django.core.cache import cache
 from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -27,6 +28,22 @@ from .serializers import (
     SemanticSearchSerializer,
 )
 logger = logging.getLogger(__name__)
+_AUDIT_CACHE_SECONDS = 15
+
+
+def _cache_get(key):
+    try:
+        return cache.get(key)
+    except Exception:
+        logger.warning('Cache read failed for %s', key, exc_info=True)
+        return None
+
+
+def _cache_set(key, value, timeout):
+    try:
+        cache.set(key, value, timeout=timeout)
+    except Exception:
+        logger.warning('Cache write failed for %s', key, exc_info=True)
 
 
 def _is_admin_user(request) -> bool:
@@ -176,7 +193,7 @@ def _handle_global_rag_upload(request):
     except Exception as exc:
         logger.exception("Error uploading RAG document")
         return Response(
-            {"success": False, "error": f"Failed to upload document: {exc}"},
+            {"success": False, "error": "Could not upload that document."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -476,7 +493,7 @@ def list_rag_documents(request):
     except Exception as exc:
         logger.exception("Error listing RAG documents")
         return Response(
-            {"success": False, "error": f"Failed to list documents: {exc}"},
+            {"success": False, "error": "Could not load documents."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -510,7 +527,7 @@ def delete_global_rag_document(request, document_id):
     except Exception as exc:
         logger.exception("Error deleting global RAG document")
         return Response(
-            {"success": False, "error": f"Failed to delete document: {exc}"},
+            {"success": False, "error": "Could not delete that document."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -527,33 +544,68 @@ def list_audit_logs(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    logs = (
+    query = (request.query_params.get("q") or "").strip().lower()[:120]
+    try:
+        page = max(int(request.query_params.get("page") or 1), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(request.query_params.get("page_size") or 25)
+    except (TypeError, ValueError):
+        page_size = 25
+    page_size = min(max(page_size, 1), 100)
+
+    cache_key = f"audit-logs:{request.user.institution_id}:{query}:{page}:{page_size}"
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return Response(cached, status=status.HTTP_200_OK)
+
+    logs = list(
         AuditLog.objects
         .select_related("user")
         .filter(user__institution_id=request.user.institution_id)
         .order_by("-timestamp")[:500]
     )
-    return Response(
-        {
-            "success": True,
-            "logs": [
-                {
-                    "log_id": str(log.log_id),
-                    "timestamp": log.timestamp,
-                    "user": (
-                        log.user.full_name or log.user.email
-                        if log.user_id else "Unknown user"
-                    ),
-                    "action": log.action_type,
-                    "resource_type": log.resource_type,
-                    "resource_id": str(log.resource_id) if log.resource_id else None,
-                    "details": log.details or {},
-                }
-                for log in logs
-            ],
-        },
-        status=status.HTTP_200_OK,
-    )
+    if query:
+        def haystack(log):
+            user_label = ""
+            if log.user_id and log.user:
+                user_label = log.user.full_name or log.user.email or ""
+            return " ".join([
+                user_label,
+                log.action_type or "",
+                log.resource_type or "",
+                str(log.resource_id or ""),
+            ]).lower()
+
+        logs = [log for log in logs if query in haystack(log)]
+
+    total = len(logs)
+    start = (page - 1) * page_size
+    page_logs = logs[start:start + page_size]
+    payload = {
+        "success": True,
+        "count": total,
+        "page": page,
+        "page_size": page_size,
+        "logs": [
+            {
+                "log_id": str(log.log_id),
+                "timestamp": log.timestamp,
+                "user": (
+                    log.user.full_name or log.user.email
+                    if log.user_id else "Unknown user"
+                ),
+                "action": log.action_type,
+                "resource_type": log.resource_type,
+                "resource_id": str(log.resource_id) if log.resource_id else None,
+                "details": log.details or {},
+            }
+            for log in page_logs
+        ],
+    }
+    _cache_set(cache_key, payload, _AUDIT_CACHE_SECONDS)
+    return Response(payload, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])
@@ -615,6 +667,6 @@ def semantic_search(request):
     except Exception as exc:
         logger.exception("Error running semantic search")
         return Response(
-            {"success": False, "error": f"Failed to run semantic search: {exc}"},
+            {"success": False, "error": "Search could not be completed."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

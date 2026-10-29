@@ -1,5 +1,6 @@
 // src/features/Superadmin/AuditLogs.jsx
 import { useState } from 'react'
+import useDebouncedValue from '../../hooks/useDebouncedValue'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   TextField, Dialog, DialogTitle, DialogContent, Button, Divider, Stack,
@@ -26,12 +27,13 @@ export default function AuditLogs() {
   const [page, setPage]             = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
   const [filterAction, setFilterAction] = useState('')
   const [selectedLog, setSelectedLog] = useState(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
 
   const filtered = mockLogs.filter(log => {
-    const q = searchTerm.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     const matchSearch = log.user.toLowerCase().includes(q) || log.action.toLowerCase().includes(q) || log.institution.toLowerCase().includes(q)
     const matchFilter = !filterAction || log.action === filterAction
     return matchSearch && matchFilter

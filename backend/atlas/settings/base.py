@@ -43,6 +43,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.users.middleware.DatabaseReconnectMiddleware',
+    'apps.users.middleware.SensitiveEndpointThrottleMiddleware',
 ]
 
 ROOT_URLCONF = 'atlas.urls'
@@ -109,15 +110,20 @@ DATABASES = {
         'PASSWORD': os.environ['DB_PASSWORD'],
         'HOST': _db_host,
         'PORT': _db_port,
-        # Don't retain client sessions in Supabase's small session-mode pool.
-        # An idle pooled connection is often already closed by the time the
-        # next request uses it, which turns the next login into an HTTP 500.
+        # Supabase's transaction pooler (port 6543) is the connection pool.
+        # Django must not keep its own pool on top of that: an idle client
+        # session is often already closed, and the next login becomes an HTTP 500.
+        # Other Postgres hosts keep a connection for 60 seconds.
         'CONN_MAX_AGE': 0 if _is_transaction_pooler or _is_supabase else 60,
         'CONN_HEALTH_CHECKS': True,
         'DISABLE_SERVER_SIDE_CURSORS': _is_transaction_pooler,
         'OPTIONS': {
             'sslmode': os.environ.get('DB_SSLMODE', 'require'),
             'connect_timeout': 15,
+            'keepalives': 1,
+            'keepalives_idle': 30,
+            'keepalives_interval': 10,
+            'keepalives_count': 5,
         },
     }
 }
@@ -217,3 +223,17 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# Share login throttles and reset codes across Gunicorn workers when Redis is set.
+# Database 1 keeps this cache off the Channels database.
+_redis_cache_host = os.environ.get('REDIS_HOST', '').strip()
+if _redis_cache_host:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': 'redis://{}:{}/1'.format(
+                _redis_cache_host,
+                os.environ.get('REDIS_PORT', '6379'),
+            ),
+        }
+    }
