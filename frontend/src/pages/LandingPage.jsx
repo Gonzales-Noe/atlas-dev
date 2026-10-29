@@ -115,8 +115,8 @@ const PACKAGES = [
     glow: 'rgba(21,128,61,0.1)',
     features: [
       'Servers and databases added as you grow',
-      'More faculty, more sites, same privacy',
-      'Reports across sites, data kept separate',
+      'More faculty added when you need them',
+      'Reports across the institution, data kept separate',
       'Support and updates matched to your calendar',
     ],
     featured: false,
