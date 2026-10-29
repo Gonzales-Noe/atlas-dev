@@ -57,6 +57,29 @@ class LLMProviderFallbackTests(SimpleTestCase):
 
         self.assertEqual(generated_text, 'Draft text')
 
+    def test_quick_json_stays_on_groq_without_reasoning(self):
+        service = _service('groq')
+        seen = {}
+
+        def fake_completion(provider, model, payload_messages, max_tokens, extra_body=None):
+            seen['provider'] = provider
+            seen['model'] = model
+            seen['extra'] = extra_body
+            return '{"results": []}'
+
+        with patch.object(service, '_chat_completion', side_effect=fake_completion):
+            text = service.generate_quick_json(
+                [{'role': 'user', 'content': 'Judge these items.'}],
+                system='Reply with JSON only.',
+                max_tokens=300,
+            )
+
+        self.assertEqual(text, '{"results": []}')
+        self.assertEqual(seen['provider'], 'groq')
+        self.assertEqual(seen['model'], 'qwen/qwen3.8-27b')
+        self.assertEqual(seen['extra']['reasoning_effort'], 'none')
+        self.assertEqual(seen['extra']['response_format'], {'type': 'json_object'})
+
     def test_walks_the_chain_until_a_provider_succeeds(self):
         service = _service('openrouter', 'groq', 'gemma')
         service.default_provider = 'openrouter'

@@ -3639,17 +3639,26 @@ def _load_faculty_assessment(request, assessment_id):
     return assessment, None
 
 
-def _check_assessment_sources(course, batches, section_matches, top_k, selected_doc_ids, provider):
-    """Retrieve course passages once per topic, then judge packed topics together.
+def _check_assessment_sources(course, batches, section_matches, top_k, selected_doc_ids):
+    """Judge items from the matched module text, in one short Groq call.
 
-    The institutional knowledge base is a structure guide, so it is not searched
-    here. The verdict only needs the course passages and the matched module.
-    Topic lookups run together because each one is a remote database round trip.
+    A topic with no module still searches that course's uploads. The call uses
+    a non-reasoning Groq model and does not fall through to Ollama.
     """
     from concurrent.futures import ThreadPoolExecutor
     from django.db import close_old_connections, connection
 
-    queries = [f"{course.course_title} {batch['topic']}".strip() for batch in batches]
+    ready = []
+    searches = []
+    for batch in batches:
+        matched = section_matches.get(_normalize_topic_key(batch['topic']))
+        excerpt = _module_prompt_excerpt(matched) if matched else ''
+        if excerpt:
+            ready.append((batch, excerpt))
+        else:
+            searches.append(batch)
+
+    queries = [f"{course.course_title} {batch['topic']}".strip() for batch in searches]
     try:
         vectors = embed_queries(queries) if queries else []
     except Exception:
@@ -3660,8 +3669,6 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
 
     def passages_for(spec):
         batch, query, vector = spec
-        matched = section_matches.get(_normalize_topic_key(batch['topic']))
-        excerpt = _module_prompt_excerpt(matched) if matched else ''
         chunks = []
         if vector is not None:
             chunks = course_semantic_search(
@@ -3671,7 +3678,7 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
                 selected_doc_ids=selected_doc_ids or None,
                 query_vec=vector,
             )
-        return batch, _qa_passage_text(chunks, excerpt)
+        return batch, _qa_passage_text(chunks, '')
 
     def passages_for_thread(spec):
         close_old_connections()
@@ -3680,7 +3687,7 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
         finally:
             connection.close()
 
-    specs = list(zip(batches, queries, vectors))
+    specs = list(zip(searches, queries, vectors))
     if len(specs) > 1:
         with ThreadPoolExecutor(max_workers=min(4, len(specs))) as pool:
             retrieved = list(pool.map(passages_for_thread, specs))
@@ -3689,22 +3696,22 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
 
     prepared = []
     results = []
-    for batch, passages in retrieved:
+    for batch, passages in ready + retrieved:
         if passages:
             prepared.append({**batch, 'passages': passages})
         else:
             results.extend(verdicts_without_passages(batch['items']))
 
-    groups = pack_source_batches(prepared)
+    groups = pack_source_batches(prepared, size=40, char_budget=12000)
     llm = LLMService()
 
     def complete(group):
         system_prompt, user_prompt = grouped_source_check_prompt(group)
-        return llm.generate_response_with_fallback(
+        item_count = sum(len(row.get('items') or []) for row in group)
+        return llm.generate_quick_json(
             messages=[{'role': 'user', 'content': user_prompt}],
-            preferred_provider=provider,
             system=system_prompt,
-            max_tokens=1200,
+            max_tokens=min(2048, max(256, item_count * 60)),
         )
 
     model_results, errors = run_grouped_source_checks(groups, complete)
@@ -3797,9 +3804,8 @@ def run_assessment_qa(request, assessment_id):
         course,
         batches,
         section_matches,
-        top_k=max(1, _to_int(request.data.get('top_k'), 3)),
+        top_k=max(1, _to_int(request.data.get('top_k'), 2)),
         selected_doc_ids=[str(uid) for uid in (request.data.get('selected_doc_ids') or [])],
-        provider=request.data.get('provider') or None,
     )
     logger.info(
         'Assessment QA %s: %d topics, %d model calls, %.1fs',

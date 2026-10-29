@@ -251,6 +251,11 @@ class AssessmentQaTests(SimpleTestCase):
 
         results, errors = run_grouped_source_checks(groups, complete, workers=1)
         self.assertEqual(calls, [['History', 'Trees']])
+        wide = pack_source_batches([
+            {'topic': 'A', 'items': [{'item_id': '1'}], 'passages': 'x' * 80},
+            {'topic': 'B', 'items': [{'item_id': '2'}], 'passages': 'y' * 80},
+        ], size=40, char_budget=200)
+        self.assertEqual(len(wide), 2)
         self.assertEqual(errors, [])
         self.assertEqual({row['item_id'] for row in results}, {'1', '2'})
 
