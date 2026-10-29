@@ -8,6 +8,7 @@ requests skip it instead of waiting on it again. Providers without an API
 key are skipped. Ollama (self-hosted) is used only when explicitly chosen.
 """
 
+import hashlib
 import logging
 import os
 import re
@@ -310,6 +311,39 @@ def _start_cooldown(provider, seconds, reason):
     logger.warning("LLM provider '%s' paused for %ss: %s", provider, seconds, reason)
 
 
+def collect_api_keys(env_names, environ=None):
+    """Keys for one provider. Numbered vars and comma-separated values are extra accounts."""
+    source = os.environ if environ is None else environ
+    keys = []
+    for env_name in env_names:
+        raw = source.get(env_name) or ''
+        for part in raw.split(','):
+            part = part.strip().strip('"').strip("'")
+            if part and part not in keys:
+                keys.append(part)
+        for index in range(2, 13):
+            extra = (source.get(f'{env_name}_{index}') or '').strip().strip('"').strip("'")
+            if extra and extra not in keys:
+                keys.append(extra)
+    return keys
+
+
+def _key_slot(provider, api_key):
+    digest = hashlib.sha256(api_key.encode()).hexdigest()[:12]
+    return f'{provider}:{digest}'
+
+
+def key_cooldown_remaining(provider, api_key):
+    until = cache.get(f'llm:cooldown:key:{_key_slot(provider, api_key)}')
+    return max(0, int(until - time.time())) if until else 0
+
+
+def _start_key_cooldown(provider, api_key, seconds, reason):
+    slot = _key_slot(provider, api_key)
+    cache.set(f'llm:cooldown:key:{slot}', time.time() + seconds, timeout=seconds)
+    logger.warning("LLM provider '%s' key %s paused for %ss: %s", provider, slot[-4:], seconds, reason)
+
+
 def _classify_http_error(status_code, body):
     text = (body or '').lower()
     if status_code == 402 or 'insufficient' in text or 'credit' in text or 'quota' in text:
@@ -340,7 +374,7 @@ class LLMService:
             for name, spec in PROVIDER_SPECS.items()
         }
         self.api_keys = {
-            name: next((os.environ[env] for env in spec.key_envs if os.environ.get(env)), '')
+            name: collect_api_keys(spec.key_envs)
             for name, spec in PROVIDER_SPECS.items()
         }
         self.configured = {
@@ -381,6 +415,13 @@ class LLMService:
             base_url = base_url.replace('{CLOUDFLARE_ACCOUNT_ID}', account_id)
         return base_url
 
+    def keys_for(self, provider):
+        """Account keys for one provider. A string value is the single-key form tests still set."""
+        raw = self.api_keys.get(provider) or ''
+        if isinstance(raw, (list, tuple)):
+            return [str(key).strip() for key in raw if str(key).strip()]
+        return [part.strip() for part in str(raw).split(',') if part.strip()]
+
     def provider_status(self):
         """Per-provider configuration, model and cooldown, for the status endpoint."""
         return {
@@ -388,6 +429,7 @@ class LLMService:
                 'label': spec.label,
                 'configured': self.configured[name],
                 'model': self.models[name],
+                'keys': len(self.keys_for(name)),
                 'cooldown_seconds': provider_cooldown_remaining(name),
             }
             for name, spec in PROVIDER_SPECS.items()
@@ -445,7 +487,7 @@ class LLMService:
         try:
             response = requests.get(
                 'https://openrouter.ai/api/v1/key',
-                headers={'Authorization': f"Bearer {self.api_keys['openrouter']}"},
+                headers={'Authorization': f"Bearer {self.keys_for('openrouter')[0]}"},
                 timeout=20,
             )
         except requests.exceptions.RequestException as exc:
@@ -613,7 +655,7 @@ class LLMService:
         )
         return list(dict.fromkeys([model, *fallback_models]))
 
-    def _chat_completion_any_model(self, provider, model, payload_messages, max_tokens):
+    def _chat_completion_any_model(self, provider, model, payload_messages, max_tokens, api_key=None, extra_body=None):
         """
         Try each candidate model in turn. Free OpenRouter models disappear
         (404) or get rate limited upstream (429) independently of each other,
@@ -622,7 +664,10 @@ class LLMService:
         last_error = None
         for candidate in self._candidate_models(provider, model):
             try:
-                return self._chat_completion(provider, candidate, payload_messages, max_tokens)
+                return self._chat_completion(
+                    provider, candidate, payload_messages, max_tokens,
+                    extra_body=extra_body, api_key=api_key,
+                )
             except ProviderError as exc:
                 if exc.kind in ('auth', 'quota', 'incomplete'):
                     raise
@@ -630,19 +675,68 @@ class LLMService:
                 last_error = exc
         raise last_error
 
-    def _chat_completion(self, provider, model, payload_messages, max_tokens, extra_body=None):
+    def _complete_with_keys(self, provider, model, payload_messages, max_tokens, extra_body=None, rotate_models=True):
+        """Try each account key. A paused or rejected key does not block the next account."""
+        keys = self.keys_for(provider)
+        if not keys:
+            raise ProviderError(provider, 'API key is not set.', kind='auth')
+        cooling = [key_cooldown_remaining(provider, key) for key in keys]
+        if all(cooling):
+            raise ProviderError(
+                provider,
+                'every API key is paused',
+                kind='rate_limited',
+                retry_after=min(cooling),
+            )
+        last_error = None
+        for index, api_key in enumerate(keys, start=1):
+            if key_cooldown_remaining(provider, api_key):
+                continue
+            try:
+                if rotate_models:
+                    return self._chat_completion_any_model(
+                        provider, model, payload_messages, max_tokens,
+                        api_key=api_key, extra_body=extra_body,
+                    )
+                return self._chat_completion(
+                    provider, model, payload_messages, max_tokens,
+                    extra_body=extra_body, api_key=api_key,
+                )
+            except ProviderError as exc:
+                last_error = exc
+                if exc.kind in ('too_large', 'incomplete'):
+                    raise
+                if exc.kind in COOLDOWN_SECONDS:
+                    _start_key_cooldown(
+                        provider, api_key, exc.retry_after or COOLDOWN_SECONDS[exc.kind], exc,
+                    )
+                logger.warning(
+                    "LLM provider '%s' key %s/%s failed: %s",
+                    provider, index, len(keys), exc,
+                )
+        self._pause_provider_if_every_key_is_cooling(provider)
+        raise last_error or ProviderError(provider, 'every API key failed')
+
+    def _pause_provider_if_every_key_is_cooling(self, provider):
+        keys = self.keys_for(provider)
+        remaining = [key_cooldown_remaining(provider, key) for key in keys]
+        if keys and remaining and all(remaining):
+            _start_cooldown(provider, min(remaining), 'every API key is paused')
+
+    def _chat_completion(self, provider, model, payload_messages, max_tokens, extra_body=None, api_key=None):
         body = {'model': model, 'messages': payload_messages, 'max_tokens': max_tokens}
         if extra_body:
             body.update(extra_body)
         elif 'gpt-oss' in model:
             # Reasoning tokens count toward max_tokens; keep them small.
             body['reasoning_effort'] = 'low'
+        token = api_key or (self.keys_for(provider) or [''])[0]
 
         try:
             response = requests.post(
                 f"{self._base_url(provider)}/chat/completions",
                 headers={
-                    'Authorization': f'Bearer {self.api_keys[provider]}',
+                    'Authorization': f'Bearer {token}',
                     'Content-Type': 'application/json',
                 },
                 json=body,
@@ -747,7 +841,10 @@ class LLMService:
                 extra['include_reasoning'] = False
                 tokens = max(max_tokens, 1024)
             try:
-                return self._chat_completion('groq', model, payload_messages, tokens, extra_body=extra)
+                return self._complete_with_keys(
+                    'groq', model, payload_messages, tokens,
+                    extra_body=extra, rotate_models=False,
+                )
             except ProviderError as exc:
                 last_error = exc
                 if exc.kind in ('auth', 'quota'):
@@ -773,12 +870,7 @@ class LLMService:
                 f'prompt (~{prompt_tokens} tokens) exceeds the free-tier request size',
                 kind='too_large',
             )
-        try:
-            return self._chat_completion_any_model(provider, model, payload_messages, budget)
-        except ProviderError as exc:
-            if exc.kind in COOLDOWN_SECONDS:
-                _start_cooldown(provider, exc.retry_after or COOLDOWN_SECONDS[exc.kind], exc)
-            raise
+        return self._complete_with_keys(provider, model, payload_messages, budget)
 
     def generate_response_with_fallback(
         self, messages, preferred_provider=None, system=None, max_tokens=2048,

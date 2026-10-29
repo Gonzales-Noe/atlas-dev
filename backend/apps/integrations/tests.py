@@ -21,6 +21,8 @@ from apps.integrations.cot_prompt_builder import (
 from apps.integrations.llm_service import (
     DEFAULT_CHAIN,
     LLMService,
+    collect_api_keys,
+    key_cooldown_remaining,
     message_text,
     parse_reset_delay,
     quota_from_headers,
@@ -59,9 +61,10 @@ class LLMProviderFallbackTests(SimpleTestCase):
 
     def test_quick_json_stays_on_groq_without_reasoning(self):
         service = _service('groq')
+        service.api_keys['groq'] = ['test-key']
         seen = {}
 
-        def fake_completion(provider, model, payload_messages, max_tokens, extra_body=None):
+        def fake_completion(provider, model, payload_messages, max_tokens, extra_body=None, api_key=None):
             seen['provider'] = provider
             seen['model'] = model
             seen['extra'] = extra_body
@@ -156,6 +159,50 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(second, ('Draft text', 'gemma'))
         self.assertEqual(post.call_count, 3)
         self.assertGreater(llm_service.provider_cooldown_remaining('groq'), 0)
+
+    def test_numbered_and_comma_separated_keys_are_accounts(self):
+        keys = collect_api_keys(
+            ('OPENROUTER_API_KEY',),
+            {
+                'OPENROUTER_API_KEY': 'sk-one, sk-two',
+                'OPENROUTER_API_KEY_2': 'sk-three',
+                'OPENROUTER_API_KEY_4': 'sk-four',
+            },
+        )
+        self.assertEqual(keys, ['sk-one', 'sk-two', 'sk-three', 'sk-four'])
+
+    def test_second_account_is_used_when_the_first_is_rate_limited(self):
+        service = _service('openrouter')
+        service.api_keys = {
+            'openrouter': ['key-a', 'key-b'],
+            'groq': [],
+            'gemma': [],
+            'cloudflare': [],
+        }
+        rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
+        success = MagicMock(ok=True, status_code=200, headers={})
+        success.json.return_value = {'choices': [{'message': {'content': 'Draft text'}}]}
+
+        with patch.dict(os.environ, {'OPENROUTER_FALLBACK_MODELS': ''}):
+            with patch('apps.integrations.llm_service.requests.post', side_effect=[rate_limited, success, success]) as post:
+                first = service.generate_response_with_fallback(
+                    [{'role': 'user', 'content': 'Hi'}],
+                    preferred_provider='openrouter',
+                    return_provider=True,
+                )
+                second = service.generate_response_with_fallback(
+                    [{'role': 'user', 'content': 'Hi'}],
+                    preferred_provider='openrouter',
+                    return_provider=True,
+                )
+
+        self.assertEqual(first, ('Draft text', 'openrouter'))
+        self.assertEqual(second, ('Draft text', 'openrouter'))
+        auths = [call.kwargs['headers']['Authorization'] for call in post.call_args_list]
+        self.assertEqual(auths, ['Bearer key-a', 'Bearer key-b', 'Bearer key-b'])
+        self.assertEqual(llm_service.provider_cooldown_remaining('openrouter'), 0)
+        self.assertGreater(key_cooldown_remaining('openrouter', 'key-a'), 0)
+        self.assertEqual(key_cooldown_remaining('openrouter', 'key-b'), 0)
 
     def test_large_prompt_skips_groq_and_caps_its_completion_budget(self):
         service = _service('groq', 'gemma')
