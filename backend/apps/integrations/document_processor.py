@@ -5,6 +5,8 @@ import re
 from io import BytesIO
 from pathlib import Path
 
+_DOCX_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
 try:
     import tiktoken
     TIKTOKEN_AVAILABLE = True
@@ -41,8 +43,6 @@ except ImportError:
     LiteParse = None
 
 from docx import Document as DocxDocument
-from docx.table import Table as DocxTable
-from docx.text.paragraph import Paragraph as DocxParagraph
 from pypdf import PdfReader
 
 _MD_HEADING_RE = re.compile(r'^(#{1,6})\s+(.*\S)\s*$')
@@ -383,27 +383,29 @@ class DocumentProcessor:
         return pages
 
     @staticmethod
+    def _docx_xml_text(element):
+        parts = [node.text for node in element.iter(f"{_DOCX_NS}t") if node.text]
+        return " ".join("".join(parts).split())
+
+    @staticmethod
     def _docx_table_to_markdown(table):
-        # Walk each row's cells once. row.cells rebuilds the merged grid and
-        # can sit on a learning-module table long enough that indexing looks stuck.
+        # Read each row's own cells. Building the merged grid can sit on a
+        # learning-module table long enough that the file looks stuck.
         rows = []
-        for tr in table._tbl.tr_lst:
-            cells = []
-            for tc in tr.tc_lst:
-                parts = [
-                    node.text for node in tc.iter()
-                    if node.tag.endswith("}t") and node.text
-                ]
-                cells.append(" ".join("".join(parts).split()).replace("|", "\\|"))
-            rows.append(cells)
-        rows = [r for r in rows if any(r)]
+        for tr in table.findall(f"{_DOCX_NS}tr"):
+            cells = [
+                DocumentProcessor._docx_xml_text(tc).replace("|", "\\|")
+                for tc in tr.findall(f"{_DOCX_NS}tc")
+            ]
+            if any(cells):
+                rows.append(cells)
         if not rows:
             return ""
 
-        width = max(len(r) for r in rows)
-        rows = [r + [""] * (width - len(r)) for r in rows]
+        width = max(len(row) for row in rows)
+        rows = [row + [""] * (width - len(row)) for row in rows]
         lines = ["| " + " | ".join(rows[0]) + " |", "|" + "---|" * width]
-        lines += ["| " + " | ".join(r) + " |" for r in rows[1:]]
+        lines += ["| " + " | ".join(row) + " |" for row in rows[1:]]
         return "\n".join(lines)
 
     @staticmethod
@@ -412,36 +414,49 @@ class DocumentProcessor:
         Convert a DOCX to Markdown in document order: Heading/Title styles
         become # headings and tables become Markdown tables.
 
+        Reads document.xml directly so a large learning module does not wait
+        on the full word-processor object model.
+
         Returns:
             list: [(markdown_text, None)] or [] when the document is empty
         """
+        import zipfile
+
+        from lxml import etree
+
         if isinstance(file_obj, bytes):
-            file_obj = BytesIO(file_obj)
+            data = file_obj
         else:
             file_obj.seek(0)
-        doc = DocxDocument(file_obj)
+            data = file_obj.read()
+
+        with zipfile.ZipFile(BytesIO(data)) as package:
+            xml = package.read("word/document.xml")
+        body = etree.fromstring(xml).find(f"{_DOCX_NS}body")
+        if body is None:
+            return []
 
         blocks = []
-        for child in doc.element.body.iterchildren():
-            tag = child.tag.rsplit("}", 1)[-1]
-            if tag == "p":
-                paragraph = DocxParagraph(child, doc)
-                text = paragraph.text.strip()
+        for child in body:
+            if child.tag == f"{_DOCX_NS}p":
+                text = DocumentProcessor._docx_xml_text(child).strip()
                 if not text:
                     continue
-                try:
-                    style = paragraph.style.name or ""
-                except Exception:
-                    style = ""
-                level = re.match(r"Heading (\d)", style)
+                style = ""
+                props = child.find(f"{_DOCX_NS}pPr")
+                if props is not None:
+                    style_el = props.find(f"{_DOCX_NS}pStyle")
+                    if style_el is not None:
+                        style = style_el.get(f"{_DOCX_NS}val") or ""
+                level = re.match(r"(?i)heading\s*(\d)", style)
                 if level:
                     blocks.append("#" * min(int(level.group(1)), 6) + " " + text)
-                elif style == "Title":
+                elif style.lower() == "title":
                     blocks.append("# " + text)
                 else:
                     blocks.append(text)
-            elif tag == "tbl":
-                table_md = DocumentProcessor._docx_table_to_markdown(DocxTable(child, doc))
+            elif child.tag == f"{_DOCX_NS}tbl":
+                table_md = DocumentProcessor._docx_table_to_markdown(child)
                 if table_md:
                     blocks.append(table_md)
 

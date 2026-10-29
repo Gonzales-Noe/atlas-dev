@@ -5884,7 +5884,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000,
       })
       setUploadProgress(100)
-      setUploadStatus('Uploaded. Indexing runs in the background — the file shows COMPLETED below when it is ready.')
+      setUploadStatus('Uploaded. We are reading your file. It will say Ready when you can use it.')
       setUploadSuccess(data?.message || 'File uploaded successfully.')
       setUploadFile(null)
       docsApi.execute()
@@ -9756,8 +9756,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             fontSize: '0.72rem' }}>
                       {doc.storage_path || doc.file_name || 'Unnamed file'}
                     </Typography>
-                    <Tooltip title={doc.rag_status === 'FAILED' ? (doc.error_message || 'Indexing failed. Upload the file again.') : ''}>
-                      <Chip label={doc.rag_status === 'PROCESSING' ? (doc.index_total ? `INDEXING ${doc.index_done || 0}/${doc.index_total}` : 'INDEXING…') : (doc.rag_status || 'OK')} size="small"
+                    <Tooltip title={doc.rag_status === 'FAILED' ? (doc.error_message || 'We could not read this file. Upload it again.') : ''}>
+                      <Chip label={doc.rag_status === 'PROCESSING' ? 'Reading your file…' : doc.rag_status === 'FAILED' ? 'Try again' : 'Ready'} size="small"
                         sx={{ height: 16, fontSize: '0.58rem', flexShrink: 0,
                              bgcolor: doc.rag_status === 'COMPLETED' ? '#E8F5E9' : doc.rag_status === 'FAILED' ? '#FFEBEE' : '#FFF3E0',
                              color:   doc.rag_status === 'COMPLETED' ? '#2E7D32' : doc.rag_status === 'FAILED' ? '#C62828' : '#E65100' }} />
