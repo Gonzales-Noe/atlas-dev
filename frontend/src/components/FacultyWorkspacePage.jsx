@@ -882,41 +882,6 @@ function syllabusEditorKey(section) {
   return null
 }
 
-const BLOOM_VERBS_BY_YEAR = {
-  '1st Year': {
-    Remember: ['define', 'identify', 'label', 'list', 'memorize', 'name', 'recall', 'recognize', 'repeat', 'state'],
-    Understand: ['classify', 'describe', 'explain', 'illustrate', 'interpret', 'paraphrase', 'predict', 'summarize'],
-  },
-  '2nd Year': {
-    Understand: ['classify', 'describe', 'explain', 'interpret', 'paraphrase', 'summarize'],
-    Apply: ['apply', 'compute', 'demonstrate', 'employ', 'execute', 'implement', 'perform', 'show', 'solve', 'use'],
-  },
-  '3rd Year': {
-    Apply: ['apply', 'demonstrate', 'implement', 'perform', 'solve', 'use'],
-    Analyze: ['break down', 'categorize', 'compare', 'contrast', 'differentiate', 'distinguish', 'examine', 'organize', 'relate'],
-  },
-  '4th Year': {
-    Evaluate: ['appraise', 'argue', 'assess', 'critique', 'defend', 'evaluate', 'judge', 'justify', 'recommend'],
-    Create: ['build', 'compose', 'construct', 'design', 'develop', 'formulate', 'produce', 'propose'],
-  },
-}
-
-function getBloomVerbsForYear(yearLevel) {
-  const map = BLOOM_VERBS_BY_YEAR[yearLevel]
-  if (!map) {
-    // No year level set — return all levels
-    return Object.values(BLOOM_VERBS_BY_YEAR).flatMap(m =>
-      Object.entries(m).map(([level, verbs]) => ({ level, verbs }))
-    ).reduce((acc, { level, verbs }) => {
-      const ex = acc.find(x => x.level === level)
-      if (ex) ex.verbs = [...new Set([...ex.verbs, ...verbs])]
-      else acc.push({ level, verbs: [...verbs] })
-      return acc
-    }, [])
-  }
-  return Object.entries(map).map(([level, verbs]) => ({ level, verbs }))
-}
-
 const TABLE_TH = {
   padding: '6px 10px', borderBottom: '2px solid #e0e0e0', borderRight: '1px solid #eee',
   backgroundColor: BG, color: '#555', fontWeight: 700, fontSize: '0.75rem', textAlign: 'left',
@@ -1875,10 +1840,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [aiPipelineDrafts, setAiPipelineDrafts] = useState(null)
   const [aiPipelineProgress, setAiPipelineProgress] = useState(null)
   const [aiReviewOpen, setAiReviewOpen] = useState(false)
-  // ILO assistant
-  const [iloBloomVerb, setIloBloomVerb] = useState('')
-  const [iloFocusText, setIloFocusText] = useState('')
-
   // ── Source panel state ───────────────────────────────────────────────────
   const [selectedDocIds, setSelectedDocIds] = useState(new Set())
   const [renamingDocId, setRenamingDocId]   = useState(null)
@@ -2717,10 +2678,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         const field = fields[index]
         setAiPipelineProgress({ completed: index, total: fields.length, label: field.label })
         const extraHints = []
-        if (field.section === 'ilo') {
-          if (iloBloomVerb) extraHints.push(`Start with the verb "${iloBloomVerb}".`)
-          else if (usedIloVerbs.length) extraHints.push(`Do not start with ${usedIloVerbs.join(' or ')}. Use a different verb.`)
-          if (iloFocusText.trim()) extraHints.push(`The outcome is about: ${iloFocusText.trim()}.`)
+        if (field.section === 'ilo' && usedIloVerbs.length) {
+          extraHints.push(`Do not start with ${usedIloVerbs.join(' or ')}. Use a different verb.`)
         }
         const fieldResult = await requestSyllabusField(api, {
           course_id: courseId,
@@ -7205,49 +7164,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Typography role="alert" variant="caption" sx={{ color: '#FCA5A5' }}>
                   {aiError}
                 </Typography>
-              )}
-              {!aiPipelineDrafts && activeSyllabusSectionKey === 'iloat-references' && (
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <Select
-                    size="small"
-                    displayEmpty
-                    value={iloBloomVerb}
-                    onChange={event => setIloBloomVerb(event.target.value)}
-                    disabled={aiGenerating}
-                    sx={{
-                       bgcolor: '#252A2B',
-                       color: '#F0F0F2',
-                       minWidth: 175,
-                       height: 32,
-                       opacity: 1,
-                       '&.Mui-disabled': { color: 'rgba(255,255,255,0.62)', opacity: 1 },
-                       '& .MuiSelect-select.Mui-disabled': { WebkitTextFillColor: 'rgba(255,255,255,0.62)' },
-                     }}
-                  >
-                    <MenuItem value="">Bloom verb (optional)</MenuItem>
-                    {getBloomVerbsForYear(syllabusData.year_level).flatMap(({ level, verbs }) => [
-                      ...verbs.map(verb => <MenuItem key={verb} value={verb}>{level}: {verb}</MenuItem>),
-                    ])}
-                  </Select>
-                  <TextField
-                    size="small"
-                    value={iloFocusText}
-                    onChange={event => setIloFocusText(event.target.value)}
-                    disabled={aiGenerating}
-                    placeholder="Focus for generated learning outcomes (optional)"
-                    sx={{
-                      flex: 1,
-                      '& .MuiOutlinedInput-root': {
-                         color: '#F0F0F2',
-                         bgcolor: '#252A2B',
-                         opacity: 1,
-                         '&.Mui-disabled': { opacity: 1 },
-                       },
-                       '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: 'rgba(255,255,255,0.62)', opacity: 1 },
-                       '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.62)', opacity: 1 },
-                    }}
-                  />
-                </Stack>
               )}
             </Stack>
           </Box>
