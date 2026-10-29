@@ -862,11 +862,6 @@ export default function LandingPage() {
 
         <div className="hero-container" style={{ position: 'relative', zIndex: 1, padding: '2rem', maxWidth: 1200, margin: '0 auto', marginTop: '-4rem' }}>
           <div className="hero-text-content">
-            <div className="hero-badge" style={{ margin: '0 0 1.5rem' }}>
-              <span style={{ width: 6, height: 6, background: '#86EFAC', borderRadius: '50%', display: 'inline-block' }} />
-              PRIVATE DEPLOYMENT FOR PHILIPPINE HIGHER EDUCATION
-            </div>
-
             <h1 className="hero-title" style={{
             fontSize: 'clamp(2.8rem, 4.5vw, 4rem)',
               fontWeight: 800,
