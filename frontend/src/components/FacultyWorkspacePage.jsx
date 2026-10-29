@@ -4368,39 +4368,45 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setActionError('')
     setActionLoading(true)
     setResultText('')
+    const topics = collectScheduleTopics()
+    const topic = topics.find(
+      item => item.id === params.topic_id || item.topic === params.module_title,
+    )
+    const moduleTitle = topic?.title || String(params.module_title || '').split(';')[0].trim()
     setModuleGenProgress({
       label: 'Building the module',
-      detail: params.module_title || 'Preparing the first section…',
+      detail: moduleTitle || 'Preparing the first section…',
       completed: 0,
       total: 0,
     })
     setModuleGeneratingTopic(prev => new Set(prev).add(week))
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
-      const topics = collectScheduleTopics()
-      const topic = topics.find(
-        item => item.id === params.topic_id || item.topic === params.module_title,
-      )
       const source = lectureTopicSource()
+      const topicIndex = topics.findIndex(item => item.id === topic?.id)
+      const neighbors = [topics[topicIndex - 1], topics[topicIndex + 1]]
+        .filter(Boolean)
+        .map(item => item.title || String(item.topic || '').split(';')[0].trim())
+        .filter(Boolean)
       const { data } = await api.post('/curriculum/generate-module/', {
         course_id: course.course_id,
         course_name: course.course_title,
-        module_title: topic?.title || params.module_title,
+        module_title: moduleTitle,
         week_number: week,
         section_key: source.section_key,
         section_label: source.section_label,
         subsection_key: source.subsection_key,
         subsection_label: source.subsection_label,
-        topic: topic?.topic || params.module_title,
+        topic: moduleTitle,
         subtopics: topic?.subtopics || [],
         activity_title: topic?.activity || '',
-        syllabus_context: topic?.context || '',
+        neighbors,
         structuring_level: params.structuring_level || 'standard',
         provider: params.provider,
         top_k: Number(params.top_k),
         extra_instructions: params.extra_instructions,
         selected_doc_ids: selectedIds,
-      }, { timeout: 300000 })
+      }, { timeout: 180000 })
       if (data.success && data.module_content) {
         await presentGeneratedModule(data)
         workspaceApi.execute()
@@ -4447,33 +4453,39 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       for (const topic of topicsWithoutModules) {
         const week = topic.week
         setModuleGeneratingTopic(prev => new Set(prev).add(week))
+        const moduleTitle = topic.title || String(topic.topic || '').split(';')[0].trim()
         setModuleGenProgress({
           label: 'Generating modules',
-          detail: `Week ${week}: ${topic.topic}`,
+          detail: `Week ${week}: ${moduleTitle}`,
           completed,
           total: topicsWithoutModules.length,
         })
         try {
           const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
+          const topicIndex = topics.findIndex(item => item.id === topic.id)
+          const neighbors = [topics[topicIndex - 1], topics[topicIndex + 1]]
+            .filter(Boolean)
+            .map(item => item.title || String(item.topic || '').split(';')[0].trim())
+            .filter(Boolean)
           await api.post('/curriculum/generate-module/', {
             course_id: course.course_id,
             course_name: course.course_title,
-            module_title: topic.title || topic.topic,
+            module_title: moduleTitle,
             week_number: week,
             section_key: source.section_key,
             section_label: source.section_label,
             subsection_key: source.subsection_key,
             subsection_label: source.subsection_label,
-            topic: topic.topic,
+            topic: moduleTitle,
             subtopics: topic.subtopics || [],
             activity_title: topic.activity || '',
-            syllabus_context: topic.context || '',
+            neighbors,
             structuring_level: moduleParams.structuring_level || 'standard',
             provider: moduleParams.provider || 'auto',
             top_k: Number(moduleParams.top_k) || 5,
             extra_instructions: moduleParams.extra_instructions || '',
             selected_doc_ids: selectedIds,
-          }, { timeout: 300000 })
+          }, { timeout: 180000 })
           completed += 1
           setModuleGenProgress({
             label: 'Generating modules',

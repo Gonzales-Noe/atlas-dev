@@ -761,6 +761,8 @@ OUTPUT — Return the module plan using exactly this structure:
         structuring_level: str = "standard",
         syllabus_subtopics: list = None,
         activity_title: str = "",
+        course_brief: str = "",
+        neighbor_titles: list = None,
     ) -> tuple:
         """
         Build a CoT prompt that instructs the LLM to return a **strict JSON** module.
@@ -773,6 +775,8 @@ OUTPUT — Return the module plan using exactly this structure:
             subsection_label:   Subsection of that section the topic was taken from.
             section_context:    Raw syllabus text of the selected section/subsection.
             structuring_level: How deep the module should be (standard/detailed/concise/activity).
+            course_brief: Cached course brief. When set, raw retrieved passages are not included.
+            neighbor_titles: The topic titles immediately before and after this module.
 
         JSON schema returned by the LLM:
         {
@@ -798,7 +802,13 @@ OUTPUT — Return the module plan using exactly this structure:
         Returns:
             (system_prompt: str, user_prompt: str)
         """
-        context = CoTPromptBuilder._format_context(context_chunks, context_summary)
+        brief = (course_brief or "").strip()
+        if brief:
+            source_heading = "Course brief"
+            context = brief
+        else:
+            source_heading = "REFERENCE MATERIAL FROM KNOWLEDGE BASE"
+            context = CoTPromptBuilder._format_context(context_chunks, context_summary)
         extra = f"\nAdditional faculty instructions: {extra_instructions}" if extra_instructions else ""
         level = MODULE_STRUCTURING_LEVELS.get(
             (structuring_level or "standard").strip().lower(),
@@ -887,12 +897,18 @@ OUTPUT — Return the module plan using exactly this structure:
                 + (f" (from {source})" if source else "")
                 + f": {week_topic.strip()}"
             )
-        if section_context:
+        if section_context and not brief:
             course_data_parts.append(
                 "SYLLABUS SECTION CONTENT"
                 + (f" — {section_label}" if section_label else "")
                 + (f" › {subsection_label}" if subsection_label else "")
                 + f":\n{section_context.strip()}"
+            )
+        neighbor_lines = [str(item).strip() for item in (neighbor_titles or []) if str(item).strip()]
+        if neighbor_lines:
+            course_data_parts.append(
+                "Nearby topics. Do not repeat them:\n"
+                + "\n".join(f"- {title}" for title in neighbor_lines[:2])
             )
 
         course_context_block = (
@@ -920,7 +936,7 @@ OUTPUT — Return the module plan using exactly this structure:
             "commentary outside the JSON structure."
         )
 
-        user = f"""REFERENCE MATERIAL FROM KNOWLEDGE BASE:
+        user = f"""{source_heading}:
 {context}{course_context_block}
 
 TASK: Generate a complete, ready-to-deliver teaching module as strict JSON.

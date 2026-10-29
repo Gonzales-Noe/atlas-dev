@@ -764,12 +764,8 @@ def generate_module(request):
     subsection_key = (data.get("subsection_key") or "").strip()
     subsection_label = (data.get("subsection_label") or "").strip()
     explicit_topic = (data.get("topic") or "").strip()
-    explicit_context = (data.get("syllabus_context") or "").strip()
     structuring_level = (data.get("structuring_level") or "standard").strip()
-    # Use module title (not course name) as the RAG anchor — course names like
-    # "ATLAS Smoke Testing Fundamentals" are not real academic subjects and pollute search.
-    _custom_search_query = data.get("search_query")
-    search_query = _custom_search_query or f"{module_title} concepts principles applications"
+    neighbor_titles = [str(item).strip() for item in (data.get("neighbors") or []) if str(item).strip()][:2]
 
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
@@ -782,10 +778,19 @@ def generate_module(request):
     # ── Extract real course data for prompt enrichment ─────────────────────
     course_description: str = course.description or ""
     syllabus_ilos: list = []
-    week_topic: str = explicit_topic
-    section_context: str = explicit_context
+    week_topic: str = ""
     outline_subs = [str(item).strip() for item in (data.get("subtopics") or []) if str(item).strip()]
     outline_activity = str(data.get("activity_title") or "").strip()
+    if ";" in module_title and not outline_subs:
+        parts = [part.strip() for part in module_title.split(";") if part.strip()]
+        if parts:
+            module_title = parts[0]
+            outline_subs = parts[1:]
+    elif explicit_topic and not outline_subs and ";" in explicit_topic:
+        parts = [part.strip() for part in explicit_topic.split(";") if part.strip()]
+        if parts and (not module_title or module_title == explicit_topic):
+            module_title = parts[0]
+            outline_subs = parts[1:]
     latest_syllabus_for_data = (
         Syllabus.objects.filter(course=course, syllabus_content__isnull=False)
         .order_by("-syllabus_id")
@@ -809,59 +814,50 @@ def generate_module(request):
             if not outline_activity:
                 outline_activity = str(week_row.get("activity") or "").strip()
             if not week_topic:
-                week_topic = str(week_row.get("topic") or "").strip()
-        elif not week_topic:
-            week_topic = _week_topic_from_chapters(sc.get("tla_chapters") or [], week_number)
-        if not section_context:
-            section_context = _section_context_from_syllabus(sc, section_key, subsection_key)
+                week_topic = saved_title or str(week_row.get("title") or "").strip()
 
-    # Enhance the default search query with week topic once we have it
-    if not _custom_search_query and week_topic:
-        search_query = f"{module_title} {week_topic} concepts principles applications"
+    from apps.integrations.tla_generation import module_max_tokens
+    from apps.integrations.course_brief import get_course_brief
 
     try:
-        reference = generation_reference(
-            search_query,
-            course=course,
+        llm = LLMService()
+        course_brief, brief_cached = get_course_brief(
+            course,
             institution_id=request.user.institution_id,
-            top_k=top_k,
             selected_doc_ids=selected_doc_ids,
+            llm=llm,
+            provider=provider,
         )
-        source_chunks = reference["source_chunks"]
-
         logger.info(
-            "Module generation for %r / %r wk%d: course_sources=%d structure=%d provider=%r",
-            course_name, module_title, week_number,
-            len(source_chunks), reference["global_chunk_count"], provider,
+            "Module generation for %r / %r wk%d: brief_cached=%s provider=%r",
+            course_name, module_title, week_number, brief_cached, provider,
         )
 
-        # ── Step 3: Build JSON CoT prompt ──────────────────────────────────
         system_prompt, user_prompt = CoTPromptBuilder.build_module_json_prompt(
             course_name=course_name,
             module_title=module_title,
             week_number=week_number,
             module_number=module_number,
-            context_chunks=source_chunks,
+            context_chunks=[],
             extra_instructions=extra_instructions,
-            context_summary=reference["structure_summary"],
             ilos=syllabus_ilos,
-            course_description=course_description,
-            week_topic=week_topic,
+            course_description="",
+            week_topic=module_title,
             section_label=section_label,
             subsection_label=subsection_label,
-            section_context=section_context,
+            section_context="",
             structuring_level=structuring_level,
             syllabus_subtopics=outline_subs,
             activity_title=outline_activity,
+            course_brief=course_brief,
+            neighbor_titles=neighbor_titles,
         )
 
-        # ── Step 4: LLM call with auto-fallback ────────────────────────────
-        llm = LLMService()
         raw_text = llm.generate_response_with_fallback(
             messages=[{"role": "user", "content": user_prompt}],
             preferred_provider=provider,
             system=system_prompt,
-            max_tokens=2048,
+            max_tokens=module_max_tokens(len(outline_subs)),
         )
 
         # ── Step 5: Parse JSON (strip markdown fences if present) ──────────
@@ -927,7 +923,8 @@ def generate_module(request):
                 "module_title": module_title,
                 "week_number": week_number,
                 "provider_used": provider or llm.default_provider,
-                "rag_chunks_used": len(source_chunks),
+                "rag_chunks_used": 0,
+                "brief_cached": brief_cached,
                 "module_content": module_content,
             },
             status=status.HTTP_201_CREATED,
