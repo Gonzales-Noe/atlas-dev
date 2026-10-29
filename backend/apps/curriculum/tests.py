@@ -7,6 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.curriculum.docx_builders import build_tos_docx
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
+    _items_from_model_text,
     _module_teaching_text,
     _build_plain_assessment_docx,
     _build_sectioned_assessment_payload,
@@ -721,3 +722,16 @@ class ModuleTeachingTextTests(SimpleTestCase):
         text = _module_teaching_text(module)
         self.assertIn('usability test watches people', text)
         self.assertIn('Explain usability.', text)
+
+    def test_cut_off_reply_keeps_finished_items(self):
+        raw = (
+            '{"items":['
+            '{"item_number":1,"question_text":"What does a usability test watch?",'
+            '"choices":["A. People doing tasks","B. Server logs","C. Color codes","D. Font files"],'
+            '"correct_answer":"A","answer_key":"The lesson says people attempt tasks."},'
+            '{"item_number":2,"question_text":"Which factor is named?",'
+            '"choices":["A. Safety","B. Payroll","C. Shipping","D. Payroll tax"],'
+            '"correct_answer":"A","answer_key":"Safety is named."'
+        )
+        items = _items_from_model_text(raw)
+        self.assertEqual([item['item_number'] for item in items], [1])
