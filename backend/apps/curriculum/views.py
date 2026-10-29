@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from collections import defaultdict
 
 from django.db import transaction
@@ -33,7 +34,7 @@ from apps.integrations.models import (
     Syllabus,
     UserRole,
 )
-from apps.integrations.rag_service import generation_reference
+from apps.integrations.rag_service import course_semantic_search, embed_queries, generation_reference
 from apps.integrations.trial import trial_generation_gate
 
 from .docx_builders import (
@@ -50,9 +51,11 @@ from .assessment_qa import (
     apply_source_results,
     approval_blockers,
     check_against_blueprint,
-    parse_source_results,
+    grouped_source_check_prompt,
+    pack_source_batches,
+    run_grouped_source_checks,
     source_batches,
-    source_check_prompt,
+    verdicts_without_passages,
 )
 from .consistency_checker import (
     apply_topic_judgments,
@@ -3636,6 +3639,93 @@ def _load_faculty_assessment(request, assessment_id):
     return assessment, None
 
 
+def _check_assessment_sources(course, batches, section_matches, top_k, selected_doc_ids, provider):
+    """Retrieve course passages once per topic, then judge packed topics together.
+
+    The institutional knowledge base is a structure guide, so it is not searched
+    here. The verdict only needs the course passages and the matched module.
+    Topic lookups run together because each one is a remote database round trip.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from django.db import close_old_connections, connection
+
+    queries = [f"{course.course_title} {batch['topic']}".strip() for batch in batches]
+    try:
+        vectors = embed_queries(queries) if queries else []
+    except Exception:
+        logger.exception('Assessment QA embeddings failed')
+        vectors = []
+    if len(vectors) != len(queries):
+        vectors = [None] * len(queries)
+
+    def passages_for(spec):
+        batch, query, vector = spec
+        matched = section_matches.get(_normalize_topic_key(batch['topic']))
+        excerpt = _module_prompt_excerpt(matched) if matched else ''
+        chunks = []
+        if vector is not None:
+            chunks = course_semantic_search(
+                query,
+                course=course,
+                top_k=top_k,
+                selected_doc_ids=selected_doc_ids or None,
+                query_vec=vector,
+            )
+        return batch, _qa_passage_text(chunks, excerpt)
+
+    def passages_for_thread(spec):
+        close_old_connections()
+        try:
+            return passages_for(spec)
+        finally:
+            connection.close()
+
+    specs = list(zip(batches, queries, vectors))
+    if len(specs) > 1:
+        with ThreadPoolExecutor(max_workers=min(4, len(specs))) as pool:
+            retrieved = list(pool.map(passages_for_thread, specs))
+    else:
+        retrieved = [passages_for(spec) for spec in specs]
+
+    prepared = []
+    results = []
+    for batch, passages in retrieved:
+        if passages:
+            prepared.append({**batch, 'passages': passages})
+        else:
+            results.extend(verdicts_without_passages(batch['items']))
+
+    groups = pack_source_batches(prepared)
+    llm = LLMService()
+
+    def complete(group):
+        system_prompt, user_prompt = grouped_source_check_prompt(group)
+        return llm.generate_response_with_fallback(
+            messages=[{'role': 'user', 'content': user_prompt}],
+            preferred_provider=provider,
+            system=system_prompt,
+            max_tokens=1200,
+        )
+
+    model_results, errors = run_grouped_source_checks(groups, complete)
+    results.extend(model_results)
+    return results, errors, len(groups)
+
+
+def _qa_passage_text(chunks, excerpt):
+    """Keep the matched span and a short surrounding section for the verdict."""
+    lean = []
+    for chunk in chunks or []:
+        if not isinstance(chunk, dict):
+            continue
+        parent = str(chunk.get('parent_text') or '').strip()
+        if len(parent) > 500:
+            parent = parent[:500].rsplit(' ', 1)[0].strip() + '…'
+        lean.append({**chunk, 'parent_text': parent})
+    chunk_text = CoTPromptBuilder._format_source_passages(lean) if lean else ''
+    return "\n\n".join(part for part in (chunk_text, excerpt) if part)
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def run_assessment_qa(request, assessment_id):
@@ -3701,39 +3791,23 @@ def run_assessment_qa(request, assessment_id):
     )
     structural = check_against_blueprint(sections, saved_rows)
     section_matches = _match_sections_to_course_modules(course, sections)
-    results = []
-    errors = []
-    llm = LLMService()
-    top_k = max(1, _to_int(request.data.get('top_k'), 3))
-    for batch in source_batches(structural):
-        topic = batch['topic']
-        matched = section_matches.get(_normalize_topic_key(topic))
-        excerpt = _module_prompt_excerpt(matched) if matched else ''
-        try:
-            search_query = f"{course.course_title} {topic}"
-            reference = generation_reference(
-                search_query,
-                course=course,
-                institution_id=request.user.institution_id,
-                top_k=top_k,
-                selected_doc_ids=[str(uid) for uid in (request.data.get('selected_doc_ids') or [])],
-            )
-            chunk_text = CoTPromptBuilder._format_context(
-                reference["source_chunks"],
-                reference["structure_summary"],
-            )
-            passages = "\n\n".join(part for part in (chunk_text, excerpt) if part)
-            system_prompt, user_prompt = source_check_prompt(topic, batch['items'], passages)
-            raw = llm.generate_response_with_fallback(
-                messages=[{'role': 'user', 'content': user_prompt}],
-                preferred_provider=request.data.get('provider') or None,
-                system=system_prompt,
-                max_tokens=1200,
-            )
-            results.extend(parse_source_results(raw))
-        except Exception as exc:
-            logger.exception('Assessment source check failed for %s', topic)
-            errors.append(str(exc))
+    batches = source_batches(structural)
+    started = time.perf_counter()
+    results, errors, model_calls = _check_assessment_sources(
+        course,
+        batches,
+        section_matches,
+        top_k=max(1, _to_int(request.data.get('top_k'), 3)),
+        selected_doc_ids=[str(uid) for uid in (request.data.get('selected_doc_ids') or [])],
+        provider=request.data.get('provider') or None,
+    )
+    logger.info(
+        'Assessment QA %s: %d topics, %d model calls, %.1fs',
+        assessment.assessment_id,
+        len(batches),
+        model_calls,
+        time.perf_counter() - started,
+    )
 
     report = apply_source_results(structural, results, error='; '.join(errors))
     report['checked_at'] = checked_now()
