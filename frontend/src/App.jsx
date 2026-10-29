@@ -21,6 +21,7 @@ import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
 import LandingPage from './pages/LandingPage.jsx' 
 import BillingOnboarding from './pages/billing/BillingOnboarding.jsx'
 import LegalPage from './pages/legal/LegalPage.jsx'
+import AtlasErrorHost from './components/AtlasErrorHost.jsx'
 
 class FacultyWorkspaceErrorBoundary extends Component {
   state = { error: null }
@@ -67,6 +68,7 @@ class FacultyWorkspaceErrorBoundary extends Component {
 function App() {
   return (
     <BrowserRouter>
+      <AtlasErrorHost />
       <Routes>
         {/* 2. Set the Landing Page as the root route */}
         <Route path="/" element={<LandingPage />} />

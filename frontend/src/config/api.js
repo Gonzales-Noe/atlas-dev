@@ -5,6 +5,7 @@
 // Avoid baking a Render URL into production builds.
 
 import axios from 'axios'
+import { reportServerError } from '../components/AtlasErrorHost'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
@@ -95,6 +96,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    reportServerError(error)
     const originalRequest = error.config
     if (
       error.response?.status !== 401

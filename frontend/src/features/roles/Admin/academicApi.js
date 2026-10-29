@@ -9,6 +9,7 @@ const BASE = '/academics'
 export async function fetchSetupStatus(includeCounts = true) {
   const { data } = await api.get(`${BASE}/setup/status/`, {
     params: { include_counts: includeCounts },
+    skipAtlasErrorCard: true,
   })
   return data
 }
