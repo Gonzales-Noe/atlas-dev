@@ -2103,8 +2103,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })
   const [assessmentBatchProgress, setAssessmentBatchProgress] = useState(null)
 
-  const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)
+  const [sourceDropActive, setSourceDropActive] = useState(false)
   const [uploadError, setUploadError]       = useState('')
   const [uploadSuccess, setUploadSuccess]   = useState('')
   const [uploadStatus, setUploadStatus]     = useState('')
@@ -3397,7 +3397,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   useEffect(() => {
     if (!docsIndexing || !docsUrl) return undefined
     const timer = setTimeout(() => {
-      api.get(docsUrl).then(({ data }) => docsApi.setData(data)).catch(() => {})
+      api.get(docsUrl, { atlasCache: false }).then(({ data }) => docsApi.setData(data)).catch(() => {})
     }, 4000)
     return () => clearTimeout(timer)
   }, [docsIndexing, docsApi.data, docsUrl])
@@ -3937,7 +3937,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setTimeout(() => setUploadStatus('Upload received. Preparing your course file.'), 500),
       setTimeout(() => setUploadStatus('Organizing your file into teaching-ready sections.'), 2200),
       setTimeout(() => setUploadStatus('Making this file searchable for your course tools.'), 5200),
-      setTimeout(() => setUploadStatus('Finalizing and saving into your course knowledge base...'), 9000),
+      setTimeout(() => setUploadStatus('Saving your file...'), 9000),
     ]
     return () => { clearInterval(timer); stages.forEach(clearTimeout) }
   }, [uploading])
@@ -5876,8 +5876,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     formData.append('file', uploadFile)
     formData.append('file_type', fileType)
     formData.append('course_id', courseId)
-    formData.append('module_tag', uploadForm.module_tag.trim())
-    formData.append('term_tag', uploadForm.term_tag.trim())
     setUploading(true); setUploadStatus('Uploading your file...')
     try {
       const { data } = await api.post('/integrations/upload-course-rag-document/', formData, {
@@ -9683,27 +9681,61 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           <Box component="form" onSubmit={handleUpload}>
           <Stack spacing={1.5}>
-            <Button variant="outlined" component="label" disabled={uploading} fullWidth
-              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', borderRadius: 1.5,
-                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
-              Choose File
-              <input hidden type="file"
+            <Box
+              component="label"
+              onDragOver={event => {
+                event.preventDefault()
+                if (!uploading) setSourceDropActive(true)
+              }}
+              onDragLeave={event => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setSourceDropActive(false)
+              }}
+              onDrop={event => {
+                event.preventDefault()
+                setSourceDropActive(false)
+                if (uploading) return
+                const file = event.dataTransfer.files?.[0]
+                if (!file) return
+                if (!detectFileType(file)) {
+                  setUploadError('Please choose a PDF or DOCX file.')
+                  return
+                }
+                setUploadError('')
+                setUploadFile(file)
+              }}
+              sx={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: 1, minHeight: 148, px: 2, py: 2.5, cursor: uploading ? 'default' : 'pointer',
+                borderRadius: 2, textAlign: 'center',
+                border: `1.5px dashed ${sourceDropActive ? MAROON : 'rgba(22,163,74,0.55)'}`,
+                bgcolor: sourceDropActive ? MAROON_LIGHT : 'rgba(255,255,255,0.03)',
+                transition: 'border-color 0.15s, background-color 0.15s',
+              }}
+            >
+              <DownloadIcon sx={{ fontSize: 36, color: sourceDropActive ? MAROON : '#9CA3AF' }} />
+              <Typography sx={{ color: '#E5E7EB', fontSize: '0.92rem', lineHeight: 1.4 }}>
+                <Box component="span" sx={{ fontWeight: 800, color: '#F9FAFB' }}>Choose a file</Box>
+                {' or drag it here.'}
+              </Typography>
+              <Typography variant="caption" sx={{ color: uploadFile ? '#86EFAC' : '#9CA3AF' }}>
+                {uploadFile ? uploadFile.name : 'PDF or DOCX only'}
+              </Typography>
+              <input hidden type="file" disabled={uploading}
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                onChange={e => setUploadFile(e.target.files?.[0] || null)} />
-            </Button>
-            <Typography variant="caption" sx={{ color: uploadFile ? '#1A1A1A' : '#aaa', px: 0.5 }}>
-              {uploadFile ? uploadFile.name : 'PDF or DOCX only'}
-            </Typography>
-            <TextField size="small" label="Module Tag (optional)" value={uploadForm.module_tag}
-              onChange={e => setUploadForm(p => ({ ...p, module_tag: e.target.value }))}
-              sx={{ '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
-                   '& .MuiInputLabel-root.Mui-focused': { color: MAROON } }} />
-            <TextField size="small" label="Term Tag (optional)" value={uploadForm.term_tag}
-              onChange={e => setUploadForm(p => ({ ...p, term_tag: e.target.value }))}
-              sx={{ '& .MuiOutlinedInput-root.Mui-focused fieldset': { borderColor: MAROON },
-                   '& .MuiInputLabel-root.Mui-focused': { color: MAROON } }} />
+                onChange={event => {
+                  const file = event.target.files?.[0] || null
+                  if (file && !detectFileType(file)) {
+                    setUploadError('Please choose a PDF or DOCX file.')
+                    event.target.value = ''
+                    return
+                  }
+                  setUploadError('')
+                  setUploadFile(file)
+                  event.target.value = ''
+                }} />
+            </Box>
             <GenButton type="submit" disabled={uploading || !uploadFile}>
-              {uploading ? 'Uploading...' : 'Upload to Knowledge Base'}
+              {uploading ? 'Adding your file...' : 'Add this file'}
             </GenButton>
           </Stack>
         </Box>
