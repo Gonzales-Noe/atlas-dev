@@ -876,6 +876,9 @@ def generate_module(request):
             else:
                 raise ValueError("LLM did not return valid JSON.")
 
+        if len(module_title) > 255:
+            module_title = module_title[:252].rstrip() + "..."
+
         module_content = lock_module_outline(
             module_content,
             module_title,

@@ -83,9 +83,9 @@ def parse_tla_rows(text, count):
 
 
 def module_max_tokens(subtopic_count):
-    """Enough for one chapter's JSON, and small enough that the call returns."""
+    """Room for one chapter's JSON. Reasoning tokens share this budget, so it stays large enough to finish."""
     count = max(1, int(subtopic_count or 1))
-    return min(1400, 480 + 160 * count)
+    return min(2048, max(1800, 1000 + 160 * count))
 
 
 def map_max_tokens(row_count):

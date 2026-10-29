@@ -829,8 +829,7 @@ OUTPUT — Return the module plan using exactly this structure:
             subtopic_json = ",\n".join(subtopic_blocks)
             step4 = (
                 "Step 4 — Expand each syllabus subtopic below, in this order. "
-                "Copy each title exactly. Write "
-                f"{level['paragraphs']} paragraphs for each title. "
+                "Copy each title exactly. Write 2 short paragraphs for each title. "
                 "Do not add, drop, or rename a subtopic."
             )
             subtopic_rule = (
@@ -947,7 +946,7 @@ Module Title : {module_title}
 Week Number  : {week_number}{extra}
 Depth        : {level['label']} — {level['hint']}
 
-THINK STEP BY STEP before writing JSON:
+Write the JSON now. Do not write a plan first.
 
 Step 1 — Analyse the reference material and COURSE DATA above to identify the core \
 concepts specific to "{module_title}" in {course_name}.{ilo_step}
