@@ -2198,6 +2198,63 @@ def _parse_model_json(text):
             return None
 
 
+def _closed_dicts(text):
+    """JSON objects that closed, even when the reply was cut off around them."""
+    found = []
+    starts = []
+    in_string = False
+    escape = False
+    body = str(text or '')
+    for index, char in enumerate(body):
+        if in_string:
+            if escape:
+                escape = False
+            elif char == '\\':
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == '{':
+            starts.append(index)
+        elif char == '}' and starts:
+            start = starts.pop()
+            try:
+                obj = json.loads(body[start:index + 1])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(obj, dict):
+                found.append(obj)
+    return found
+
+
+def _items_from_model_text(text):
+    """Items from a JSON reply, including a reply that stopped mid-array."""
+    parsed = _parse_model_json(text)
+    if isinstance(parsed, list) and parsed:
+        return [row for row in parsed if isinstance(row, dict)]
+    if isinstance(parsed, dict):
+        items = parsed.get('items')
+        if isinstance(items, list) and items:
+            return [row for row in items if isinstance(row, dict)]
+        if str(parsed.get('question_text') or '').strip():
+            return [parsed]
+    recovered = []
+    seen = set()
+    for obj in _closed_dicts(text):
+        question = str(obj.get('question_text') or '').strip()
+        if not question:
+            continue
+        number = obj.get('item_number')
+        key = number if number else id(obj)
+        if key in seen:
+            continue
+        seen.add(key)
+        recovered.append(obj)
+    return recovered
+
+
 def _generated_item_quality_errors(item_payload):
     errors = []
 
@@ -3357,7 +3414,7 @@ Requirements:
         matched_module = section_module_matches.get(section_key)
         if not matched_module:
             return ''
-        return _module_teaching_text(matched_module, char_limit=1800)
+        return _module_teaching_text(matched_module, char_limit=700)
 
     def _call_model(prompt, max_tokens):
         nonlocal providers_unavailable
@@ -3382,7 +3439,7 @@ Requirements:
         section_title = slice_section.get('section_title') or ''
         slot_json = json.dumps(slots, ensure_ascii=False, separators=(',', ':'))
         excerpt = _module_excerpt_for(slice_section)
-        passages = topic_passages.get(_normalize_topic_key(section_title), '')
+        passages = _clip_words(topic_passages.get(_normalize_topic_key(section_title), ''), 500)
         lines = [
             f"Course: {course.course_title} ({course.course_code})",
             f"Assessment: {source['assessment_name']}",
@@ -3407,7 +3464,7 @@ Requirements:
             'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
             "Keep each slot's item_number, bloom_level, bloom_verb, and ilo_refs.",
             "Use bloom_verb in the stem when it is set. Assess ilo_text when it is set.",
-            "The keyed answer must be stated in the module lesson or the uploaded passages.",
+            "Write the keyed answer from the module lesson or the uploaded passages, and still return every slot.",
             "Do not name a standard, scale, method, or principle that text does not name.",
             "Exactly 4 choices. correct_answer is A, B, C, or D. answer_key is one sentence.",
             "No placeholder text. JSON only.",
@@ -3417,11 +3474,14 @@ Requirements:
     def _generate_slice(slice_section):
         count = len(slice_section.get('items') or [])
         raw = _call_model(_slice_prompt(slice_section), assessment_batch_max_tokens(count))
-        parsed = _parse_model_json(raw)
-        if isinstance(parsed, list):
-            parsed = {'items': parsed}
-        if isinstance(parsed, dict):
-            return _collect_section_items(slice_section, parsed)
+        items = _items_from_model_text(raw)
+        if items:
+            return _collect_section_items(slice_section, {'items': items})
+        logger.warning(
+            'Assessment slice for %s returned no items. Reply starts: %s',
+            slice_section.get('section_title'),
+            str(raw or '')[:300],
+        )
         return {}, [item.get('item_number') for item in (slice_section.get('items') or [])]
 
     incremental = _to_bool(request.data.get('incremental'), False)
@@ -3564,6 +3624,23 @@ Requirements:
                     'Assessment section retry failed for %s',
                     section.get('section_title'),
                 )
+            still = [
+                item for item in missing
+                if _to_int(item.get('item_number'), 0) not in accepted
+            ]
+            if len(still) > 2 and not providers_unavailable:
+                for pair_start in range(0, len(still), 2):
+                    if providers_unavailable:
+                        break
+                    pair = still[pair_start:pair_start + 2]
+                    try:
+                        got, _ignored = _generate_slice(_section_for_slots(section, pair))
+                        accepted.update(got)
+                    except Exception:
+                        logger.exception(
+                            'Assessment pair retry failed for %s',
+                            section.get('section_title'),
+                        )
         for number, item in accepted.items():
             saved_numbers.add(number)
         ordered = [accepted[number] for number in sorted(accepted)]
