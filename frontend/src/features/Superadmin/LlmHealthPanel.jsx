@@ -47,9 +47,27 @@ function unusedText(row) {
   return { primary: 'Not published', secondary: '' }
 }
 
-function accountText(row) {
-  if (!row.instances || row.instances < 2) return ''
-  return `Account ${row.instance} of ${row.instances}`
+function isApiAccount(row) {
+  return row.id !== 'ollama' && row.configured && row.instance
+}
+
+function accountName(row) {
+  if (!isApiAccount(row)) return row.label
+  return `${row.label} · Account ${row.instance}`
+}
+
+function accountMeta(row) {
+  const parts = []
+  if (row.model) parts.push(row.model)
+  if (row.key_hint) parts.push(`key ···${row.key_hint}`)
+  return parts.join(' · ')
+}
+
+function noteText(row) {
+  const detail = String(row.detail || '').trim()
+  if (!detail) return ''
+  if (row.status === 'healthy' && /does not publish/i.test(detail)) return ''
+  return detail
 }
 
 function returnText(row) {
@@ -114,19 +132,36 @@ export default function LlmHealthPanel() {
           margin-bottom: 16px;
           align-items: start;
         }
-        .llm-model-row {
+        .llm-account-row {
           display: grid;
-          grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1.4fr) minmax(108px, 0.9fr);
+          grid-template-columns: minmax(0, 1.35fr) auto minmax(0, 1.25fr) minmax(120px, 0.9fr);
           gap: 12px;
-          align-items: center;
+          align-items: start;
           padding: 12px 0;
           border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .llm-account-head {
+          color: rgba(255,255,255,0.4);
+          font-size: 0.68rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          padding-top: 0;
+          border-top: none;
+        }
+        .llm-account-note {
+          grid-column: 1 / -1;
+          color: rgba(255,255,255,0.5);
+          font-size: 0.75rem;
+          line-height: 1.4;
+          margin-top: -4px;
         }
         @media (max-width: 980px) {
           .llm-health-split { grid-template-columns: 1fr; }
         }
         @media (max-width: 720px) {
-          .llm-model-row { grid-template-columns: minmax(0, 1fr) auto; }
+          .llm-account-row { grid-template-columns: minmax(0, 1fr); align-items: start; }
+          .llm-account-head { display: none; }
         }
       `}</style>
       <div className="llm-health-split">
@@ -145,7 +180,7 @@ export default function LlmHealthPanel() {
         </GlassCard>
 
         <GlassCard
-          title="LLM model health"
+          title="LLM accounts"
           titleAction={(
             <PrimaryBtn small disabled={loading} onClick={() => load(true)}>
               {loading ? 'Checking' : 'Check again'}
@@ -154,44 +189,50 @@ export default function LlmHealthPanel() {
           style={{ marginBottom: 0, minWidth: 0 }}
         >
           <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
-            Unused quota for each model account, and the time a reached limit comes back.
+            Every API key is its own account. Unused quota and the time a reached limit comes back are listed for each one.
           </p>
           {error && (
             <p style={{ margin: 0, color: '#FFB74D', fontSize: '0.85rem' }}>{error}</p>
           )}
           {!error && !loading && providers.length === 0 && (
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No models are configured.</p>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No accounts are configured.</p>
           )}
-          <div>
-            {providers.map(row => {
-              const unused = unusedText(row)
-              const account = accountText(row)
-              return (
-                <div key={row.id} className="llm-model-row">
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{row.label}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{row.model || '—'}</div>
-                    {account && (
-                      <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem', marginTop: 2 }}>{account}</div>
-                    )}
+          {providers.length > 0 && (
+            <div>
+              <div className="llm-account-row llm-account-head">
+                <div>Account</div>
+                <div>Status</div>
+                <div>Unused</div>
+                <div>Returns</div>
+              </div>
+              {providers.map(row => {
+                const unused = unusedText(row)
+                const note = noteText(row)
+                return (
+                  <div key={row.id} className="llm-account-row">
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{accountName(row)}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{accountMeta(row) || '—'}</div>
+                    </div>
+                    <div>
+                      <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
+                      {unused.secondary && (
+                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
+                      <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
+                    </div>
+                    {note && <div className="llm-account-note">{note}</div>}
                   </div>
-                  <div>
-                    <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
-                    {unused.secondary && (
-                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
-                    )}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
-                    <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </GlassCard>
       </div>
     </>
