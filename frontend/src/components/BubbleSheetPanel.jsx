@@ -102,7 +102,7 @@ function LF({ label, ...props }) {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function BubbleSheetPanel({ courseId, assessments = [], onModifyTemplate }) {
+export default function BubbleSheetPanel({ courseId, assessments = [], onModifyTemplate, onNotice }) {
   const [tab, setTab] = useState(0)
 
   // shared across sub-panels
@@ -153,12 +153,14 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
           loading={templatesLoading}
           onRefresh={loadTemplates}
           onModifyTemplate={onModifyTemplate}
+          onNotice={onNotice}
         />
       )}
       {tab === 1 && (
         <ResultsTab
           courseId={courseId}
           templates={templates}
+          onNotice={onNotice}
         />
       )}
     </Box>
@@ -168,7 +170,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, onModifyTemplate }) {
+function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, onModifyTemplate, onNotice }) {
   const [creating, setCreating] = useState(false)
   const [keyDialog, setKeyDialog] = useState(null) // template obj
 
@@ -214,7 +216,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
           courseId={courseId}
           assessments={assessments}
           onClose={() => setCreating(false)}
-          onCreated={() => { setCreating(false); onRefresh() }}
+          onCreated={() => { setCreating(false); onRefresh(); onNotice?.('Answer sheet template saved.') }}
         />
       )}
 
@@ -222,7 +224,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
         <AnswerKeyDialog
           template={keyDialog}
           onClose={() => setKeyDialog(null)}
-          onSaved={() => { setKeyDialog(null); onRefresh() }}
+          onSaved={() => { setKeyDialog(null); onRefresh(); onNotice?.('Answer key saved.') }}
         />
       )}
     </>
@@ -733,7 +735,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function ResultsTab({ courseId, templates }) {
+function ResultsTab({ courseId, templates, onNotice }) {
   const [selectedTemplate, setSelectedTemplate] = useState('')
   const [scans, setScans] = useState([])
   const [loading, setLoading] = useState(false)
@@ -864,7 +866,7 @@ function ResultsTab({ courseId, templates }) {
           scan={editScan}
           templates={templates}
           onClose={() => setEditScan(null)}
-          onSaved={() => { setEditScan(null); loadScans(selectedTemplate, flagOnly) }}
+          onSaved={() => { setEditScan(null); loadScans(selectedTemplate, flagOnly); onNotice?.('Scan saved.') }}
         />
       )}
     </Stack>
