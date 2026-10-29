@@ -53,7 +53,7 @@ import useAtlasLightTheme from '../../../hooks/useAtlasLightTheme'
 import api from '../../../config/api'
 import { useAuth } from '../../../store/authStore'
 import { toInitials, extractApiError } from '../../../utils'
-import atlasLogo from '../../../assets/atlas-logo.png'
+import atlasLogo from '../../../assets/atlas-logo.webp'
 import AutoAlert from '../../../components/AutoAlert'
 
 // ── Constants ─────────────────────────────────────────────────────────────

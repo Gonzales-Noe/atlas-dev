@@ -65,6 +65,10 @@ class Institution(models.Model):
 
     class Meta:
         db_table = 'institution'
+        indexes = [
+            models.Index(fields=['application_status'], name='institution_app_status_idx'),
+            models.Index(fields=['payment_status'], name='institution_pay_status_idx'),
+        ]
 
 class InstitutionCustomization(models.Model):
     institution = models.OneToOneField(Institution, on_delete=models.CASCADE, related_name='customization')
@@ -106,6 +110,10 @@ class UserProfile(models.Model):
 
     class Meta:
         db_table = 'users'
+        indexes = [
+            models.Index(fields=['institution', 'role'], name='users_institution_role_idx'),
+            models.Index(fields=['institution', 'is_active'], name='users_institution_active_idx'),
+        ]
 
     @property
     def is_authenticated(self):
@@ -287,6 +295,9 @@ class Course(models.Model):
         ordering = ('course_code',)
         constraints = [
             models.UniqueConstraint(fields=['institution', 'course_code'], name='uniq_course_code_per_institution'),
+        ]
+        indexes = [
+            models.Index(fields=['institution', 'is_active'], name='course_institution_active_idx'),
         ]
 
     def __str__(self):
@@ -515,6 +526,10 @@ class AuditLog(models.Model):
 
     class Meta:
         db_table = 'audit_logs'
+        indexes = [
+            models.Index(fields=['-timestamp'], name='audit_logs_timestamp_desc_idx'),
+            models.Index(fields=['user', '-timestamp'], name='audit_logs_user_ts_idx'),
+        ]
 
 class CourseFile(models.Model):
     records_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -576,6 +591,9 @@ class GlobalDocument(models.Model):
 
     class Meta:
         db_table = 'global_document'
+        indexes = [
+            models.Index(fields=['institution', 'status'], name='global_doc_inst_status_idx'),
+        ]
 
 
 class GlobalDocumentChunk(models.Model):

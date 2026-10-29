@@ -2,7 +2,7 @@
 // Global auth state via React Context.
 // Wrap <App /> with <AuthProvider /> in main.jsx.
 
-import { createContext, useContext, useReducer, useEffect } from 'react'
+import { createContext, useContext, useReducer, useEffect, useMemo, useRef } from 'react'
 import api, { beginCredentialLogin } from '../config/api'
 
 const SUPERADMIN_CREDENTIALS = {
@@ -275,8 +275,13 @@ export function AuthProvider({ children }) {
       }
       return data.user
     } catch (err) {
-      const msg = err.response?.data?.email?.[0]
-        || err.response?.data?.detail
+      const data = err.response?.data || {}
+      const passwordError = Array.isArray(data.password) ? data.password[0] : data.password
+      const institutionError = Array.isArray(data.institution_name) ? data.institution_name[0] : data.institution_name
+      const msg = institutionError
+        || passwordError
+        || data.email?.[0]
+        || data.detail
         || 'Registration failed.'
       dispatch({ type: 'AUTH_ERROR', payload: msg })
       throw new Error(msg)
@@ -313,10 +318,25 @@ export function AuthProvider({ children }) {
     dispatch({ type: 'LOGOUT' })
   }
 
+  const actionsRef = useRef(null)
+  actionsRef.current = { login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, updateProfile, logout }
+  const actions = useMemo(() => ({
+    login: (...args) => actionsRef.current.login(...args),
+    loginWithGoogle: (...args) => actionsRef.current.loginWithGoogle(...args),
+    register: (...args) => actionsRef.current.register(...args),
+    sendOtp: (...args) => actionsRef.current.sendOtp(...args),
+    verifyOtp: (...args) => actionsRef.current.verifyOtp(...args),
+    resetPassword: (...args) => actionsRef.current.resetPassword(...args),
+    updateProfile: (...args) => actionsRef.current.updateProfile(...args),
+    logout: (...args) => actionsRef.current.logout(...args),
+  }), [])
+  const value = useMemo(
+    () => ({ ...state, ...actions }),
+    [state, actions],
+  )
+
   return (
-    <AuthContext.Provider
-      value={{ ...state, login, loginWithGoogle, register, sendOtp, verifyOtp, resetPassword, updateProfile, logout }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

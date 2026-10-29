@@ -7,6 +7,9 @@ COPY . .
 # Set at build time, e.g. https://your.domain/api or http://IP/api
 ARG VITE_API_URL=/api
 ENV VITE_API_URL=$VITE_API_URL
+# Optional CDN origin for hashed assets. Leave unset to serve them from this host.
+ARG VITE_ASSET_BASE=/
+ENV VITE_ASSET_BASE=$VITE_ASSET_BASE
 RUN npm run build
 
 FROM nginx:alpine

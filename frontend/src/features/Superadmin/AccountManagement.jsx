@@ -12,6 +12,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, PageHeader, StatusChip, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api from '../../config/api'
+import useDebouncedValue from '../../hooks/useDebouncedValue'
 
 const planType = p => ({ Premium: 'premium', Professional: 'info', Starter: 'default', Enterprise: 'premium', pro: 'info', enterprise: 'premium' }[p] || 'default')
 
@@ -26,6 +27,7 @@ export default function AccountManagement() {
   const [page, setPage]             = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
   const [filterStatus, setFilterStatus] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
   const [editOpen, setEditOpen]     = useState(false)
@@ -54,7 +56,7 @@ export default function AccountManagement() {
 
   const pendingApplications = accounts.filter(account => account.status === 'pending_review')
   const filtered = accounts.filter(a => {
-    const q = searchTerm.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     const matchSearch = a.institution.toLowerCase().includes(q) || a.admin.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)
     const matchFilter = !filterStatus || a.status === filterStatus
     return matchSearch && matchFilter

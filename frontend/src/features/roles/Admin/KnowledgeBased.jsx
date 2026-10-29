@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Divider, Stack, LinearProgress, Alert, IconButton,
+  TextField, Divider, Stack, LinearProgress, Alert, IconButton, TablePagination,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
@@ -19,6 +19,8 @@ import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
+import useDebouncedValue from '../../../hooks/useDebouncedValue'
+import RouteSkeleton from '../../../components/RouteSkeleton'
 import { PageHeader, GlassCard, StatCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
 const inputSx = {
@@ -100,6 +102,9 @@ export default function AdminKnowledgeBase() {
   const [documentsLoaded, setDocumentsLoaded] = useState(false)
   const [loading, setLoading]         = useState(true)
   const [searchTerm, setSearchTerm]   = useState('')
+  const [page, setPage]               = useState(0)
+  const [rowsPerPage, setRowsPerPage] = useState(9)
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
   const [activeCategory, setActiveCategory] = useState('All')
   const [createOpen, setCreateOpen]   = useState(false)
   const [viewOpen, setViewOpen]       = useState(false)
@@ -178,8 +183,12 @@ export default function AdminKnowledgeBase() {
 
   const categories = ['All', ...new Set(documents.map(doc => normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)).filter(Boolean))]
 
+  useEffect(() => {
+    setPage(0)
+  }, [debouncedSearch, activeCategory])
+
   const filtered = documents.filter(doc => {
-    const q = searchTerm.toLowerCase()
+    const q = debouncedSearch.toLowerCase()
     const docTypeLabel = normalizeDocTypeLabel(doc.doc_type_label || doc.doc_type)
     const matchSearch = !q
       || (doc.title || '').toLowerCase().includes(q)
@@ -190,6 +199,9 @@ export default function AdminKnowledgeBase() {
     const matchCat = activeCategory === 'All' || docTypeLabel === activeCategory
     return matchSearch && matchCat
   })
+  const maxPage = Math.max(0, Math.ceil(filtered.length / rowsPerPage) - 1)
+  const safePage = Math.min(page, maxPage)
+  const pageDocs = filtered.slice(safePage * rowsPerPage, safePage * rowsPerPage + rowsPerPage)
 
   function handleFileSelect(selectedFile) {
     if (!selectedFile) return
@@ -300,19 +312,34 @@ export default function AdminKnowledgeBase() {
           </span>
         </div>
         {loading ? (
-          <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>Loading documents…</div></GlassCard>
+          <RouteSkeleton compact />
         ) : filtered.length === 0 ? (
           <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>
             {!documentsLoaded ? 'Documents could not be loaded.' : documents.length ? 'No documents match your search.' : 'No documents have been uploaded for this institution.'}
           </div></GlassCard>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>
-            {filtered.map(doc => (
+            {pageDocs.map(doc => (
               <DocumentCard key={doc.document_id} doc={doc}
                 onView={() => { setSelected(doc); setViewOpen(true) }}
                 onDelete={() => setDeleteTarget(doc)} />
             ))}
           </div>
+        )}
+        {!loading && filtered.length > 0 && (
+          <TablePagination
+            component="div"
+            rowsPerPageOptions={[9, 18, 36]}
+            count={filtered.length}
+            rowsPerPage={rowsPerPage}
+            page={safePage}
+            onPageChange={(_, nextPage) => setPage(nextPage)}
+            onRowsPerPageChange={(event) => {
+              setRowsPerPage(parseInt(event.target.value, 10))
+              setPage(0)
+            }}
+            sx={{ borderTop: '1px solid var(--border-color)', color: 'var(--text-secondary)', mt: 1 }}
+          />
         )}
       </div>
 

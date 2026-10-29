@@ -8,8 +8,8 @@ import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
 
-import atlasLogo from '../../assets/atlas-logo.png';
-import atlasMascot from '../../assets/atlas.png';
+import atlasLogo from '../../assets/atlas-logo.webp';
+import atlasMascot from '../../assets/atlas.webp';
 
 // ── Shared design primitives (mirrors landing page) ──────────────────────────
 function Orb({ style }) {
@@ -159,7 +159,6 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
       position: 'relative',
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; }
 
         .auth-nav-link {

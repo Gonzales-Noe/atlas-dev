@@ -1,6 +1,6 @@
 import { Box, Button, Typography } from '@mui/material'
 
-import atlasMascot from '../assets/atlas.png'
+import atlasMascot from '../assets/atlas.webp'
 
 export const ATLAS_STARTING_MESSAGE = 'The server is still waking up. Give it a moment, then try again.'
 

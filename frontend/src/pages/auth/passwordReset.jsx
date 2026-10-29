@@ -1,11 +1,11 @@
 // src/pages/auth/PasswordResetPage.jsx
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/route'
-import atlasLogo        from '../../assets/atlas-logo.png'
+import atlasLogo        from '../../assets/atlas-logo.webp'
 
 // ── Shared design primitives ─────────────────────────────────────────────────
 function Orb({ style }) {
@@ -21,67 +21,31 @@ function Orb({ style }) {
   )
 }
 
-// ── OTP 4-box input ─────────────────────────────────────────────────────────
-function OtpInput({ value, onChange }) {
-  const inputs = useRef([])
-  const digits = value.split('')
-
-  function handleKey(e, idx) {
-    if (e.key === 'Backspace') {
-      const next = [...digits]
-      next[idx] = ''
-      onChange(next.join(''))
-      if (idx > 0) inputs.current[idx - 1]?.focus()
-      return
-    }
-    if (!/^\d$/.test(e.key)) return
-    const next = [...digits]
-    next[idx] = e.key
-    onChange(next.join(''))
-    if (idx < 3) inputs.current[idx + 1]?.focus()
-  }
-
+function ResetCodeInput({ value, onChange }) {
   return (
-    <div style={{ display: 'flex', gap: 12, justifyContent: 'center', margin: '0.5rem 0 1rem' }}>
-      {[0, 1, 2, 3].map((i) => (
-        <input
-          key={i}
-          ref={el => (inputs.current[i] = el)}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={digits[i] || ''}
-          onKeyDown={e => handleKey(e, i)}
-          onChange={() => {}}
-          style={{
-            width: 58,
-            height: 64,
-            textAlign: 'center',
-            fontSize: '1.8rem',
-            fontWeight: 800,
-            fontFamily: '"Plus Jakarta Sans", sans-serif',
-            background: 'rgba(255,255,255,0.06)',
-            border: digits[i] ? '2px solid rgba(22,163,74,0.8)' : '1px solid rgba(255,255,255,0.14)',
-            borderRadius: 14,
-            outline: 'none',
-            color: '#F0F0F0',
-            transition: 'border-color 0.2s, background 0.2s',
-            cursor: 'text',
-            boxShadow: digits[i] ? '0 0 16px rgba(22,163,74,0.2)' : 'none',
-          }}
-          onFocus={e => {
-            e.target.style.borderColor = 'rgba(22,163,74,0.8)'
-            e.target.style.background = 'rgba(255,255,255,0.1)'
-          }}
-          onBlur={e => {
-            if (!digits[i]) {
-              e.target.style.borderColor = 'rgba(255,255,255,0.14)'
-              e.target.style.background = 'rgba(255,255,255,0.06)'
-            }
-          }}
-        />
-      ))}
-    </div>
+    <input
+      className="dark-input"
+      type="text"
+      inputMode="text"
+      autoComplete="one-time-code"
+      autoCapitalize="characters"
+      spellCheck={false}
+      maxLength={8}
+      value={value}
+      aria-label="Reset code"
+      placeholder="8-character code"
+      onChange={event => {
+        const next = event.target.value.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, '').slice(0, 8)
+        onChange(next)
+      }}
+      style={{
+        textAlign: 'center',
+        letterSpacing: '0.28em',
+        fontWeight: 800,
+        fontFamily: '"DM Mono", ui-monospace, monospace',
+        margin: '0.5rem 0 1rem',
+      }}
+    />
   )
 }
 
@@ -156,21 +120,21 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
       await sendOtp(normalizedEmail)
       setStep(STEPS.OTP)
       startResendCooldown()
-    } catch {
-      setError('Could not send OTP. Please check the email address.')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not send a reset code. Please try again.')
     } finally { setLoading(false) }
   }
 
   async function handleVerifyOtp(e) {
     e.preventDefault()
-    if (otp.length < 4) { setError('Please enter all 4 digits.'); return }
+    if (otp.length < 8) { setError('Please enter the 8-character code.'); return }
     setLoading(true); setError('')
     try {
       const token = await verifyOtp(email, otp)
       setResetToken(token)
       setStep(STEPS.NEW_PASSWORD)
-    } catch {
-      setError('Invalid or expired OTP. Please try again.')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Invalid or expired code. Please try again.')
     } finally { setLoading(false) }
   }
 
@@ -182,8 +146,10 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
     try {
       await resetPassword(resetToken, newPassword)
       setStep(STEPS.DONE)
-    } catch {
-      setError('Failed to reset password. Please start over.')
+    } catch (err) {
+      const data = err.response?.data
+      const passwordError = Array.isArray(data?.new_password) ? data.new_password[0] : data?.new_password
+      setError(passwordError || data?.detail || 'Failed to reset password. Please start over.')
     } finally { setLoading(false) }
   }
 
@@ -233,7 +199,6 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
       overflow: 'hidden',
     }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         * { box-sizing: border-box; }
 
         .auth-nav-link {
@@ -671,7 +636,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   Check your <span className="glow-text">email</span>
                 </h1>
                 <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: '0.87rem', margin: '0 0 1.75rem', lineHeight: 1.6 }}>
-                  We sent a 4-digit code to{' '}
+                  We sent an 8-character code to{' '}
                   <span style={{ color: '#FF8080', fontWeight: 600 }}>{email}</span>
                 </p>
 
@@ -682,12 +647,12 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     ENTER CODE
                   </p>
 
-                  <OtpInput value={otp} onChange={setOtp} />
+                  <ResetCodeInput value={otp} onChange={setOtp} />
 
                   <button
                     type="submit"
                     className="btn-primary"
-                    disabled={loading || otp.length < 4}
+                    disabled={loading || otp.length < 8}
                     style={{ marginTop: '0.5rem', marginBottom: '1.25rem' }}
                   >
                     {loading ? <CircularProgress size={18} sx={{ color: '#fff' }} /> : 'Verify Code'}

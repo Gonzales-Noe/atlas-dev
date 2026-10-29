@@ -1,5 +1,7 @@
 // src/features/roles/Admin/AuditLogs.jsx
 import { useEffect, useState } from 'react'
+import useDebouncedValue from '../../../hooks/useDebouncedValue'
+import RouteSkeleton from '../../../components/RouteSkeleton'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Stack, Alert,
@@ -85,6 +87,7 @@ const inputSx = {
 
 export default function AdminAuditLogs() {
   const [logs, setLogs]               = useState([])
+  const [total, setTotal]             = useState(0)
   const [searchTerm, setSearchTerm]   = useState('')
   const [page, setPage]               = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
@@ -92,35 +95,34 @@ export default function AdminAuditLogs() {
   const [detailOpen, setDetailOpen]   = useState(false)
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState('')
+  const debouncedSearch = useDebouncedValue(searchTerm, 250)
 
   useEffect(() => {
     let mounted = true
-    api.get('/integrations/audit-logs/')
+    const params = new URLSearchParams({
+      page: String(page + 1),
+      page_size: String(rowsPerPage),
+    })
+    const query = debouncedSearch.trim()
+    if (query) params.set('q', query)
+    api.get(`/integrations/audit-logs/?${params.toString()}`)
       .then(({ data }) => {
-        if (mounted) setLogs(data.logs || [])
+        if (!mounted) return
+        const nextLogs = data.logs || []
+        setLogs(nextLogs)
+        setTotal(typeof data.count === 'number' ? data.count : nextLogs.length)
       })
       .catch(err => {
-        if (mounted) setError(err.response?.data?.detail || 'Failed to load audit records.')
+        if (!mounted) return
+        setLogs([])
+        setTotal(0)
+        setError(err.response?.data?.detail || 'Failed to load audit records.')
       })
       .finally(() => {
         if (mounted) setLoading(false)
       })
     return () => { mounted = false }
-  }, [])
-
-  useEffect(() => {
-    setPage(0)
-  }, [searchTerm])
-
-  const filtered = logs.filter(log => {
-    const searchable = [
-      log.user,
-      log.action,
-      log.resource_type,
-      log.resource_id,
-    ].join(' ').toLowerCase()
-    return searchable.includes(searchTerm.toLowerCase())
-  })
+  }, [page, rowsPerPage, debouncedSearch])
 
   return (
     <AdminLayout>
@@ -135,7 +137,7 @@ export default function AdminAuditLogs() {
       <GlassCard style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField placeholder="Search recorded events…" size="small" value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)} sx={{ flex: 1, minWidth: 220, ...inputSx }}
+            onChange={e => { setSearchTerm(e.target.value); setPage(0) }} sx={{ flex: 1, minWidth: 220, ...inputSx }}
             InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }} />
         </div>
       </GlassCard>
@@ -155,9 +157,13 @@ export default function AdminAuditLogs() {
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={5} align="center">Loading audit records…</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={5} sx={{ borderBottom: 'none', p: 0 }}>
+                    <RouteSkeleton compact />
+                  </TableCell>
+                </TableRow>
               )}
-              {!loading && filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(log => (
+              {!loading && logs.map(log => (
                 <TableRow key={log.log_id} sx={{ '&:last-child td': { borderBottom: 'none !important' } }}>
                   <TableCell sx={{ fontFamily: 'var(--font-mono) !important', fontSize: '0.78rem !important', color: 'var(--text-secondary) !important', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border-color)' }}>
                     {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
@@ -184,18 +190,18 @@ export default function AdminAuditLogs() {
             </TableBody>
           </Table>
         </TableContainer>
-        {!loading && filtered.length === 0 && (
+        {!loading && logs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)', fontSize: '0.9rem' }}>
-            {error && !logs.length
+            {error
               ? 'Audit records could not be loaded.'
-              : logs.length
+              : debouncedSearch.trim()
                 ? 'No audit records match your search.'
                 : 'No audit events have been recorded for this institution.'}
           </div>
         )}
         <TablePagination
           rowsPerPageOptions={[5,10,25,50]} component="div"
-          count={filtered.length} rowsPerPage={rowsPerPage} page={page}
+          count={total} rowsPerPage={rowsPerPage} page={page}
           onPageChange={(_, p) => setPage(p)}
           onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value,10)); setPage(0) }}
           sx={{ borderTop: '1px solid rgba(255,255,255,0.07) !important' }}

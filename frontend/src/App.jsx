@@ -1,27 +1,28 @@
-import { Component } from 'react'
+import { Component, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ROUTES } from './config/route'
-import SignInPage from './pages/auth/signInPage.jsx'
-import SignUpPage from './pages/auth/signUpPage.jsx'
-import PasswordReset from './pages/auth/passwordReset.jsx'
 import ProtectedRoute from './components/protectedRoute.jsx'
-import SuperAdminDashboard from './features/Superadmin/Dashboard.jsx'
-import SuperAdminAuditLogs from './features/Superadmin/AuditLogs.jsx'
-import SuperAdminSystemManagement from './features/Superadmin/SystemManagement.jsx'
-import SuperAdminAccountManagement from './features/Superadmin/AccountManagement.jsx'
-import FacultyWorkspacePage from './components/FacultyWorkspacePage.jsx'
-import FacultyDashboardPage from './features/roles/Faculty/Dashboard.jsx'
-import AdminDashboard from './features/roles/Admin/Dashboard.jsx'
-import AdminAuditLogs from './features/roles/Admin/AuditLogs.jsx'
-import AdminAccountManagement from './features/roles/Admin/AccountManagement.jsx'
-import AdminAcademicStructure from './features/roles/Admin/AcademicStructure.jsx'
-import AdminSyllabusFormat from './features/roles/Admin/SyllabusFormat.jsx'
-import AdminKnowledgeBase from './features/roles/Admin/KnowledgeBased.jsx'
-// 1. Import your new Landing Page
-import LandingPage from './pages/LandingPage.jsx' 
-import BillingOnboarding from './pages/billing/BillingOnboarding.jsx'
-import LegalPage from './pages/legal/LegalPage.jsx'
+import LandingPage from './pages/LandingPage.jsx'
 import AtlasErrorHost from './components/AtlasErrorHost.jsx'
+import RouteSkeleton from './components/RouteSkeleton.jsx'
+
+const SignInPage = lazy(() => import('./pages/auth/signInPage.jsx'))
+const SignUpPage = lazy(() => import('./pages/auth/signUpPage.jsx'))
+const PasswordReset = lazy(() => import('./pages/auth/passwordReset.jsx'))
+const SuperAdminDashboard = lazy(() => import('./features/Superadmin/Dashboard.jsx'))
+const SuperAdminAuditLogs = lazy(() => import('./features/Superadmin/AuditLogs.jsx'))
+const SuperAdminSystemManagement = lazy(() => import('./features/Superadmin/SystemManagement.jsx'))
+const SuperAdminAccountManagement = lazy(() => import('./features/Superadmin/AccountManagement.jsx'))
+const FacultyWorkspacePage = lazy(() => import('./components/FacultyWorkspacePage.jsx'))
+const FacultyDashboardPage = lazy(() => import('./features/roles/Faculty/Dashboard.jsx'))
+const AdminDashboard = lazy(() => import('./features/roles/Admin/Dashboard.jsx'))
+const AdminAuditLogs = lazy(() => import('./features/roles/Admin/AuditLogs.jsx'))
+const AdminAccountManagement = lazy(() => import('./features/roles/Admin/AccountManagement.jsx'))
+const AdminAcademicStructure = lazy(() => import('./features/roles/Admin/AcademicStructure.jsx'))
+const AdminSyllabusFormat = lazy(() => import('./features/roles/Admin/SyllabusFormat.jsx'))
+const AdminKnowledgeBase = lazy(() => import('./features/roles/Admin/KnowledgeBased.jsx'))
+const BillingOnboarding = lazy(() => import('./pages/billing/BillingOnboarding.jsx'))
+const LegalPage = lazy(() => import('./pages/legal/LegalPage.jsx'))
 
 class FacultyWorkspaceErrorBoundary extends Component {
   state = { error: null }
@@ -69,6 +70,7 @@ function App() {
   return (
     <BrowserRouter>
       <AtlasErrorHost />
+      <Suspense fallback={<RouteSkeleton />}>
       <Routes>
         {/* 2. Set the Landing Page as the root route */}
         <Route path="/" element={<LandingPage />} />
@@ -230,6 +232,7 @@ function App() {
         {/* 3. Optional: Redirect unknown routes back to the landing page */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </BrowserRouter>
   )
 }
