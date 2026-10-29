@@ -585,7 +585,6 @@ class LLMService:
         row['label'] = spec.label
         row['model'] = self.models[name]
         row['configured'] = True
-        row['key_hint'] = api_key[-4:] if api_key else ''
         row['cooldown_seconds'] = max(key_cooldown_remaining(name, api_key), provider_cooldown_remaining(name))
         return self._apply_cooldown(row)
 
