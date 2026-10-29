@@ -255,10 +255,19 @@ def embed_documents_batch(texts: list) -> list:
     return _encode(texts)
 
 
+_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+
+
 def embed_query(text: str) -> list:
     """Embed a query string with the BGE asymmetric instruction prefix."""
-    instruction = "Represent this sentence for searching relevant passages: "
-    return _encode([instruction + text])[0]
+    return embed_queries([text])[0]
+
+
+def embed_queries(texts: list) -> list:
+    """Embed search queries in one batch, with the same prefix as embed_query."""
+    if not texts:
+        return []
+    return _encode([_QUERY_INSTRUCTION + text for text in texts])
 
 
 # ── Internal helpers ─────────────────────────────────────────────────────────
@@ -536,6 +545,7 @@ def course_semantic_search(
     course,          # Course model instance
     top_k: int = 5,
     selected_doc_ids: list | None = None,   # list of records_id UUID strings
+    query_vec: list | None = None,
 ) -> list:
     """
     Search child-chunk embeddings for one course's sidebar uploads.
@@ -554,7 +564,8 @@ def course_semantic_search(
         if not course_id:
             return []
 
-        query_vec = embed_query(query)
+        if not query_vec:
+            query_vec = embed_query(query)
 
         child_qs = (
             ChildChunk.objects

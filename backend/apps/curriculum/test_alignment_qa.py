@@ -4,7 +4,12 @@ from apps.curriculum.assessment_qa import (
     apply_source_results,
     approval_blockers,
     check_against_blueprint,
+    grouped_source_check_prompt,
+    pack_source_batches,
     parse_source_results,
+    run_grouped_source_checks,
+    source_check_prompt,
+    verdicts_without_passages,
 )
 from apps.curriculum.consistency_checker import (
     apply_topic_judgments,
@@ -227,3 +232,46 @@ class AssessmentQaTests(SimpleTestCase):
         self.assertFalse(failed['ready_to_approve'])
         self.assertTrue(approval_blockers(failed, {}))
         self.assertEqual(approval_blockers(failed, {'item-1': 'Faculty kept the item.'}), [])
+
+    def test_short_topics_share_one_model_call(self):
+        batches = [
+            {'topic': 'History', 'items': [{'item_id': '1', 'item_number': 1, 'question_text': 'Q1'}], 'passages': 'PASSAGE ONE'},
+            {'topic': 'Trees', 'items': [{'item_id': '2', 'item_number': 2, 'question_text': 'Q2'}], 'passages': 'PASSAGE TWO'},
+        ]
+        groups = pack_source_batches(batches, size=8)
+        self.assertEqual(len(groups), 1)
+        _system, user = grouped_source_check_prompt(groups[0])
+        self.assertLess(user.index('PASSAGE ONE'), user.index('Trees'))
+        self.assertIn('PASSAGE TWO', user)
+        calls = []
+
+        def complete(group):
+            calls.append([row['topic'] for row in group])
+            return '{"results": [{"item_id": "1", "verdict": "supported", "evidence": "a"}, {"item_id": "2", "verdict": "supported", "evidence": "b"}]}'
+
+        results, errors = run_grouped_source_checks(groups, complete, workers=1)
+        self.assertEqual(calls, [['History', 'Trees']])
+        self.assertEqual(errors, [])
+        self.assertEqual({row['item_id'] for row in results}, {'1', '2'})
+
+    def test_separate_groups_can_run_together(self):
+        groups = [
+            [{'topic': 'History', 'items': [{'item_id': '1'}], 'passages': 'one'}],
+            [{'topic': 'Trees', 'items': [{'item_id': '2'}], 'passages': 'two'}],
+        ]
+
+        def complete(group):
+            item_id = group[0]['items'][0]['item_id']
+            return '{"results": [{"item_id": "%s", "verdict": "supported", "evidence": "ok"}]}' % item_id
+
+        results, errors = run_grouped_source_checks(groups, complete, workers=2)
+        self.assertEqual(errors, [])
+        self.assertEqual({row['item_id'] for row in results}, {'1', '2'})
+
+    def test_missing_passages_skip_the_model(self):
+        verdicts = verdicts_without_passages([{'item_id': 'item-9'}])
+        self.assertEqual(verdicts[0]['verdict'], 'unsupported')
+        system, user = source_check_prompt('History', [{'item_id': '1', 'question_text': 'Q'}], 'A passage.')
+        self.assertIn('JSON only', system)
+        self.assertIn('History', user)
+        self.assertIn('A passage.', user)

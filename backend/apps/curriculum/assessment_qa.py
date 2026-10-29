@@ -1,12 +1,20 @@
 """Score saved assessment items against the TOS blueprint and source passages.
 
-Bloom labels and item counts are compared in code. A second model call only
-judges whether the keyed answer is supported by the retrieved passages.
+Bloom labels and item counts are compared in code. A model call only judges
+whether the keyed answer is supported by the retrieved passages. Short topics
+share one call, and those calls run together.
 """
 import json
+import logging
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from apps.curriculum.consistency_checker import titles_match, verb_levels
+
+logger = logging.getLogger(__name__)
+
+SOURCE_CHECK_WORKERS = 3
+_PASSAGE_CHAR_LIMIT = 1600
 
 BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
 SOURCE_LABELS = {'supported', 'unsupported', 'contradicted'}
@@ -208,9 +216,55 @@ def source_batches(report, size=8):
     return batches
 
 
-def source_check_prompt(topic, items, passages):
+def pack_source_batches(batches, size=8):
+    """Join topic batches into one model call until the next batch would pass `size` items.
+
+    ``source_batches`` already slices a long topic. This only combines shorter ones.
+    """
+    packed = []
+    current = []
+    count = 0
+    for batch in batches or []:
+        item_count = len(batch.get('items') or [])
+        if item_count <= 0:
+            continue
+        if current and count + item_count > size:
+            packed.append(current)
+            current = []
+            count = 0
+        current.append(batch)
+        count += item_count
+    if current:
+        packed.append(current)
+    return packed
+
+
+def verdicts_without_passages(items):
+    """Skip the model when a topic has nothing to judge the answer against."""
+    verdicts = []
+    for item in items or []:
+        item_id = str(item.get('item_id') or '')
+        if not item_id:
+            continue
+        verdicts.append({
+            'item_id': item_id,
+            'verdict': 'unsupported',
+            'evidence': 'No source passage was retrieved for this topic.',
+        })
+    return verdicts
+
+
+def _clip_passages(text, limit=_PASSAGE_CHAR_LIMIT):
+    text = str(text or '').strip()
+    if len(text) <= limit:
+        return text
+    clipped = text[:limit].rsplit(' ', 1)[0].strip()
+    return (clipped or text[:limit]) + '…'
+
+
+def _item_payload(items):
     payload = []
-    for item in items:
+    for item in items or []:
         choices = item.get('choices') or []
         rendered = []
         for index, choice in enumerate(choices):
@@ -224,26 +278,81 @@ def source_check_prompt(topic, items, passages):
             'correct_answer': item.get('correct_answer'),
             'answer_key': item.get('answer_key'),
         })
+    return payload
+
+
+def grouped_source_check_prompt(groups):
+    """One prompt for several topics. Each item is judged only on its own passages."""
+    blocks = []
+    for group in groups or []:
+        passages = _clip_passages(group.get('passages')) or '(no passages retrieved)'
+        blocks.append(
+            f"Topic: {group.get('topic') or 'General'}\n\n"
+            f"SOURCE PASSAGES:\n{passages}\n\n"
+            f"ITEMS:\n{json.dumps(_item_payload(group.get('items')), ensure_ascii=False)}"
+        )
     system = (
         'You check whether assessment answers are supported by the source passages. '
+        'Judge each item only against the passages under its own topic. '
         'Reply with JSON only, no markdown.'
     )
-    user = f"""Topic: {topic}
-
-SOURCE PASSAGES:
-{passages or '(no passages retrieved)'}
-
-ITEMS:
-{json.dumps(payload, ensure_ascii=False, indent=2)}
-
-For each item decide one verdict:
-- supported: the keyed answer is stated in the passages or follows from them in one step
-- unsupported: the passages do not contain enough to confirm the keyed answer
-- contradicted: the passages state the opposite of the keyed answer
-
-Return {{"results": [{{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", "evidence": "<one sentence>"}}]}}
-"""
+    user = (
+        "\n\n".join(blocks)
+        + "\n\nFor each item decide one verdict:\n"
+        "- supported: the keyed answer is stated in that topic's passages or follows from them in one step\n"
+        "- unsupported: those passages do not contain enough to confirm the keyed answer\n"
+        "- contradicted: those passages state the opposite of the keyed answer\n\n"
+        'Return {"results": [{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", '
+        '"evidence": "<one sentence>"}]}'
+    )
     return system, user
+
+
+def source_check_prompt(topic, items, passages):
+    return grouped_source_check_prompt([{
+        'topic': topic,
+        'items': items,
+        'passages': passages,
+    }])
+
+
+def run_grouped_source_checks(groups, complete, workers=SOURCE_CHECK_WORKERS):
+    """Run one model call per packed group. ``complete(group)`` returns the raw reply."""
+    pending = [group for group in (groups or []) if group]
+    if not pending:
+        return [], []
+
+    def one(group):
+        return parse_source_results(complete(group))
+
+    worker_count = max(1, min(int(workers or 1), len(pending)))
+    if worker_count == 1:
+        return _collect_group_results(pending, one)
+
+    results = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=worker_count) as pool:
+        futures = {pool.submit(one, group): group for group in pending}
+        for future in as_completed(futures):
+            _take_group_result(futures[future], future.result, results, errors)
+    return results, errors
+
+
+def _collect_group_results(groups, one):
+    results = []
+    errors = []
+    for group in groups:
+        _take_group_result(group, lambda: one(group), results, errors)
+    return results, errors
+
+
+def _take_group_result(group, call, results, errors):
+    topics = ', '.join(str(row.get('topic') or 'topic') for row in group)
+    try:
+        results.extend(call())
+    except Exception as exc:
+        logger.exception('Assessment source check failed for %s', topics)
+        errors.append(f'{topics}: {exc}')
 
 
 def parse_source_results(raw):
