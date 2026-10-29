@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.curriculum.docx_builders import build_tos_docx
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
     _build_sectioned_assessment_payload,
@@ -538,3 +539,66 @@ Wear closed shoes in the laboratory.
         ])
         self.assertEqual(content['tla_chapters'][0]['topics'], 'Orientation')
         self.assertEqual(content['tla_chapters'][0]['ilo'], 'Install an OS')
+
+
+class TosExportDocumentTests(SimpleTestCase):
+    """The standalone ToS download follows the institutional form."""
+
+    def _text(self, document):
+        parts = [paragraph.text for paragraph in document.paragraphs]
+        for table in document.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    parts.append(cell.text)
+        return '\n'.join(parts)
+
+    def test_form_names_the_examination_and_uses_course_fields(self):
+        exams = [
+            {'examLabel': 'Prelim', 'preparedBy': 'Prof. One'},
+            {'examLabel': 'Midterm Examination', 'preparedBy': 'Prof. Two'},
+            {'examLabel': 'Finals', 'preparedBy': 'Prof. Three'},
+        ]
+        data = {
+            'course_code': 'IT 321',
+            'course_title': 'Analytics Techniques and Tools',
+            'semester_year': 'First Semester, AY 2026 - 2027',
+            # Stale course values must not reach the form's letterhead.
+            'college': 'SOME OTHER COLLEGE',
+            'program': 'BatStateU-Lipa Campus',
+            'document_title': 'JUNK DOCUMENT TITLE',
+            'tos': [
+                {
+                    **exam,
+                    'topics': [
+                        {
+                            'topic': 'Predictive Analytics',
+                            'ilos': ['ILO1'],
+                            'hours_class': 8,
+                            'hours_min': 72,
+                            'weight': 50,
+                            'bloom_items': {'remember': 5, 'understand': 10},
+                            'bloom_pct': {'remember': 33.3, 'understand': 66.7},
+                            'total_points': 50,
+                        }
+                    ],
+                }
+                for exam in exams
+            ],
+        }
+
+        text = self._text(build_tos_docx(data))
+
+        for title in ('Preliminary Examination', 'Midterm Examination', 'Final Examination'):
+            self.assertIn(title, text)
+        self.assertIn('TABLE OF SPECIFICATIONS', text)
+        self.assertIn('COURSE CODE : IT 321', text)
+        self.assertIn('COURSE TITLE: Analytics Techniques and Tools', text)
+        self.assertIn('Prof. One', text)
+        self.assertIn('Predictive Analytics', text)
+        self.assertIn('Prepare', text)
+        self.assertIn('Checked and Verified by:', text)
+        self.assertIn('Approved by:', text)
+        self.assertIn('*ILO - Intended Learning Outcomes', text)
+        self.assertNotIn('SOME OTHER COLLEGE', text)
+        self.assertNotIn('BatStateU-Lipa Campus', text)
+        self.assertNotIn('JUNK DOCUMENT TITLE', text)
