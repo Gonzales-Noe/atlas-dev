@@ -247,7 +247,7 @@ export const SYLLABUS_SECTION_BLUEPRINTS = [
   {
     key: 'tla-activities',
     label: 'Teaching, Learning, and Assessment (TLA) Activities',
-    description: 'The weekly teaching, learning, and assessment plan and the assessment method schedule across the 17 weeks of the term.',
+    description: 'The weekly teaching, learning, and assessment plan and the assessment method schedule across the 18 weeks of the term.',
     aliases: ['tlaactivities', 'tlactivities', 'schedule', 'weeklyschedule', 'courseoutline'],
     groups: [],
     tables: [
@@ -260,13 +260,13 @@ export const SYLLABUS_SECTION_BLUEPRINTS = [
       {
         key: 'assessment-schedule',
         title: 'Table 2: Assessment Method',
-        columnGroups: [{ title: 'Assessment Schedule', span: 18 }],
+        columnGroups: [{ title: 'Assessment Schedule', span: 19 }],
         subGroups: [
           { title: 'Distribution', span: 1 },
-          { title: 'Week No.', span: 17 },
+          { title: 'Week No.', span: 18 },
         ],
-        columns: ['Distribution', ...Array.from({ length: 17 }, (_, i) => String(i + 1))],
-        defaultRows: Array.from({ length: 6 }, () => Array.from({ length: 18 }, () => '')),
+        columns: ['Distribution', ...Array.from({ length: 18 }, (_, i) => String(i + 1))],
+        defaultRows: Array.from({ length: 6 }, () => Array.from({ length: 19 }, () => '')),
       },
     ],
   },

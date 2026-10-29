@@ -392,11 +392,15 @@ def _fit_topic_spans(spans: list, term_weeks: int) -> list:
         return sum(items)
 
     while total() > term_weeks and items:
+        # Drop an extra one-week topic before flattening a heavier two-week topic.
+        if len(items) > 1 and items[-1] == 1:
+            items.pop()
+            continue
         heavy = next((index for index in range(len(items) - 1, -1, -1) if items[index] == 2), None)
         if heavy is not None:
             items[heavy] = 1
-        else:
-            items.pop()
+            continue
+        items.pop()
     while total() < term_weeks:
         light = next((index for index, span in enumerate(items) if span == 1), None)
         if light is not None:
@@ -421,11 +425,17 @@ def _week_labels(spans: list) -> list:
 
 
 _ORIENTATION_TITLE = "Class Orientation"
+_EXAM_WEEK_TITLE = "Final Examination and Submission of Requirements"
 
 
 def _is_orientation_title(title: str) -> bool:
     lowered = (title or "").strip().lower()
     return lowered in {"class orientation", "introduction to the course", "orientation"} or lowered.startswith("class orientation")
+
+
+def _is_exam_week_title(title: str) -> bool:
+    lowered = (title or "").strip().lower()
+    return "final examination" in lowered or "submission of requirements" in lowered
 
 
 def assign_topic_weeks(raw: str, term_weeks: int = 18, pad_to_term: bool = True) -> str:
@@ -434,23 +444,28 @@ def assign_topic_weeks(raw: str, term_weeks: int = 18, pad_to_term: bool = True)
     The first row is always Class Orientation on week 1. Content topics start
     again at week 1, so week 1 appears twice. Each later line is
     ``{week label}\\t{title}``. A light topic is ``10``. A heavier topic is
-    ``3-4``. Together the content labels cover week 1 through ``term_weeks``
-    when ``pad_to_term`` is set. Internship plans are not padded to 18.
+    ``3-4``. Content labels cover week 1 through week 17 when the term is 18.
+    Week 18 is the final examination, not a topic. Internship plans are not
+    padded to 18 and do not gain that examination row.
     """
     parsed = [
         (span, title)
         for span, title in _parse_topic_plan(raw)
-        if not _is_orientation_title(title)
+        if not _is_orientation_title(title) and not _is_exam_week_title(title)
     ]
     spans = [span for span, _title in parsed]
     titles = [title for _span, title in parsed]
-    fitted = _fit_topic_spans(spans, term_weeks) if pad_to_term else (
+    reserve_exam = bool(pad_to_term and term_weeks >= 18)
+    target = max(1, term_weeks - 1) if reserve_exam else term_weeks
+    fitted = _fit_topic_spans(spans, target) if pad_to_term else (
         [2 if span == 2 else 1 for span in spans] or [1]
     )
     lines = [f"1\t{_ORIENTATION_TITLE}"]
     for index, label in enumerate(_week_labels(fitted)):
         title = titles[index] if index < len(titles) else ""
         lines.append(f"{label}\t{title}".rstrip())
+    if reserve_exam:
+        lines.append(f"{term_weeks}\t{_EXAM_WEEK_TITLE}")
     return "\n".join(lines)
 
 
@@ -1053,7 +1068,9 @@ OUTPUT — Return the assessment using exactly this structure:
         ),
         'topics': (
             "Topics / Reading List for {course_name}. First line is the topic title. "
-            "Following indented lines are subtopic titles. Last unindented line is the activity title. "
+            "A one-week topic is that title plus one indented subtopic. No activity. "
+            "A two-week topic is 1 to 3 topic titles, each with 1 or 2 indented subtopics, "
+            "then a blank line and one activity title. Only one activity. "
             "Titles only. No sentences."
         ),
         'topic_outcome': (
@@ -1064,10 +1081,11 @@ OUTPUT — Return the assessment using exactly this structure:
         ),
         'week_plan': (
             "Weekly topic plan for {course_name}. One line per content topic. "
-            "Do not include Class Orientation. "
+            "Do not include Class Orientation. Do not include the final examination. "
             "Each line is 1 or 2, then a tab, then the topic title. "
             "1 is one week. 2 is a heavier topic that merges two weeks. "
-            "The numbers must add up to 18. The first content topic is still week 1. "
+            "The numbers must add up to 17. Week 18 is not a topic. "
+            "The first content topic is still week 1. "
             "Titles only. No sentences. Do not write week numbers or the word weeks."
         ),
         'contact': (
@@ -1165,6 +1183,25 @@ OUTPUT — Return the assessment using exactly this structure:
             )
             if extra_instructions:
                 user += f"\n\n{extra_instructions}"
+            return system, user
+
+        if section == "topics":
+            system = (
+                "You write one Topics / Reading List cell for a university course. "
+                "Reply with titles only. No sentences. Do not repeat these instructions."
+            )
+            user = (
+                f"Course: {course_name}\n"
+                f"Course code: {course_code or 'N/A'}\n\n"
+                "A one-week topic is the topic title, then one indented subtopic. No activity.\n"
+                "A two-week topic is 1 to 3 topic titles. Under each title, indent 1 or 2 subtopic titles. "
+                "Then a blank line and one activity title for the whole cell. Only one activity.\n"
+                "Do not put an activity on a one-week topic.\n"
+                "First line is the topic title. Titles only. No sentences. Do not write week numbers.\n"
+            )
+            if extra_instructions:
+                user += f"\n{extra_instructions}\n"
+            user += f"\nTopics for {course_name}:"
             return system, user
 
         if section == "topic_outcome":
