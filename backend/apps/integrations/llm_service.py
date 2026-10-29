@@ -89,7 +89,9 @@ PROVIDERS = list(PROVIDER_SPECS) + ['ollama']
 # "auto" means: start with DEFAULT_LLM_PROVIDER and walk the chain.
 ACCEPTED_PROVIDER_CHOICES = ['auto'] + PROVIDERS + list(LEGACY_PROVIDER_ALIASES)
 
-REQUEST_TIMEOUT = 120
+# Connect fails fast so a dead host does not hold the next account. The read
+# budget still covers a normal completion.
+REQUEST_TIMEOUT = (8, 90)
 MIN_COMPLETION_TOKENS = 1024
 COOLDOWN_SECONDS = {
     'rate_limited': 60,
@@ -728,7 +730,9 @@ class LLMService:
                     extra_body=extra_body, api_key=api_key,
                 )
             except ProviderError as exc:
-                if exc.kind in ('auth', 'quota', 'incomplete'):
+                # An account limit or a cut-off reply will not improve on another
+                # model of the same key. The next account is the next request.
+                if exc.kind in ('auth', 'quota', 'rate_limited', 'incomplete'):
                     raise
                 logger.warning("LLM provider '%s' model '%s' failed: %s", provider, candidate, exc)
                 last_error = exc
@@ -811,6 +815,10 @@ class LLMService:
             remember_key_quota(provider, api_key, snapshot)
         else:
             remember_provider_quota(provider, snapshot)
+        if response.ok and api_key and snapshot.get('status') == 'limited':
+            pause = snapshot.get('reset_in_seconds')
+            seconds = max(1, int(round(pause))) if pause and pause > 0 else COOLDOWN_SECONDS['rate_limited']
+            _start_key_cooldown(provider, api_key, seconds, 'limit reached')
 
         if not response.ok:
             retry_after = response.headers.get('retry-after')
