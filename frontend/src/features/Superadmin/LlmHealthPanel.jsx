@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import api from '../../config/api'
 import { GlassCard, PrimaryBtn, StatusChip } from '../../components/ui'
 
@@ -103,12 +103,25 @@ function returnText(row) {
 }
 
 const EMPTY_TRAFFIC = { concurrent_users: 0, window_seconds: 120, by_role: [] }
+const VISIBLE_ACCOUNT_ROWS = 4
+
+function visibleAccountListHeight(list) {
+  const rows = list.querySelectorAll(':scope > .llm-account-row')
+  const visible = Math.min(VISIBLE_ACCOUNT_ROWS, rows.length)
+  if (!visible) return null
+  let height = 0
+  for (let i = 0; i < visible; i += 1) height += rows[i].getBoundingClientRect().height
+  return Math.ceil(height)
+}
 
 export default function LlmHealthPanel() {
   const [providers, setProviders] = useState([])
   const [traffic, setTraffic] = useState(EMPTY_TRAFFIC)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const accountListRef = useRef(null)
+  const [accountListHeight, setAccountListHeight] = useState(null)
+  const [accountScrollGutter, setAccountScrollGutter] = useState(0)
 
   const loadTraffic = useCallback(() => {
     api.get('/integrations/traffic/')
@@ -142,6 +155,43 @@ export default function LlmHealthPanel() {
 
   const minutes = Math.round((traffic.window_seconds || 120) / 60)
   const accounts = monitoredAccounts(providers)
+  const accountsScroll = accounts.length > VISIBLE_ACCOUNT_ROWS
+  const accountLayoutKey = accounts.map(row => (
+    `${row.id}:${row.status}:${row.detail || ''}:${row.tokens_remaining}:${row.requests_remaining}`
+  )).join('|')
+
+  useLayoutEffect(() => {
+    const list = accountListRef.current
+    if (!list || !accountsScroll) {
+      setAccountListHeight(null)
+      setAccountScrollGutter(0)
+      return undefined
+    }
+    const measure = () => {
+      const next = visibleAccountListHeight(list)
+      setAccountListHeight(prev => (prev === next ? prev : next))
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    list.querySelectorAll(':scope > .llm-account-row').forEach(row => observer.observe(row))
+    return () => observer.disconnect()
+  }, [accountLayoutKey, accountsScroll])
+
+  useLayoutEffect(() => {
+    const list = accountListRef.current
+    if (!list || !accountsScroll || !accountListHeight) {
+      setAccountScrollGutter(0)
+      return undefined
+    }
+    const measureGutter = () => {
+      const gutter = list.offsetWidth - list.clientWidth
+      setAccountScrollGutter(prev => (prev === gutter ? prev : gutter))
+    }
+    measureGutter()
+    const observer = new ResizeObserver(measureGutter)
+    observer.observe(list)
+    return () => observer.disconnect()
+  }, [accountLayoutKey, accountsScroll, accountListHeight])
 
   return (
     <>
@@ -151,7 +201,19 @@ export default function LlmHealthPanel() {
           grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
           gap: 16px;
           margin-bottom: 16px;
-          align-items: start;
+          align-items: stretch;
+        }
+        .llm-account-scroll {
+          overflow-x: hidden;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255,255,255,0.28) transparent;
+        }
+        .llm-account-scroll::-webkit-scrollbar { width: 6px; }
+        .llm-account-scroll::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.28);
+          border-radius: 99px;
         }
         .llm-account-row {
           display: grid;
@@ -186,7 +248,7 @@ export default function LlmHealthPanel() {
         }
       `}</style>
       <div className="llm-health-split">
-        <GlassCard title="Concurrent users" style={{ marginBottom: 0 }}>
+        <GlassCard title="Concurrent users" style={{ marginBottom: 0, height: '100%' }}>
           <div style={{ color: '#F0F0F2', fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>
             {traffic.concurrent_users}
           </div>
@@ -207,7 +269,7 @@ export default function LlmHealthPanel() {
               {loading ? 'Checking' : 'Check again'}
             </PrimaryBtn>
           )}
-          style={{ marginBottom: 0, minWidth: 0 }}
+          style={{ marginBottom: 0, minWidth: 0, height: '100%' }}
         >
           <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
             Groq and OpenRouter list the original key, then key 1 and key 2. Cloudflare and Ollama follow.
@@ -220,38 +282,47 @@ export default function LlmHealthPanel() {
           )}
           {accounts.length > 0 && (
             <div>
-              <div className="llm-account-row llm-account-head">
+              <div
+                className="llm-account-row llm-account-head"
+                style={accountScrollGutter ? { paddingRight: accountScrollGutter } : undefined}
+              >
                 <div>Account</div>
                 <div>Status</div>
                 <div>Unused</div>
                 <div>Returns</div>
               </div>
-              {accounts.map(row => {
-                const unused = unusedText(row)
-                const note = noteText(row)
-                return (
-                  <div key={row.id} className="llm-account-row">
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{accountName(row)}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{accountMeta(row) || '—'}</div>
+              <div
+                ref={accountListRef}
+                className={accountsScroll ? 'llm-account-scroll' : undefined}
+                style={accountsScroll && accountListHeight ? { maxHeight: accountListHeight } : undefined}
+              >
+                {accounts.map(row => {
+                  const unused = unusedText(row)
+                  const note = noteText(row)
+                  return (
+                    <div key={row.id} className="llm-account-row">
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{accountName(row)}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{accountMeta(row) || '—'}</div>
+                      </div>
+                      <div>
+                        <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
+                        {unused.secondary && (
+                          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
+                        )}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
+                        <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
+                      </div>
+                      {note && <div className="llm-account-note">{note}</div>}
                     </div>
-                    <div>
-                      <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
-                      {unused.secondary && (
-                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
-                      )}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
-                      <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
-                    </div>
-                    {note && <div className="llm-account-note">{note}</div>}
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           )}
         </GlassCard>
