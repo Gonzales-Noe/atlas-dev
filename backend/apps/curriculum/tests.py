@@ -7,6 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.curriculum.docx_builders import build_tos_docx
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
+    _exam_wording,
     _items_from_model_text,
     _module_teaching_text,
     _build_plain_assessment_docx,
@@ -735,3 +736,16 @@ class ModuleTeachingTextTests(SimpleTestCase):
         )
         items = _items_from_model_text(raw)
         self.assertEqual([item['item_number'] for item in items], [1])
+
+    def test_exam_wording_drops_source_citations(self):
+        self.assertEqual(
+            _exam_wording('According to the module, which concern is about safety?'),
+            'Which concern is about safety?',
+        )
+        self.assertEqual(
+            _exam_wording('The module lists safety, but not advertising.'),
+            'Safety, but not advertising.',
+        )
+        self.assertNotIn('introduction', _exam_wording(
+            'What benefit is mentioned in the HCI introduction?'
+        ).lower())

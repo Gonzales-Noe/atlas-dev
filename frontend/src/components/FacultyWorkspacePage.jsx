@@ -9022,11 +9022,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               Verb: {item.bloom_verb}
                             </Typography>
                           )}
-                          {!!item.matched_module_title && (
-                            <Typography variant="caption" display="block" sx={{ color: '#8a5a00', mt: 0.35 }}>
-                              Grounded on module: {item.matched_module_title}{item.matched_module_week ? ` (Week ${item.matched_module_week})` : ''}
-                            </Typography>
-                          )}
                           {(item.choices || []).slice(0, 4).length > 0 && (
                             <Stack spacing={0.35} sx={{ mt: 0.9 }}>
                               {(item.choices || []).slice(0, 4).map((choice, choiceIndex) => (

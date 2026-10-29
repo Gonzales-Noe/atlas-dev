@@ -2004,10 +2004,10 @@ def _align_generated_section_to_blueprint(generated_section, blueprint_section):
                 'bloom_level': blueprint_item.get('bloom_level') or '',
                 'bloom_verb': blueprint_item.get('bloom_verb') or '',
                 'ilo_refs': blueprint_item.get('ilo_refs') or [],
-                'question_text': question,
-                'choices': choices,
+                'question_text': _exam_wording(question),
+                'choices': [_exam_wording(choice) for choice in choices],
                 'correct_answer': str(source.get('correct_answer') or blueprint_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
-                'answer_key': str(source.get('answer_key') or '').strip(),
+                'answer_key': _exam_wording(source.get('answer_key') or ''),
                 'points': _to_int(source.get('points'), 0),
             }
         )
@@ -2045,6 +2045,29 @@ def _is_placeholder_question(question_text):
     if not text or text.lower() in {'...', 'tbd', 'na', 'n/a'}:
         return True
     return bool(_PLACEHOLDER_QUESTION.match(text))
+
+
+_SOURCE_CITE = re.compile(
+    r'(?i)\b(?:according to|based on|as (?:stated|described|mentioned|explained) in|'
+    r'mentioned in|described in|from)\s+(?:the\s+)?'
+    r'(?:module|lesson|passage|course(?:\s+material)?|text|introductory module|hci introduction)\b[:,]?\s*'
+)
+_SOURCE_SUBJECT = re.compile(
+    r'(?i)\b(?:the|this)\s+(?:module|lesson|passage|course material|text)\s+'
+    r'(?:says|states|lists|explains|describes|mentions|highlights|notes)\s+(?:that\s+)?'
+)
+_GROUNDED_LABEL = re.compile(r'(?i)\bgrounded on (?:the )?module:?\s*')
+
+
+def _exam_wording(text):
+    """Drop citations of the module or the passage. The stem should read as an exam item."""
+    cleaned = _GROUNDED_LABEL.sub('', str(text or ''))
+    cleaned = _SOURCE_CITE.sub('', cleaned)
+    cleaned = _SOURCE_SUBJECT.sub('', cleaned)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip(' ,;')
+    if not cleaned:
+        return str(text or '').strip()
+    return cleaned[0].upper() + cleaned[1:]
 
 
 def _coerce_generated_item_fields(item):
@@ -2625,10 +2648,10 @@ def _assessment_detail_payload(assessment):
                 'bloom_level': metadata.get('bloom_level') or '',
                 'bloom_verb': metadata.get('bloom_verb') or '',
                 'ilo_refs': metadata.get('ilo_refs') or [],
-                'question_text': item.question_text,
-                'choices': metadata.get('choices') or [],
+                'question_text': _exam_wording(item.question_text),
+                'choices': [_exam_wording(choice) for choice in (metadata.get('choices') or [])],
                 'correct_answer': metadata.get('correct_answer') or '',
-                'answer_key': metadata.get('answer_key') or '',
+                'answer_key': _exam_wording(metadata.get('answer_key') or ''),
                 'points': _to_int(metadata.get('points'), 0),
                 'matched_module_id': metadata.get('matched_module_id'),
                 'matched_module_title': metadata.get('matched_module_title') or '',
@@ -3104,7 +3127,9 @@ Requirements:
 6. If relation context is provided, the item should be meaningfully related but not a duplicate.
 7. The slot has no question yet. Write a new question_text and four real choices. Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
 8. Put the explanation of the correct choice in answer_key.
-9. The keyed answer must be stated in the reference material or the matched module text. Do not name a standard, scale, method, or principle that text does not name.
+9. Write a college exam stem for the blueprint bloom_level. Remember asks which fact is true. Understand asks what the idea means. Apply, Analyze, Evaluate, and Create use a short new situation like the source, not the source's own example.
+10. The correct choice must follow from the reference material. Do not name a standard, scale, method, or principle that text does not name.
+11. Do not write according to the module, the passage, the lesson, or the course. The answer_key must not cite them either.
 """
 
         llm = LLMService()
@@ -3166,11 +3191,11 @@ Requirements:
             'question_text': (
                 existing_item.question_text
                 if existing_item and regenerate_choices_only
-                else str(parsed_item.get('question_text') or '').strip()
+                else _exam_wording(parsed_item.get('question_text'))
             ),
             'choices': _normalize_choices(parsed_item.get('choices')),
             'correct_answer': str(parsed_item.get('correct_answer') or 'A').strip()[:1].upper() or 'A',
-            'answer_key': str(parsed_item.get('answer_key') or '').strip(),
+            'answer_key': _exam_wording(parsed_item.get('answer_key')),
             'points': max(0, _to_int(parsed_item.get('points'), _to_int(target_item_blueprint.get('points'), 0))),
         }
 
@@ -3403,8 +3428,7 @@ Requirements:
     )
 
     system_prompt = (
-        "You write multiple-choice assessment items from the supplied course text. "
-        "Reply with JSON only. No markdown."
+        "You write college examination items. Reply with JSON only. No markdown."
     )
     providers_unavailable = False
     topic_passages = {}
@@ -3452,21 +3476,25 @@ Requirements:
             "Course brief:",
             (course_brief or "No course brief.").strip(),
             "",
-            "Module lesson:",
+            "Facts the answer must follow:",
             excerpt or "None",
             "",
-            "Uploaded passages:",
+            "Source examples. Invent a similar case. Do not copy these:",
             passages or "None",
             "",
-            f"Write {count} items, one per slot, in this order.",
+            f"Write {count} college exam items, one per slot, in this order.",
             slot_json,
             "",
             'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
             "Keep each slot's item_number, bloom_level, bloom_verb, and ilo_refs.",
-            "Use bloom_verb in the stem when it is set. Assess ilo_text when it is set.",
-            "Write the keyed answer from the module lesson or the uploaded passages, and still return every slot.",
-            "Do not name a standard, scale, method, or principle that text does not name.",
-            "Exactly 4 choices. correct_answer is A, B, C, or D. answer_key is one sentence.",
+            "Match bloom_level. Remember: which fact is true. Understand: what the idea means.",
+            "Apply: use the idea in a new situation. Analyze: explain what is happening in a new case.",
+            "Evaluate: judge a decision in a new case. Create: propose a design for a new case.",
+            "Higher levels need a short new situation like the source examples, not a recall of the source's own example.",
+            "The correct choice must follow from the facts. Do not add a standard or method the facts do not name.",
+            "Do not write according to the module, the passage, the lesson, or the course.",
+            "Each item asks a different question. Stem under 40 words. Each choice under 14 words.",
+            "Exactly 4 choices. correct_answer is A, B, C, or D. answer_key is one sentence with no source citation.",
             "No placeholder text. JSON only.",
         ])
         return "\n".join(lines)
