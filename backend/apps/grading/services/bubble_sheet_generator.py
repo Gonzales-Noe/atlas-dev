@@ -2,15 +2,19 @@
 BubbleSheetGeneratorService
 ============================
 Exact mm-based bubble-sheet PDF generator. Long bond paper (8.5" x 13",
-~215.9 x 330.2 mm) with 2" header / 1" footer margins.
+~215.9 x 330.2 mm) with 2" header / 1" footer margins. Those bands hold the
+institution header and footer images uploaded by the admin; bubbles and
+ArUco markers stay in the inner 10" so a letterhead never shifts the scan grid.
 Origin is ReportLab's bottom-left; _sy() converts spec top-origin to RL Y.
 
 Corner fiducials are OpenCV ArUco DICT_4X4_50 markers (IDs 0=TL, 1=TR, 2=BR, 3=BL)
 so the scanner can identify each corner instead of guessing generic black squares.
 """
 
+import base64
 import io
 import math
+import re
 from typing import Any
 
 try:
@@ -164,11 +168,79 @@ C_BLACK    = (0.0, 0.0, 0.0)
 C_DARK_HDR = (0.133, 0.133, 0.133)
 C_BORDER   = (0.35, 0.35, 0.35)
 
+# Letterhead sits inside the reserved bands, inset so it cannot touch the
+# ArUco markers that start at CONTENT_TOP and end at CONTENT_BOT + FID_W.
+BRAND_SIDE_MM = 6.0
+BRAND_HEADER_TOP_MM = 2.5
+BRAND_HEADER_GAP_MM = 1.5
+BRAND_FOOTER_GAP_MM = 1.5
+BRAND_FOOTER_BOTTOM_MM = 2.0
+_DATA_IMAGE_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,(.*)", re.DOTALL)
+
 FONT_N = "Helvetica"
 FONT_B = "Helvetica-Bold"
 
 CAPACITY = 100
 ROWS_PER_COL = CAPACITY // 2
+
+
+def _institution_image_urls(template) -> tuple[str, str]:
+    """Header and footer data-URLs for the template's institution.
+
+    Missing course, missing customization, or a generator run outside Django
+    (sample scripts) all return empty strings so the sheet still prints.
+    """
+    course_id = getattr(template, "course_id", None)
+    if not course_id:
+        course = getattr(template, "course", None)
+        course_id = getattr(course, "course_id", None) or getattr(course, "pk", None)
+    if not course_id:
+        return "", ""
+    try:
+        from apps.integrations.models import Course, InstitutionCustomization
+
+        institution_id = (
+            Course.objects.filter(pk=course_id)
+            .values_list("institution_id", flat=True)
+            .first()
+        )
+        if not institution_id:
+            return "", ""
+        row = (
+            InstitutionCustomization.objects.filter(institution_id=institution_id)
+            .values_list("header_image_url", "footer_image_url")
+            .first()
+        )
+    except Exception:
+        return "", ""
+    if not row:
+        return "", ""
+    return (row[0] or ""), (row[1] or "")
+
+
+def _image_reader_from_data_url(url):
+    if not isinstance(url, str) or not url.strip().startswith("data:image"):
+        return None
+    match = _DATA_IMAGE_RE.match(url.strip())
+    if not match:
+        return None
+    try:
+        raw = base64.b64decode(match.group(1), validate=False)
+    except Exception:
+        return None
+    if not raw:
+        return None
+    try:
+        from PIL import Image
+        from reportlab.lib.utils import ImageReader
+
+        image = Image.open(io.BytesIO(raw))
+        image.load()
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGBA")
+        return ImageReader(image)
+    except Exception:
+        return None
 
 
 class BubbleSheetGeneratorService:
@@ -214,6 +286,8 @@ class BubbleSheetGeneratorService:
         # Centre the grid inside the available space
         y0 = avl_top + (avl_h - grid_h) / 2.0
 
+        # Paint the letterhead first so markers and bubbles always stay on top.
+        self._draw_institution_branding(c, template)
         self._draw_fiducials(c, layout)
         self._draw_left_zone(c, template, nidcols, y0, layout)
         self._draw_answer_zone(c, total, nchoice, y0, layout, columns)
@@ -232,6 +306,55 @@ class BubbleSheetGeneratorService:
             if i * ipc + 1 <= total
         ]
         return buf.read(), layout
+
+    # ── Institution letterhead ─────────────────────────────────────────────
+
+    def _draw_institution_branding(self, c, template):
+        header_url, footer_url = _institution_image_urls(template)
+        header = _image_reader_from_data_url(header_url)
+        footer = _image_reader_from_data_url(footer_url)
+        box_x = BRAND_SIDE_MM
+        box_w = PAGE_W_MM - 2 * BRAND_SIDE_MM
+        if header is not None:
+            self._draw_fitted_image(
+                c, header, box_x, BRAND_HEADER_TOP_MM, box_w,
+                HEADER_MM - BRAND_HEADER_TOP_MM - BRAND_HEADER_GAP_MM,
+            )
+        if footer is not None:
+            footer_top = PAGE_H_MM - FOOTER_MM + BRAND_FOOTER_GAP_MM
+            self._draw_fitted_image(
+                c, footer, box_x, footer_top, box_w,
+                FOOTER_MM - BRAND_FOOTER_GAP_MM - BRAND_FOOTER_BOTTOM_MM,
+            )
+
+    def _draw_fitted_image(self, c, reader, box_x, box_y_top, box_w, box_h):
+        """Center a letterhead inside a mm box, keeping its aspect ratio."""
+        try:
+            pixel_w, pixel_h = reader.getSize()
+        except Exception:
+            return
+        if pixel_w <= 0 or pixel_h <= 0 or box_w <= 0 or box_h <= 0:
+            return
+        draw_w = box_w
+        draw_h = box_w * (pixel_h / pixel_w)
+        if draw_h > box_h:
+            draw_h = box_h
+            draw_w = box_h * (pixel_w / pixel_h)
+        x = box_x + (box_w - draw_w) / 2.0
+        y_top = box_y_top + (box_h - draw_h) / 2.0
+        try:
+            c.drawImage(
+                reader,
+                mm2pt(x),
+                mm2pt(_sy(y_top + draw_h)),
+                width=mm2pt(draw_w),
+                height=mm2pt(draw_h),
+                mask="auto",
+                preserveAspectRatio=True,
+                anchor="c",
+            )
+        except Exception:
+            return
 
     # ── Fiducials ──────────────────────────────────────────────────────────
 
