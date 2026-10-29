@@ -1,6 +1,7 @@
 from django.test import SimpleTestCase
 
 from apps.curriculum.assessment_qa import (
+    SOURCE_CHECK_PACK,
     apply_source_results,
     approval_blockers,
     check_against_blueprint,
@@ -8,6 +9,7 @@ from apps.curriculum.assessment_qa import (
     pack_source_batches,
     parse_source_results,
     run_grouped_source_checks,
+    source_check_max_tokens,
     source_check_prompt,
     verdicts_without_passages,
 )
@@ -322,6 +324,26 @@ class AssessmentQaTests(SimpleTestCase):
         results, errors = run_grouped_source_checks(groups, complete, workers=2)
         self.assertEqual(errors, [])
         self.assertEqual({row['item_id'] for row in results}, {'1', '2'})
+
+    def test_truncated_reply_keeps_finished_verdicts(self):
+        raw = (
+            '{"results": ['
+            '{"item_id": "1", "verdict": "unsupported", "evidence": "Not in the text."},'
+            '{"item_id": "2", "verdict": "supported", "evidence": "The text names it."}'
+        )
+        parsed = parse_source_results(raw)
+        self.assertEqual([row['item_id'] for row in parsed], ['1', '2'])
+        self.assertEqual(parsed[0]['verdict'], 'unsupported')
+
+    def test_long_topic_is_split_so_each_item_can_get_a_verdict(self):
+        batches = []
+        for start in range(4):
+            items = [{'item_id': str(start * 8 + offset)} for offset in range(8)]
+            batches.append({'topic': 'Usability', 'items': items, 'passages': 'x' * 40})
+        groups = pack_source_batches(batches, size=SOURCE_CHECK_PACK, char_budget=9000)
+        self.assertEqual(len(groups), 4)
+        self.assertGreaterEqual(source_check_max_tokens(8), 8 * 120)
+        self.assertLessEqual(source_check_max_tokens(40), 2048)
 
     def test_missing_passages_skip_the_model(self):
         verdicts = verdicts_without_passages([{'item_id': 'item-9'}])

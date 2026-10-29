@@ -7,6 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.curriculum.docx_builders import build_tos_docx
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
+    _module_teaching_text,
     _build_plain_assessment_docx,
     _build_sectioned_assessment_payload,
     _coerce_generated_item_fields,
@@ -702,3 +703,21 @@ class AssessmentDocxFormatTests(SimpleTestCase):
         self.assertNotIn('1. A', text)
         self.assertNotIn('Because the first choice is right.', text)
         self.assertFalse(self._has_page_break(document))
+
+
+class ModuleTeachingTextTests(SimpleTestCase):
+    def test_lesson_text_includes_subtopic_body(self):
+        module = SimpleNamespace(
+            module_title='Usability',
+            module_content={
+                'introduction': 'HCI studies how people use systems.',
+                'learning_objectives': ['Explain usability.'],
+                'subtopics': [{
+                    'title': 'Evaluation',
+                    'content': 'A usability test watches people attempt tasks.',
+                }],
+            },
+        )
+        text = _module_teaching_text(module)
+        self.assertIn('usability test watches people', text)
+        self.assertIn('Explain usability.', text)
