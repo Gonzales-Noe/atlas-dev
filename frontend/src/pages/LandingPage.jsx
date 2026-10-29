@@ -897,9 +897,6 @@ export default function LandingPage() {
                 View Packages
               </button>
             </div>
-            <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', lineHeight: 1.6, margin: '1.25rem 0 0', maxWidth: 560 }}>
-              Each university receives its own private ATLAS deployment. Capacity is sized to the campus, then expanded when more faculty or another campus needs access.
-            </p>
 
             {/* Floating stats chips */}
             <div className="stats-chips" style={{ display: 'flex', gap: '.5rem', marginTop: '2rem', flexWrap: 'wrap' }}>
