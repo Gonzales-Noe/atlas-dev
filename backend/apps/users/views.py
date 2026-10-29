@@ -1690,12 +1690,69 @@ class UnenrollCourseView(APIView):
         })
 
 
+def _contact_client_ip(request):
+    from apps.users.middleware import _client_ip
+    return _client_ip(request)
+
+
+def _contact_origin_allowed(request):
+    """Accept a browser Origin for this site. A loopback Origin only counts from loopback."""
+    from urllib.parse import urlparse
+
+    origin = (request.META.get('HTTP_ORIGIN') or '').strip()
+    peer = (request.META.get('REMOTE_ADDR') or '').strip()
+    loopback_peer = peer in {'127.0.0.1', '::1'}
+    if not origin:
+        return loopback_peer
+    host = (urlparse(origin).hostname or '').lower()
+    if not host:
+        return False
+    if host in {'localhost', '127.0.0.1', '::1'}:
+        return loopback_peer
+    allowed = set()
+    for item in getattr(settings, 'CORS_ALLOWED_ORIGINS', []) or []:
+        allowed.add((urlparse(str(item)).hostname or '').lower())
+    for item in getattr(settings, 'ALLOWED_HOSTS', []) or []:
+        item = str(item).strip().lower()
+        if item and item != '*':
+            allowed.add(item.split(':')[0])
+    allowed.discard('localhost')
+    allowed.discard('127.0.0.1')
+    allowed.discard('::1')
+    return host in allowed
+
+
+def _reserve_contact_mail(ip, email):
+    """Fail closed. Caps one address, one IP, and the whole inbox."""
+    from django.core.cache import cache
+
+    checks = (
+        (f'atlas:contact-mail:ip:{ip}', 5, 3600),
+        (f'atlas:contact-mail:addr:{email}', 3, 86400),
+        ('atlas:contact-mail:global', 30, 3600),
+    )
+    try:
+        for key, limit, window in checks:
+            if cache.add(key, 1, timeout=window):
+                continue
+            try:
+                count = cache.incr(key)
+            except ValueError:
+                cache.set(key, 1, timeout=window)
+                continue
+            if count > limit:
+                return False
+        return True
+    except Exception:
+        logger.exception('Contact mail limit unavailable; refusing the send.')
+        return False
+
+
 class ContactFormView(APIView):
     """Public endpoint for the landing-page contact form.
 
-    Validates the submission, emails a branded notification to the ATLAS
-    support team, and sends a branded confirmation back to the user. The
-    endpoint is intentionally unauthenticated — anyone can reach out.
+    Validates the submission, emails the ATLAS inbox, and sends an automatic
+    reply to the address on the form. The endpoint is unauthenticated.
     """
 
     authentication_classes = []
@@ -1705,15 +1762,37 @@ class ContactFormView(APIView):
         from django.utils import timezone as tz
         from .email_service import send_contact_confirmation, send_contact_notification
 
+        content_type = (request.content_type or '').split(';', 1)[0].strip().lower()
+        if content_type != 'application/json':
+            return Response({'detail': 'Unsupported content type.'}, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+        if not _contact_origin_allowed(request):
+            return Response(
+                {'detail': 'This form cannot be submitted from that site.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = ContactFormSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
+        # Same response as a real submit so the field is not useful as a probe.
+        if data.get('leave_blank'):
+            return Response(
+                {'detail': 'Message received. Our team will get back to you within 24 hours.'},
+                status=status.HTTP_201_CREATED,
+            )
+
+        if not _reserve_contact_mail(_contact_client_ip(request), data['email']):
+            return Response(
+                {'detail': 'Too many attempts. Please wait and try again.'},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         submitted_at = tz.now().strftime('%B %d, %Y at %I:%M %p UTC')
 
-        # Notify the ATLAS team (best-effort; never fail the submission).
         try:
-            send_contact_notification(
+            notified = send_contact_notification(
                 name=data['name'],
                 email=data['email'],
                 institution=data['institution'],
@@ -1722,8 +1801,13 @@ class ContactFormView(APIView):
             )
         except Exception:
             logger.exception('Failed to send contact notification for %s', data['email'])
+            notified = False
+        if not notified:
+            return Response(
+                {'detail': 'Could not send your message. Please try again or email us directly.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
-        # Send a confirmation back to the user (best-effort).
         try:
             send_contact_confirmation(name=data['name'], email=data['email'])
         except Exception:

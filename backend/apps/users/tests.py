@@ -15,6 +15,7 @@ from apps.users.middleware import DatabaseReconnectMiddleware
 
 from apps.integrations.models import UserProfile
 from apps.users.serializers import (
+    ContactFormSerializer,
     FacultyCreateSerializer,
     ProfileSettingsUpdateSerializer,
     UserAccountSerializer,
@@ -407,3 +408,99 @@ class InstitutionCustomizationSaveTests(SimpleTestCase):
         })
 
         self.assertEqual(customization.syllabus_sections[0]['label'], 'Course Policies')
+
+
+@override_settings(
+    SECURE_SSL_REDIRECT=False,
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'contact-form-tests',
+        },
+    },
+)
+class ContactFormSecurityTests(SimpleTestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_message_html_and_control_characters_are_stripped(self):
+        serializer = ContactFormSerializer(data={
+            'name': 'Ann\r\nBcc: spam@example.com',
+            'email': 'Ann@School.edu',
+            'institution': 'State U<script>',
+            'message': 'Hello <img src=x onerror="alert(1)">\n\nThanks',
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.assertNotIn('\n', serializer.validated_data['name'])
+        self.assertNotIn('<', serializer.validated_data['name'])
+        self.assertNotIn('<', serializer.validated_data['institution'])
+        self.assertNotIn('<', serializer.validated_data['message'])
+        self.assertEqual(serializer.validated_data['email'], 'ann@school.edu')
+
+    def test_long_message_and_link_spam_are_rejected(self):
+        too_long = ContactFormSerializer(data={
+            'name': 'Ann',
+            'email': 'ann@school.edu',
+            'institution': 'State U',
+            'message': 'a' * 2001,
+        })
+        self.assertFalse(too_long.is_valid())
+        links = ContactFormSerializer(data={
+            'name': 'Ann',
+            'email': 'ann@school.edu',
+            'institution': 'State U',
+            'message': ' '.join(f'https://spam.example/{i}' for i in range(6)),
+        })
+        self.assertFalse(links.is_valid())
+
+    def _post(self, **extra):
+        client = APIClient()
+        payload = {
+            'name': 'Ann',
+            'email': 'ann@school.edu',
+            'institution': 'State U',
+            'message': 'We would like a demo.',
+        }
+        payload.update(extra.pop('payload', {}))
+        return client.post('/api/users/contact/', payload, format='json', **extra)
+
+    @patch('apps.users.email_service.send_contact_notification', return_value=True)
+    def test_honeypot_accepts_without_sending(self, notify):
+        response = self._post(payload={'leave_blank': 'https://spam.example'})
+        self.assertEqual(response.status_code, 201)
+        notify.assert_not_called()
+
+    @patch('apps.users.email_service.send_contact_notification', return_value=True)
+    def test_foreign_origin_is_rejected(self, _notify):
+        response = self._post(HTTP_ORIGIN='https://evil.example')
+        self.assertEqual(response.status_code, 403)
+
+    @patch('apps.users.email_service.send_contact_notification', return_value=True)
+    def test_spoofed_loopback_origin_is_rejected(self, _notify):
+        response = self._post(HTTP_ORIGIN='http://127.0.0.1', REMOTE_ADDR='203.0.113.8')
+        self.assertEqual(response.status_code, 403)
+
+    def test_form_encoded_post_is_rejected(self):
+        response = APIClient().post(
+            '/api/users/contact/',
+            {'name': 'Ann', 'email': 'ann@school.edu', 'institution': 'State U', 'message': 'Hi'},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, 415)
+
+    @patch('apps.users.email_service.send_contact_notification', return_value=True)
+    @patch('apps.users.email_service.send_contact_confirmation', return_value=True)
+    def test_sixth_send_from_one_address_is_limited(self, confirm, notify):
+        for index in range(5):
+            response = self._post(payload={'email': f'person{index}@school.edu', 'message': f'Demo {index}'})
+            self.assertEqual(response.status_code, 201, response.content)
+        blocked = self._post(payload={'email': 'person6@school.edu', 'message': 'Demo 6'})
+        self.assertEqual(blocked.status_code, 429)
+        self.assertEqual(notify.call_count, 5)
+        self.assertEqual(confirm.call_count, 5)
+
+    @patch('apps.users.middleware.cache.add', side_effect=RuntimeError('cache down'))
+    def test_contact_is_refused_when_the_limiter_is_down(self, _add):
+        response = self._post()
+        self.assertEqual(response.status_code, 429)

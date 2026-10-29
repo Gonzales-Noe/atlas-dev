@@ -35,7 +35,7 @@ function CheckIcon() {
 const NAV_LINKS = [
   { label: 'HOME', to: '/' },
   { label: 'SIGN UP', to: '/signup' },
-  { label: 'PRICING', to: '/pricing' },
+  { label: 'PACKAGES', to: '/pricing' },
   { label: 'CONTACT', to: '/contact' },
 ];
 

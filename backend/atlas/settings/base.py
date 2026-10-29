@@ -147,7 +147,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'no-reply@atlas.local')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL') or os.environ.get('EMAIL_HOST_USER') or 'no-reply@atlas.local'
 EMAIL_HOST = os.environ.get('EMAIL_HOST', 'localhost')
 EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587'))
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
@@ -162,7 +162,7 @@ BASE_URL = os.environ.get('BASE_URL', 'http://localhost:5173').rstrip('/')
 
 # Comma-separated list of recipients that should receive contact-form emails.
 ATLAS_CONTACT_EMAILS = os.environ.get(
-    'ATLAS_CONTACT_EMAILS', 'atlasdegdev@gmail.com'
+    'ATLAS_CONTACT_EMAILS', 'atlas.hybrid.dev@gmail.com'
 )
 
 # Optional override for the logo URL embedded in emails. Falls back to the

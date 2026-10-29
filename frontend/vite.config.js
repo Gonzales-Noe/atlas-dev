@@ -36,6 +36,8 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
           changeOrigin: true,
           secure: false,
+          // Local API runs with production TLS settings and trusts this header.
+          headers: { 'X-Forwarded-Proto': 'https' },
         },
       },
     },
