@@ -60,7 +60,7 @@ def _decode_data_url(url):
         return None
 
 
-def _cell_text(cell, value, *, size=_BODY_PT, bold=False, align=None, color=None):
+def _cell_text(cell, value, *, size=_BODY_PT, bold=False, italic=False, align=None, color=None):
     cell.text = ''
     para = cell.paragraphs[0]
     if align is not None:
@@ -71,6 +71,7 @@ def _cell_text(cell, value, *, size=_BODY_PT, bold=False, align=None, color=None
     run = para.add_run(_text(value))
     run.font.size = Pt(size)
     run.font.bold = bold
+    run.font.italic = italic
     if color is not None:
         run.font.color.rgb = color
     return cell
@@ -195,29 +196,34 @@ def apply_page_header_footer(doc, branding=None):
 
 
 def _add_page_number_field(paragraph):
-    """Insert a PAGE / NUMPAGES field so the footer shows 'Page x of y'."""
-    from docx.oxml.ns import qn
-    from docx.oxml import OxmlElement
+    """Insert PAGE / NUMPAGES so the footer reads "Page x of y".
 
-    def _field(instr):
-        begin = OxmlElement('w:fldChar')
-        begin.set(qn('w:fldCharType'), 'begin')
-        instr_el = OxmlElement('w:instrText')
-        instr_el.set(qn('xml:space'), 'preserve')
-        instr_el.text = instr
-        end = OxmlElement('w:fldChar')
-        end.set(qn('w:fldCharType'), 'end')
-        return begin, instr_el, end
+    The three field characters must stay in order inside their own run;
+    without the separator Word prints the field result at the run's position
+    instead of between the literal words.
+    """
+    def _field_run(instruction):
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
 
-    run = paragraph.add_run()
-    run.font.size = Pt(8)
-    run.font.color.rgb = GREY
+        run = paragraph.add_run()
+        run.font.size = Pt(8)
+        run.font.color.rgb = GREY
+        for kind, text in (('begin', None), ('instr', instruction),
+                           ('separate', None), ('end', None)):
+            if kind == 'instr':
+                element = OxmlElement('w:instrText')
+                element.set(qn('xml:space'), 'preserve')
+                element.text = text
+            else:
+                element = OxmlElement('w:fldChar')
+                element.set(qn('w:fldCharType'), kind)
+            run._r.append(element)
+
     paragraph.add_run('Page ').font.size = Pt(8)
-    for element in _field(' PAGE '):
-        run._r.append(element)
+    _field_run(' PAGE ')
     paragraph.add_run(' of ').font.size = Pt(8)
-    for element in _field(' NUMPAGES '):
-        run._r.append(element)
+    _field_run(' NUMPAGES ')
 
 
 # ── Table of Specifications ──────────────────────────────────────────────────
@@ -629,42 +635,441 @@ def add_ilo_framework_matrix(doc, data, *, title='ILO – Framework Matrix'):
     return True
 
 
-# ── document assembly ────────────────────────────────────────────────────────
+# ── standalone institutional TOS form ────────────────────────────────────────
+#
+# The faculty "Download ToS" export is the university's one-page TOS form, not
+# the compact grid embedded in the syllabus. The layout follows the
+# institutional TOS template: letterhead, "TABLE OF SPECIFICATIONS" with the
+# examination and semester, course code/title, the 18-column grid, the
+# signatory block, and the footnotes.
 
-def _institutional_heading_block(doc, data):
+TOS_FONT = 'Times New Roman'
+
+# Printed when the admin has not uploaded a header template for the institution.
+_TOS_LETTERHEAD_LINES = (
+    ('Republic of the Philippines', 12, True),
+    ('BATANGAS STATE UNIVERSITY', 20, True),
+    ('The National Engineering University', 12, True),
+    ('Lipa Campus', 12, True),
+    ('A. Tanco Drive, Marawoy, Lipa City, Batangas, Philippines 4217', 10, True),
+    ('Tel Nos. : (+63 43) 980-0385; 980-0392 to local 3130', 10, False),
+    ('E-mail Address: cics.lipa@g.batstate-u.edu.ph | Website Address: http://www.batstate-u.edu.ph', 10, False),
+    ('College of Informatics and Computing Sciences', 12, True),
+)
+
+_TOS_PAGE_WIDTH_IN = 11.69
+_TOS_PAGE_HEIGHT_IN = 8.27
+_TOS_MARGIN_IN = 0.45
+_TOS_CONTENT_WIDTH_IN = _TOS_PAGE_WIDTH_IN - 2 * _TOS_MARGIN_IN
+
+_TOS_GRID_PT = 7.5
+_TOS_HEAD_PT = 7.5
+_TOS_BLOOM_PT = 6.5
+
+# Topic | ILOs | class hrs | exam minutes | weight | 6 x (items, %) | points
+_TOS_COLUMN_WIDTHS = (
+    1.78, 0.9, 0.44, 0.49, 0.66,
+    0.78, 0.34, 0.78, 0.34, 0.78, 0.34,
+    0.78, 0.34, 0.78, 0.34, 0.78, 0.34,
+    0.64,
+)
+
+# The examination period is what the user picked when the TOS was created, so
+# the title always names it instead of a generic "Examination".
+_TOS_EXAM_TITLES = (
+    ('prelim', 'Preliminary Examination'),
+    ('midterm', 'Midterm Examination'),
+    ('final', 'Final Examination'),
+)
+
+
+def _set_tos_document_font(doc):
+    from docx.oxml.ns import qn
+
+    style = doc.styles['Normal']
+    style.font.name = TOS_FONT
+    style.font.size = Pt(9)
+    rpr = style.element.get_or_add_rPr()
+    rfonts = rpr.get_or_add_rFonts()
+    for attribute in ('w:ascii', 'w:hAnsi', 'w:cs', 'w:eastAsia'):
+        rfonts.set(qn(attribute), TOS_FONT)
+    style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.space_after = Pt(0)
+    style.paragraph_format.line_spacing = 1.0
+
+
+def _tos_paragraph(doc, text='', *, size=9, bold=False, italic=False,
+                   align=WD_ALIGN_PARAGRAPH.CENTER, before=0, after=0):
     para = doc.add_paragraph()
-    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = para.add_run(_text(data.get('university_name')).replace('\n', ' | '))
-    run.bold = True
-    run.font.size = Pt(11)
+    para.alignment = align
+    para.paragraph_format.space_before = Pt(before)
+    para.paragraph_format.space_after = Pt(after)
+    run = para.add_run(_text(text))
+    run.font.name = TOS_FONT
+    run.font.size = Pt(size)
+    run.bold = bold
+    run.italic = italic
+    return para
 
-    for key, size, bold in (('college', 10, False), ('program', 10, True)):
-        value = _text(data.get(key))
-        if value:
-            sub = doc.add_paragraph(value)
-            sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            if sub.runs:
-                sub.runs[0].font.size = Pt(size)
-                sub.runs[0].bold = bold
 
-    doc.add_paragraph()
+def _configure_tos_page(doc):
+    section = doc.sections[0]
+    section.orientation = WD_ORIENT.LANDSCAPE
+    section.page_width = Inches(_TOS_PAGE_WIDTH_IN)
+    section.page_height = Inches(_TOS_PAGE_HEIGHT_IN)
+    section.top_margin = Inches(0.5)
+    section.bottom_margin = Inches(0.45)
+    section.left_margin = Inches(_TOS_MARGIN_IN)
+    section.right_margin = Inches(_TOS_MARGIN_IN)
 
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title_para.add_run(_text(data.get('document_title')) or 'Course Information Syllabus (CIS)')
-    title_run.bold = True
-    title_run.font.size = Pt(14)
-    title_run.font.color.rgb = MAROON
-    doc.add_paragraph()
+
+def _render_tos_letterhead(doc, branding, *, page_break=False):
+    first = None
+    image = _decode_data_url((branding or {}).get('header_image'))
+    if image:
+        first = _add_tos_letterhead_image(doc, image)
+    if first is None:
+        for index, (text, size, bold) in enumerate(_TOS_LETTERHEAD_LINES):
+            para = _tos_paragraph(doc, text, size=size, bold=bold)
+            if index == 0:
+                first = para
+    if page_break and first is not None:
+        # Break on the first paragraph rather than an empty one: the form can
+        # end exactly at the page edge, and a trailing break would add a blank
+        # page before the next examination.
+        first.paragraph_format.page_break_before = True
+    return first
+
+
+def _add_tos_letterhead_image(doc, image_bytes):
+    from docx.image.image import Image as DocxImage
+
+    try:
+        info = DocxImage.from_blob(image_bytes)
+        width = _TOS_CONTENT_WIDTH_IN
+        height = width * info.px_height / info.px_width if info.px_width else 1.4
+        if height > 1.55:
+            height = 1.55
+            width = height * info.px_width / info.px_height
+        para = doc.add_paragraph()
+        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        para.paragraph_format.space_before = Pt(0)
+        para.paragraph_format.space_after = Pt(0)
+        para.add_run().add_picture(BytesIO(image_bytes), width=Inches(width), height=Inches(height))
+        return para
+    except Exception:  # noqa: BLE001 - an unreadable upload falls back to text
+        return None
+
+
+def _tos_exam_title(exam):
+    label = _text(exam.get('examLabel'))
+    code = _text(exam.get('examCode'))
+    for candidate in (label, code):
+        lowered = candidate.lower()
+        for needle, title in _TOS_EXAM_TITLES:
+            if needle in lowered:
+                return title
+    return label or code or 'Examination'
+
+
+def _tos_number(value):
+    """Grid value: blanks for empty/zero so the form only shows real inputs."""
+    text = _text(value)
+    if not text:
+        return ''
+    try:
+        number = float(text)
+    except (TypeError, ValueError):
+        return text
+    if number <= 0:
+        return ''
+    return str(int(number)) if number.is_integer() else f'{number:.1f}'
+
+
+def _tos_mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _tos_topic_rows(exam):
+    rows = [topic for topic in (exam.get('topics') or []) if isinstance(topic, dict)]
+    return [row for row in rows if _text(row.get('topic')) or _text(row.get('total_points'))]
+
+
+def _tos_sum(rows, key):
+    total = 0.0
+    for row in rows:
+        try:
+            total += float(row.get(key) or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _add_tos_form_grid(doc, exam):
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
+
+    topics = _tos_topic_rows(exam)
+    columns = len(_TOS_COLUMN_WIDTHS)
+    last = columns - 1
+
+    table = doc.add_table(rows=3, cols=columns)
+    table.style = 'Table Grid'
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    # ── Note row (above the column headers, as in the institutional form) ──
+    note_cells = list(table.rows[0].cells)
+    blank = note_cells[0].merge(note_cells[4])
+    _cell_text(blank, '', size=_TOS_GRID_PT)
+    note = note_cells[5].merge(note_cells[last])
+    _cell_text(
+        note,
+        'Indicate the test items that correspond to the following levels of Intended Learning Outcomes',
+        size=_TOS_GRID_PT, bold=True, italic=True,
+    )
+
+    # ── Two-row column headers ─────────────────────────────────────────────
+    top = list(table.rows[1].cells)
+    sub = list(table.rows[2].cells)
+
+    _cell_text(top[0], '', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(top[1], '*ILOs', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(top[2], 'NO. OF HRS', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(top[3], '', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(top[4], 'WEIGHT (%) **', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(top[last], 'TOTAL NO. OF POINTS', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(sub[2], 'A*', size=_TOS_HEAD_PT, bold=True)
+    _cell_text(sub[3], 'B*', size=_TOS_HEAD_PT, bold=True)
+
+    bloom_col = 5
+    for key in BLOOM_KEYS:
+        _cell_text(top[bloom_col], key.upper(), size=_TOS_BLOOM_PT, bold=True)
+        _cell_text(top[bloom_col + 1], '%', size=_TOS_BLOOM_PT, bold=True)
+        bloom_col += 2
+
+    top[0].merge(sub[0])
+    top[1].merge(sub[1])
+    top[2].merge(top[3])
+    top[4].merge(sub[4])
+    top[last].merge(sub[last])
+    bloom_col = 5
+    for _ in BLOOM_KEYS:
+        top[bloom_col].merge(sub[bloom_col])
+        top[bloom_col + 1].merge(sub[bloom_col + 1])
+        bloom_col += 2
+
+    for row in table.rows[:3]:
+        _repeat_header_row(row)
+
+    # ── Topic rows ────────────────────────────────────────────────────────
+    for topic in topics:
+        cells = table.add_row().cells
+        _cell_text(cells[0], topic.get('topic'), size=_TOS_GRID_PT)
+        _cell_text(
+            cells[1],
+            ', '.join(_text(ilo) for ilo in (topic.get('ilos') or []) if _text(ilo)),
+            size=_TOS_GRID_PT,
+        )
+        _cell_text(cells[2], _tos_number(topic.get('hours_class')), size=_TOS_GRID_PT)
+        _cell_text(cells[3], _tos_number(topic.get('hours_min')), size=_TOS_GRID_PT)
+        _cell_text(cells[4], _tos_number(topic.get('weight')), size=_TOS_GRID_PT)
+
+        items = _tos_mapping(topic.get('bloom_items'))
+        percentages = _tos_mapping(topic.get('bloom_pct'))
+        bloom_col = 5
+        for key in BLOOM_KEYS:
+            _cell_text(cells[bloom_col], _tos_number(items.get(key)), size=_TOS_GRID_PT)
+            _cell_text(cells[bloom_col + 1], _tos_number(percentages.get(key)), size=_TOS_GRID_PT)
+            bloom_col += 2
+
+        _cell_text(cells[last], _tos_number(topic.get('total_points')), size=_TOS_GRID_PT, bold=True)
+
+    # ── Total row ─────────────────────────────────────────────────────────
+    total_points = 0.0
+    for topic in topics:
+        try:
+            total_points += float(topic.get('total_points') or 0)
+        except (TypeError, ValueError):
+            pass
+
+    cells = table.add_row().cells
+    _cell_text(cells[0], 'Total', size=_TOS_GRID_PT, bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+    _cell_text(cells[1], '', size=_TOS_GRID_PT, bold=True)
+    _cell_text(cells[2], _tos_number(_tos_sum(topics, 'hours_class')), size=_TOS_GRID_PT, bold=True)
+    _cell_text(cells[3], _tos_number(_tos_sum(topics, 'hours_min')), size=_TOS_GRID_PT, bold=True)
+    _cell_text(cells[4], _tos_number(_tos_sum(topics, 'weight')), size=_TOS_GRID_PT, bold=True)
+
+    bloom_col = 5
+    for key in BLOOM_KEYS:
+        item_sum = 0.0
+        for topic in topics:
+            try:
+                item_sum += float(_tos_mapping(topic.get('bloom_items')).get(key) or 0)
+            except (TypeError, ValueError):
+                pass
+        share = (item_sum / total_points) * 100 if total_points > 0 else 0
+        _cell_text(cells[bloom_col], _tos_number(item_sum), size=_TOS_GRID_PT, bold=True)
+        _cell_text(cells[bloom_col + 1], _tos_number(round(share, 1)), size=_TOS_GRID_PT, bold=True)
+        bloom_col += 2
+
+    _cell_text(cells[last], _tos_number(total_points), size=_TOS_GRID_PT, bold=True)
+
+    _force_tos_table_geometry(table)
+    for row in table.rows:
+        for cell in row.cells:
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            for para in cell.paragraphs:
+                if para.alignment is None:
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+
+def _force_tos_table_geometry(table):
+    """Pin fixed layout, tight margins, and full-width columns.
+
+    Word otherwise redistributes the grid to fit its default cell padding,
+    which pushes the right-hand Bloom columns past the page edge.
+    """
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    total = sum(_TOS_COLUMN_WIDTHS)
+    scale = _TOS_CONTENT_WIDTH_IN / total if total else 1
+    widths = [value * scale for value in _TOS_COLUMN_WIDTHS]
+
+    table.autofit = False
+    table.allow_autofit = False
+    properties = table._tbl.tblPr
+    for tag in ('w:tblLayout', 'w:tblCellMar'):
+        for existing in properties.findall(qn(tag)):
+            properties.remove(existing)
+
+    layout = OxmlElement('w:tblLayout')
+    layout.set(qn('w:type'), 'fixed')
+    properties.insert_element_before(layout, 'w:tblCellMar', 'w:tblLook')
+
+    margins = OxmlElement('w:tblCellMar')
+    for tag, inches in (('top', 0.02), ('left', 0.035), ('bottom', 0.02), ('right', 0.035)):
+        element = OxmlElement(f'w:{tag}')
+        element.set(qn('w:w'), str(int(inches * 1440)))
+        element.set(qn('w:type'), 'dxa')
+        margins.append(element)
+    properties.insert_element_before(margins, 'w:tblLook')
+
+    for index, width in enumerate(widths):
+        table.columns[index].width = Inches(width)
+
+    for row in table.rows:
+        column = 0
+        for tc in row._tr.tc_lst:
+            span = tc.grid_span
+            cell_width = sum(widths[column:column + span])
+            tc_pr = tc.get_or_add_tcPr()
+            tc_w = tc_pr.find(qn('w:tcW'))
+            if tc_w is None:
+                tc_w = OxmlElement('w:tcW')
+                tc_pr.append(tc_w)
+            tc_w.set(qn('w:w'), str(int(cell_width * 1440)))
+            tc_w.set(qn('w:type'), 'dxa')
+            column += span
+
+
+def _add_tos_signatories(doc, exam):
+    table = doc.add_table(rows=4, cols=3)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+
+    labels = ('Prepared by:', 'Checked and Verified by:', 'Approved by:')
+    names = (
+        _text(exam.get('preparedBy')),
+        _text(exam.get('checkedBy')),
+        _text(exam.get('approvedBy')),
+    )
+    roles = ('Instructor', 'Program Chair, BSIT', 'Dean, CICS')
+
+    for index in range(3):
+        _cell_text(table.rows[0].cells[index], labels[index], size=10, align=WD_ALIGN_PARAGRAPH.LEFT)
+        _cell_text(table.rows[1].cells[index], names[index], size=10, bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+        _cell_text(table.rows[2].cells[index], roles[index], size=10, align=WD_ALIGN_PARAGRAPH.LEFT)
+        _cell_text(table.rows[3].cells[index], 'Date:', size=10, align=WD_ALIGN_PARAGRAPH.LEFT)
+
+    table.rows[1].height = Inches(0.4)
+    _force_tos_table_geometry_widths(table, [_TOS_CONTENT_WIDTH_IN / 3] * 3)
+
+
+def _force_tos_table_geometry_widths(table, widths):
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    table.autofit = False
+    table.allow_autofit = False
+    for index, width in enumerate(widths):
+        table.columns[index].width = Inches(width)
+    for row in table.rows:
+        for index, cell in enumerate(row.cells):
+            tc_pr = cell._tc.get_or_add_tcPr()
+            tc_w = tc_pr.find(qn('w:tcW'))
+            if tc_w is None:
+                tc_w = OxmlElement('w:tcW')
+                tc_pr.append(tc_w)
+            tc_w.set(qn('w:w'), str(int(widths[index] * 1440)))
+            tc_w.set(qn('w:type'), 'dxa')
+
+
+def _add_tos_notes(doc):
+    notes = (
+        '*ILO - Intended Learning Outcomes',
+        '*A - No. of hours the topic was covered in class',
+        '*B - No. of minutes alloted to answer the test item/s',
+        '**Weight (%) = (no. of  points for a given topic /total no. of points)* 100',
+    )
+    for note in notes:
+        _tos_paragraph(doc, note, size=8, align=WD_ALIGN_PARAGRAPH.LEFT)
+
+
+def _add_tos_form(doc, data, exam, branding, *, page_break=False):
+    _render_tos_letterhead(doc, branding, page_break=page_break)
+
+    _tos_paragraph(doc, 'TABLE OF SPECIFICATIONS', size=12, bold=True, before=2)
+    _tos_paragraph(doc, _tos_exam_title(exam), size=12, bold=True)
+    semester = _text(exam.get('semester')) or _text(data.get('semester_year'))
+    if semester:
+        _tos_paragraph(doc, semester, size=12, bold=True)
+
+    _tos_paragraph(
+        doc,
+        f"COURSE CODE : {_text(data.get('course_code'))}",
+        size=11, bold=True, align=WD_ALIGN_PARAGRAPH.LEFT, before=6,
+    )
+    _tos_paragraph(
+        doc,
+        f"COURSE TITLE: {_text(data.get('course_title'))}",
+        size=11, bold=True, align=WD_ALIGN_PARAGRAPH.LEFT, before=2, after=4,
+    )
+
+    _add_tos_form_grid(doc, exam)
+    _tos_paragraph(doc, '', size=2, before=2)
+    _add_tos_signatories(doc, exam)
+    _tos_paragraph(doc, '', size=2, before=2)
+    _add_tos_notes(doc)
 
 
 def build_tos_docx(data, branding=None):
-    """Standalone Table of Specifications document in landscape."""
+    """Standalone Table of Specifications form, one page per examination."""
     from docx import Document
 
+    exams = [
+        exam for exam in (data.get('tos') or [])
+        if isinstance(exam, dict)
+        and (
+            _text(exam.get('examLabel') or exam.get('examCode'))
+            or any(_text(topic.get('topic')) for topic in (exam.get('topics') or []) if isinstance(topic, dict))
+        )
+    ]
+
     doc = Document()
-    make_landscape(doc)
-    _institutional_heading_block(doc, data)
-    add_table_of_specifications(doc, data, title='Table of Specifications')
-    apply_page_header_footer(doc, branding)
+    _set_tos_document_font(doc)
+    _configure_tos_page(doc)
+    for index, exam in enumerate(exams):
+        _add_tos_form(doc, data, exam, branding or {}, page_break=index > 0)
+    apply_page_header_footer(doc, {})
     return doc
