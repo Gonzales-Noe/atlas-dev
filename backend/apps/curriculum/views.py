@@ -4977,21 +4977,69 @@ def _build_plain_module_docx(data, fallback_title='', fallback_week=None):
     return doc
 
 
+def _enrich_syllabus_for_standard_export(syllabus, course, request):
+    """Fill identity fields from the course/account when the syllabus lacks them.
+
+    The exported CIS form always shows the full course header, so anything the
+    faculty has not typed yet is taken from the course record instead of being
+    left blank when the record already knows the answer.
+    """
+    def _faculty_name():
+        user = request.user
+        return (
+            getattr(user, 'full_name', '')
+            or getattr(user, 'name', '')
+            or (user.get_full_name() if hasattr(user, 'get_full_name') else '')
+        )
+
+    data = dict(syllabus) if isinstance(syllabus, dict) else {}
+    if course is None:
+        for key, value in (
+            ('instructor_name', _faculty_name()),
+            ('instructor_email', getattr(request.user, 'email', '')),
+        ):
+            if value and not data.get(key):
+                data[key] = value
+        return data
+
+    program = course.program if getattr(course, 'program_id', None) else None
+    college = program.college if program is not None and program.college_id else None
+    defaults = {
+        'university_name': course.institution.name if course.institution_id else '',
+        'college': college.name if college else '',
+        'program': program.name if program else '',
+        'course_title': course.course_title,
+        'course_code': course.course_code,
+        'credit_hours': str(course.units) if course.units is not None else '',
+        'course_category': course.get_category_display() if hasattr(course, 'get_category_display') else '',
+        'year_level': course.year_level.display_name if course.year_level_id else '',
+        'instructor_name': _faculty_name(),
+        'instructor_email': getattr(request.user, 'email', ''),
+    }
+    if not defaults['year_level'] and getattr(course, 'section_id', None):
+        defaults['year_level'] = course.section.year_label
+    for key, value in defaults.items():
+        if value and not data.get(key):
+            data[key] = value
+    return data
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def export_syllabus_docx(request):
     """
-    Export syllabus data as a DOCX file.
+    Export syllabus data as a DOCX file in the fixed CIS format.
 
     Endpoint: POST /api/curriculum/export-syllabus-docx/
 
     Body (multipart/form-data):
         course_id     — optional UUID; if provided, export uses latest saved syllabus_content from DB
         syllabus_data — optional JSON string fallback when no saved syllabus is available
-        template      — optional DOCX/XLSX template file with {{field}} placeholders
 
-    Returns: DOCX file attachment
+    The download always uses the standard Course Information Syllabus layout;
+    uploaded templates are ignored.
     """
+
     if not _is_faculty_user(request):
         return _faculty_only_response()
 
@@ -5036,111 +5084,22 @@ def export_syllabus_docx(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
-    template_file = request.FILES.get('template')
-    template_name = (template_file.name if template_file else '').lower()
-    is_xlsx_template = template_name.endswith('.xlsx')
-
     branding = _resolve_institution_branding(course)
+    syllabus = _enrich_syllabus_for_standard_export(syllabus, course, request)
 
     try:
-        from io import BytesIO
         from django.http import HttpResponse
+        from apps.integrations.syllabus_standard import build_standard_syllabus_docx
 
         course_code = (syllabus.get('course_code') or 'syllabus').replace('/', '-').replace(' ', '_')
-
-        if is_xlsx_template:
-            # ── XLSX template: replace {{field}} in cells, return xlsx ────
-            import openpyxl
-            wb = openpyxl.load_workbook(template_file)
-
-            def _template_value_to_text(value):
-                if value is None:
-                    return ''
-                if isinstance(value, bool):
-                    return 'Yes' if value else 'No'
-                if isinstance(value, (str, int, float)):
-                    return str(value)
-                if isinstance(value, list):
-                    if all(not isinstance(item, (dict, list)) for item in value):
-                        return '\n'.join(str(item) for item in value if item is not None)
-                    return json.dumps(value, ensure_ascii=False, indent=2)
-                if isinstance(value, dict):
-                    return json.dumps(value, ensure_ascii=False, indent=2)
-                return str(value)
-
-            replacements = {
-                f'{{{{{k}}}}}': _template_value_to_text(v)
-                for k, v in syllabus.items()
-            }
-            for ws in wb.worksheets:
-                for row in ws.iter_rows():
-                    for cell in row:
-                        if isinstance(cell.value, str):
-                            new_val = cell.value
-                            for placeholder, replacement in replacements.items():
-                                new_val = new_val.replace(placeholder, replacement)
-                            new_val = re.sub(r'\{\{\s*[^{}]+\s*\}\}', '', new_val)
-                            cell.value = new_val
-            buffer = BytesIO()
-            wb.save(buffer)
-            buffer.seek(0)
-            filename = f"{course_code}_syllabus.xlsx"
-            http_response = HttpResponse(
-                buffer.getvalue(),
-                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            )
-            http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            return http_response
-
-        else:
-            # ── DOCX: field-map fill (institution template) or plain/user template ─
-            from docx import Document
-            field_map = (branding or {}).get('syllabus_field_map') or {}
-            institution_template = (branding or {}).get('syllabus_template_bytes') or b''
-            mapped_sections = field_map.get('sections') if isinstance(field_map, dict) else None
-
-            if (
-                not template_file
-                and institution_template
-                and isinstance(mapped_sections, list)
-                and mapped_sections
-            ):
-                from apps.integrations.syllabus_template_doc import fill_docx_from_field_map
-                filled = fill_docx_from_field_map(
-                    institution_template,
-                    field_map,
-                    syllabus,
-                    preview_blocks=(branding or {}).get('syllabus_preview_blocks') or [],
-                )
-                filename = f"{course_code}_syllabus.docx"
-                http_response = HttpResponse(
-                    filled,
-                    content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                )
-                http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
-                return http_response
-
-            if template_file:
-                doc = Document(template_file)
-                _fill_docx_template(doc, syllabus)
-                _append_configured_syllabus_fields(
-                    doc,
-                    syllabus,
-                    (branding or {}).get('syllabus_sections'),
-                )
-            else:
-                doc = _build_plain_syllabus_docx(syllabus, branding)
-
-            buffer = BytesIO()
-            doc.save(buffer)
-            buffer.seek(0)
-            filename = f"{course_code}_syllabus.docx"
-            http_response = HttpResponse(
-                buffer.getvalue(),
-                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            )
-            http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
-            return http_response
+        docx_bytes = build_standard_syllabus_docx(syllabus, branding)
+        filename = f"{course_code}_syllabus.docx"
+        http_response = HttpResponse(
+            docx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        )
+        http_response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return http_response
 
     except Exception as exc:
         logger.exception('Error generating DOCX for syllabus export')
@@ -5200,6 +5159,7 @@ def export_syllabus_pdf(request):
         )
 
     branding = _resolve_institution_branding(course)
+    syllabus = _enrich_syllabus_for_standard_export(syllabus, course, request)
     try:
         from apps.integrations.syllabus_export import export_syllabus_pdf as render_pdf
         from django.http import HttpResponse
