@@ -88,6 +88,17 @@ def module_max_tokens(subtopic_count):
     return min(2048, max(1800, 1000 + 160 * count))
 
 
+def assessment_batch_max_tokens(item_count):
+    """Completion room for a short multiple-choice batch.
+
+    Groq's free tier allows about 8,000 tokens per request and per minute.
+    OpenRouter's free tier is 50 requests a day, so one batch call replaces
+    a call per item. The reply is a few short JSON objects, not a chapter.
+    """
+    count = max(1, int(item_count or 1))
+    return min(1200, max(480, 160 * count))
+
+
 def map_max_tokens(row_count):
     """Digit lines only. A single index is a handful of tokens; a table is still small."""
     count = max(1, int(row_count or 1))

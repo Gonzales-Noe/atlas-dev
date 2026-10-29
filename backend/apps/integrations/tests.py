@@ -229,6 +229,34 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertGreater(key_cooldown_remaining('openrouter', 'key-a'), 0)
         self.assertEqual(key_cooldown_remaining('openrouter', 'key-b'), 0)
 
+    def test_cut_off_reply_tries_the_next_key_before_the_next_provider(self):
+        service = _service('openrouter', 'groq')
+        service.api_keys = {
+            'openrouter': ['key-a', 'key-b', 'key-c'],
+            'groq': ['groq-key'],
+            'gemma': [],
+            'cloudflare': [],
+        }
+        cut_off = MagicMock(ok=True, status_code=200, headers={})
+        cut_off.json.return_value = {
+            'choices': [{'message': {'content': ''}, 'finish_reason': 'length'}],
+        }
+        success = MagicMock(ok=True, status_code=200, headers={})
+        success.json.return_value = {'choices': [{'message': {'content': 'Draft text'}}]}
+
+        with patch.dict(os.environ, {'OPENROUTER_FALLBACK_MODELS': ''}):
+            with patch('apps.integrations.llm_service.requests.post', side_effect=[cut_off, cut_off, success]) as post:
+                text, provider_used = service.generate_response_with_fallback(
+                    [{'role': 'user', 'content': 'Hi'}],
+                    preferred_provider='openrouter',
+                    return_provider=True,
+                )
+
+        self.assertEqual((text, provider_used), ('Draft text', 'openrouter'))
+        auths = [call.kwargs['headers']['Authorization'] for call in post.call_args_list]
+        self.assertEqual(auths, ['Bearer key-a', 'Bearer key-b', 'Bearer key-c'])
+        self.assertEqual(key_cooldown_remaining('openrouter', 'key-a'), 0)
+
     def test_large_prompt_skips_groq_and_caps_its_completion_budget(self):
         service = _service('groq', 'gemma')
         big_prompt = 'x' * 4 * 9000

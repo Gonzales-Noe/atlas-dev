@@ -763,7 +763,9 @@ class LLMService:
                 )
             except ProviderError as exc:
                 last_error = exc
-                if exc.kind in ('too_large', 'incomplete'):
+                # A prompt that cannot fit this provider will not fit its other keys.
+                # An empty or cut-off reply can still succeed on the next account.
+                if exc.kind == 'too_large':
                     raise
                 if exc.kind in COOLDOWN_SECONDS:
                     _start_key_cooldown(
@@ -998,12 +1000,6 @@ class LLMService:
             except Exception as exc:
                 logger.warning("LLM provider '%s' failed: %s", provider_choice, exc)
                 failures.append(f"{provider_choice}: {exc}")
-                if getattr(exc, 'kind', None) == 'incomplete':
-                    providers_to_try = _move_ollama_next(providers_to_try, index)
-                    logger.warning(
-                        "LLM provider '%s' reply stopped; Ollama takes over when it is reachable",
-                        provider_choice,
-                    )
             index += 1
 
         raise ValueError(
