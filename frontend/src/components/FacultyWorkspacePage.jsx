@@ -90,6 +90,10 @@ const MAROON = '#16A34A'
 const MAROON_LIGHT = 'rgba(22,163,74,0.16)'
 const BG = '#0F0F12'
 
+// True while the syllabus is shown to a faculty member who is not its author:
+// every editing control inside the syllabus sections turns read-only.
+const SyllabusLockContext = React.createContext(false)
+
 const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
@@ -843,12 +847,14 @@ function filterDeliveryOptions(options, input) {
 
 function DeliveryMethodField({ value, onChange }) {
   const current = String(value || '')
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   return (
     <Autocomplete
       freeSolo
       autoHighlight
       clearOnBlur={false}
       size="small"
+      disabled={readOnlySyllabus}
       options={WEEKLY_SCHEDULE_DELIVERY_OPTIONS}
       value={current || null}
       inputValue={current}
@@ -1071,8 +1077,10 @@ function SectionCard({ title, children, action }) {
 }
 
 function LField({ label, ...props }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  const disabled = Boolean(props.disabled || readOnlySyllabus)
   return (
-    <TextField size="small" fullWidth label={label} {...props}
+    <TextField size="small" fullWidth label={label} {...props} disabled={disabled}
       InputLabelProps={{
         ...props.InputLabelProps,
         sx: { whiteSpace: 'normal', lineHeight: 1.25, ...(props.InputLabelProps?.sx || {}) },
@@ -1116,6 +1124,7 @@ const ALL_BLUEPRINT_TABLES = SYLLABUS_SECTION_BLUEPRINTS.flatMap(section => [
 function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) {
   const dataKey = ADMIN_FIXED_FIELDS[fieldKey] || fieldKey
   const locked = Boolean(rules && Object.prototype.hasOwnProperty.call(rules, dataKey))
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   if (!locked) return <LField {...props} value={value} InputProps={InputProps} helperText={helperText} />
   const fixedText = String(rules[dataKey] ?? '')
   return (
@@ -1123,7 +1132,7 @@ function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) 
       {...props}
       value={fixedText.trim() ? fixedText : value}
       disabled
-      helperText={helperText || 'Fixed by your institution'}
+      helperText={helperText || (readOnlySyllabus ? 'Read-only' : 'Fixed by your institution')}
       InputProps={{ ...InputProps, readOnly: true }}
     />
   )
@@ -1244,6 +1253,8 @@ function GenButton({ children, ...props }) {
 }
 
 function AddRowBtn({ onClick, label }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  if (readOnlySyllabus) return null
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
       sx={{ textTransform: 'none', color: MAROON, fontSize: '0.75rem', py: 0, minWidth: 0 }}>
@@ -1253,6 +1264,8 @@ function AddRowBtn({ onClick, label }) {
 }
 
 function RemoveBtn({ onClick, disabled }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  if (readOnlySyllabus) return null
   return (
     <Tooltip title="Remove">
       <span>
@@ -1274,7 +1287,8 @@ function detectFileType(file) {
   return ''
 }
 
-function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
+function InlineInput({ value, onChange, minWidth = 80, onFocus, options = {} }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   const { numeric = false, allowRange = false, allowList = false, placeholder = '' } = options
   const numericPattern = allowList
     ? /^[\d,\s]*$/
@@ -1297,6 +1311,7 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
       value={value}
       onChange={handleChange}
       onFocus={onFocus}
+      disabled={readOnlySyllabus}
       placeholder={placeholder}
       // Keep these as text inputs so browsers do not render number spinners.
       // Validation below still limits numeric cells to digits (or a numeric range for Wks).
@@ -1314,11 +1329,28 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
           '&:hover fieldset': { borderColor: MAROON },
           '&.Mui-focused fieldset': { borderColor: MAROON },
         },
+        '& .MuiInputBase-input.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
+        },
       }}
       inputProps={{
         inputMode: 'numeric',
         style: { padding: '5px 8px' },
       }}
+    />
+  )
+}
+
+function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
+  return (
+    <InlineInput
+      value={value}
+      onChange={onChange}
+      minWidth={minWidth}
+      onFocus={onFocus}
+      options={options}
     />
   )
 }
@@ -1335,6 +1367,7 @@ function sameAiField(field, selected) {
 
 function TopicsCell({ value, onChange, onPointerDown, selected }) {
   const ref = useRef(null)
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
@@ -1345,10 +1378,11 @@ function TopicsCell({ value, onChange, onPointerDown, selected }) {
     <textarea
       ref={ref}
       value={value}
+      readOnly={readOnlySyllabus}
       onChange={onChange}
       data-ai-field="true"
       onPointerDown={onPointerDown}
-      style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
+      style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: readOnlySyllabus ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
     />
   )
 }
@@ -2782,6 +2816,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   async function generateOneField(field) {
     if (!course || !field) return
+    if (course.can_edit_syllabus === false) {
+      setAiError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      return
+    }
     const source = syllabusData
     setAiGenerating(true)
     setAiError('')
@@ -2840,6 +2878,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   async function handleGenerateSection() {
+    if (course?.can_edit_syllabus === false) {
+      setAiError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      return
+    }
     let source = syllabusData
     if (activeSyllabusSectionKey === 'mapping-of-at') {
       setAiGenerating(true)
@@ -2984,6 +3026,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (course?.can_edit_syllabus === false) {
+      setSyllabusUploadError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      e.target.value = ''
+      return
+    }
     setSyllabusUploading(true)
     setSyllabusUploadError('')
     setSyllabusUploadSuccess(false)
@@ -3190,6 +3237,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return () => clearTimeout(timer)
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
+
+  // The admin assigns one faculty member to author a course's syllabus. Every
+  // other faculty handling the course sees it read-only and exports it as-is.
+  const syllabusLocked = course ? course.can_edit_syllabus === false : false
+  const syllabusOwnerName = course?.syllabus_owner_name || course?.instructor_name || ''
 
   // ── ATLAS pipeline progress (Step 11: Faculty Review & Approval) ──
   // Tracks per-module completion: auto-detected from workspace data +
@@ -3634,6 +3686,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
     setSaveError('')
+    if (course?.can_edit_syllabus === false) {
+      setIsDirty(false)
+      setSaveError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      return
+    }
     const missingRequiredSubsections = configuredSections.flatMap(section => {
       if (section.is_static) return []
       const answers = syllabusData.custom_subsections?.[section.key] || {}
@@ -6064,11 +6121,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={TABLE_TD}>
                       <textarea
                         value={item.description || ''}
+                        readOnly={syllabusLocked}
                         onChange={e => setSylArrObj(activeFw.itemsField, i, 'description', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 34) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 34) + 'px'; } }}
                         data-ai-field="true" onPointerDown={() => setAiField({ section: 'framework-mapping', label: `${activeFw.label} ${item.code || i + 1} Statement`, fieldType: 'arrayObj', arrField: activeFw.itemsField, arrIndex: i, arrObjKey: 'description' })}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '34px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '34px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
@@ -6395,11 +6453,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.outcomes || ''}
+                        readOnly={syllabusLocked}
                         data-ai-field="true" onPointerDown={() => setAiField({ section: 'topic_outcome', label: `Topic Outcomes ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' }) ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' }) ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -6480,6 +6539,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           <input
                             type="checkbox"
                             checked={plotted}
+                            disabled={syllabusLocked}
                             aria-label={`${m.name || 'Assessment method'} week ${w + 1}`}
                             onChange={e => {
                               const week = w + 1
@@ -7319,6 +7379,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexShrink: 0, position: 'relative', zIndex: 2 }}>
+                {!syllabusLocked && (
                 <Tooltip title={syllabusUploading ? (syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus…') : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
                   <span>
                     <Button
@@ -7343,6 +7404,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </Button>
                   </span>
                 </Tooltip>
+                )}
                 <Tooltip title={syllabusExporting === 'docx' ? 'Exporting…' : 'Export syllabus as DOCX'}>
                   <span>
                     <Button
@@ -7396,6 +7458,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               </Box>
             )}
+            {syllabusLocked && (
+              <Box sx={{
+                mb: 1.5, px: 1.75, py: 1.25, borderRadius: 1.5,
+                bgcolor: 'rgba(255,183,77,0.10)', border: '1px solid rgba(255,183,77,0.42)',
+                display: 'flex', alignItems: 'flex-start', gap: 1.25,
+              }}>
+                <LockIcon sx={{ color: '#FFB74D', fontSize: '1.05rem', mt: '1px', flexShrink: 0 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#FFB74D', fontWeight: 800 }}>
+                    View only
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#E5E7EB' }}>
+                    {syllabusOwnerName
+                      ? `This syllabus is maintained by ${syllabusOwnerName}. You can read and export it, and use it as the basis for your own modules.`
+                      : 'This syllabus is maintained by another faculty member. You can read and export it, and use it as the basis for your own modules.'}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
             {syllabusUploadError && (
               <AutoAlert message={syllabusUploadError} onClose={() => setSyllabusUploadError('')} sx={{ mb: 1.5 }} />
             )}
@@ -7429,11 +7510,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Typography>
               </SectionCard>
             )}
-            {renderSyllabusSection()}
-            {renderConfiguredSubsections()}
+            <SyllabusLockContext.Provider value={syllabusLocked}>
+              {renderSyllabusSection()}
+              {renderConfiguredSubsections()}
+            </SyllabusLockContext.Provider>
           </Box>
 
-          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
+          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && !syllabusLocked && (
             <Paper
               variant="outlined"
               sx={{
@@ -7466,7 +7549,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Paper>
           )}
 
-          {showSaveFooter && (
+          {showSaveFooter && !syllabusLocked && (
             <Box sx={{
               flexShrink: 0,
               bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
@@ -7497,7 +7580,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {(aiSectionFields.length > 0 || aiPipelineDrafts || aiReviewOpen) && (
+          {(aiSectionFields.length > 0 || aiPipelineDrafts || aiReviewOpen) && !syllabusLocked && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -8455,11 +8538,28 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Define assessment coverage here, then use the module matches to prepare assessments.
               </Typography>
             </Box>
-            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' } }}>
+            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' }, display: syllabusLocked ? 'none' : undefined }}>
               {saveLoading ? 'Saving…' : saveSuccess ? 'Saved' : 'Save TOS'}
             </Button>
           </Box>
-          {renderSyllabusSection('tos')}
+          {syllabusLocked && (
+            <Box sx={{
+              px: 1.75, py: 1.25, borderRadius: 1.5,
+              bgcolor: 'rgba(255,183,77,0.10)', border: '1px solid rgba(255,183,77,0.42)',
+              display: 'flex', alignItems: 'flex-start', gap: 1.25,
+            }}>
+              <LockIcon sx={{ color: '#FFB74D', fontSize: '1.05rem', mt: '1px', flexShrink: 0 }} />
+              <Typography variant="caption" sx={{ color: '#E5E7EB' }}>
+                <Box component="span" sx={{ color: '#FFB74D', fontWeight: 800 }}>View only — </Box>
+                {syllabusOwnerName
+                  ? `this table of specifications is maintained by ${syllabusOwnerName}.`
+                  : 'this table of specifications is maintained by another faculty member.'}
+              </Typography>
+            </Box>
+          )}
+          <SyllabusLockContext.Provider value={syllabusLocked}>
+            {renderSyllabusSection('tos')}
+          </SyllabusLockContext.Provider>
         </Stack>
       )
     }
