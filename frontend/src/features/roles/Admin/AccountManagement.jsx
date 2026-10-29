@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
-  InputLabel, Select, FormControl, CircularProgress, Button, Box,
+  InputLabel, Select, FormControl, CircularProgress, Button, Box, Tooltip,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
@@ -17,6 +17,8 @@ import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import CloseIcon from '@mui/icons-material/Close'
+import StarIcon from '@mui/icons-material/Star'
+import StarBorderIcon from '@mui/icons-material/StarBorder'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import {
@@ -112,6 +114,7 @@ export default function AdminAccountManagement() {
   const [removingId, setRemovingId] = useState(null)
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(null)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [syllabusOwnerSaving, setSyllabusOwnerSaving] = useState('')
   const [modalError, setModalError] = useState('')
   const [modalSuccess, setModalSuccess] = useState('')
 
@@ -203,6 +206,32 @@ export default function AdminAccountManagement() {
   })
 
   const assignmentsFor = userId => assignments.filter(item => item.faculty_id === userId)
+  // One syllabus author per course: the star is read-only while someone else owns it.
+  const courseOwnerName = courseId => (
+    courses.find(item => item.course_id === courseId)?.syllabus_owner_name || ''
+  )
+  const syllabusOwnerLockedFor = (courseId, facultyUser) => {
+    const course = courses.find(item => item.course_id === courseId)
+    if (!course?.syllabus_owner_id) return false
+    return course.syllabus_owner_id !== facultyUser?.user_id
+  }
+  // A section belongs to one faculty per course.
+  const sectionHolderFor = (courseId, sectionName) => {
+    if (!courseId || !sectionName) return null
+    return assignments.find(item => (
+      item.course_id === courseId && item.section === sectionName
+    )) || null
+  }
+  const facultyNameById = userId => {
+    const fac = faculty.find(item => item.user_id === userId)
+    return fac ? displayName(fac) : 'another faculty member'
+  }
+  const assignmentOwnerLocked = syllabusOwnerLockedFor(assignmentForm.course_id, selectedFaculty)
+  const assignmentOwnerName = courseOwnerName(assignmentForm.course_id)
+  const assignmentSectionHolder = sectionHolderFor(assignmentForm.course_id, assignmentForm.section)
+  const assignmentSectionTaken = Boolean(
+    assignmentSectionHolder && assignmentSectionHolder.faculty_id !== selectedFaculty?.user_id,
+  )
   // Courses currently assigned to the faculty member open in the Edit dialog.
   const facultyAssignments = selectedFaculty ? assignmentsFor(selectedFaculty.user_id) : []
   // jasmin-rev merged sections from faculty-assignments with the academic
@@ -343,10 +372,21 @@ export default function AdminAccountManagement() {
     setSelectedFaculty(fac)
     setAssignmentForm({
       course_id: '', course_code: '', course_title: '', description: '', section: '',
+      as_syllabus_owner: true,
     })
     setModalError('')
     setAssignmentDialog(true)
     handleMenuClose()
+  }
+
+  // The syllabus owner is per course: pre-tick the box when nobody owns it yet
+  // or when this faculty already owns it.
+  function syllabusOwnerDefaultFor(courseId, faculty) {
+    if (!courseId) return true
+    const course = courses.find(item => item.course_id === courseId)
+    if (!course) return true
+    if (!course.syllabus_owner_id) return true
+    return course.syllabus_owner_id === faculty?.user_id
   }
 
   // Pre-fill the handled section from the course's registered section block.
@@ -364,13 +404,30 @@ export default function AdminAccountManagement() {
     if (!hasCourseId && !hasNewCourse) return
     if (!assignmentForm.section) return
     setModalError('')
+    const ownerLocked = syllabusOwnerLockedFor(assignmentForm.course_id, selectedFaculty)
+    if (ownerLocked && assignmentForm.as_syllabus_owner) {
+      setModalError(
+        `The ${courses.find(item => item.course_id === assignmentForm.course_id)?.course_code || ''} syllabus is already maintained by `
+        + `${courseOwnerName(assignmentForm.course_id) || 'another faculty member'}. Clear that assignment first.`,
+      )
+      return
+    }
+    const sectionHolder = sectionHolderFor(assignmentForm.course_id, assignmentForm.section)
+    if (sectionHolder && sectionHolder.faculty_id !== selectedFaculty.user_id) {
+      setModalError(
+        `${assignmentForm.section} is already handled by ${facultyNameById(sectionHolder.faculty_id)} `
+        + 'for this course. A section can only be assigned to one faculty per course.',
+      )
+      return
+    }
     try {
       await api.post('/users/faculty-assignments/', {
         faculty_id: selectedFaculty.user_id,
         ...assignmentForm,
+        as_syllabus_owner: Boolean(assignmentForm.as_syllabus_owner) && !ownerLocked,
       })
       setAssignmentDialog(false)
-      setAssignmentForm({ course_id: '', course_code: '', course_title: '', description: '', section: '' })
+      setAssignmentForm({ course_id: '', course_code: '', course_title: '', description: '', section: '', as_syllabus_owner: true })
       setNotice('Course assigned.')
       await refreshAssignmentLists()
       // Keep the detail/edit context fresh when assigning from the dialogs.
@@ -392,6 +449,35 @@ export default function AdminAccountManagement() {
       }
       setModalError(msg || 'Failed to assign course.')
       console.error('Assign course error:', err.response?.data)
+    }
+  }
+
+  // ── Syllabus owner (PATCH /users/faculty-assignments/) ─────────────────────
+  // Only one faculty member per course writes the syllabus; the rest read it.
+  async function handleToggleSyllabusOwner(assignment, facultyUser) {
+    const isOwner = assignment.syllabus_owner_id === facultyUser.user_id
+    if (assignment.syllabus_owner_id && !isOwner) {
+      setError(
+        `The ${assignment.course_code} syllabus is already maintained by `
+        + `${courseOwnerName(assignment.course_id) || 'another faculty member'}. Clear that assignment first.`,
+      )
+      return
+    }
+    setSyllabusOwnerSaving(assignment.assignment_id)
+    setError('')
+    try {
+      await api.patch('/users/faculty-assignments/', {
+        course_id: assignment.course_id,
+        faculty_id: isOwner ? null : facultyUser.user_id,
+      })
+      setNotice(isOwner
+        ? `Syllabus owner cleared for ${assignment.course_code} — every assigned faculty can edit it again.`
+        : `${displayName(facultyUser)} now writes the ${assignment.course_code} syllabus.`)
+      await refreshAssignmentLists()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to update the syllabus owner.')
+    } finally {
+      setSyllabusOwnerSaving('')
     }
   }
 
@@ -675,6 +761,11 @@ export default function AdminAccountManagement() {
         action={<PrimaryBtn onClick={handleCreate}><AddIcon fontSize="small" /> Add Faculty</PrimaryBtn>}
       />
 
+      <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <StarIcon sx={{ fontSize: 15, color: '#FFC857' }} />
+        The starred faculty on a course writes its syllabus. Everyone else assigned to that course can open and export it, but not edit it.
+      </div>
+
       {error && (
         <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>
       )}
@@ -765,11 +856,51 @@ export default function AdminAccountManagement() {
                     {assignmentsFor(fac.user_id).length === 0 ? (
                       <span style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>None assigned</span>
                     ) : (
-                      assignmentsFor(fac.user_id).map(item => (
-                        <div key={item.assignment_id} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                          {item.course_code}{item.section ? ` · ${item.section}` : ''}
-                        </div>
-                      ))
+                      assignmentsFor(fac.user_id).map(item => {
+                        const ownsSyllabus = item.syllabus_owner_id === fac.user_id
+                        const ownerLocked = Boolean(item.syllabus_owner_id) && !ownsSyllabus
+                        const ownerName = courseOwnerName(item.course_id)
+                        return (
+                          <div key={item.assignment_id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                              {item.course_code}{item.section ? ` · ${item.section}` : ''}
+                            </span>
+                            <Tooltip
+                              arrow
+                              title={ownsSyllabus
+                                ? 'Syllabus owner — click to clear'
+                                : ownerLocked
+                                  ? `Syllabus already assigned to ${ownerName || 'another faculty member'}. Clear it from that faculty first.`
+                                  : 'Make this faculty the syllabus owner'}
+                            >
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={syllabusOwnerSaving === item.assignment_id || ownerLocked}
+                                  onClick={() => handleToggleSyllabusOwner(item, fac)}
+                                  aria-label={ownsSyllabus
+                                    ? `Remove ${displayName(fac)} as syllabus owner for ${item.course_code}`
+                                    : ownerLocked
+                                      ? `${item.course_code} syllabus is already assigned to ${ownerName || 'another faculty member'}`
+                                      : `Make ${displayName(fac)} the syllabus owner for ${item.course_code}`}
+                                  sx={{
+                                    p: 0.25,
+                                    color: ownsSyllabus ? '#FFC857' : 'var(--text-tertiary)',
+                                    '&:hover': { color: ownsSyllabus ? '#D9A63C' : '#FFC857', background: 'var(--active-bg)' },
+                                  }}
+                                >
+                                  {ownsSyllabus ? <StarIcon sx={{ fontSize: 15 }} /> : <StarBorderIcon sx={{ fontSize: 15 }} />}
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                            {ownerLocked && ownerName && (
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', marginLeft: 4 }}>
+                                {ownerName} writes this syllabus
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })
                     )}
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)', whiteSpace: 'nowrap' }}>
@@ -1248,7 +1379,14 @@ export default function AdminAccountManagement() {
                   label="Select Course"
                   onChange={e => {
                     const val = e.target.value
-                    setAssignmentForm({ ...assignmentForm, course_id: val, course_code: '', course_title: '', description: '' })
+                    setAssignmentForm({
+                      ...assignmentForm,
+                      course_id: val,
+                      course_code: '',
+                      course_title: '',
+                      description: '',
+                      as_syllabus_owner: syllabusOwnerDefaultFor(val, selectedFaculty),
+                    })
                     applyCourseSection(val)
                   }}
                 >
@@ -1274,19 +1412,19 @@ export default function AdminAccountManagement() {
             <TextField
               label="Course Code" placeholder="e.g. CS101"
               value={assignmentForm.course_code}
-              onChange={e => setAssignmentForm({ ...assignmentForm, course_code: e.target.value, course_id: '' })}
+              onChange={e => setAssignmentForm({ ...assignmentForm, course_code: e.target.value, course_id: '', as_syllabus_owner: true })}
               fullWidth size="small" sx={inputSx}
             />
             <TextField
               label="Course Title" placeholder="e.g. Introduction to Computer Science"
               value={assignmentForm.course_title}
-              onChange={e => setAssignmentForm({ ...assignmentForm, course_title: e.target.value, course_id: '' })}
+              onChange={e => setAssignmentForm({ ...assignmentForm, course_title: e.target.value, course_id: '', as_syllabus_owner: true })}
               fullWidth size="small" sx={inputSx}
             />
             <TextField
               label="Description (optional)"
               value={assignmentForm.description}
-              onChange={e => setAssignmentForm({ ...assignmentForm, description: e.target.value, course_id: '' })}
+              onChange={e => setAssignmentForm({ ...assignmentForm, description: e.target.value, course_id: '', as_syllabus_owner: true })}
               fullWidth size="small" multiline minRows={2} sx={inputSx}
             />
 
@@ -1296,7 +1434,10 @@ export default function AdminAccountManagement() {
               onChange={e => setAssignmentForm({ ...assignmentForm, section: e.target.value })}
               fullWidth size="small" sx={inputSx}
               SelectProps={{ native: false }}
-              helperText={mergedSections.length ? undefined : 'No sections registered yet — you can type a section code.'}
+              error={assignmentSectionTaken}
+              helperText={assignmentSectionTaken
+                ? `${assignmentForm.section} is already handled by ${facultyNameById(assignmentSectionHolder.faculty_id)} for this course.`
+                : (mergedSections.length ? undefined : 'No sections registered yet — you can type a section code.')}
             >
               <MenuItem value="">-- select section --</MenuItem>
               {mergedSections.map(section => (
@@ -1308,11 +1449,32 @@ export default function AdminAccountManagement() {
                 <MenuItem value={assignmentForm.section}>{assignmentForm.section} (custom)</MenuItem>
               )}
             </TextField>
+
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={Boolean(assignmentForm.as_syllabus_owner) && !assignmentOwnerLocked}
+                  disabled={assignmentOwnerLocked}
+                  onChange={e => setAssignmentForm({ ...assignmentForm, as_syllabus_owner: e.target.checked })}
+                />
+              )}
+              label="This faculty writes the syllabus for this course"
+              sx={{
+                alignItems: 'flex-start',
+                m: 0,
+                '& .MuiFormControlLabel-label': { fontSize: '0.82rem', color: 'var(--text-secondary)', mt: 0.4 },
+              }}
+            />
+            <div style={{ fontSize: '0.76rem', color: assignmentOwnerLocked ? '#FFB74D' : 'var(--text-tertiary)', marginTop: -12 }}>
+              {assignmentOwnerLocked
+                ? `${assignmentOwnerName || 'Another faculty member'} already writes this syllabus. Clear that assignment from their star before handing it to someone else.`
+                : 'Other faculty handling this course can open and export the syllabus, but only its owner can edit it.'}
+            </div>
           </Stack>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setAssignmentDialog(false)}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={handleAssignCourse} disabled={(!assignmentForm.course_id && (!assignmentForm.course_code || !assignmentForm.course_title)) || !assignmentForm.section}>Assign Course</PrimaryBtn>
+          <PrimaryBtn onClick={handleAssignCourse} disabled={assignmentSectionTaken || (!assignmentForm.course_id && (!assignmentForm.course_code || !assignmentForm.course_title)) || !assignmentForm.section}>Assign Course</PrimaryBtn>
         </DialogActions>
       </Dialog>
 

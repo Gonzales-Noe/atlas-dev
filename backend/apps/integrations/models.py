@@ -276,6 +276,13 @@ class Course(models.Model):
     module_topic_section_key = models.CharField(max_length=120, blank=True, default='')
     module_topic_subsection_key = models.CharField(max_length=120, blank=True, default='')
     module_topic_confirmed_at = models.DateTimeField(null=True, blank=True)
+    # One faculty member authors the syllabus for a course; every other faculty
+    # handling it gets a read-only copy. Null keeps the old behaviour (anyone
+    # assigned may edit) until an admin picks an owner.
+    syllabus_owner = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='syllabus_owned_courses',
+    )
 
     class Meta:
         db_table = 'course'
@@ -384,6 +391,11 @@ class Syllabus(models.Model):
 class Module(models.Model):
     module_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     syllabus = models.ForeignKey(Syllabus, on_delete=models.CASCADE)
+    # Modules belong to the faculty who generated them; the syllabus is shared.
+    faculty = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='generated_modules',
+    )
     module_title = models.CharField(max_length=255)
     week_number = models.IntegerField()
     status = models.CharField(max_length=50, default='Draft')

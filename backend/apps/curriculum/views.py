@@ -4,6 +4,7 @@ import re
 from collections import defaultdict
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -73,7 +74,7 @@ def _get_assigned_course_or_403(request, course_id):
             {'success': False, 'detail': 'Your account is not linked to an institution.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    assignment = CourseLoad.objects.select_related('course').filter(
+    assignment = CourseLoad.objects.select_related('course', 'course__syllabus_owner').filter(
         faculty=request.user,
         course_id=course_id,
         course__institution_id=institution_id,
@@ -84,6 +85,68 @@ def _get_assigned_course_or_403(request, course_id):
             status=status.HTTP_404_NOT_FOUND,
         )
     return assignment.course, None
+
+
+def _syllabus_owner_label(course):
+    """Display name of the faculty who authors this course's syllabus."""
+    owner = course.syllabus_owner if course else None
+    if not owner:
+        return ''
+    return owner.full_name or owner.email or ''
+
+
+def _can_edit_syllabus(user, course):
+    """
+    The admin-assigned owner authors the syllabus. Every other faculty handling
+    the course can view and export it. Courses without an owner keep the old
+    shared-editing behaviour until an admin picks one.
+    """
+    owner = course.syllabus_owner if course else None
+    return owner is None or owner.user_id == getattr(user, 'user_id', None)
+
+
+def _module_owner_response(module, user):
+    """Modules belong to the faculty who generated them; the syllabus is shared."""
+    if module.faculty_id and module.faculty_id != getattr(user, 'user_id', None):
+        return Response(
+            {
+                'success': False,
+                'code': 'module_owned_by_other',
+                'detail': 'This module belongs to another faculty member. Create your own from the shared syllabus.',
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    return None
+
+
+def _syllabus_readonly_response(course):
+    owner_name = _syllabus_owner_label(course) or 'another faculty member'
+    return Response(
+        {
+            'success': False,
+            'code': 'syllabus_read_only',
+            'detail': (
+                f'The syllabus for this course is maintained by {owner_name}. '
+                'You can view and export it, but only the assigned faculty can edit it.'
+            ),
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
+
+
+def _stamp_syllabus_owner(course, syllabus):
+    """
+    Every download carries the name of the faculty who authored the syllabus,
+    even when another faculty handling the course exports it.
+    """
+    if not isinstance(syllabus, dict) or course is None or not course.syllabus_owner_id:
+        return syllabus
+    owner = course.syllabus_owner
+    stamped = dict(syllabus)
+    stamped['instructor_name'] = owner.full_name or owner.email or ''
+    if not str(stamped.get('instructor_email') or '').strip():
+        stamped['instructor_email'] = owner.email or ''
+    return stamped
 
 
 def _load_course_rag_chunks(course, limit=3):
@@ -174,6 +237,7 @@ def faculty_course_workspace(request, course_id):
     )
     modules = (
         Module.objects.filter(syllabus__course=course)
+        .filter(Q(faculty=request.user) | Q(faculty__isnull=True))
         .order_by('week_number', '-generated_at')
         .values('module_id', 'module_title', 'week_number', 'status', 'generated_at', 'module_content')
     )
@@ -218,8 +282,14 @@ def faculty_course_workspace(request, course_id):
                 'year_level': course.year_level.display_name if course.year_level_id else '',
                 'year_levels': year_levels,
                 'assigned_sections': assigned_sections,
-                'instructor_name': request.user.full_name,
-                'instructor_email': request.user.email,
+                # The syllabus always carries its author's name, whoever is looking.
+                'instructor_name': _syllabus_owner_label(course) or request.user.full_name,
+                'instructor_email': (
+                    course.syllabus_owner.email if course.syllabus_owner_id else request.user.email
+                ),
+                'syllabus_owner_id': str(course.syllabus_owner_id) if course.syllabus_owner_id else None,
+                'syllabus_owner_name': _syllabus_owner_label(course),
+                'can_edit_syllabus': _can_edit_syllabus(request.user, course),
                 'module_topic_section_key': course.module_topic_section_key,
                 'module_topic_subsection_key': course.module_topic_subsection_key,
                 'module_topic_confirmed_at': (
@@ -239,7 +309,10 @@ def faculty_course_workspace(request, course_id):
             } if customization else {'syllabus_sections': [], 'field_labels': {}},
             'syllabus': {
                 'syllabus_id': str(latest_syllabus.syllabus_id) if latest_syllabus else None,
-                'syllabus_content': latest_syllabus.syllabus_content if latest_syllabus else None,
+                'syllabus_content': (
+                    _stamp_syllabus_owner(course, latest_syllabus.syllabus_content)
+                    if latest_syllabus else None
+                ),
             } if latest_syllabus else None,
             'syllabi': list(syllabi),
             'modules': list(modules),
@@ -302,6 +375,8 @@ def save_syllabus_content(request, course_id):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
 
     content = request.data.get('syllabus_content')
     if not isinstance(content, dict):
@@ -458,6 +533,8 @@ def generate_syllabus(request):
             course, error_response = _get_assigned_course_or_403(request, course_id)
             if error_response:
                 return error_response
+            if not _can_edit_syllabus(request.user, course):
+                return _syllabus_readonly_response(course)
             # If course_id is present, source canonical title/code and include faculty uploads.
             course_name = course.course_title
             course_code = course.course_code
@@ -653,8 +730,8 @@ def generate_module(request):
     if error_response:
         return error_response
 
-    # Determine module number (sequential within course)
-    existing_count = Module.objects.filter(syllabus__course=course).count()
+    # Determine module number (sequential within this faculty's modules)
+    existing_count = Module.objects.filter(syllabus__course=course, faculty=request.user).count()
     module_number = existing_count + 1
 
     # ── Extract real course data for prompt enrichment ─────────────────────
@@ -773,6 +850,7 @@ def generate_module(request):
 
         module = Module.objects.create(
             syllabus=syllabus,
+            faculty=request.user,
             module_title=module_title,
             week_number=week_number,
             status="Generated",
@@ -818,6 +896,9 @@ def get_module_detail(request, module_id):
     _, error = _get_assigned_course_or_403(request, course.course_id)
     if error:
         return error
+    owner_error = _module_owner_response(module, request.user)
+    if owner_error:
+        return owner_error
 
     return Response(
         {
@@ -851,6 +932,9 @@ def save_module_content(request, module_id):
     _, error = _get_assigned_course_or_403(request, course.course_id)
     if error:
         return error
+    owner_error = _module_owner_response(module, request.user)
+    if owner_error:
+        return owner_error
 
     content = request.data.get("module_content")
     if content is None:
@@ -902,6 +986,9 @@ def generate_subtopic_content(request):
     _, error = _get_assigned_course_or_403(request, course.course_id)
     if error:
         return error
+    owner_error = _module_owner_response(module, request.user)
+    if owner_error:
+        return owner_error
 
     search_query = f"{module.module_title} {subtopic_title} concepts explanation"
 
@@ -983,6 +1070,9 @@ def module_ai_assist(request):
     _, error = _get_assigned_course_or_403(request, course.course_id)
     if error:
         return error
+    owner_error = _module_owner_response(module, request.user)
+    if owner_error:
+        return owner_error
 
     try:
         system_prompt, user_prompt = CoTPromptBuilder.build_module_ai_assist_prompt(
@@ -3977,6 +4067,8 @@ def generate_syllabus_field(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
     trial_response = trial_generation_gate(request.user, syllabus_generation=True)
     if trial_response:
         return trial_response
@@ -4688,6 +4780,8 @@ def export_syllabus_docx(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    syllabus = _stamp_syllabus_owner(course, syllabus)
+
     template_file = request.FILES.get('template')
     template_name = (template_file.name if template_file else '').lower()
     is_xlsx_template = template_name.endswith('.xlsx')
@@ -4851,6 +4945,7 @@ def export_syllabus_pdf(request):
             status=status.HTTP_404_NOT_FOUND,
         )
 
+    syllabus = _stamp_syllabus_owner(course, syllabus)
     branding = _resolve_institution_branding(course)
     try:
         from apps.integrations.syllabus_export import export_syllabus_pdf as render_pdf
@@ -4997,6 +5092,9 @@ def export_module_docx(request):
         _, error_response = _get_assigned_course_or_403(request, course.course_id)
         if error_response:
             return error_response
+        owner_error = _module_owner_response(module, request.user)
+        if owner_error:
+            return owner_error
 
         module_title = module.module_title or ''
         week_number = module.week_number
@@ -5167,6 +5265,8 @@ def import_syllabus_json(request):
     _course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, _course):
+        return _syllabus_readonly_response(_course)
     trial_response = trial_generation_gate(request.user, syllabus_generation=True)
     if trial_response:
         return trial_response
@@ -5249,6 +5349,8 @@ def parse_syllabus_upload(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
     trial_response = trial_generation_gate(request.user, syllabus_generation=True)
     if trial_response:
         return trial_response
@@ -5430,6 +5532,8 @@ def segment_syllabus_upload(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
     trial_response = trial_generation_gate(request.user, syllabus_generation=True)
     if trial_response:
         return trial_response
@@ -5558,6 +5662,8 @@ def parse_syllabus_segment(request):
     course, error_response = _get_assigned_course_or_403(request, course_id)
     if error_response:
         return error_response
+    if not _can_edit_syllabus(request.user, course):
+        return _syllabus_readonly_response(course)
 
     if not segment_text or not segment_text.strip():
         return Response(

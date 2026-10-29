@@ -90,6 +90,10 @@ const MAROON = '#16A34A'
 const MAROON_LIGHT = 'rgba(22,163,74,0.16)'
 const BG = '#0F0F12'
 
+// True while the syllabus is shown to a faculty member who is not its author:
+// every editing control inside the syllabus sections turns read-only.
+const SyllabusLockContext = React.createContext(false)
+
 const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
@@ -350,12 +354,14 @@ function normalizeDeliveryChoice(value, activity) {
 
 function DeliveryMethodField({ value, onChange }) {
   const current = String(value || '')
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   return (
     <Autocomplete
       freeSolo
       autoHighlight
       clearOnBlur={false}
       size="small"
+      disabled={readOnlySyllabus}
       options={WEEKLY_SCHEDULE_DELIVERY_OPTIONS}
       value={current || null}
       inputValue={current}
@@ -614,7 +620,9 @@ function SectionCard({ title, children, action }) {
 const MARKDOWN_BOLD_RE = /\*\*[^*\n]+\*\*|__[^_\n]+__/
 
 function LField({ label, ...props }) {
-  const { multiline, disabled, value, onBlur, ...rest } = props
+  const { multiline, value, onBlur, ...rest } = props
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  const disabled = Boolean(props.disabled || readOnlySyllabus)
   const [editing, setEditing] = useState(false)
   // AI drafts may contain **bold** labels. Text inputs cannot render partial
   // bold, so show the applied value as formatted text until the field is opened
@@ -708,6 +716,7 @@ const ALL_BLUEPRINT_TABLES = SYLLABUS_SECTION_BLUEPRINTS.flatMap(section => [
 function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) {
   const dataKey = ADMIN_FIXED_FIELDS[fieldKey] || fieldKey
   const locked = Boolean(rules && Object.prototype.hasOwnProperty.call(rules, dataKey))
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   if (!locked) return <LField {...props} value={value} InputProps={InputProps} helperText={helperText} />
   const fixedText = String(rules[dataKey] ?? '')
   return (
@@ -715,7 +724,7 @@ function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) 
       {...props}
       value={fixedText.trim() ? fixedText : value}
       disabled
-      helperText={helperText || 'Fixed by your institution'}
+      helperText={helperText || (readOnlySyllabus ? 'Read-only' : 'Fixed by your institution')}
       InputProps={{ ...InputProps, readOnly: true }}
     />
   )
@@ -836,6 +845,8 @@ function GenButton({ children, ...props }) {
 }
 
 function AddRowBtn({ onClick, label }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  if (readOnlySyllabus) return null
   return (
     <Button size="small" startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />} onClick={onClick}
       sx={{ textTransform: 'none', color: MAROON, fontSize: '0.75rem', py: 0, minWidth: 0 }}>
@@ -845,6 +856,8 @@ function AddRowBtn({ onClick, label }) {
 }
 
 function RemoveBtn({ onClick, disabled }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  if (readOnlySyllabus) return null
   return (
     <Tooltip title="Remove">
       <span>
@@ -866,7 +879,8 @@ function detectFileType(file) {
   return ''
 }
 
-function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
+function InlineInput({ value, onChange, minWidth = 80, onFocus, options = {} }) {
+  const readOnlySyllabus = React.useContext(SyllabusLockContext)
   const { numeric = false, allowRange = false } = options
   const numericPattern = allowRange ? /^\d*(?:-\d*)?$/ : /^\d*$/
   const handleChange = event => {
@@ -878,6 +892,7 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
       value={value}
       onChange={handleChange}
       onFocus={onFocus}
+      disabled={readOnlySyllabus}
       // Keep these as text inputs so browsers do not render number spinners.
       // Validation below still limits numeric cells to digits (or a numeric range for Wks).
       type="text"
@@ -892,6 +907,11 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
           fontSize: '0.8rem',
           '&:hover fieldset': { borderColor: MAROON },
           '&.Mui-focused fieldset': { borderColor: MAROON },
+        },
+        '& .MuiInputBase-input.Mui-disabled': {
+          WebkitTextFillColor: 'rgba(255,255,255,0.92)',
+          color: 'rgba(255,255,255,0.92)',
+          opacity: 1,
         },
       }}
       inputProps={{
@@ -1901,6 +1921,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleGenerateSection() {
     const fields = getAiFieldsForCurrentSection()
     if (!course || !fields.length) return
+    if (course.can_edit_syllabus === false) {
+      setAiError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      return
+    }
     setAiGenerating(true)
     setAiError('')
     setAiPipelineDrafts(null)
@@ -2166,6 +2190,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleSyllabusUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
+    if (course?.can_edit_syllabus === false) {
+      setSyllabusUploadError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      e.target.value = ''
+      return
+    }
     setSyllabusUploading(true)
     setSyllabusUploadError('')
     setSyllabusUploadSuccess(false)
@@ -2380,6 +2409,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return () => clearTimeout(timer)
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
+
+  // The admin assigns one faculty member to author a course's syllabus. Every
+  // other faculty handling the course sees it read-only and exports it as-is.
+  const syllabusLocked = course ? course.can_edit_syllabus === false : false
+  const syllabusOwnerName = course?.syllabus_owner_name || course?.instructor_name || ''
 
   // ── ATLAS pipeline progress (Step 11: Faculty Review & Approval) ──
   // Tracks per-module completion: auto-detected from workspace data +
@@ -2780,6 +2814,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   // ── Save syllabus content ──────────────────────────────────────────────
   async function handleSaveSyllabus() {
     setSaveError('')
+    if (course?.can_edit_syllabus === false) {
+      setIsDirty(false)
+      setSaveError('This syllabus is maintained by another faculty member. You can view and export it, but not edit it.')
+      return
+    }
     const missingRequiredSubsections = configuredSections.flatMap(section => {
       if (section.is_static) return []
       const answers = syllabusData.custom_subsections?.[section.key] || {}
@@ -4998,16 +5037,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {fwItems.map((item, i) => (
                   <tr key={i}>
                     <td style={{ ...TABLE_TD, textAlign: 'center', fontWeight: 700, color: MAROON }}>
-                      {inlineInput(item.code, e => setSylArrObj(activeFw.itemsField, i, 'code', e.target.value), 72)}
+                      <InlineInput value={item.code} minWidth={72} onChange={e => setSylArrObj(activeFw.itemsField, i, 'code', e.target.value)} />
                     </td>
                     <td style={TABLE_TD}>
                       <textarea
                         value={item.description || ''}
+                        readOnly={syllabusLocked}
                         onChange={e => setSylArrObj(activeFw.itemsField, i, 'description', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 34) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 34) + 'px'; } }}
                         onFocus={() => setAiField({ section: 'framework-mapping', label: `${activeFw.label} ${item.code || i + 1} Statement`, fieldType: 'arrayObj', arrField: activeFw.itemsField, arrIndex: i, arrObjKey: 'description' })}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '34px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '34px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
@@ -5094,10 +5134,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th style={TABLE_TH} />
                     {soHeaders.map((h, ci) => (
                       <th key={ci} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
-                        {inlineInput(h, e => {
+                        <InlineInput value={h} minWidth={56} options={{ numeric: true }} onChange={e => {
                           setIsDirty(true); setSaveSuccess(false)
                           setSyllabusData(s => ({ ...s, so_headers: s.so_headers.map((x, i) => i === ci ? e.target.value : x) }))
-                        }, 56, undefined, { numeric: true })}
+                        }} />
                       </th>
                     ))}
                     <th style={{ ...TABLE_TH, minWidth: 60, textAlign: 'center' }}>P</th>
@@ -5110,14 +5150,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       {iloLabelCell(ri)}
                       {soHeaders.map((_, ci) => (
                         <td key={ci} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                          {inlineInput((row.so_vals || [])[ci] || '', e => updSoCpa(ri, 'so_vals', ci, e.target.value), 84)}
+                          <InlineInput value={(row.so_vals || [])[ci] || ''} minWidth={84} onChange={e => updSoCpa(ri, 'so_vals', ci, e.target.value)} />
                         </td>
                       ))}
                       <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                        {inlineInput(row.p || '', e => updSoCpa(ri, 'p', 0, e.target.value), 56)}
+                        <InlineInput value={row.p || ''} minWidth={56} onChange={e => updSoCpa(ri, 'p', 0, e.target.value)} />
                       </td>
                       <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                        {inlineInput(row.a || '', e => updSoCpa(ri, 'a', 0, e.target.value), 56)}
+                        <InlineInput value={row.a || ''} minWidth={56} onChange={e => updSoCpa(ri, 'a', 0, e.target.value)} />
                       </td>
                     </tr>
                   ))}
@@ -5140,10 +5180,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th style={TABLE_TH} />
                     {igaHeaders.map((h, ci) => (
                       <th key={ci} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
-                        {inlineInput(h, e => {
+                        <InlineInput value={h} minWidth={56} options={{ numeric: true }} onChange={e => {
                           setIsDirty(true); setSaveSuccess(false)
                           setSyllabusData(s => ({ ...s, iga_headers: s.iga_headers.map((x, i) => i === ci ? e.target.value : x) }))
-                        }, 56, undefined, { numeric: true })}
+                        }} />
                       </th>
                     ))}
                   </tr>
@@ -5154,7 +5194,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       {iloLabelCell(ri)}
                       {igaHeaders.map((_, ci) => (
                         <td key={ci} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                          {inlineInput((row.vals || [])[ci] || '', e => updIga(ri, ci, e.target.value), 84)}
+                          <InlineInput value={(row.vals || [])[ci] || ''} minWidth={84} onChange={e => updIga(ri, ci, e.target.value)} />
                         </td>
                       ))}
                     </tr>
@@ -5179,18 +5219,18 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <th style={TABLE_TH} />
                     {cdioHeaders.map((h, ci) => (
                       <th key={`c${ci}`} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
-                        {inlineInput(h, e => {
+                        <InlineInput value={h} minWidth={56} options={{ numeric: true }} onChange={e => {
                           setIsDirty(true); setSaveSuccess(false)
                           setSyllabusData(s => ({ ...s, cdio_headers: s.cdio_headers.map((x, i) => i === ci ? e.target.value : x) }))
-                        }, 56, undefined, { numeric: true })}
+                        }} />
                       </th>
                     ))}
                     {sdgHeaders.map((h, ci) => (
                       <th key={`s${ci}`} style={{ ...TABLE_TH, minWidth: 96, textAlign: 'center' }}>
-                        {inlineInput(h, e => {
+                        <InlineInput value={h} minWidth={56} options={{ numeric: true }} onChange={e => {
                           setIsDirty(true); setSaveSuccess(false)
                           setSyllabusData(s => ({ ...s, sdg_headers: s.sdg_headers.map((x, i) => i === ci ? e.target.value : x) }))
-                        }, 56, undefined, { numeric: true })}
+                        }} />
                       </th>
                     ))}
                   </tr>
@@ -5201,12 +5241,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       {iloLabelCell(ri)}
                       {cdioHeaders.map((_, ci) => (
                         <td key={`c${ci}`} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                          {inlineInput((row.cdio_vals || [])[ci] || '', e => updCdioSdg(ri, 'cdio_vals', ci, e.target.value), 84)}
+                          <InlineInput value={(row.cdio_vals || [])[ci] || ''} minWidth={84} onChange={e => updCdioSdg(ri, 'cdio_vals', ci, e.target.value)} />
                         </td>
                       ))}
                       {sdgHeaders.map((_, ci) => (
                         <td key={`s${ci}`} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                          {inlineInput((row.sdg_vals || [])[ci] || '', e => updCdioSdg(ri, 'sdg_vals', ci, e.target.value), 84)}
+                          <InlineInput value={(row.sdg_vals || [])[ci] || ''} minWidth={84} onChange={e => updCdioSdg(ri, 'sdg_vals', ci, e.target.value)} />
                         </td>
                       ))}
                     </tr>
@@ -5286,29 +5326,31 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.topics || ''}
+                        readOnly={syllabusLocked}
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                      {inlineInput(ch.weeks, e => setSylArrObj('tla_chapters', i, 'weeks', e.target.value), 60, undefined, { numeric: true, allowRange: true })}
+                      <InlineInput value={ch.weeks} minWidth={60} options={{ numeric: true, allowRange: true }} onChange={e => setSylArrObj('tla_chapters', i, 'weeks', e.target.value)} />
                     </td>
                     <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.outcomes || ''}
+                        readOnly={syllabusLocked}
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                      {inlineInput(ch.ilo, e => setSylArrObj('tla_chapters', i, 'ilo', e.target.value), 60, undefined, { numeric: true })}
+                      <InlineInput value={ch.ilo} minWidth={60} options={{ numeric: true }} onChange={e => setSylArrObj('tla_chapters', i, 'ilo', e.target.value)} />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                      {inlineInput(ch.so, e => setSylArrObj('tla_chapters', i, 'so', e.target.value), 60, undefined, { numeric: true })}
+                      <InlineInput value={ch.so} minWidth={60} options={{ numeric: true }} onChange={e => setSylArrObj('tla_chapters', i, 'so', e.target.value)} />
                     </td>
                     <td style={TABLE_TD}>
                       <DeliveryMethodField
@@ -5375,7 +5417,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {scheduleMethods.map((m, i) => (
                   <tr key={i}>
                     <td style={TABLE_TD}>
-                      {inlineInput(m.name || '', e => updScheduleMethod(i, 'name', 0, e.target.value), 160)}
+                      <InlineInput value={m.name || ''} minWidth={160} onChange={e => updScheduleMethod(i, 'name', 0, e.target.value)} />
                     </td>
                     {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => {
                       const cellValue = String((m.values || [])[w] ?? '')
@@ -5384,24 +5426,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           {cellValue === '✓' ? (
                             <button
                               type="button"
-                              title="Clear this week"
+                              title={syllabusLocked ? undefined : 'Clear this week'}
                               aria-label={`Clear ${m.name || 'assessment'} from week ${w + 1}`}
+                              disabled={syllabusLocked}
                               onClick={() => updScheduleMethod(i, 'values', w, '')}
-                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid rgba(134,239,172,0.6)', background: 'rgba(22,163,74,0.2)', color: '#86EFAC', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}
+                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid rgba(134,239,172,0.6)', background: 'rgba(22,163,74,0.2)', color: '#86EFAC', fontWeight: 800, cursor: syllabusLocked ? 'default' : 'pointer', lineHeight: 1 }}
                             >
                               ✓
                             </button>
                           ) : cellValue ? (
-                            inlineInput(cellValue, e => updScheduleMethod(i, 'values', w, e.target.value), 32)
+                            <InlineInput value={cellValue} minWidth={32} onChange={e => updScheduleMethod(i, 'values', w, e.target.value)} />
                           ) : (
                             <button
                               type="button"
-                              title={`Check week ${w + 1}`}
+                              title={syllabusLocked ? undefined : `Check week ${w + 1}`}
                               aria-label={`Check ${m.name || 'assessment'} in week ${w + 1}`}
+                              disabled={syllabusLocked}
                               onClick={() => updScheduleMethod(i, 'values', w, '✓')}
-                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(134,239,172,0.6)'; e.currentTarget.style.color = 'rgba(134,239,172,0.7)' }}
-                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = 'transparent' }}
-                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px dashed rgba(255,255,255,0.16)', background: 'transparent', color: 'transparent', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}
+                              onMouseEnter={e => { if (syllabusLocked) return; e.currentTarget.style.borderColor = 'rgba(134,239,172,0.6)'; e.currentTarget.style.color = 'rgba(134,239,172,0.7)' }}
+                              onMouseLeave={e => { if (syllabusLocked) return; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = 'transparent' }}
+                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px dashed rgba(255,255,255,0.16)', background: 'transparent', color: 'transparent', fontWeight: 800, cursor: syllabusLocked ? 'default' : 'pointer', lineHeight: 1 }}
                             >
                               ✓
                             </button>
@@ -5893,7 +5937,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   )
                                 })()}
                               </td>
-                              <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(row.hours_class ?? 0, e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value), 52)}</td>
+                              <td style={{ ...TABLE_TD, textAlign: 'center' }}><InlineInput value={row.hours_class ?? 0} minWidth={52} onChange={e => updTopicRow(activeTos.id, row.id, 'hours_class', e.target.value)} /></td>
                               <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'inherit' }}>
                                   {displayedTopicMinutes(row) ?? '—'}
@@ -5917,7 +5961,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                       </Typography>
                                     </td>
                                     <td style={{ ...TABLE_TD, textAlign: 'center', backgroundColor: bg, opacity: isAbove ? 0.45 : 1 }}>
-                                      {inlineInput((row.bloom_pct || {})[k] || '', e => updBloomPct(activeTos.id, row.id, k, e.target.value), 50)}
+                                      <InlineInput value={(row.bloom_pct || {})[k] || ''} minWidth={50} onChange={e => updBloomPct(activeTos.id, row.id, k, e.target.value)} />
                                     </td>
                                   </React.Fragment>
                                 )
@@ -6017,19 +6061,19 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     return (
                       <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#1A1A1F' : BG }}>
                         <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                          {inlineInput(row.grade,  e => setSylArrObj('grading_rows', i, 'grade',  e.target.value), 60)}
+                          <InlineInput value={row.grade} minWidth={60} onChange={e => setSylArrObj('grading_rows', i, 'grade', e.target.value)} />
                         </td>
                         {isLast ? (
                           <td colSpan={2} style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                            {inlineInput(row.rating, e => setSylArrObj('grading_rows', i, 'rating', e.target.value), 200)}
+                            <InlineInput value={row.rating} minWidth={200} onChange={e => setSylArrObj('grading_rows', i, 'rating', e.target.value)} />
                           </td>
                         ) : (
                           <>
                             <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                              {inlineInput(row.rating, e => setSylArrObj('grading_rows', i, 'rating', e.target.value), 140)}
+                              <InlineInput value={row.rating} minWidth={140} onChange={e => setSylArrObj('grading_rows', i, 'rating', e.target.value)} />
                             </td>
                             <td style={{ padding: '3px 6px', borderBottom: '1px solid #f0f0f0' }}>
-                              {inlineInput(row.range,  e => setSylArrObj('grading_rows', i, 'range',  e.target.value), 90)}
+                              <InlineInput value={row.range} minWidth={90} onChange={e => setSylArrObj('grading_rows', i, 'range', e.target.value)} />
                             </td>
                           </>
                         )}
@@ -6231,6 +6275,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap', flexShrink: 0, position: 'relative', zIndex: 2 }}>
+                {!syllabusLocked && (
                 <Tooltip title={syllabusUploading ? (syllabusUploadProgress ? `Filling ${syllabusUploadProgress.label}` : 'Reading the syllabus…') : 'Upload existing syllabus (PDF, DOCX, XLSX, TXT) — fields will be auto-populated'}>
                   <span>
                     <Button
@@ -6255,6 +6300,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </Button>
                   </span>
                 </Tooltip>
+                )}
                 <Tooltip title={syllabusExporting === 'docx' ? 'Exporting…' : 'Export syllabus as DOCX'}>
                   <span>
                     <Button
@@ -6308,6 +6354,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Box>
               </Box>
             )}
+            {syllabusLocked && (
+              <Box sx={{
+                mb: 1.5, px: 1.75, py: 1.25, borderRadius: 1.5,
+                bgcolor: 'rgba(255,183,77,0.10)', border: '1px solid rgba(255,183,77,0.42)',
+                display: 'flex', alignItems: 'flex-start', gap: 1.25,
+              }}>
+                <LockIcon sx={{ color: '#FFB74D', fontSize: '1.05rem', mt: '1px', flexShrink: 0 }} />
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#FFB74D', fontWeight: 800 }}>
+                    View only
+                  </Typography>
+                  <Typography variant="caption" sx={{ display: 'block', color: '#E5E7EB' }}>
+                    {syllabusOwnerName
+                      ? `This syllabus is maintained by ${syllabusOwnerName}. You can read and export it, and use it as the basis for your own modules.`
+                      : 'This syllabus is maintained by another faculty member. You can read and export it, and use it as the basis for your own modules.'}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
             {syllabusUploadError && (
               <AutoAlert message={syllabusUploadError} onClose={() => setSyllabusUploadError('')} sx={{ mb: 1.5 }} />
             )}
@@ -6341,11 +6406,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 </Typography>
               </SectionCard>
             )}
-            {renderSyllabusSection()}
-            {renderConfiguredSubsections()}
+            <SyllabusLockContext.Provider value={syllabusLocked}>
+              {renderSyllabusSection()}
+              {renderConfiguredSubsections()}
+            </SyllabusLockContext.Provider>
           </Box>
 
-          {showSaveFooter && (
+          {showSaveFooter && !syllabusLocked && (
             <Box sx={{
               flexShrink: 0,
               bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
@@ -6376,7 +6443,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           )}
 
-          {activeSyllabusSectionKey !== 'university-information' && (
+          {activeSyllabusSectionKey !== 'university-information' && !syllabusLocked && (
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
@@ -7298,11 +7365,28 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Define assessment coverage here, then use the module matches to prepare assessments.
               </Typography>
             </Box>
-            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' } }}>
+            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' }, display: syllabusLocked ? 'none' : undefined }}>
               {saveLoading ? 'Saving…' : saveSuccess ? 'Saved' : 'Save TOS'}
             </Button>
           </Box>
-          {renderSyllabusSection('tos')}
+          {syllabusLocked && (
+            <Box sx={{
+              px: 1.75, py: 1.25, borderRadius: 1.5,
+              bgcolor: 'rgba(255,183,77,0.10)', border: '1px solid rgba(255,183,77,0.42)',
+              display: 'flex', alignItems: 'flex-start', gap: 1.25,
+            }}>
+              <LockIcon sx={{ color: '#FFB74D', fontSize: '1.05rem', mt: '1px', flexShrink: 0 }} />
+              <Typography variant="caption" sx={{ color: '#E5E7EB' }}>
+                <Box component="span" sx={{ color: '#FFB74D', fontWeight: 800 }}>View only — </Box>
+                {syllabusOwnerName
+                  ? `this table of specifications is maintained by ${syllabusOwnerName}.`
+                  : 'this table of specifications is maintained by another faculty member.'}
+              </Typography>
+            </Box>
+          )}
+          <SyllabusLockContext.Provider value={syllabusLocked}>
+            {renderSyllabusSection('tos')}
+          </SyllabusLockContext.Provider>
         </Stack>
       )
     }
