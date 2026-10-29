@@ -255,7 +255,6 @@ export default function AdminKnowledgeBase() {
     }
   }
 
-  const totalChunks = documents.reduce((sum, d) => sum + (d.total_chunks || 0), 0)
   return (
     <AdminLayout>
       <PageHeader
@@ -267,9 +266,8 @@ export default function AdminKnowledgeBase() {
       {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px,1fr))', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px)', gap: 14, marginBottom: 20 }}>
         <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon="📚" accent="#86EFAC" />
-        <StatCard title="Indexed Chunks"  value={documentsLoaded ? totalChunks : '—'}       icon="🧩" accent="#FFB74D" />
       </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
@@ -328,8 +326,12 @@ export default function AdminKnowledgeBase() {
                 <CategoryBadge cat={selected.doc_type_label || selected.doc_type} />
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{selected.discipline || 'No discipline'}</span>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>· {selected.program || 'No program'}</span>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>·</span>
-                <IndexStatus doc={selected} />
+                {(selected.status === 'PROCESSING' || selected.status === 'FAILED') && (
+                  <>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>·</span>
+                    <IndexStatus doc={selected} />
+                  </>
+                )}
               </div>
               {selected.status === 'FAILED' ? (
                 <Alert severity="error">{selected.error_message || 'Indexing failed.'} Upload the file again to retry.</Alert>
@@ -363,8 +365,8 @@ export default function AdminKnowledgeBase() {
           <div style={{ fontSize: '0.9rem', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
             This permanently removes{' '}
             <strong style={{ color: 'var(--text-primary)' }}>{deleteTarget?.title}</strong>{' '}
-            and all of its indexed chunks from the knowledge base. Retrieval and syllabi that
-            reference it will no longer find its content. This cannot be undone.
+            from the knowledge base. Retrieval and syllabi that reference it will no longer
+            find its content. This cannot be undone.
           </div>
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
@@ -478,7 +480,7 @@ function IndexStatus({ doc }) {
   if (doc.status === 'FAILED') {
     return <span style={{ ...base, color: '#F87171' }} title={doc.error_message || ''}>Failed</span>
   }
-  return <span style={{ ...base, fontWeight: 400, color: 'var(--text-tertiary)' }}>{doc.total_chunks || 0} chunks</span>
+  return null
 }
 
 function DocumentCard({ doc, onView, onDelete }) {
