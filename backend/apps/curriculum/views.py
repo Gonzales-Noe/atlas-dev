@@ -3229,19 +3229,16 @@ Requirements:
             status=status.HTTP_201_CREATED,
         )
 
-    # One cached course brief, the same source modules use. Later batches
-    # of this assessment do not search or distill the uploads again.
-    from apps.integrations.course_brief import get_course_brief
+    # Use a brief modules already cached. Do not distill one here: that call
+    # runs before any item is saved, so the screen stays on "Preparing".
+    from django.core.cache import cache
+    from apps.integrations.course_brief import brief_cache_key, document_stamp
     from apps.integrations.tla_generation import assessment_batch_max_tokens
 
+    cached_brief = cache.get(brief_cache_key(course.course_id, document_stamp(course, selected_doc_ids)))
+    course_brief = cached_brief.strip() if isinstance(cached_brief, str) else ""
+    brief_cached = bool(course_brief)
     llm = LLMService()
-    course_brief, brief_cached = get_course_brief(
-        course,
-        institution_id=request.user.institution_id,
-        selected_doc_ids=selected_doc_ids,
-        llm=llm,
-        provider=provider,
-    )
     logger.info(
         'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s brief_cached=%s',
         len(section_module_matches),
