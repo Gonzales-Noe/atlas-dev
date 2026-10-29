@@ -3,6 +3,7 @@ from django.test import SimpleTestCase
 from apps.curriculum.assessment_qa import (
     SOURCE_CHECK_PACK,
     apply_source_results,
+    source_check_failure_message,
     approval_blockers,
     check_against_blueprint,
     grouped_source_check_prompt,
@@ -344,6 +345,15 @@ class AssessmentQaTests(SimpleTestCase):
         self.assertEqual(len(groups), 4)
         self.assertGreaterEqual(source_check_max_tokens(8), 8 * 120)
         self.assertLessEqual(source_check_max_tokens(40), 2048)
+
+    def test_paused_keys_become_one_short_reason(self):
+        raw = '; '.join(
+            f'Topic {index}: groq: every API key is paused' for index in range(8)
+        )
+        message = source_check_failure_message(raw)
+        self.assertIn('paused', message.lower())
+        self.assertLess(len(message), 160)
+        self.assertEqual(message.count('Topic'), 0)
 
     def test_missing_passages_skip_the_model(self):
         verdicts = verdicts_without_passages([{'item_id': 'item-9'}])

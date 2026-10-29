@@ -317,8 +317,9 @@ def grouped_source_check_prompt(groups):
     user = (
         "\n\n".join(blocks)
         + "\n\nFor each item decide one verdict:\n"
-        "- supported: the keyed answer is stated in that topic's passages or follows from them in one step\n"
-        "- unsupported: those passages do not contain enough to confirm the keyed answer\n"
+        "- supported: the idea in the keyed answer is in that topic's passages. "
+        "A new example is supported when it is the same kind of case as those passages.\n"
+        "- unsupported: the keyed answer needs a principle, method, scale, or standard the passages do not state\n"
         "- contradicted: those passages state the opposite of the keyed answer\n\n"
         'Return {"results": [{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", '
         '"evidence": "<one sentence>"}]}'
@@ -428,6 +429,21 @@ def parse_source_results(raw):
     return parsed
 
 
+def source_check_failure_message(error):
+    """One short reason when a model call fails, instead of every topic repeated."""
+    text = str(error or '').strip()
+    if not text:
+        return ''
+    if 'paused' in text.lower():
+        return 'The source check did not run because the model keys are paused. Run it again after they reset.'
+    parts = []
+    for part in re.split(r';\s*', text):
+        part = part.strip()
+        if part and part not in parts:
+            parts.append(part)
+    return parts[0] if len(parts) > 1 else text
+
+
 def apply_source_results(report, results, error=''):
     by_id = {row['item_id']: row for row in results or [] if row.get('item_id')}
     items = {}
@@ -442,7 +458,10 @@ def apply_source_results(report, results, error=''):
             next_record['evidence'] = by_id[item_id]['evidence']
         else:
             next_record['source'] = 'unchecked'
-            next_record['evidence'] = error or 'The source check did not return a verdict for this item.'
+            next_record['evidence'] = (
+                source_check_failure_message(error)
+                or 'The source check did not return a verdict for this item.'
+            )
         next_record.pop('choices', None)
         next_record.pop('correct_answer', None)
         next_record.pop('answer_key', None)

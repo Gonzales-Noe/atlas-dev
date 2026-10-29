@@ -55,6 +55,7 @@ from .assessment_qa import (
     approval_blockers,
     check_against_blueprint,
     grouped_source_check_prompt,
+    normalize_bloom_key,
     pack_source_batches,
     run_grouped_source_checks,
     source_batches,
@@ -73,6 +74,7 @@ from .consistency_checker import (
     parse_topics_cell,
     stamp_module_ilos,
     topic_review_prompts,
+    verb_levels,
 )
 from .metrics import compute_metrics
 from .serializers import CurriculumMetricsSerializer, GenerateModuleSerializer, GenerateSyllabusSerializer
@@ -2177,7 +2179,9 @@ def _collect_section_items(blueprint_section, generated_section):
     for item in aligned.get('items') or []:
         coerced = _coerce_generated_item_fields(item)
         number = _to_int(coerced.get('item_number'), 0)
-        if _generated_item_quality_errors(coerced):
+        slot_bloom = normalize_bloom_key(coerced.get('bloom_level'))
+        asked = verb_levels(coerced.get('question_text'))
+        if _generated_item_quality_errors(coerced) or (asked and slot_bloom and slot_bloom not in asked):
             if number > 0:
                 retry_numbers.append(number)
             continue
@@ -3487,10 +3491,8 @@ Requirements:
             "",
             'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
             "Keep each slot's item_number, bloom_level, bloom_verb, and ilo_refs.",
-            "Match bloom_level. Remember: which fact is true. Understand: what the idea means.",
-            "Apply: use the idea in a new situation. Analyze: explain what is happening in a new case.",
-            "Evaluate: judge a decision in a new case. Create: propose a design for a new case.",
-            "Higher levels need a short new situation like the source examples, not a recall of the source's own example.",
+            "Stay on the slot's bloom_level. Remember and Understand ask which fact is true, and may use a new case.",
+            "Apply, Analyze, Evaluate, and Create use a new case. Do not open a Remember stem with Evaluate, Judge, Design, or Create.",
             "The correct choice must follow from the facts. Do not add a standard or method the facts do not name.",
             "Do not write according to the module, the passage, the lesson, or the course.",
             "Each item asks a different question. Stem under 40 words. Each choice under 14 words.",
@@ -4017,7 +4019,8 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
         ]
         if missed:
             retry.append({**batch, 'items': missed})
-    if retry:
+    paused = any('paused' in str(err).lower() for err in errors)
+    if retry and not paused:
         retry_groups = pack_source_batches(retry, size=SOURCE_CHECK_PACK, char_budget=9000)
         retry_results, retry_errors = run_grouped_source_checks(retry_groups, complete)
         results.extend(retry_results)
