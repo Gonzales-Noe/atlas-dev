@@ -167,6 +167,59 @@ const EMPTY_ATTR    = { code: '', title: '', description: '' }
 const EMPTY_POLICY  = { title: '', content: '' }
 const EMPTY_CHAPTER = { chapter: '', topics: '', weeks: '', outcomes: '', ilo: '', ilo_refs: [], so: '', delivery: '' }
 
+function activityTitleFromText(text) {
+  const lines = String(text || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  return lines.length ? lines[lines.length - 1].replace(/[*_`]/g, '').trim() : ''
+}
+
+// The last line of a topics draft is the row's activity. Guard against a
+// model that skips it, so a plain subtopic never becomes an assessment row.
+const ACTIVITY_TITLE_PATTERN = /(assessment|quiz|exam|activity|project|recitation|presentation|report|performance|seatwork|exercise|milestone|portfolio|defense|laborator|simulation|workshop|demonstration)/i
+
+function looksLikeActivityTitle(title) {
+  return ACTIVITY_TITLE_PATTERN.test(String(title || ''))
+}
+
+function parseWeekNumbers(value) {
+  const text = String(value || '').trim()
+  const matches = text.match(/\d+/g) || []
+  if (matches.length >= 2 && /[-–—]/.test(text) && !/,/.test(text)) {
+    const start = parseInt(matches[0], 10)
+    const end = parseInt(matches[1], 10)
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start && end - start < TLA_WEEK_COUNT) {
+      return Array.from({ length: end - start + 1 }, (_, index) => start + index)
+        .filter(week => week >= 1 && week <= TLA_WEEK_COUNT)
+    }
+  }
+  return matches
+    .map(token => parseInt(token, 10))
+    .filter(week => week >= 1 && week <= TLA_WEEK_COUNT)
+}
+
+function uniqueActivityTitle(title, usedTitles) {
+  const base = String(title || '').trim()
+  if (!base) return base
+  if (!usedTitles.has(base.toLowerCase())) return base
+  const stripped = base.replace(/\s*#\s*\d+\s*$/, '').trim() || base
+  let counter = 2
+  let candidate = `${stripped} #${counter}`
+  while (usedTitles.has(candidate.toLowerCase())) {
+    counter += 1
+    candidate = `${stripped} #${counter}`
+  }
+  return candidate
+}
+
+function replaceLastLine(text, replacement) {
+  const lines = String(text || '').split(/\r?\n/)
+  let index = lines.length - 1
+  while (index >= 0 && !lines[index].trim()) index -= 1
+  if (index < 0) return text
+  lines[index] = replacement
+  return lines.join('\n')
+}
+
+
 const DEFAULT_SO_HEADERS   = ['2', '3']
 const DEFAULT_IGA_HEADERS  = ['2', '3', '4', '5']
 const DEFAULT_CDIO_HEADERS = ['4']
@@ -234,6 +287,65 @@ function filterDeliveryOptions(options, input) {
     else if (label.includes(query)) contains.push(option)
   })
   return [...starts, ...contains]
+}
+
+const SCHEDULE_META_FIELD = 'schedule_meta'
+
+// The ILO/SO/Delivery call returns a small JSON object instead of prose.
+function parseScheduleMeta(text) {
+  const clean = String(text || '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim()
+  const start = clean.indexOf('{')
+  const end = clean.lastIndexOf('}')
+  if (start < 0 || end <= start) return null
+  try {
+    const parsed = JSON.parse(clean.slice(start, end + 1))
+    const digits = value => String(value ?? '').replace(/[^\d]/g, '')
+    return {
+      ilo: digits(parsed.ilo ?? parsed.ILO),
+      so: digits(parsed.so ?? parsed.SO),
+      delivery: String(parsed.delivery ?? parsed.delivery_method ?? '').trim(),
+    }
+  } catch {
+    return null
+  }
+}
+
+function clampNumber(value, max) {
+  const number = parseInt(value, 10)
+  return Number.isFinite(number) && number >= 1 && number <= max ? number : null
+}
+
+// Student Outcomes mapped to an ILO in Table 1 (SO mapping of assessment tasks).
+function mappedSoNumbers(data, iloNumber) {
+  const row = (data.so_cpa_rows || [])[iloNumber - 1]
+  const values = Array.isArray(row?.so_vals) ? row.so_vals : []
+  return (data.so_headers || [])
+    .map((header, index) => (String(values[index] || '').trim() ? String(header || '').trim() : ''))
+    .filter(Boolean)
+}
+
+function defaultDeliveryFor(activity) {
+  const title = String(activity || '')
+  if (/laborator|\blab\b|experiment/i.test(title)) return 'Hands-on Activity'
+  if (/presentation|report|demonstration/i.test(title)) return 'Student Presentation'
+  if (/project|problem|case study|exercise/i.test(title)) return 'Problem-Solving Session'
+  return 'Lecture/Discussion'
+}
+
+function normalizeDeliveryChoice(value, activity) {
+  const query = String(value || '').trim().toLowerCase()
+  if (query) {
+    const exact = WEEKLY_SCHEDULE_DELIVERY_OPTIONS.find(option => option.toLowerCase() === query)
+    if (exact) return exact
+    const partial = WEEKLY_SCHEDULE_DELIVERY_OPTIONS.find(option => (
+      option.toLowerCase().includes(query) || query.includes(option.toLowerCase())
+    ))
+    if (partial) return partial
+  }
+  return defaultDeliveryFor(activity)
 }
 
 function DeliveryMethodField({ value, onChange }) {
@@ -499,12 +611,63 @@ function SectionCard({ title, children, action }) {
   )
 }
 
+const MARKDOWN_BOLD_RE = /\*\*[^*\n]+\*\*|__[^_\n]+__/
+
 function LField({ label, ...props }) {
+  const { multiline, disabled, value, onBlur, ...rest } = props
+  const [editing, setEditing] = useState(false)
+  // AI drafts may contain **bold** labels. Text inputs cannot render partial
+  // bold, so show the applied value as formatted text until the field is opened
+  // for editing.
+  const formatted = Boolean(
+    multiline
+    && typeof value === 'string'
+    && MARKDOWN_BOLD_RE.test(value),
+  )
+  if (formatted && !editing) {
+    return (
+      <Box
+        onClick={disabled ? undefined : () => setEditing(true)}
+        sx={{
+          border: '1px solid rgba(255,255,255,0.16)',
+          borderRadius: 1,
+          px: 1.5, py: 0.9,
+          minHeight: 44,
+          bgcolor: disabled ? 'rgba(255,255,255,0.06)' : '#1A1A1F',
+          cursor: disabled ? 'default' : 'text',
+        }}
+      >
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', color: 'rgba(255,255,255,0.62)', mb: 0.4, lineHeight: 1.25 }}
+        >
+          {label}
+        </Typography>
+        <MarkdownText
+          text={value}
+          sx={{ color: 'rgba(255,255,255,0.92)', fontSize: '0.84rem', lineHeight: 1.55, fontWeight: 400 }}
+        />
+        {!disabled && (
+          <Typography
+            variant="caption"
+            sx={{ display: 'block', mt: 0.5, color: 'rgba(255,255,255,0.38)', fontSize: '0.68rem' }}
+          >
+            Click to edit
+          </Typography>
+        )}
+      </Box>
+    )
+  }
   return (
-    <TextField size="small" fullWidth label={label} {...props}
+    <TextField size="small" fullWidth label={label} {...rest}
+      multiline={multiline}
+      disabled={disabled}
+      value={value}
+      autoFocus={editing || undefined}
+      onBlur={event => { setEditing(false); onBlur?.(event) }}
       InputLabelProps={{
-        ...props.InputLabelProps,
-        sx: { whiteSpace: 'normal', lineHeight: 1.25, ...(props.InputLabelProps?.sx || {}) },
+        ...rest.InputLabelProps,
+        sx: { whiteSpace: 'normal', lineHeight: 1.25, ...(rest.InputLabelProps?.sx || {}) },
       }}
       sx={{
         '& .MuiOutlinedInput-root': {
@@ -530,9 +693,9 @@ function LField({ label, ...props }) {
         '& .MuiInputLabel-root.Mui-disabled': { color: 'rgba(255,255,255,0.72)' },
         '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.62)' },
         '& .MuiFormHelperText-root.Mui-error': { color: '#FF7B72' },
-        ...props.sx,
+        ...rest.sx,
       }}
-      SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...props.SelectProps }}
+      SelectProps={{ MenuProps: { PaperProps: { elevation: 2 } }, ...rest.SelectProps }}
     />
   )
 }
@@ -1581,25 +1744,35 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
     if (activeSyllabusSectionKey === 'tla-activities') {
       if (fixedTableFor('tla-activities', 'tla-table')) return withConfiguredTables([])
-      const SCHEDULE_AI_FIELDS = ['topics']
+      const SCHEDULE_AI_FIELDS = ['topics', 'weeks', 'outcomes', SCHEDULE_META_FIELD]
       const SCHEDULE_FIELD_LABELS = {
         chapter: 'Week Number',
-        topics: 'Topic / Activity',
+        topics: 'Topics / Reading List',
         weeks: 'Weeks',
-        outcomes: 'Task',
+        outcomes: 'Topic Outcomes',
         delivery: 'Delivery',
         ilo: 'ILOs & pts',
         so: 'Student Outcomes',
       }
       return withConfiguredTables((syllabusData.tla_chapters || []).flatMap((chapter, index) => (
-        SCHEDULE_AI_FIELDS.map(field => ({
-          section: 'tla-activities',
-          label: `Week ${chapter.weeks || index + 1}: ${SCHEDULE_FIELD_LABELS[field] || field}`,
-          fieldType: 'arrayObj',
-          arrField: 'tla_chapters',
-          arrIndex: index,
-          arrObjKey: field,
-        }))
+        SCHEDULE_AI_FIELDS.map(field => (
+          field === SCHEDULE_META_FIELD
+            ? {
+              section: 'tla-activities',
+              label: `Week ${chapter.weeks || index + 1}: ILO, SO, and Delivery Method`,
+              fieldType: 'scheduleMeta',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+            }
+            : {
+              section: 'tla-activities',
+              label: `Week ${chapter.weeks || index + 1}: ${SCHEDULE_FIELD_LABELS[field] || field}`,
+              fieldType: 'arrayObj',
+              arrField: 'tla_chapters',
+              arrIndex: index,
+              arrObjKey: field,
+            }
+        ))
       )))
     }
     if (!activeConfiguredSection.editorKey) {
@@ -1735,11 +1908,55 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     try {
       const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
       const structureInstruction = 'Use a clear, well-organized structure with helpful headings or bullets and an appropriate amount of detail.'
+      let sessionCriteria = String(syllabusData.assessment_criteria || '').trim()
+      const sessionTopics = new Map()
+      const sessionActivities = new Map()
+      const fieldInstructions = field => {
+        const hints = []
+        if (field.field === 'rationale') {
+          hints.push('Write exactly 2–3 sentences in one short paragraph. Do not add headings, labels, bullets, or Markdown.')
+        } else if (field.field === 'assessment_criteria') {
+          hints.push('Return a plain-text grading breakdown with one assessment per line in the form "NN% Assessment Name". The percentages must total 100. Choose assessment names that fit this course; do not copy a fixed sample list. No bullets, heading, or Markdown.')
+        } else if (field.field === 'tlas') {
+          hints.push('Write the teaching, learning, and assessment strategies as a short plain-text paragraph or list.')
+          if (sessionCriteria) {
+            hints.push(`Base these strategies directly on the faculty's Criteria for Assessment: ${sessionCriteria}`)
+          }
+        } else if (field.arrField === 'ilos') {
+          hints.push("Return exactly one short sentence (about 20 words maximum) that starts with a Bloom's Taxonomy verb such as Understand, Apply, Analyze, Evaluate, or Create. Do not include an ILO number, label, or Markdown.")
+          if (iloBloomVerb) hints.push(`Use the Bloom's Taxonomy verb "${iloBloomVerb}".`)
+          if (iloFocusText.trim()) hints.push(`Focus the intended learning outcome on: ${iloFocusText.trim()}.`)
+        } else if (field.arrObjKey === 'topics') {
+          hints.push('Return plain text only — no bullets, asterisks, or Markdown. First line: the topic title. Then 2–6 subtopic titles, each on its own line indented with four spaces. Last line: one activity title that fits this row\'s topic; do not label every row "Written Assessment".')
+        } else if (field.arrObjKey === 'weeks') {
+          hints.push('Return only the week number or range, for example "1" or "1-2". No words, no punctuation, no Markdown.')
+        } else if (field.arrObjKey === 'outcomes') {
+          hints.push('Return one brief topic outcome sentence in plain text, about 15 words maximum. No Markdown or leading label.')
+        }
+        if (!hints.length) hints.push(structureInstruction)
+        return hints
+      }
+      const activityTypeCycle = ['Written Assessment', 'Laboratory Assessment', 'Quiz', 'Project', 'Recitation', 'Presentation']
       const drafts = []
       for (let index = 0; index < fields.length; index += 1) {
         const field = fields[index]
         setAiPipelineProgress({ completed: index, total: fields.length, label: field.label })
-        const extraHints = [structureInstruction]
+        const extraHints = fieldInstructions(field)
+        if (field.arrField === 'tla_chapters') {
+          const chapters = syllabusData.tla_chapters || []
+          const chapter = chapters[field.arrIndex] || {}
+          const contextTopics = String(chapter.topics || sessionTopics.get(field.arrIndex) || '').trim()
+          if (contextTopics) extraHints.push(`This week's topics for context: ${contextTopics}`)
+          if (field.arrObjKey === 'topics') {
+            extraHints.push(`This is row ${field.arrIndex + 1} of ${chapters.length} in the weekly plan.`)
+            const usedActivities = [...sessionActivities.values()]
+            if (usedActivities.length) {
+              extraHints.push(`Activity titles already used in this plan: ${usedActivities.join('; ')}. Never repeat an activity title.`)
+            }
+            const preferredType = activityTypeCycle[field.arrIndex % activityTypeCycle.length]
+            extraHints.push(`Choose the assessment type that best fits this row (for example Written Assessment, Laboratory Assessment, Quiz, Project, Recitation, or Presentation). Row ${field.arrIndex + 1} should prefer a "${preferredType}" unless the topic clearly calls for another type. Number each assessment type from #1.`)
+          }
+        }
         if (field.fieldType === 'customTable') {
           extraHints.push(
             `Create exactly 5 useful data rows for this table. The column headings, in order, are ${JSON.stringify(field.columns)}. `
@@ -1747,9 +1964,79 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             + 'Do not include headers, markdown, or commentary.',
           )
         }
-        if (field.arrField === 'ilos') {
-          if (iloBloomVerb) extraHints.push(`Use the Bloom's Taxonomy verb "${iloBloomVerb}".`)
-          if (iloFocusText.trim()) extraHints.push(`Focus the intended learning outcome on: ${iloFocusText.trim()}.`)
+        if (field.fieldType === 'scheduleMeta') {
+          const rowIndex = field.arrIndex
+          const rowDrafts = drafts.filter(draft => draft.arrField === 'tla_chapters' && draft.arrIndex === rowIndex)
+          const activity = activityTitleFromText(rowDrafts.find(draft => draft.arrObjKey === 'topics')?.text)
+          const topicOutcome = String(rowDrafts.find(draft => draft.arrObjKey === 'outcomes')?.text || '').trim()
+          const iloItems = (syllabusData.ilos || [])
+            .map((text, i) => ({ number: i + 1, text: String(text || '').trim() }))
+            .filter(item => item.text)
+          const soItems = (syllabusData.student_outcomes || [])
+            .map((so, i) => ({
+              number: i + 1,
+              label: String(so?.code || `SO${i + 1}`).trim(),
+              text: String(so?.title || so?.description || '').trim(),
+            }))
+            .filter(item => item.text)
+          const soMapping = (syllabusData.ilos || [])
+            .map((_, i) => ({ number: i + 1, so: mappedSoNumbers(syllabusData, i + 1) }))
+            .filter(item => item.so.length)
+          const metaHints = [
+            'Return only a JSON object with keys "ilo", "so", and "delivery" — no markdown, fences, or commentary.',
+            iloItems.length
+              ? `ILOs: ${iloItems.map(item => `${item.number}: ${item.text}`).join(' | ')}. Pick the ILO number this week's topic and topic outcome best serve.`
+              : 'Use 1 for "ilo".',
+            `This week's topic outcome: ${topicOutcome || 'not yet written'}.`,
+            activity
+              ? `This week's activity in the topics column: "${activity}". Choose a delivery method that supports that activity.`
+              : 'This week has no assessment activity, so it is pure discussion — choose "Lecture/Discussion" or "Guided Reading".',
+            `Delivery methods: ${WEEKLY_SCHEDULE_DELIVERY_OPTIONS.join('; ')}.`,
+            soMapping.length
+              ? `Student Outcome mapping from Table 1: ${soMapping.map(item => `ILO ${item.number} → SO ${item.so.join(', ')}`).join('; ')}. "so" must follow this mapping.`
+              : 'Use the number of the Student Outcome this week best serves.',
+            soItems.length
+              ? `Student outcomes: ${soItems.map(item => `${item.label}: ${item.text}`).join(' | ')}.`
+              : '',
+          ].filter(Boolean)
+          const { data } = await api.post('/curriculum/generate-syllabus-field/', {
+            course_id: courseId,
+            section: field.section,
+            field_label: field.label,
+            existing_content: '',
+            mode: 'generate',
+            top_k: 5,
+            extra_instructions: metaHints.join(' '),
+            selected_doc_ids: selectedIds,
+          }, { timeout: 120000 })
+          const meta = parseScheduleMeta(data.generated_text)
+          if (!meta) {
+            throw new Error(`The AI did not return an ILO, SO, and delivery method for week ${rowIndex + 1}. Try generating the section again.`)
+          }
+          const iloCount = Math.max((syllabusData.ilos || []).length, 1)
+          const soCount = Math.max(
+            (syllabusData.student_outcomes || []).length,
+            ...(syllabusData.so_headers || []).map(header => parseInt(header, 10) || 0),
+            1,
+          )
+          const iloNumber = clampNumber(meta.ilo, iloCount) || 1
+          const mappedSo = mappedSoNumbers(syllabusData, iloNumber)
+          const soNumber = mappedSo.length
+            ? clampNumber(mappedSo[0], soCount)
+            : clampNumber(meta.so, soCount)
+          const weekLabel = `Week ${rowIndex + 1}`
+          drafts.push({ ...field, fieldType: 'arrayObj', arrObjKey: 'ilo', label: `${weekLabel}: ILO`, text: String(iloNumber) })
+          if (soNumber) {
+            drafts.push({ ...field, fieldType: 'arrayObj', arrObjKey: 'so', label: `${weekLabel}: Student Outcome`, text: String(soNumber) })
+          }
+          drafts.push({
+            ...field,
+            fieldType: 'arrayObj',
+            arrObjKey: 'delivery',
+            label: `${weekLabel}: Delivery Method`,
+            text: normalizeDeliveryChoice(meta.delivery, activity),
+          })
+          continue
         }
         const { data } = await api.post('/curriculum/generate-syllabus-field/', {
           course_id: courseId,
@@ -1765,11 +2052,29 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         if (!generatedText) {
           throw new Error(`The AI did not return text for "${field.label}". Try generating the section again.`)
         }
+        if (field.field === 'assessment_criteria') sessionCriteria = generatedText
+        if (field.arrObjKey === 'topics') {
+          sessionTopics.set(field.arrIndex, generatedText)
+          const activity = activityTitleFromText(generatedText)
+          if (activity) sessionActivities.set(field.arrIndex, activity)
+        }
         if (field.fieldType === 'customTable') {
           drafts.push({ ...field, rows: parseGeneratedTableRows(generatedText, field.columns) })
         } else {
           drafts.push({ ...field, text: generatedText })
         }
+      }
+      // The model can still repeat a title; number duplicate activities so the
+      // weekly plan never shows the same assessment more than once.
+      const usedActivityTitles = new Set()
+      for (const draft of drafts) {
+        if (draft.fieldType !== 'arrayObj' || draft.arrField !== 'tla_chapters' || draft.arrObjKey !== 'topics') continue
+        const original = activityTitleFromText(draft.text)
+        if (!original) continue
+        const unique = uniqueActivityTitle(original, usedActivityTitles)
+        usedActivityTitles.add(unique.toLowerCase())
+        if (unique !== original) draft.text = replaceLastLine(draft.text, unique)
+        sessionActivities.set(draft.arrIndex, unique)
       }
       setAiPipelineDrafts(drafts)
       setAiPipelineProgress({ completed: fields.length, total: fields.length, label: '' })
@@ -1791,12 +2096,46 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setAiReviewOpen(false)
   }
 
+  function syncAssessmentSchedule(current, drafts) {
+    const topicsDrafts = drafts.filter(draft => (
+      draft.fieldType === 'arrayObj'
+      && draft.arrField === 'tla_chapters'
+      && draft.arrObjKey === 'topics'
+    ))
+    if (!topicsDrafts.length) return current
+    const weekDrafts = new Map(
+      drafts
+        .filter(draft => draft.fieldType === 'arrayObj' && draft.arrField === 'tla_chapters' && draft.arrObjKey === 'weeks')
+        .map(draft => [draft.arrIndex, draft.text]),
+    )
+    const methods = (Array.isArray(current.schedule_methods) ? current.schedule_methods : []).map(method => ({
+      ...method,
+      values: Array.from({ length: TLA_WEEK_COUNT }, (_, index) => String((method.values || [])[index] ?? '')),
+    }))
+    topicsDrafts.forEach(draft => {
+      const activity = activityTitleFromText(draft.text)
+      if (!activity || !looksLikeActivityTitle(activity)) return
+      const weeks = parseWeekNumbers(weekDrafts.get(draft.arrIndex) ?? current.tla_chapters?.[draft.arrIndex]?.weeks)
+      if (!weeks.length) return
+      let row = methods.find(method => String(method.name || '').trim().toLowerCase() === activity.toLowerCase())
+      if (!row) {
+        row = { name: activity, values: Array(TLA_WEEK_COUNT).fill('') }
+        methods.push(row)
+      }
+      weeks.forEach(week => { row.values[week - 1] = '✓' })
+    })
+    return { ...current, schedule_methods: methods }
+  }
+
   function acceptAiDraftsAndContinue() {
     if (!aiPipelineDrafts?.length) return
-    setSyllabusData(current => aiPipelineDrafts.reduce(
-      (next, draft) => updateSyllabusWithAiText(next, draft, draft.text, draft.rows),
-      current,
-    ))
+    setSyllabusData(current => {
+      const next = aiPipelineDrafts.reduce(
+        (state, draft) => updateSyllabusWithAiText(state, draft, draft.text, draft.rows),
+        current,
+      )
+      return syncAssessmentSchedule(next, aiPipelineDrafts)
+    })
     setIsDirty(true)
     setSaveSuccess(false)
     setAiPipelineDrafts(null)
@@ -1910,7 +2249,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function syllabusForPersist(data = syllabusData) {
-    return { ...(data || {}), tos: materializeTosList(data?.tos) }
+    const chapters = (data?.tla_chapters || []).map((chapter, index) => ({
+      ...chapter,
+      chapter: String(index + 1),
+    }))
+    return { ...(data || {}), tla_chapters: chapters, tos: materializeTosList(data?.tos) }
   }
 
   async function handleExportDocx() {
@@ -4886,15 +5229,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const scheduleMethods = syllabusData.schedule_methods?.length ? syllabusData.schedule_methods : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
       const updScheduleMethod = (i, key, ci, val) => {
         setIsDirty(true); setSaveSuccess(false)
-        setSyllabusData(s => ({
-          ...s,
-          schedule_methods: s.schedule_methods.map((m, mi) => {
-            if (mi !== i) return m
-            if (key === 'name') return { ...m, name: val }
-            const values = [...(m.values || [])]; values[ci] = val
-            return { ...m, values }
-          }),
-        }))
+        setSyllabusData(s => {
+          // The table shows a blank starter row before anything is saved; edit
+          // that placeholder instead of dropping the change.
+          const base = Array.isArray(s.schedule_methods) && s.schedule_methods.length
+            ? s.schedule_methods
+            : [{ name: '', values: Array(TLA_WEEK_COUNT).fill('') }]
+          return {
+            ...s,
+            schedule_methods: base.map((m, mi) => {
+              if (mi !== i) return m
+              if (key === 'name') return { ...m, name: val }
+              const values = Array.from({ length: TLA_WEEK_COUNT }, (_, w) => String((m.values || [])[w] ?? ''))
+              values[ci] = val
+              return { ...m, values }
+            }),
+          }
+        })
       }
       return (
         <>
@@ -4918,7 +5269,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </thead>
               <tbody>
                 {chapters.map((ch, i) => {
-                  const _weekNum = parseInt(ch.chapter || ch.weeks, 10) || null
+                  // The Ch. column is the row position, so it always reads 1..n.
+                  const _weekNum = parseInt(ch.weeks, 10) || (i + 1)
                   const _lectureTopic = isLectureDiscussionDelivery(ch.delivery)
                     ? lectureTopicLines(ch.topics).join('; ')
                     : ''
@@ -4930,7 +5282,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   const _btnHover = _existingMod ? '#e3f2fd' : MAROON_LIGHT
                   return (
                   <tr key={i}>
-                    <td style={{ ...TABLE_TD, textAlign: 'center' }}>{inlineInput(ch.chapter, e => setSylArrObj('tla_chapters', i, 'chapter', e.target.value), 40, undefined, { numeric: true })}</td>
+                    <td style={{ ...TABLE_TD, textAlign: 'center', fontWeight: 700, color: '#9CA3AF' }}>{i + 1}</td>
                     <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.topics || ''}
@@ -5025,11 +5377,38 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={TABLE_TD}>
                       {inlineInput(m.name || '', e => updScheduleMethod(i, 'name', 0, e.target.value), 160)}
                     </td>
-                    {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => (
-                      <td key={w} style={{ ...TABLE_TD, textAlign: 'center' }}>
-                        {inlineInput((m.values || [])[w] || '', e => updScheduleMethod(i, 'values', w, e.target.value), 32, undefined, { numeric: true })}
-                      </td>
-                    ))}
+                    {Array.from({ length: TLA_WEEK_COUNT }, (_, w) => {
+                      const cellValue = String((m.values || [])[w] ?? '')
+                      return (
+                        <td key={w} style={{ ...TABLE_TD, textAlign: 'center', minWidth: 36 }}>
+                          {cellValue === '✓' ? (
+                            <button
+                              type="button"
+                              title="Clear this week"
+                              aria-label={`Clear ${m.name || 'assessment'} from week ${w + 1}`}
+                              onClick={() => updScheduleMethod(i, 'values', w, '')}
+                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px solid rgba(134,239,172,0.6)', background: 'rgba(22,163,74,0.2)', color: '#86EFAC', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}
+                            >
+                              ✓
+                            </button>
+                          ) : cellValue ? (
+                            inlineInput(cellValue, e => updScheduleMethod(i, 'values', w, e.target.value), 32)
+                          ) : (
+                            <button
+                              type="button"
+                              title={`Check week ${w + 1}`}
+                              aria-label={`Check ${m.name || 'assessment'} in week ${w + 1}`}
+                              onClick={() => updScheduleMethod(i, 'values', w, '✓')}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(134,239,172,0.6)'; e.currentTarget.style.color = 'rgba(134,239,172,0.7)' }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.16)'; e.currentTarget.style.color = 'transparent' }}
+                              style={{ width: 24, height: 24, borderRadius: 4, border: '1px dashed rgba(255,255,255,0.16)', background: 'transparent', color: 'transparent', fontWeight: 800, cursor: 'pointer', lineHeight: 1 }}
+                            >
+                              ✓
+                            </button>
+                          )}
+                        </td>
+                      )
+                    })}
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                       <RemoveBtn onClick={() => removeSylItem('schedule_methods', i)} disabled={scheduleMethods.length <= 1} />
                     </td>
@@ -5965,38 +6344,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             {renderSyllabusSection()}
             {renderConfiguredSubsections()}
           </Box>
-
-          {activeSyllabusSectionKey !== 'university-information' && aiPipelineDrafts && (
-            <Paper
-              variant="outlined"
-              sx={{
-                mx: 1,
-                mb: 1,
-                p: 1.5,
-                maxHeight: 190,
-                overflowY: 'auto',
-                bgcolor: '#111318',
-                borderColor: 'rgba(134,239,172,0.35)',
-              }}
-            >
-              <Typography variant="subtitle2" sx={{ color: '#86EFAC', fontWeight: 700, mb: 1 }}>
-                Review generated suggestions ({aiPipelineDrafts.length})
-              </Typography>
-              <Stack spacing={1.25}>
-                {aiPipelineDrafts.map((draft, index) => (
-                  <Box key={`${draft.fieldType}-${draft.field || draft.arrField}-${draft.arrIndex ?? draft.subsectionKey ?? index}`}>
-                    <Typography variant="caption" sx={{ color: '#fff', fontWeight: 700 }}>
-                      {draft.label}
-                    </Typography>
-                    <MarkdownText
-                      text={draft.text || 'The AI returned an empty suggestion for this field.'}
-                      sx={{ color: 'rgba(255,255,255,0.78)', mt: 0.25 }}
-                    />
-                  </Box>
-                ))}
-              </Stack>
-            </Paper>
-          )}
 
           {showSaveFooter && (
             <Box sx={{

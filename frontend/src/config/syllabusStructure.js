@@ -377,6 +377,9 @@ function normalizeSubsection(subsection, index) {
       ? subsection.table_column_groups
       : columns.map(() => ''),
     table_rows: Array.isArray(subsection.table_rows) ? subsection.table_rows : [],
+    // Admin-added fields can be anchored to a built-in field so they render
+    // beside that field instead of at the end of the section.
+    after: typeof subsection.after === 'string' ? subsection.after : '',
   }
 }
 
@@ -405,7 +408,25 @@ function mergeFields(blueprint, savedFields) {
       fixed: Boolean(entry.fixed),
       content: entry.content || '',
     }))
-  return [...merged, ...extras]
+
+  // Saved order wins so the admin's drag arrangement survives a reload.
+  // New blueprint fields and extras keep their relative order at the end.
+  const items = [...merged, ...extras]
+  const byKey = new Map(items.map(item => [item.key, item]))
+  const ordered = []
+  const used = new Set()
+  savedFields.forEach(entry => {
+    if (!entry?.key || used.has(entry.key) || !byKey.has(entry.key)) return
+    ordered.push(byKey.get(entry.key))
+    used.add(entry.key)
+  })
+  items.forEach(item => {
+    if (!used.has(item.key)) {
+      ordered.push(item)
+      used.add(item.key)
+    }
+  })
+  return ordered
 }
 
 function normalizeTableOverride(override) {
@@ -451,6 +472,7 @@ function mergeSection(section, index) {
       : [],
     table_rows: Array.isArray(section.table_rows) ? section.table_rows : [],
     table_titles: normalizeTableTitles(section.table_titles),
+    table_order: Array.isArray(section.table_order) ? section.table_order.filter(Boolean) : [],
     blueprint_tables: normalizeTableOverrides(section.blueprint_tables),
   }
   if (!blueprint) {

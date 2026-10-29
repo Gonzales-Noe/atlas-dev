@@ -735,11 +735,75 @@ OUTPUT — Return the assessment using exactly this structure:
         )
         hint = hint_template.replace("{course_name}", course_name)
 
+        # Field-specific formats requested by faculty. Matched on the label that
+        # the Syllabus workspace sends, so they also apply to custom sections.
+        label_key = (field_label or "").lower()
+        field_hint = ""
+        if "ilo, so, and delivery" in label_key:
+            field_hint = (
+                "Return only a valid JSON object with the keys \"ilo\", \"so\", and "
+                "\"delivery\". \"ilo\" is the number of the ILO from the provided list "
+                "that this week's topic and topic outcome best serve. \"so\" is the "
+                "student outcome number mapped to that ILO. \"delivery\" must be one of "
+                "the listed delivery methods. No Markdown, fences, or commentary."
+            )
+        elif "rationale" in label_key:
+            field_hint = (
+                "Write exactly 2–3 sentences in one short paragraph explaining why this "
+                "course exists in the program and what it develops in students. "
+                "Do not add headings, labels, bullets, or numbering."
+            )
+        elif "teaching, learning, and assessment" in label_key:
+            field_hint = (
+                "Write the teaching, learning, and assessment strategies as a short "
+                "plain-text paragraph or short list. If a Criteria for Assessment is "
+                "provided in the additional instructions, base every strategy on those "
+                "criteria so teaching, learning activities, and assessments align."
+            )
+        elif "intended learning outcome" in label_key:
+            field_hint = (
+                "Return exactly one short sentence (about 20 words maximum) that begins "
+                "with a Bloom's Taxonomy action verb (Remember, Understand, Apply, "
+                "Analyze, Evaluate, Create). Do not include an ILO number, label, or "
+                "Markdown."
+            )
+        elif "criteria for assessment" in label_key or "assessment criteria" in label_key:
+            field_hint = (
+                "Return a plain-text grading breakdown with one assessment per line in "
+                'the form "NN% Assessment Name". The percentages must total 100 and the '
+                "assessment names must fit this course's topics and delivery (for "
+                "example written work, laboratory work, quizzes, major examinations, or "
+                "a final project). Do not copy a fixed sample list, add bullets, "
+                "Markdown, or a heading."
+            )
+        elif "topics / reading" in label_key or "topic / activity" in label_key:
+            field_hint = (
+                "Return plain text only — no bullets, asterisks, or Markdown. First line: "
+                "the topic title. Then 2–6 subtopic titles, each on its own line indented "
+                "with four spaces. Last line: one activity title that fits this row's "
+                "topic and is not always a written assessment — for example "
+                '"Laboratory Assessment #1", "Quiz #1", "Project Milestone", or '
+                '"Recitation #1". Number each assessment type from #1 and never reuse '
+                "an activity title already used in the same weekly plan."
+            )
+        elif label_key.endswith("weeks") or label_key == "weeks":
+            field_hint = (
+                'Return only the week number or range, for example "1" or "1-2". '
+                "No words, punctuation, or Markdown."
+            )
+        elif "topic outcome" in label_key or label_key.endswith(": task"):
+            field_hint = (
+                "Return one brief topic outcome sentence in plain text, about 15 words "
+                "maximum. No Markdown or leading label."
+            )
+
         system = (
             "You are an expert curriculum designer at a Philippine university following "
             "Outcome-Based Education (OBE). You generate precise, professional syllabus content. "
             "Be specific, practical, and aligned with CHED guidelines. "
-            "Return ONLY the requested content — no headers, no explanations, no markdown fences."
+            "Return ONLY the requested content — no headers, no explanations, no markdown fences. "
+            "Use plain text; never use asterisks as bullets or Markdown headings. "
+            "You may wrap a short leading label in **double asterisks** to make it bold."
         )
 
         if mode == "continue":
@@ -753,12 +817,13 @@ OUTPUT — Return the assessment using exactly this structure:
                 "Do not add a header or prefix. Output only the continuation text."
             )
         else:
+            field_rule = f"\n\nFORMAT REQUIREMENT: {field_hint}" if field_hint else ""
             user = (
                 f"REFERENCE MATERIAL:\n{context}\n\n"
                 f"TASK: {hint}\n\n"
                 f"Course       : {course_name}\n"
                 f"Course Code  : {course_code or 'N/A'}\n"
-                f"Field to populate: {field_label}\n\n"
+                f"Field to populate: {field_label}{field_rule}\n\n"
                 "Generate professional, OBE-aligned content for this field. "
                 "Be concise but complete. Output only the field content — "
                 "no headers, no explanations, no extra commentary."
