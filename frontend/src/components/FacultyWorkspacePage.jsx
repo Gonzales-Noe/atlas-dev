@@ -2049,6 +2049,90 @@ function AssessmentDistributionMap({ title, ilos, ats, setAts }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────
+const CHECK_PANEL_DEFAULT_HEIGHT = 240
+
+function CheckResultsPanel({ title, children, onClose }) {
+  const [height, setHeight] = useState(CHECK_PANEL_DEFAULT_HEIGHT)
+
+  function onPointerDown(event) {
+    if (event.button != null && event.button !== 0) return
+    event.preventDefault()
+    const handle = event.currentTarget
+    handle.setPointerCapture(event.pointerId)
+    const startY = event.clientY
+    const startHeight = height
+    const maxHeight = Math.max(CHECK_PANEL_DEFAULT_HEIGHT, Math.round(window.innerHeight * 0.72))
+
+    function onMove(moveEvent) {
+      const next = startHeight + (startY - moveEvent.clientY)
+      setHeight(Math.min(maxHeight, Math.max(CHECK_PANEL_DEFAULT_HEIGHT, next)))
+    }
+
+    function onUp(upEvent) {
+      if (handle.hasPointerCapture?.(upEvent.pointerId)) {
+        handle.releasePointerCapture(upEvent.pointerId)
+      }
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
+    }
+
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
+  }
+
+  return (
+    <Box sx={{
+      flexShrink: 0,
+      height,
+      display: 'flex',
+      flexDirection: 'column',
+      bgcolor: '#12141A',
+      borderTop: '1px solid rgba(134,239,172,0.35)',
+      position: 'relative',
+    }}>
+      <Box
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={`Resize ${title}`}
+        onPointerDown={onPointerDown}
+        sx={{
+          position: 'absolute',
+          top: -7,
+          left: 0,
+          right: 0,
+          height: 14,
+          cursor: 'ns-resize',
+          touchAction: 'none',
+          zIndex: 2,
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+        }}
+      >
+        <Box sx={{ width: 36, height: 3, mt: '5px', borderRadius: 2, bgcolor: 'rgba(134,239,172,0.55)' }} />
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, pt: 0.75 }}>
+        <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 800 }}>
+          {title}
+        </Typography>
+        <IconButton
+          size="small"
+          aria-label="Close check results"
+          onClick={onClose}
+          sx={{ color: 'rgba(255,255,255,0.72)', p: 0.4 }}
+        >
+          <CloseIcon sx={{ fontSize: '1rem' }} />
+        </IconButton>
+      </Box>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto', px: 2, pb: 1 }}>
+        <Stack spacing={0.75}>{children}</Stack>
+      </Box>
+    </Box>
+  )
+}
+
 export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus' }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -4268,31 +4352,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function renderCheckResultsPanel(title, body, panelKey) {
     if (!body || closedCheckPanels[panelKey]) return null
     return (
-      <Box sx={{
-        flexShrink: 0,
-        maxHeight: 240,
-        display: 'flex',
-        flexDirection: 'column',
-        bgcolor: '#12141A',
-        borderTop: '1px solid rgba(134,239,172,0.35)',
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, pt: 0.75 }}>
-          <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 800 }}>
-            {title}
-          </Typography>
-          <IconButton
-            size="small"
-            aria-label="Close check results"
-            onClick={() => setClosedCheckPanels(current => ({ ...current, [panelKey]: true }))}
-            sx={{ color: 'rgba(255,255,255,0.72)', p: 0.4 }}
-          >
-            <CloseIcon sx={{ fontSize: '1rem' }} />
-          </IconButton>
-        </Box>
-        <Box sx={{ overflow: 'auto', px: 2, pb: 1 }}>
-          <Stack spacing={0.75}>{body}</Stack>
-        </Box>
-      </Box>
+      <CheckResultsPanel
+        title={title}
+        onClose={() => setClosedCheckPanels(current => ({ ...current, [panelKey]: true }))}
+      >
+        {body}
+      </CheckResultsPanel>
     )
   }
 
