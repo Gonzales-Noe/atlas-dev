@@ -229,8 +229,7 @@ function firstSentence(text) {
 }
 
 function shapeRationale(text) {
-  const clean = String(text || '')
-    .replace(/^```[\w]*\n?|```$/g, '')
+  const clean = formatOutcomeForDisplay(text)
     .replace(/^\s*course rationale and description\s*[:\-–]?\s*/i, '')
     .trim()
   const sentences = clean.split(/(?<=[.!?])\s+/).map(part => part.trim()).filter(Boolean)
@@ -243,8 +242,7 @@ function isInstructionEcho(text) {
 }
 
 function shapeIlo(text) {
-  let clean = String(text || '')
-    .replace(/```/g, '')
+  let clean = formatOutcomeForDisplay(text)
     .replace(/students (?:should|will) be able to:?/ig, '')
     .replace(/upon completion of this course,?\s*(?:the students should be able to:?)?/ig, '')
     .replace(/^outcome for\b[^:\n]{0,80}:\s*/i, '')
@@ -259,10 +257,7 @@ function shapeIlo(text) {
 }
 
 function shapeOutcome(text) {
-  const clean = String(text || '')
-    .replace(/```/g, '')
-    .replace(/^outcome for\b[^:\n]{0,80}:\s*/i, '')
-    .trim()
+  const clean = formatOutcomeForDisplay(text)
   const line = clean.split(/\n+/).map(part => part.trim()).find(Boolean) || ''
   const sentence = firstSentence(line)
   if (!sentence || isInstructionEcho(sentence)) return ''
@@ -323,8 +318,97 @@ function parseTopicMap(text, count, iloNumbers, soNumbers) {
   return pairs.slice(0, count)
 }
 
+const TOPIC_LABEL_ONLY = /^(?:topics?(?:\s*\/\s*reading\s*list)?|sub-?topics?|reading\s*list|activity|outcomes?)$/i
+
+function cleanTopicPiece(text) {
+  return String(text || '')
+    .replace(/\*\*|__|~~/g, '')
+    .replace(/`+/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/, '')
+    .replace(/^\s*(?:[-*•▪◦‣∙–—]|\d+[.)])\s+/, '')
+    .replace(/^(?:topics?(?:\s*\/\s*reading\s*list)?|sub-?topics?|reading\s*list|activity|outcomes?)\s*[:.\-–—]\s*/i, '')
+    .replace(/\*/g, '')
+    .replace(/^["'“”‘’]+|["'“”‘’]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
+function formatTopicsForDisplay(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/```[\w]*\n?|```/g, '')
+  if (!raw.trim()) return ''
+  const lines = []
+  let nextIsSub = false
+  raw.split('\n').forEach(line => {
+    if (!line.trim()) {
+      if (lines.length && lines[lines.length - 1] !== '') lines.push('')
+      nextIsSub = false
+      return
+    }
+    const indented = /^\s+/.test(line)
+    const trailingBar = /[|│]\s*$/.test(line)
+    let emitted = false
+    line.split(/[|│]/).forEach((part, index) => {
+      const title = cleanTopicPiece(part)
+      if (!title || TOPIC_LABEL_ONLY.test(title)) return
+      const sub = indented || nextIsSub || index > 0
+      lines.push(sub ? `     ${title}` : title)
+      emitted = true
+    })
+    nextIsSub = trailingBar && emitted
+  })
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim()
+}
+
+function plainTopicTitle(text) {
+  return formatTopicsForDisplay(text).split('\n').map(line => line.trim()).find(Boolean) || ''
+}
+
+function topicsNeedFormat(text) {
+  const raw = String(text || '')
+  if (/[|│]/.test(raw) || /```|\*\*|__|~~/.test(raw)) return true
+  if (/^\s{0,3}#{1,6}\s+/m.test(raw)) return true
+  if (/^\s*(?:[-*•▪◦‣∙]|\d+[.)])\s+\S/m.test(raw)) return true
+  if (/^\s*(?:topics?(?:\s*\/\s*reading\s*list)?|sub-?topics?|reading\s*list|activity)\s*$/im.test(raw)) return true
+  if (/^\s*(?:topics?(?:\s*\/\s*reading\s*list)?|sub-?topics?|reading\s*list|activity)\s*[:.\-–—]\s+\S/im.test(raw)) return true
+  return false
+}
+
+function outcomeNeedsFormat(text) {
+  const raw = String(text || '')
+  if (/[|│`]/.test(raw) || /```|\*\*|__|~~/.test(raw)) return true
+  if (/^\s{0,3}#{1,6}\s+/m.test(raw)) return true
+  if (/^\s*(?:topic\s+outcome|outcome for|outcome)\s*[:.\-–—]/im.test(raw)) return true
+  return false
+}
+
+function presentTopics(text) {
+  return topicsNeedFormat(text) ? formatTopicsForDisplay(text) : String(text || '')
+}
+
+function presentOutcome(text) {
+  return outcomeNeedsFormat(text) ? formatOutcomeForDisplay(text) : String(text || '')
+}
+
+function formatOutcomeForDisplay(text) {
+  return String(text || '')
+    .replace(/```[\w]*\n?|```/g, '')
+    .replace(/\*\*|__|~~/g, '')
+    .replace(/`+/g, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/\s*[|│]\s*/g, ', ')
+    .replace(/\*/g, '')
+    .replace(/^outcome for\b[^:\n]{0,80}:\s*/i, '')
+    .replace(/^\s*(?:topic\s+outcome|outcome)\s*[:.\-–—]\s*/i, '')
+    .replace(/\s+,/g, ',')
+    .replace(/,[ \t]*,/g, ',')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+}
+
 function topicLineTitle(line) {
-  return String(line || '').trim().replace(/^(?:[-*•–—]|\d+[.)])\s+/, '')
+  return cleanTopicPiece(line)
 }
 
 function shapeTopicsBlock(block) {
@@ -341,7 +425,7 @@ function shapeTopicsBlock(block) {
 }
 
 function shapeTopicsCell(text, options) {
-  const stripped = String(text || '').replace(/```[\w]*\n?|```/g, '').trim()
+  const stripped = formatTopicsForDisplay(text)
   if (!options || !options.span) {
     const blocks = stripped.split(/\n\s*\n/).map(block => block.trim()).filter(Boolean)
     return blocks.map(shapeTopicsBlock).filter(Boolean).join('\n\n')
@@ -430,13 +514,25 @@ function shapeGeneratedField(section, text) {
 
 function parseAssignedWeekPlan(text) {
   return String(text || '').split(/\n/).flatMap(line => {
-    const trimmed = line.trim()
-    if (!trimmed) return []
+    const trimmed = line.trim().replace(/^\|+/, '').replace(/\|+$/, '').trim()
+    if (!trimmed || /^[-|:\s]+$/.test(trimmed)) return []
     const tab = trimmed.indexOf('\t')
-    const weeks = (tab === -1 ? trimmed : trimmed.slice(0, tab)).trim()
-    const title = tab === -1 ? '' : trimmed.slice(tab + 1).trim()
+    let weeks = ''
+    let title = ''
+    if (tab !== -1) {
+      weeks = trimmed.slice(0, tab).trim()
+      title = trimmed.slice(tab + 1).trim()
+    } else {
+      const pipe = trimmed.match(/^(\d+(?:-\d+)?)\s*[|│]\s*(.*)$/)
+      if (pipe) {
+        weeks = pipe[1]
+        title = pipe[2]
+      } else {
+        weeks = trimmed
+      }
+    }
     if (!/^\d+(?:-\d+)?$/.test(weeks)) return []
-    return [{ weeks, title }]
+    return [{ weeks, title: plainTopicTitle(title) }]
   })
 }
 
@@ -463,9 +559,12 @@ function SyllabusDraftText({ text, section, sx }) {
   if (section === 'topics') {
     return (
       <Box component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', m: 0, ...sx }}>
-        {text}
+        {formatTopicsForDisplay(text)}
       </Box>
     )
+  }
+  if (section === 'topic_outcome' || section === 'ilo' || section === 'rationale' || section === 'tlas') {
+    return <MarkdownText text={formatOutcomeForDisplay(text)} sx={sx} />
   }
   return <MarkdownText text={text} sx={sx} />
 }
@@ -1368,16 +1467,17 @@ function sameAiField(field, selected) {
 function TopicsCell({ value, onChange, onPointerDown, selected }) {
   const ref = useRef(null)
   const readOnlySyllabus = React.useContext(SyllabusLockContext)
+  const shown = presentTopics(value)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     el.style.height = 'auto'
     el.style.height = `${Math.max(el.scrollHeight, 44)}px`
-  }, [value])
+  }, [shown])
   return (
     <textarea
       ref={ref}
-      value={value}
+      value={shown}
       readOnly={readOnlySyllabus}
       onChange={onChange}
       data-ai-field="true"
@@ -1966,6 +2066,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [tosListOpen, setTosListOpen]   = useState(true)
   const [tosDetailOpen, setTosDetailOpen] = useState(true)
   const [isDirty, setIsDirty]           = useState(false)
+  useEffect(() => {
+    const chapters = syllabusData.tla_chapters
+    if (!Array.isArray(chapters) || !chapters.length) return
+    let changed = false
+    const next = chapters.map(chapter => {
+      const topics = presentTopics(chapter?.topics)
+      const outcomes = presentOutcome(chapter?.outcomes)
+      if (topics === (chapter?.topics || '') && outcomes === (chapter?.outcomes || '')) return chapter
+      changed = true
+      return { ...chapter, topics, outcomes }
+    })
+    if (!changed) return
+    setSyllabusData(current => ({ ...current, tla_chapters: next }))
+    setIsDirty(true)
+    setSaveSuccess(false)
+  }, [syllabusData.tla_chapters])
   const [saveLoading, setSaveLoading]   = useState(false)
   const [saveError, setSaveError]       = useState('')
   const [saveSuccess, setSaveSuccess]   = useState(false)
@@ -3120,7 +3236,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function syllabusForPersist(data = syllabusData) {
-    return { ...(data || {}), tos: materializeTosList(data?.tos) }
+    const source = data || {}
+    const chapters = Array.isArray(source.tla_chapters)
+      ? source.tla_chapters.map(chapter => ({
+        ...chapter,
+        topics: presentTopics(chapter?.topics),
+        outcomes: presentOutcome(chapter?.outcomes),
+      }))
+      : source.tla_chapters
+    return { ...source, tla_chapters: chapters, tos: materializeTosList(source.tos) }
   }
 
   async function handleExportDocx() {
@@ -6431,22 +6555,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>ILO</th>
                   <th style={{ ...TABLE_TH, minWidth: 70, width: 70 }}>SO</th>
                   <th style={{ ...TABLE_TH, minWidth: 210 }}>Delivery Method</th>
-                  <th style={{ ...TABLE_TH, minWidth: 44, width: 44, textAlign: 'center' }}>Action</th>
                   <th style={{ ...TABLE_TH, borderRight: 'none' }} />
                 </tr>
               </thead>
               <tbody>
                 {chapters.map((ch, i) => {
-                  const _weekNum = parseInt(ch.chapter || ch.weeks, 10) || null
-                  const _lectureTopic = isLectureDiscussionDelivery(ch.delivery)
-                    ? lectureTopicLines(ch.topics).join('; ')
-                    : ''
-                  const _existingMod = _lectureTopic && _weekNum
-                    ? (workspaceApi.data?.modules || []).find(m => m.week_number === _weekNum)
-                    : null
-                  const _btnLabel = _existingMod ? 'View Module' : 'Generate Module'
-                  const _btnColor = _existingMod ? '#1565c0' : MAROON
-                  const _btnHover = _existingMod ? '#e3f2fd' : MAROON_LIGHT
                   const coveredWeeks = weeksForChapter(ch)
                   return (
                   <tr key={i} data-tla-weeks={coveredWeeks.join(' ')}>
@@ -6464,7 +6577,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </td>
                     <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
                       <textarea
-                        value={ch.outcomes || ''}
+                        value={presentOutcome(ch.outcomes)}
                         readOnly={syllabusLocked}
                         data-ai-field="true" onPointerDown={() => setAiField({ section: 'topic_outcome', label: `Topic Outcomes ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
@@ -6484,33 +6597,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         value={ch.delivery}
                         onChange={next => setSylArrObj('tla_chapters', i, 'delivery', next)}
                       />
-                    </td>
-                    <td style={{ ...TABLE_TD, textAlign: 'center', width: 44, minWidth: 44 }}>
-                      {_lectureTopic ? (
-                      <button
-                        type="button"
-                        title={_btnLabel}
-                        onClick={() => {
-                          if (!_existingMod) {
-                            setPendingGenerate({
-                              topic: _lectureTopic,
-                              week: _weekNum || 1,
-                              topic_id: `tla-${i}`,
-                            })
-                            setModuleParams(p => ({ ...p, week_number: _weekNum || 1, module_title: _lectureTopic, topic_id: `tla-${i}` }))
-                          } else {
-                            setSelectedModule(null); setModuleContent(null); setChatOpen(false)
-                          }
-                          setResultText('')
-                          setActiveTab('module')
-                        }}
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, border: `1.5px solid ${_btnColor}`, borderRadius: 6, background: 'transparent', color: _btnColor, cursor: 'pointer', padding: 0, flexShrink: 0 }}
-                        onMouseEnter={e => { e.currentTarget.style.background = _btnHover }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-                      >
-                        {_existingMod ? <BookOpen size={14} /> : <Zap size={14} />}
-                      </button>
-                      ) : null}
                     </td>
                     <td style={{ ...TABLE_TD, borderRight: 'none' }}>
                       <RemoveBtn onClick={() => removeSylItem('tla_chapters', i)} disabled={chapters.length <= 1} />
