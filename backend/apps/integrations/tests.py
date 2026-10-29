@@ -192,6 +192,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual([row['label'] for row in rows], ['Groq', 'Groq'])
         self.assertEqual([row['instance'] for row in rows], [1, 2])
         self.assertEqual([row['tokens_remaining'] for row in rows], [40, 10])
+        self.assertEqual([row['key_hint'] for row in rows], ['ey-a', 'ey-b'])
         self.assertEqual(rows[0]['id'], 'groq-1')
         self.assertEqual(rows[1]['id'], 'groq-2')
 
@@ -395,7 +396,37 @@ class SyllabusFieldPromptTests(SimpleTestCase):
         )
         self.assertIn('Using only these criteria: 40% Laboratory Activities', tla)
         self.assertIn('Do not add a component', tla)
+        self.assertIn('Reason in this order', tla)
+        self.assertNotIn('REFERENCE MATERIAL', tla)
         self.assertNotIn('comprehensive', tla.lower())
+
+        _, rationale = CoTPromptBuilder.build_syllabus_field_prompt(
+            course_name='Introduction to Statistics',
+            course_code='GE 7',
+            field_label='Course Rationale and Description',
+            section='rationale',
+            existing_content='',
+            mode='generate',
+            context_chunks=[{'text': '| Outcome 1 | Outcome 2 |'}],
+            course_brief='Statistics covers data, probability, and interpretation.',
+        )
+        self.assertIn('Course brief:', rationale)
+        self.assertIn('Statistics covers data', rationale)
+        self.assertIn('Reason in this order', rationale)
+        self.assertNotIn('REFERENCE MATERIAL', rationale)
+        self.assertNotIn('| Outcome 1 |', rationale)
+        self.assertFalse(field_reply_is_usable(
+            'rationale',
+            'Courses/ Subjects, Outcome 1, Outcome 2, Outcome 3, Institutional Vision, Curriculum Map, Apply, Design',
+        ))
+        self.assertFalse(field_reply_is_usable(
+            'tlas',
+            '| Dimension | How it is Taught | How it is Assessed |',
+        ))
+        self.assertTrue(field_reply_is_usable(
+            'rationale',
+            'This course examines how data are collected and interpreted. Students use those ideas to read a result.',
+        ))
 
         _, ilo = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name='Information Management',

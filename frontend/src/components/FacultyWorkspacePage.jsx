@@ -228,13 +228,56 @@ function firstSentence(text) {
   return (match ? match[0] : clean).trim()
 }
 
+function isSourceLabel(line) {
+  const text = String(line || '').trim()
+  if (!text || /^[-—–|:.\s]+$/.test(text)) return true
+  if (/^(?:dimension|how it is taught|how it is assessed|institutional (?:vision|mission|goals|outcomes?)|curriculum map|courses?\s*\/\s*subjects?|outcome\s+\d+)\b/i.test(text) && text.length < 90) return true
+  return (text.match(/,/g) || []).length >= 4 && !/[.!?]/.test(text)
+}
+
+function proseSentences(text, limit) {
+  const pieces = String(text || '')
+    .replace(/```[\w]*\n?|```/g, '')
+    .replace(/\*\*|__|~~|`+/g, '')
+    .replace(/[|│]/g, '\n')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/[*#]+/g, '')
+    .replace(/[—–]{2,}/g, ' ')
+    .replace(/-{3,}/g, ' ')
+    .split(/\n+/)
+    .map(line => line.replace(/^[\s|:—–-]+/, '').trim())
+    .filter(line => {
+      if (!line || isSourceLabel(line)) return false
+      if (!/[.!?]/.test(line) && line.split(/\s+/).length < 8) return false
+      return true
+    })
+  const sentences = pieces.join(' ')
+    .split(/(?<=[.!?])\s+/)
+    .map(part => part.trim())
+    .filter(part => part.split(/\s+/).length >= 6 && /[.!?]$/.test(part) && !isSourceLabel(part))
+  return (limit ? sentences.slice(0, limit) : sentences).join(' ')
+}
+
 function shapeRationale(text) {
-  const clean = formatOutcomeForDisplay(text)
-    .replace(/^\s*course rationale and description\s*[:\-–]?\s*/i, '')
-    .trim()
-  const sentences = clean.split(/(?<=[.!?])\s+/).map(part => part.trim()).filter(Boolean)
-  if (sentences.length <= 3) return clean
-  return sentences.slice(0, 3).join(' ')
+  return proseSentences(text, 3)
+}
+
+function shapeTlas(text) {
+  return proseSentences(text)
+}
+
+function proseNeedsClean(text) {
+  const raw = String(text || '')
+  if (/[|│`*#]/.test(raw) || /```|\*\*|__|~~/.test(raw)) return true
+  if (/^\s{0,3}#{1,6}\s+/m.test(raw)) return true
+  if (/\b(?:outcome\s+\d+|institutional\s+(?:vision|mission|goals|outcomes?)|curriculum\s+map|courses?\s*\/\s*subjects?|how it is (?:taught|assessed))\b/i.test(raw)) return true
+  return (raw.match(/,/g) || []).length >= 8 && (raw.match(/\./g) || []).length < 2
+}
+
+function presentProse(text) {
+  const raw = String(text || '')
+  if (!proseNeedsClean(raw)) return raw
+  return proseSentences(raw)
 }
 
 function isInstructionEcho(text) {
@@ -506,6 +549,7 @@ function writingStillRunning(generating, assigning, progress) {
 
 function shapeGeneratedField(section, text) {
   if (section === 'rationale') return shapeRationale(text)
+  if (section === 'tlas') return shapeTlas(text)
   if (section === 'ilo') return shapeIlo(text)
   if (section === 'topics') return shapeTopicsCell(text)
   if (section === 'topic_outcome') return shapeOutcome(text)
@@ -572,7 +616,10 @@ function SyllabusDraftText({ text, section, sx }) {
       </Box>
     )
   }
-  if (section === 'topic_outcome' || section === 'ilo' || section === 'rationale' || section === 'tlas') {
+  if (section === 'rationale' || section === 'tlas') {
+    return <MarkdownText text={presentProse(text)} sx={sx} />
+  }
+  if (section === 'topic_outcome' || section === 'ilo') {
     return <MarkdownText text={formatOutcomeForDisplay(text)} sx={sx} />
   }
   return <MarkdownText text={text} sx={sx} />
@@ -3226,7 +3273,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         outcomes: presentOutcome(chapter?.outcomes),
       }))
       : source.tla_chapters
-    return { ...source, tla_chapters: chapters, tos: materializeTosList(source.tos) }
+    return {
+      ...source,
+      rationale: presentProse(source.rationale),
+      tlas: presentProse(source.tlas),
+      tla_chapters: chapters,
+      tos: materializeTosList(source.tos),
+    }
   }
 
   async function handleExportDocx() {
@@ -6106,7 +6159,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
           <SectionCard title="Course Details">
             <SylField rules={fixedFieldRules} fieldKey="course-rationale-description" label={labelFor('course-rationale-description', 'Course Rationale and Description')} multiline minRows={5}
-              value={syllabusData.rationale || ''} onChange={setRationaleDescription}
+              value={presentProse(syllabusData.rationale)} onChange={setRationaleDescription}
               data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-information', label: 'Course Rationale and Description', fieldType: 'simple', field: 'rationale' })} />
             <Box sx={{ mt: 2, maxWidth: 340 }}>
               <SylField rules={fixedFieldRules} fieldKey="contact-hours" label={labelFor('contact-hours', 'Contact Hours')}
@@ -6119,7 +6172,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
             <Box sx={{ mt: 2 }}>
               <SylField rules={fixedFieldRules} fieldKey="tla-strategies" label={labelFor('tla-strategies', 'Teaching, Learning, and Assessment Strategies')} multiline minRows={5}
-                value={syllabusData.tlas || ''} onChange={e => setSyl('tlas', e.target.value)}
+                value={presentProse(syllabusData.tlas)} onChange={e => setSyl('tlas', e.target.value)}
                 data-ai-field="true" onPointerDown={() => setAiField({ section: 'course-information', label: 'Teaching, Learning, and Assessment Strategies', fieldType: 'simple', field: 'tlas' })} />
             </Box>
           </SectionCard>

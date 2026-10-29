@@ -24,6 +24,22 @@ logger = logging.getLogger(__name__)
 # Keeps total prompt within typical 8 K-context LLM windows.
 _CONTEXT_TOKEN_BUDGET: int = 2_000
 
+_COPIED_SOURCE = re.compile(
+    r"\b(?:outcome\s+\d+|institutional\s+(?:vision|mission|goals|outcomes?)|"
+    r"curriculum\s+map|courses?\s*/\s*subjects?|how it is (?:taught|assessed))\b",
+    re.IGNORECASE,
+)
+
+
+def _copied_source_dump(text: str) -> bool:
+    """True when a field copied a table, a heading list, or a comma dump from a source."""
+    if text.count("|") + text.count("│") >= 2:
+        return True
+    if len(_COPIED_SOURCE.findall(text)) >= 2:
+        return True
+    return text.count(",") >= 8 and text.count(".") < 2
+
+
 _INSTRUCTION_ECHO = re.compile(
     r"\b("
     r"8\s*[–-]\s*16|7\s*[–-]\s*12|hard cap|bloom'?s?\s+verb|"
@@ -50,6 +66,8 @@ def field_reply_is_usable(section: str, text: str) -> bool:
         return len(cleaned) >= 40
     if section == "framework_columns":
         return bool(re.search(r"\b(SO|IGA|CDIO|SDG)\b", cleaned, re.IGNORECASE) and re.search(r"\d", cleaned))
+    if section in {"rationale", "tlas"} and _copied_source_dump(cleaned):
+        return False
     return True
 
 
@@ -1216,6 +1234,70 @@ OUTPUT — Return the assessment using exactly this structure:
     }
 
     @classmethod
+    def _prose_field_prompt(
+        cls,
+        *,
+        section,
+        course_name,
+        course_code,
+        field_label,
+        hint,
+        brief,
+        criteria,
+        mode,
+        existing_content,
+        extra_instructions,
+    ):
+        """Rationale and teaching strategies: brief from retrieval, then three writing steps."""
+        if section == "tlas":
+            task = (
+                "Write Teaching, Learning, and Assessment Strategies. "
+                "One sentence for each faculty criterion. "
+                "Each sentence says how that part is taught and how it is assessed."
+            )
+        else:
+            task = (
+                "Write the Course Rationale and Description. "
+                "Two or three sentences. One idea per sentence. "
+                "Say what the course examines and why a student takes it."
+            )
+        system = (
+            "You write one syllabus field for a Philippine university course. "
+            "The course brief was retrieved from the course materials. "
+            "Reason through the three steps, then reply with the sentences only. "
+            "Do not write the steps, a heading, a table, or a list of labels."
+        )
+        steps = (
+            "1. Read the course brief for what this course teaches. "
+            "Ignore tables, vision, mission, outcome numbers, and curriculum maps.\n"
+            "2. Keep only what belongs in this field. "
+            f"{hint}\n"
+            "3. Write plain sentences. Present tense. "
+            "Start with \"This course\", \"The course\", or \"Students\"."
+        )
+        user = (
+            f"Course brief:\n{brief or 'No course brief was available. Use the course title only.'}\n\n"
+            f"Course: {course_name}\n"
+            f"Course code: {course_code or 'N/A'}\n"
+            f"Field: {field_label}\n\n"
+            f"{task}\n\n"
+            "Reason in this order, then write only the sentences. Do not write the steps.\n"
+            f"{steps}\n\n"
+            "Plain sentences. No vertical bars, markdown, bullets, or tables.\n"
+            "Do not list Outcome 1, Institutional Vision, Institutional Mission, "
+            "Courses/Subjects, or Curriculum Map.\n"
+            "Do not add a component.\n"
+        )
+        if section == "tlas":
+            user += f"Using only these criteria: {criteria}\n"
+        if mode == "continue" and (existing_content or "").strip():
+            user += f"\nContinue this text. Do not repeat it:\n{existing_content.strip()}\n"
+        if extra_instructions:
+            user += f"\n{extra_instructions}\n"
+        user += f"\n{field_label}:"
+        return system, user
+
+    @classmethod
     def build_syllabus_field_prompt(
         cls,
         course_name: str,
@@ -1386,6 +1468,20 @@ OUTPUT — Return the assessment using exactly this structure:
                 "SDG: none"
             )
             return system, user
+
+        if section in {"rationale", "tlas"}:
+            return cls._prose_field_prompt(
+                section=section,
+                course_name=course_name,
+                course_code=course_code,
+                field_label=field_label,
+                hint=hint,
+                brief=brief,
+                criteria=criteria,
+                mode=mode,
+                existing_content=existing_content,
+                extra_instructions=extra_instructions,
+            )
 
         system = (
             "You are an expert curriculum designer at a Philippine university following "
