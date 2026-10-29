@@ -47,6 +47,11 @@ function unusedText(row) {
   return { primary: 'Not published', secondary: '' }
 }
 
+function accountText(row) {
+  if (!row.instances || row.instances < 2) return ''
+  return `Account ${row.instance} of ${row.instances}`
+}
+
 function returnText(row) {
   if (row.status === 'blocked') return 'No automatic return'
   if (row.status === 'not_configured' || row.status === 'unreachable') return '—'
@@ -97,85 +102,98 @@ export default function LlmHealthPanel() {
     return () => clearInterval(timer)
   }, [load, loadTraffic])
 
+  const minutes = Math.round((traffic.window_seconds || 120) / 60)
+
   return (
-    <GlassCard
-      title="LLM model health"
-      titleAction={(
-        <PrimaryBtn small disabled={loading} onClick={() => load(true)}>
-          {loading ? 'Checking' : 'Check again'}
-        </PrimaryBtn>
-      )}
-      style={{ marginBottom: 16 }}
-    >
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: 16,
-        alignItems: 'baseline',
-        marginBottom: 16,
-        paddingBottom: 14,
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
-      }}>
-        <div>
-          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Concurrent users</div>
-          <div style={{ color: '#F0F0F2', fontSize: '1.6rem', fontWeight: 800, lineHeight: 1.1 }}>
+    <>
+      <style>{`
+        .llm-health-split {
+          display: grid;
+          grid-template-columns: minmax(200px, 250px) minmax(0, 1fr);
+          gap: 16px;
+          margin-bottom: 16px;
+          align-items: start;
+        }
+        .llm-model-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1.15fr) auto minmax(0, 1.4fr) minmax(108px, 0.9fr);
+          gap: 12px;
+          align-items: center;
+          padding: 12px 0;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        @media (max-width: 980px) {
+          .llm-health-split { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 720px) {
+          .llm-model-row { grid-template-columns: minmax(0, 1fr) auto; }
+        }
+      `}</style>
+      <div className="llm-health-split">
+        <GlassCard title="Concurrent users" style={{ marginBottom: 0 }}>
+          <div style={{ color: '#F0F0F2', fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>
             {traffic.concurrent_users}
           </div>
-        </div>
-        <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
-          {traffic.by_role.length
-            ? traffic.by_role.map(item => `${item.label} ${item.count}`).join(' · ')
-            : 'No one is active right now'}
-          <div style={{ marginTop: 4, fontSize: '0.75rem' }}>
-            Counted from signed-in requests in the last {Math.round((traffic.window_seconds || 120) / 60)} minutes.
+          <div style={{ marginTop: 12, color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', lineHeight: 1.45 }}>
+            {traffic.by_role.length
+              ? traffic.by_role.map(item => `${item.label} ${item.count}`).join(' · ')
+              : 'No one is active right now'}
           </div>
-        </div>
+          <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', lineHeight: 1.4 }}>
+            Counted from signed-in requests in the last {minutes} {minutes === 1 ? 'minute' : 'minutes'}.
+          </div>
+        </GlassCard>
+
+        <GlassCard
+          title="LLM model health"
+          titleAction={(
+            <PrimaryBtn small disabled={loading} onClick={() => load(true)}>
+              {loading ? 'Checking' : 'Check again'}
+            </PrimaryBtn>
+          )}
+          style={{ marginBottom: 0, minWidth: 0 }}
+        >
+          <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
+            Unused quota for each model account, and the time a reached limit comes back.
+          </p>
+          {error && (
+            <p style={{ margin: 0, color: '#FFB74D', fontSize: '0.85rem' }}>{error}</p>
+          )}
+          {!error && !loading && providers.length === 0 && (
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No models are configured.</p>
+          )}
+          <div>
+            {providers.map(row => {
+              const unused = unusedText(row)
+              const account = accountText(row)
+              return (
+                <div key={row.id} className="llm-model-row">
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{row.label}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{row.model || '—'}</div>
+                    {account && (
+                      <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.75rem', marginTop: 2 }}>{account}</div>
+                    )}
+                  </div>
+                  <div>
+                    <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
+                    {unused.secondary && (
+                      <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
+                    <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </GlassCard>
       </div>
-      <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
-        Unused quota for each model, and the time a reached limit comes back.
-      </p>
-      {error && (
-        <p style={{ margin: 0, color: '#FFB74D', fontSize: '0.85rem' }}>{error}</p>
-      )}
-      {!error && !loading && providers.length === 0 && (
-        <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No models are configured.</p>
-      )}
-      <div style={{ display: 'grid', gap: 10 }}>
-        {providers.map(row => {
-          const unused = unusedText(row)
-          return (
-            <div
-              key={row.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                gap: 12,
-                alignItems: 'center',
-                padding: '12px 0',
-                borderTop: '1px solid rgba(255,255,255,0.06)',
-              }}
-            >
-              <div>
-                <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{row.label}</div>
-                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{row.model || '—'}</div>
-              </div>
-              <div>
-                <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
-              </div>
-              <div>
-                <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
-                {unused.secondary && (
-                  <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
-                )}
-              </div>
-              <div>
-                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
-                <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </GlassCard>
+    </>
   )
 }

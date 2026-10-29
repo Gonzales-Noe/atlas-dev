@@ -171,6 +171,30 @@ class LLMProviderFallbackTests(SimpleTestCase):
         )
         self.assertEqual(keys, ['sk-one', 'sk-two', 'sk-three', 'sk-four'])
 
+    def test_health_lists_each_account(self):
+        service = _service('groq')
+        service.ollama_configured = False
+        service.api_keys = {name: [] for name in service.api_keys}
+        service.api_keys['groq'] = ['key-a', 'key-b']
+        snapshots = {
+            'key-a': {
+                'status': 'healthy', 'quota_kind': 'tokens',
+                'tokens_limit': 100, 'tokens_remaining': 40, 'detail': '',
+            },
+            'key-b': {
+                'status': 'healthy', 'quota_kind': 'tokens',
+                'tokens_limit': 100, 'tokens_remaining': 10, 'detail': '',
+            },
+        }
+        with patch.object(service, '_probe_one_key', side_effect=lambda provider, api_key: snapshots[api_key]):
+            rows = [row for row in service.llm_health(refresh=True) if str(row['id']).startswith('groq')]
+
+        self.assertEqual([row['label'] for row in rows], ['Groq', 'Groq'])
+        self.assertEqual([row['instance'] for row in rows], [1, 2])
+        self.assertEqual([row['tokens_remaining'] for row in rows], [40, 10])
+        self.assertEqual(rows[0]['id'], 'groq-1')
+        self.assertEqual(rows[1]['id'], 'groq-2')
+
     def test_second_account_is_used_when_the_first_is_rate_limited(self):
         service = _service('openrouter')
         service.api_keys = {
