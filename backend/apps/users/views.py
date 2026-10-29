@@ -989,7 +989,9 @@ class FacultyAssignmentsView(APIView):
         if role == 'admin':
             faculty_queryset = faculty_queryset.filter(institution=request.user.institution)
 
-        assignments = CourseLoad.objects.select_related('course', 'faculty', 'section').filter(
+        assignments = CourseLoad.objects.select_related(
+            'course', 'course__syllabus_owner', 'faculty', 'section',
+        ).filter(
             faculty__in=faculty_queryset,
         ).order_by('faculty__email', 'course__course_code')
         sections = Section.objects.order_by('code')
@@ -1004,7 +1006,7 @@ class FacultyAssignmentsView(APIView):
         if role == 'admin' and request.user.institution_id:
             course_queryset = course_queryset.filter(institution=request.user.institution)
 
-        course_queryset = course_queryset.select_related('section')
+        course_queryset = course_queryset.select_related('section', 'syllabus_owner')
         return Response({
             'faculty': [UserAccountSerializer(profile).data for profile in faculty_queryset.order_by('email')],
             'courses': [
@@ -1014,6 +1016,11 @@ class FacultyAssignmentsView(APIView):
                     'course_title': course.course_title,
                     'section': course.section.code if course.section_id else '',
                     'category': course.category,
+                    'syllabus_owner_id': str(course.syllabus_owner_id) if course.syllabus_owner_id else None,
+                    'syllabus_owner_name': (
+                        course.syllabus_owner.full_name or course.syllabus_owner.email
+                        if course.syllabus_owner_id else ''
+                    ),
                 }
                 for course in course_queryset
             ],
@@ -1026,6 +1033,10 @@ class FacultyAssignmentsView(APIView):
                     'course_title': assignment.course.course_title,
                     'section_id': str(assignment.section_id) if assignment.section_id else None,
                     'section': assignment.section_name,
+                    'syllabus_owner_id': (
+                        str(assignment.course.syllabus_owner_id)
+                        if assignment.course.syllabus_owner_id else None
+                    ),
                 }
                 for assignment in assignments
             ],
@@ -1103,6 +1114,38 @@ class FacultyAssignmentsView(APIView):
                 course_title=course_title,
                 description=description or None,
             )
+        # A section is handled by one faculty per course; the course itself is
+        # shared between sections and between faculty who co-teach other blocks.
+        conflict = CourseLoad.objects.select_related('faculty').filter(
+            course=course, section=section,
+        ).exclude(faculty=faculty).first()
+        if conflict:
+            holder = conflict.faculty.full_name or conflict.faculty.email
+            return Response(
+                {
+                    'detail': (
+                        f'{course.course_code} · {section.code} is already handled by {holder}. '
+                        'A section can only be assigned to one faculty per course.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # The syllabus has one author; everyone else on the course reads it.
+        as_syllabus_owner = str(request.data.get('as_syllabus_owner')).lower() in ('1', 'true', 'yes', 'on')
+        if as_syllabus_owner and course.syllabus_owner_id and course.syllabus_owner_id != faculty.user_id:
+            holder = course.syllabus_owner
+            holder_name = holder.full_name or holder.email
+            return Response(
+                {
+                    'detail': (
+                        f'The {course.course_code} syllabus is already maintained by {holder_name}. '
+                        'Clear that assignment before assigning another faculty.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         seed_course_syllabi(course)
 
         # A handled section takes the course.
@@ -1112,6 +1155,20 @@ class FacultyAssignmentsView(APIView):
             faculty=faculty,
             section=section,
         )
+        if as_syllabus_owner and course.syllabus_owner_id != faculty.user_id:
+            course.syllabus_owner = faculty
+            course.save(update_fields=['syllabus_owner'])
+            AuditLog.objects.create(
+                user=request.user,
+                action_type="syllabus_owner_assigned",
+                resource_type="Course",
+                resource_id=course.course_id,
+                details={
+                    "faculty_id": str(faculty.user_id),
+                    "faculty_email": faculty.email,
+                    "course_code": course.course_code,
+                },
+            )
         AuditLog.objects.create(
             user=request.user,
             action_type="course_assigned",
@@ -1135,7 +1192,69 @@ class FacultyAssignmentsView(APIView):
             'course_title': course.course_title,
             'section_id': str(section.section_id),
             'section': section.section_name,
+            'syllabus_owner_id': str(course.syllabus_owner_id) if course.syllabus_owner_id else None,
         }, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    def patch(self, request):
+        """Set or clear the faculty member who authors this course's syllabus."""
+        denied = self._require_admin(request)
+        if denied:
+            return denied
+
+        course = Course.objects.filter(course_id=request.data.get('course_id')).first()
+        if not course:
+            return Response({'detail': 'Course not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if normalize_role(request.user.role) == 'admin' and course.institution_id != request.user.institution_id:
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+
+        faculty_id = str(request.data.get('faculty_id') or '').strip()
+        if not faculty_id:
+            course.syllabus_owner = None
+            course.save(update_fields=['syllabus_owner'])
+            return Response({'success': True, 'course_id': str(course.course_id), 'syllabus_owner_id': None})
+
+        faculty = UserProfile.objects.filter(user_id=faculty_id, role=UserRole.FACULTY).first()
+        if not faculty:
+            return Response({'detail': 'Faculty account not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if normalize_role(request.user.role) == 'admin' and faculty.institution_id != request.user.institution_id:
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        if not CourseLoad.objects.filter(course=course, faculty=faculty).exists():
+            return Response(
+                {'detail': 'Assign this faculty member to the course before making them its syllabus owner.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if course.syllabus_owner_id and course.syllabus_owner_id != faculty.user_id:
+            holder = course.syllabus_owner
+            holder_name = holder.full_name or holder.email
+            return Response(
+                {
+                    'detail': (
+                        f'The {course.course_code} syllabus is already maintained by {holder_name}. '
+                        'Clear that assignment from that faculty first.'
+                    ),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        course.syllabus_owner = faculty
+        course.save(update_fields=['syllabus_owner'])
+        AuditLog.objects.create(
+            user=request.user,
+            action_type="syllabus_owner_assigned",
+            resource_type="Course",
+            resource_id=course.course_id,
+            details={
+                "faculty_id": str(faculty.user_id),
+                "faculty_email": faculty.email,
+                "course_code": course.course_code,
+            },
+        )
+        return Response({
+            'success': True,
+            'course_id': str(course.course_id),
+            'syllabus_owner_id': str(faculty.user_id),
+            'syllabus_owner_name': faculty.full_name or faculty.email,
+        }, status=status.HTTP_200_OK)
 
     def delete(self, request):
         denied = self._require_admin(request)
