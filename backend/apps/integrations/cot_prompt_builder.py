@@ -498,50 +498,80 @@ class CoTPromptBuilder:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _format_source_passages(chunks: list) -> str:
+        """Format retrieved passages. The matched child chunk leads; the parent section follows."""
+        parts = []
+        tokens_used = 0
+        for i, chunk in enumerate(chunks, 1):
+            source = f"[Source: {chunk.get('document_title') or 'Uploaded course file'}"
+            if chunk.get("page_number"):
+                source += f", p. {chunk['page_number']}"
+            if chunk.get("course_code"):
+                source += f" | Course: {chunk['course_code']}"
+            if chunk.get("module_tag"):
+                source += f" | Module: {chunk['module_tag']}"
+            if chunk.get("term_tag"):
+                source += f" | Term: {chunk['term_tag']}"
+            source += f" | Relevance: {float(chunk.get('score') or 0):.2f}]"
+            header = f"--- Reference {i} {source} ---\n"
+            child_text = (chunk.get("text") or "").strip()
+            parent_text = (chunk.get("parent_text") or "").strip()
+            if child_text and parent_text and parent_text != child_text:
+                body = f"{child_text}\n\nSurrounding section:\n{parent_text}"
+            else:
+                body = child_text or parent_text
+            entry_tokens = _count_tokens(header + body)
+            remaining = _CONTEXT_TOKEN_BUDGET - tokens_used
+            if entry_tokens > remaining:
+                if not parts:
+                    body = body[: max(remaining, 1) * 4] + "…"
+                    parts.append(header + body)
+                break
+            parts.append(header + body)
+            tokens_used += entry_tokens
+        return "\n\n".join(parts)
+
+    @staticmethod
     def _format_context(chunks: list, context_summary: str = "") -> str:
         """
         Build the RAG context block for a prompt.
 
-        Priority order (mirrors PEA _assemble_prompt):
-          1. context_summary — pre-computed progressive summary (most token-efficient).
-             Injected as-is when provided and non-empty.
-          2. chunks list — formatted with source citations, trimmed to
-             _CONTEXT_TOKEN_BUDGET tokens so the prompt stays within LLM limits.
-          3. Fallback placeholder — when neither is available.
+        ``context_summary`` is the institutional knowledge base and is a structure
+        guide only. ``chunks`` are passages retrieved from faculty uploads through
+        child-chunk search. A summary never replaces those passages.
         """
-        # ── 1. Use pre-computed summary (token-efficient) ─────────────────
-        if context_summary and context_summary.strip():
-            return f"[CURRICULUM CONTEXT SUMMARY]\n{context_summary.strip()}"
+        summary = (context_summary or "").strip()
+        structure = ""
+        if summary:
+            structure = (
+                "[STRUCTURE GUIDE — institutional knowledge base]\n"
+                "Use this only for academic form, section shape, and OBE structure. "
+                "Do not take subject matter from it.\n"
+                f"{summary}"
+            )
 
-        # ── 2. Format raw chunks with token budget ────────────────────────
-        if not chunks:
+        if chunks:
+            source = (
+                "[SOURCE CONTENT — faculty uploaded files]\n"
+                "Write the subject matter from these passages. They are the priority "
+                "reference. Each passage starts with the matched chunk, then the "
+                "surrounding section it belongs to.\n"
+                + CoTPromptBuilder._format_source_passages(chunks)
+            )
+        elif structure:
+            source = (
+                "[SOURCE CONTENT — faculty uploaded files]\n"
+                "(No passage was retrieved from the uploaded course files.)"
+            )
+        else:
             return (
                 "(No reference material was retrieved from the knowledge base. "
                 "Generate the content using your expert knowledge of Outcome-Based Education.)"
             )
 
-        parts = []
-        tokens_used = 0
-        for i, chunk in enumerate(chunks, 1):
-            source = f"[Source: {chunk['document_title']}"
-            if chunk.get("page_number"):
-                source += f", p. {chunk['page_number']}"
-            source += f" | Relevance: {chunk.get('score', 0):.2f}]"
-            header = f"--- Reference {i} {source} ---\n"
-            body = chunk['text']
-            entry_tokens = _count_tokens(header + body)
-            remaining = _CONTEXT_TOKEN_BUDGET - tokens_used
-            if entry_tokens > remaining:
-                if not parts:
-                    # Always include at least one chunk, truncated to budget
-                    body = body[: remaining * 4] + "…"
-                    parts.append(header + body)
-                # Budget exhausted
-                break
-            parts.append(header + body)
-            tokens_used += entry_tokens
-
-        return "\n\n".join(parts)
+        if structure:
+            return f"{structure}\n\n{source}"
+        return source
 
     # ------------------------------------------------------------------
     # Syllabus generation

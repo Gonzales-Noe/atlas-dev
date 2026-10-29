@@ -195,17 +195,12 @@ def _run_course_job(records_id, file_bytes, file_type, file_name, module_tag, te
     )
 
 
-def _to_1536_dim(vector):
-    """Pad or trim vectors so they fit ChildChunk.vector(1536)."""
-    if vector is None:
-        return None
-    if len(vector) >= 1536:
-        return vector[:1536]
-    return vector + [0.0] * (1536 - len(vector))
-
-
 def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, term_tag):
-    """Chunk, embed and store a faculty course file, then mark it COMPLETED."""
+    """Chunk, embed and store a faculty course file, then mark it COMPLETED.
+
+    Uses the same hierarchical split and native 768-dim BGE batch as global
+    documents. Child rows keep the embedding; parent rows keep the section text.
+    """
     parents_data, child_records, embeddings = _chunk_and_embed(file_bytes, file_type, file_name)
 
     with transaction.atomic():
@@ -218,22 +213,23 @@ def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, 
             logger.info("[ATLAS RAG] %s was deleted before indexing finished.", file_name)
             return
 
-        parent_rows = {}
-        for p_idx, parent_data in enumerate(parents_data):
-            parent_rows[p_idx] = ParentChunk.objects.create(
+        parent_rows = ParentChunk.objects.bulk_create([
+            ParentChunk(
                 records=course_file,
                 uploader_id=course_file.uploader_id,
                 module_tag=module_tag,
                 term_tag=term_tag,
                 parent_content=parent_data["content"],
             )
+            for parent_data in parents_data
+        ])
 
         ChildChunk.objects.bulk_create([
             ChildChunk(
                 parent=parent_rows[p_idx],
                 uploader_id=course_file.uploader_id,
                 overlap_text=child_data["content"],
-                embedding_vector=_to_1536_dim(embeddings[i]),
+                embedding_vector=embeddings[i],
             )
             for i, (p_idx, child_data) in enumerate(child_records)
         ])

@@ -17,6 +17,9 @@ class GenerateSyllabusSerializer(serializers.Serializer):
     extra_instructions = serializers.CharField(
         required=False, allow_blank=True, max_length=1000, default=""
     )
+    selected_doc_ids = serializers.ListField(
+        child=serializers.UUIDField(), required=False, allow_empty=True, default=list
+    )
 
 
 class GenerateModuleSerializer(serializers.Serializer):

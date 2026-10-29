@@ -23,23 +23,17 @@ from apps.integrations.models import (
     AssessmentItem,
     AuditLog,
     Course,
-    CourseFile,
     CourseLoad,
     CourseRequest,
     CourseRequestStatus,
     InstitutionCustomization,
     Module,
-    ParentChunk,
     Section,
     StudentData,
     Syllabus,
     UserRole,
 )
-from apps.integrations.rag_service import (
-    course_semantic_search_with_summary,
-    semantic_search,
-    semantic_search_with_summary,
-)
+from apps.integrations.rag_service import generation_reference
 from apps.integrations.trial import trial_generation_gate
 
 from .docx_builders import (
@@ -107,23 +101,28 @@ def _get_assigned_course_or_403(request, course_id):
     return assignment.course, None
 
 
-def _load_course_rag_chunks(course, limit=3):
-    """Return parent chunks from faculty-uploaded course files as RAG context."""
-    parent_texts = list(
-        ParentChunk.objects
-        .filter(records__course=course, records__rag_status='COMPLETED')
-        .order_by('-records__records_id')
-        .values_list('parent_content', flat=True)[:limit]
-    )
-    return [
-        {
-            "text": text,
-            "document_title": "Uploaded course document",
-            "page_number": None,
-            "score": 0.5,
-        }
-        for text in parent_texts
-    ]
+def _resolve_generation_course(request, course_id=None, course_code=""):
+    """Return the faculty's course, looked up by id or by institution + code.
+
+    A code that does not belong to this faculty yields no course, so generation
+    cannot attach another course's uploaded chunks.
+    """
+    if course_id:
+        return _get_assigned_course_or_403(request, course_id)
+    code = str(course_code or "").strip()
+    institution_id = getattr(request.user, "institution_id", None)
+    if not code or not institution_id:
+        return None, None
+    match = Course.objects.filter(
+        institution_id=institution_id,
+        course_code__iexact=code,
+    ).first()
+    if not match:
+        return None, None
+    course, error = _get_assigned_course_or_403(request, match.course_id)
+    if error:
+        return None, None
+    return course, None
 
 
 @api_view(["GET"])
@@ -478,47 +477,45 @@ def generate_syllabus(request):
     top_k = data.get("top_k", 5)
     provider = data.get("provider") or None
     extra_instructions = data.get("extra_instructions", "")
+    selected_doc_ids = [str(uid) for uid in (data.get("selected_doc_ids") or [])]
     search_query = data.get("search_query") or (
         f"{course_name} syllabus course outline curriculum learning outcomes OBE"
     )
 
+    course, error_response = _resolve_generation_course(request, course_id, course_code)
+    if error_response:
+        return error_response
+    if course is not None:
+        course_name = course.course_title
+        course_code = course.course_code
+        course_category = course.category or "professional"
+        assessment_criteria = _stored_assessment_criteria(course)
+
     try:
-        # Step 1 — Global semantic search with progressive summary
-        rag_result = semantic_search_with_summary(
-            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        # Global knowledge base = structure. Child chunks of this course's uploads = content.
+        reference = generation_reference(
+            search_query,
+            course=course,
+            institution_id=request.user.institution_id,
+            top_k=top_k,
+            selected_doc_ids=selected_doc_ids,
         )
-        global_chunks = rag_result["chunks"]
-        global_summary = rag_result["context_summary"]
-        course_chunks = []
-        if course_id:
-            course, error_response = _get_assigned_course_or_403(request, course_id)
-            if error_response:
-                return error_response
-            # If course_id is present, source canonical title/code and include faculty uploads.
-            course_name = course.course_title
-            course_code = course.course_code
-            course_category = course.category or "professional"
-            assessment_criteria = _stored_assessment_criteria(course)
-            course_chunks = _load_course_rag_chunks(course, limit=3)
-        chunks = global_chunks + course_chunks
+        source_chunks = reference["source_chunks"]
         logger.info(
-            "Syllabus generation for %r: global=%d (abstained=%s) course=%d total=%d provider=%r",
+            "Syllabus generation for %r: structure=%d course_sources=%d provider=%r",
             course_name,
-            len(global_chunks),
-            rag_result["abstained"],
-            len(course_chunks),
-            len(chunks),
+            reference["global_chunk_count"],
+            len(source_chunks),
             provider,
         )
 
-        # Step 2 — Build CoT prompt (pass summary for token-efficient context)
         system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_prompt(
             course_name=course_name,
             course_code=course_code,
             num_weeks=num_weeks,
-            context_chunks=chunks,
+            context_chunks=source_chunks,
             extra_instructions=extra_instructions,
-            context_summary=global_summary,
+            context_summary=reference["structure_summary"],
             course_category=course_category,
             assessment_criteria=assessment_criteria,
         )
@@ -540,7 +537,7 @@ def generate_syllabus(request):
                 "course_code": course_code,
                 "num_weeks": num_weeks,
                 "provider_used": provider_used,
-                "rag_chunks_used": len(chunks),
+                "rag_chunks_used": len(source_chunks),
                 "generated_syllabus": generated_text,
             },
             status=status.HTTP_200_OK,
@@ -722,33 +719,19 @@ def generate_module(request):
         search_query = f"{module_title} {week_topic} concepts principles applications"
 
     try:
-        # ── Step 1: Global knowledge base RAG ──────────────────────────────
-        global_rag = semantic_search_with_summary(
-            search_query, institution_id=request.user.institution_id, top_k=top_k,
-        )
-        global_chunks = global_rag["chunks"]
-        global_summary = global_rag["context_summary"]
-
-        # ── Step 2: Course-specific RAG ────────────────────────────────────
-        course_rag = course_semantic_search_with_summary(
-            query=search_query,
+        reference = generation_reference(
+            search_query,
             course=course,
+            institution_id=request.user.institution_id,
             top_k=top_k,
-            selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
+            selected_doc_ids=selected_doc_ids,
         )
-        course_chunks = course_rag["chunks"]
-        course_summary = course_rag["context_summary"]
-
-        # Combine: course-specific chunks first (higher priority), then global
-        all_chunks = course_chunks + global_chunks
-        combined_summary = (
-            "\n\n".join(filter(None, [course_summary, global_summary])) or ""
-        )
+        source_chunks = reference["source_chunks"]
 
         logger.info(
-            "Module generation for %r / %r wk%d: course=%d global=%d provider=%r",
+            "Module generation for %r / %r wk%d: course_sources=%d structure=%d provider=%r",
             course_name, module_title, week_number,
-            len(course_chunks), len(global_chunks), provider,
+            len(source_chunks), reference["global_chunk_count"], provider,
         )
 
         # ── Step 3: Build JSON CoT prompt ──────────────────────────────────
@@ -757,9 +740,9 @@ def generate_module(request):
             module_title=module_title,
             week_number=week_number,
             module_number=module_number,
-            context_chunks=all_chunks,
+            context_chunks=source_chunks,
             extra_instructions=extra_instructions,
-            context_summary=combined_summary,
+            context_summary=reference["structure_summary"],
             ilos=syllabus_ilos,
             course_description=course_description,
             week_topic=week_topic,
@@ -833,7 +816,7 @@ def generate_module(request):
                 "module_title": module_title,
                 "week_number": week_number,
                 "provider_used": provider or llm.default_provider,
-                "rag_chunks_used": len(all_chunks),
+                "rag_chunks_used": len(source_chunks),
                 "module_content": module_content,
             },
             status=status.HTTP_201_CREATED,
@@ -1020,27 +1003,21 @@ def generate_subtopic_content(request):
     search_query = f"{module.module_title} {subtopic_title} concepts explanation"
 
     try:
-        global_rag = semantic_search_with_summary(
-            search_query, institution_id=request.user.institution_id, top_k=5,
-        )
-        course_rag = course_semantic_search_with_summary(
-            query=search_query,
+        reference = generation_reference(
+            search_query,
             course=course,
+            institution_id=request.user.institution_id,
             top_k=5,
-            selected_doc_ids=[str(d) for d in selected_doc_ids] if selected_doc_ids else None,
+            selected_doc_ids=[str(d) for d in selected_doc_ids],
         )
-        all_chunks = course_rag["chunks"] + global_rag["chunks"]
-        combined_summary = "\n\n".join(filter(None, [
-            course_rag["context_summary"], global_rag["context_summary"]
-        ]))
 
         system_prompt, user_prompt = CoTPromptBuilder.build_subtopic_content_prompt(
             course_name=course.course_title,
             module_title=module.module_title,
             subtopic_title=subtopic_title,
             existing_content=existing_content,
-            context_chunks=all_chunks,
-            context_summary=combined_summary,
+            context_chunks=reference["source_chunks"],
+            context_summary=reference["structure_summary"],
         )
 
         llm = LLMService()
@@ -2715,17 +2692,17 @@ def generate_assessment(request):
             f"{course.course_title} {source['assessment_name']} {target_section.get('section_title')} MCQ"
         )
         top_k = max(1, _to_int(request.data.get('top_k'), 3))
-        global_rag = semantic_search_with_summary(
-            search_query, institution_id=request.user.institution_id, top_k=top_k,
-        )
-        course_rag = course_semantic_search_with_summary(
-            query=search_query,
+        reference = generation_reference(
+            search_query,
             course=course,
+            institution_id=request.user.institution_id,
             top_k=top_k,
-            selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
+            selected_doc_ids=selected_doc_ids,
         )
-        all_chunks = course_rag['chunks'] + global_rag['chunks']
-        combined_summary = "\n\n".join(filter(None, [course_rag['context_summary'], global_rag['context_summary']]))
+        reference_material = CoTPromptBuilder._format_context(
+            reference["source_chunks"],
+            reference["structure_summary"],
+        )
 
         related_context = 'None'
         if related_item:
@@ -2794,7 +2771,7 @@ CURRENT CHOICES:
 CURRENT CORRECT ANSWER: {existing_answer}
 
 REFERENCE MATERIAL:
-{CoTPromptBuilder._format_context(all_chunks, combined_summary)}
+{reference_material}
 
 MATCHED MODULE CONTEXT:
 {module_excerpt or 'No matched saved module for this section.'}
@@ -2820,7 +2797,7 @@ Target Item Number: {target_item_number}
 Section Topic: {target_section.get('section_title')}
 
 REFERENCE MATERIAL:
-{CoTPromptBuilder._format_context(all_chunks, combined_summary)}
+{reference_material}
 
 MATCHED MODULE CONTEXT:
 {module_excerpt or 'No matched saved module for this section.'}
@@ -3122,22 +3099,16 @@ Requirements:
             status=status.HTTP_201_CREATED,
         )
 
-    # Build assessment-generation context like the module pipeline: combine course-specific
-    # document chunks with global knowledge-base context, then ask the LLM to populate the
-    # section blueprint with actual item text, rubrics, and answer keys.
+    # Global knowledge base guides structure. Child chunks from this course's
+    # sidebar uploads supply the item subject matter.
     search_query = request.data.get('search_query') or f"{course.course_title} {source['assessment_name']} assessment items TOS blooms score distribution"
-    global_rag = semantic_search_with_summary(
+    reference = generation_reference(
         search_query,
+        course=course,
         institution_id=request.user.institution_id,
         top_k=max(1, _to_int(request.data.get('top_k'), 5)),
+        selected_doc_ids=selected_doc_ids,
     )
-    course_rag = course_semantic_search_with_summary(
-        query=search_query,
-        course=course,
-        top_k=max(1, _to_int(request.data.get('top_k'), 5)),
-        selected_doc_ids=selected_doc_ids if selected_doc_ids else None,
-    )
-    combined_summary = "\n\n".join(filter(None, [course_rag['context_summary'], global_rag['context_summary']]))
 
     logger.info(
         'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s',
@@ -3153,12 +3124,10 @@ Requirements:
     )
 
     llm = LLMService()
-    reference_summary = (combined_summary or '').strip()
-    if not reference_summary:
-        reference_summary = CoTPromptBuilder._format_context(
-            (course_rag.get('chunks') or []) + (global_rag.get('chunks') or []),
-            '',
-        )
+    reference_summary = CoTPromptBuilder._format_context(
+        reference["source_chunks"],
+        reference["structure_summary"],
+    )
     providers_unavailable = False
 
     def _module_excerpt_for(section):
@@ -3742,20 +3711,17 @@ def run_assessment_qa(request, assessment_id):
         excerpt = _module_prompt_excerpt(matched) if matched else ''
         try:
             search_query = f"{course.course_title} {topic}"
-            global_rag = semantic_search_with_summary(
-                search_query, institution_id=request.user.institution_id, top_k=top_k,
-            )
-            course_rag = course_semantic_search_with_summary(
-                query=search_query,
+            reference = generation_reference(
+                search_query,
                 course=course,
+                institution_id=request.user.institution_id,
                 top_k=top_k,
-                selected_doc_ids=None,
+                selected_doc_ids=[str(uid) for uid in (request.data.get('selected_doc_ids') or [])],
             )
-            chunks = (course_rag.get('chunks') or []) + (global_rag.get('chunks') or [])
-            if chunks:
-                chunk_text = CoTPromptBuilder._format_context(chunks, "")
-            else:
-                chunk_text = "No source passage was retrieved."
+            chunk_text = CoTPromptBuilder._format_context(
+                reference["source_chunks"],
+                reference["structure_summary"],
+            )
             passages = "\n\n".join(part for part in (chunk_text, excerpt) if part)
             system_prompt, user_prompt = source_check_prompt(topic, batch['items'], passages)
             raw = llm.generate_response_with_fallback(
@@ -4308,6 +4274,7 @@ def generate_syllabus_field(request):
     extra_instructions = str(request.data.get("extra_instructions") or "").strip()[:instruction_limit]
     provider = request.data.get("provider") or None
     top_k = max(1, int(request.data.get("top_k", 5)))
+    selected_doc_ids = [str(uid) for uid in (request.data.get("selected_doc_ids") or [])]
 
     if not course_id:
         return Response(
@@ -4369,34 +4336,16 @@ def generate_syllabus_field(request):
                 status=status.HTTP_200_OK,
             )
 
-        # ── Step 1: Global RAG with progressive summary ────────────────────
         search_query = f"{section} {field_label} {course.course_title} OBE curriculum"
-        rag_result = semantic_search_with_summary(
-            search_query, institution_id=request.user.institution_id, top_k=top_k,
+        reference = generation_reference(
+            search_query,
+            course=course,
+            institution_id=request.user.institution_id,
+            top_k=top_k,
+            selected_doc_ids=selected_doc_ids,
         )
-        global_chunks = rag_result["chunks"]
+        source_chunks = reference["source_chunks"]
 
-        # ── Step 2: Course-specific RAG (uploaded faculty documents) ───────
-        from apps.integrations.models import ParentChunk  # local import to avoid circular
-        course_parent_texts = list(
-            ParentChunk.objects
-            .filter(records__course=course)
-            .order_by("-records__records_id")
-            .values_list("parent_content", flat=True)[:3]
-        )
-        course_chunks = [
-            {
-                "text": text,
-                "document_title": "Uploaded course document",
-                "page_number": None,
-                "score": 0.5,
-            }
-            for text in course_parent_texts
-        ]
-
-        all_chunks = global_chunks + course_chunks
-
-        # ── Step 3: Build prompt (summary-first, token-efficient) ─────────
         system_prompt, user_prompt = CoTPromptBuilder.build_syllabus_field_prompt(
             course_name=course.course_title,
             course_code=course.course_code,
@@ -4404,8 +4353,8 @@ def generate_syllabus_field(request):
             section=section,
             existing_content=existing_content,
             mode=mode,
-            context_chunks=all_chunks,
-            context_summary=rag_result["context_summary"],
+            context_chunks=source_chunks,
+            context_summary=reference["structure_summary"],
             extra_instructions=extra_instructions,
             course_category=course.category or "professional",
             assessment_criteria=assessment_criteria,
@@ -4433,7 +4382,7 @@ def generate_syllabus_field(request):
 
         logger.info(
             "generate_syllabus_field: section=%r field=%r mode=%r course=%r provider=%r chunks=%d",
-            section, field_label, mode, course.course_code, provider_used, len(all_chunks),
+            section, field_label, mode, course.course_code, provider_used, len(source_chunks),
         )
 
         return Response(
@@ -4441,7 +4390,7 @@ def generate_syllabus_field(request):
                 "success": True,
                 "generated_text": generated_text,
                 "provider_used": provider_used,
-                "rag_chunks_used": len(all_chunks),
+                "rag_chunks_used": len(source_chunks),
             },
             status=status.HTTP_200_OK,
         )

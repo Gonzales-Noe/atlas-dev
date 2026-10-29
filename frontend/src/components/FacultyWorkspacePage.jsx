@@ -1275,10 +1275,21 @@ function detectFileType(file) {
 }
 
 function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
-  const { numeric = false, allowRange = false } = options
-  const numericPattern = allowRange ? /^\d*(?:-\d*)?$/ : /^\d*$/
+  const { numeric = false, allowRange = false, allowList = false, placeholder = '' } = options
+  const numericPattern = allowList
+    ? /^[\d,\s]*$/
+    : allowRange
+      ? /^\d*(?:-\d*)?$/
+      : /^\d*$/
   const handleChange = event => {
-    if (!numeric || numericPattern.test(event.target.value)) onChange(event)
+    const next = event.target.value
+    if (!numeric || numericPattern.test(next)) {
+      onChange(event)
+      return
+    }
+    // A stored label such as "ILO1" fails the digit rule, so backspace never
+    // lands on a valid value. Allow the shorter text so it can be cleared.
+    if (String(value || '').length > next.length) onChange(event)
   }
   return (
     <TextField
@@ -1286,13 +1297,15 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
       value={value}
       onChange={handleChange}
       onFocus={onFocus}
+      placeholder={placeholder}
       // Keep these as text inputs so browsers do not render number spinners.
       // Validation below still limits numeric cells to digits (or a numeric range for Wks).
       type="text"
       onKeyDown={numeric ? event => {
-        if (['e', 'E', '+', '.', ','].includes(event.key) || (!allowRange && event.key === '-')) {
-          event.preventDefault()
-        }
+        const blocked = ['e', 'E', '+', '.']
+        if (!allowList) blocked.push(',')
+        if (!allowRange && event.key === '-') blocked.push('-')
+        if (blocked.includes(event.key)) event.preventDefault()
       } : undefined}
       sx={{
         minWidth,
@@ -6273,7 +6286,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
-                      {inlineInput(ch.ilo, e => setSylArrObj('tla_chapters', i, 'ilo', e.target.value), 60, undefined, { numeric: true })}
+                      {inlineInput(ch.ilo, e => setSylArrObj('tla_chapters', i, 'ilo', e.target.value), 88, undefined, { numeric: true, allowList: true, placeholder: '1, 2' })}
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
                       {inlineInput(ch.so, e => setSylArrObj('tla_chapters', i, 'so', e.target.value), 60, undefined, { numeric: true })}
@@ -7917,6 +7930,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
       // ── LIST view ──────────────────────────────────────────────────────
       const modules = workspaceApi.data?.modules || []
+      const savedModules = modules.filter(m => !deletedModuleIds.has(String(m.module_id)))
       const lectureTopics = moduleTopics
       const topicSourceLabel = [
         topicSection?.label,
@@ -7946,6 +7960,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         bgcolor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.06)',
                         color: moduleTopics.length ? MAROON : '#888',
                         border: '1px solid', borderColor: moduleTopics.length ? MAROON_LIGHT : 'rgba(0,0,0,0.08)' }} />
+                {savedModules.length > 0 && (
+                  <Chip size="small"
+                    label={`${savedModules.length} module${savedModules.length === 1 ? '' : 's'}`}
+                    sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: 'rgba(46,125,50,0.12)', color: '#86EFAC',
+                          border: '1px solid rgba(46,125,50,0.28)' }} />
+                )}
                 <Button size="small" disabled={consistencyChecking || lectureTopics.length === 0}
                   onClick={handleCheckAlignment}
                   sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
@@ -7987,7 +8007,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               ))}
             </Stack>
           )}
-          {lectureTopics.length === 0 ? (
+          {lectureTopics.length === 0 && savedModules.length === 0 ? (
             <Box sx={{ textAlign: 'center', py: 6 }}>
               <ViewModuleIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
               <Typography variant="body2" sx={{ color: '#aaa', mb: 0.5 }}>No Lecture/Discussion topics yet.</Typography>
@@ -7995,6 +8015,55 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 In Teaching, Learning, and Assessment (TLA) Activities, set Delivery Method to Lecture/Discussion and write the topic list. Reading lists are not topics, and two lists in the same week become one module.
               </Typography>
             </Box>
+          ) : lectureTopics.length === 0 ? (
+            <Stack spacing={1}>
+              <Typography variant="caption" sx={{ color: '#aaa' }}>
+                These modules are still saved. They are hidden from the topic list because the syllabus has no Lecture/Discussion rows right now.
+              </Typography>
+              {savedModules.map(existingMod => (
+                <Box key={existingMod.module_id}
+                  sx={{ display: 'flex', gap: 1, alignItems: 'center', px: 1.5, py: 1,
+                    bgcolor: '#1A1A1F', borderRadius: 1.5, border: '1px solid rgba(255,255,255,0.09)' }}>
+                  <Chip label={'Wk ' + existingMod.week_number} size="small"
+                    sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem', flexShrink: 0 }} />
+                  <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 600, minWidth: 0 }}>
+                    {existingMod.module_title}
+                  </Typography>
+                  <Chip label="Module Ready" size="small"
+                    sx={{ height: 18, fontSize: '0.65rem', color: '#2e7d32', bgcolor: 'rgba(46,125,50,0.12)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                  <Tooltip title="Open module">
+                    <IconButton size="small"
+                      onClick={() => {
+                        setSelectedModule(null)
+                        setModuleContent(null)
+                        setChatOpen(false)
+                        setActiveTab('module')
+                        handleOpenModule(existingMod)
+                      }}
+                      sx={{ color: '#1565c0', '&:hover': { bgcolor: 'rgba(21,101,192,0.12)' } }}>
+                      <BookOpen sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Edit module">
+                    <IconButton size="small"
+                      onClick={() => {
+                        setModuleParams(p => ({
+                          ...p,
+                          module_title: existingMod.module_title,
+                          week_number: existingMod.week_number,
+                        }))
+                        setResultText('')
+                        setSelectedModule(null)
+                        setModuleContent(null)
+                        handleOpenModule(existingMod)
+                      }}
+                      sx={{ color: '#F0F0F2', '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' } }}>
+                      <EditIcon sx={{ fontSize: '1rem' }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              ))}
+            </Stack>
           ) : (
             <Stack spacing={1}>
               {lectureTopics.map(topic => {
