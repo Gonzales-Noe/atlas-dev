@@ -317,9 +317,10 @@ def grouped_source_check_prompt(groups):
     user = (
         "\n\n".join(blocks)
         + "\n\nFor each item decide one verdict:\n"
-        "- supported: the idea in the keyed answer is in that topic's passages. "
-        "A new example is supported when it is the same kind of case as those passages.\n"
-        "- unsupported: the keyed answer needs a principle, method, scale, or standard the passages do not state\n"
+        "- supported: the passages already state the idea the keyed answer uses. "
+        "A new case of that idea is supported. "
+        "If the passages say a poor medical interface can cause harm, a new question about small touch targets on a hospital screen is supported.\n"
+        "- unsupported: the keyed answer depends on a named heuristic, scale, or standard the passages never name\n"
         "- contradicted: those passages state the opposite of the keyed answer\n\n"
         'Return {"results": [{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", '
         '"evidence": "<one sentence>"}]}'

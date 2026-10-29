@@ -3996,11 +3996,24 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
     def complete(group):
         system_prompt, user_prompt = grouped_source_check_prompt(group)
         item_count = sum(len(row.get('items') or []) for row in group)
-        return llm.generate_quick_json(
-            messages=[{'role': 'user', 'content': user_prompt}],
-            system=system_prompt,
-            max_tokens=source_check_max_tokens(item_count),
-        )
+        messages = [{'role': 'user', 'content': user_prompt}]
+        tokens = source_check_max_tokens(item_count)
+        try:
+            return llm.generate_quick_json(
+                messages=messages,
+                system=system_prompt,
+                max_tokens=tokens,
+            )
+        except Exception as exc:
+            if 'paused' not in str(exc).lower():
+                raise
+            logger.warning('Groq is paused for the assessment check; trying the next provider')
+            reply = llm.generate_response_with_fallback(
+                messages=messages,
+                system=system_prompt,
+                max_tokens=tokens,
+            )
+            return reply[0] if isinstance(reply, tuple) else reply
 
     model_results, errors = run_grouped_source_checks(groups, complete)
     results.extend(model_results)

@@ -362,3 +362,5 @@ class AssessmentQaTests(SimpleTestCase):
         self.assertIn('JSON only', system)
         self.assertIn('History', user)
         self.assertIn('A passage.', user)
+        self.assertIn('small touch targets', user)
+        self.assertIn('named heuristic', user)
