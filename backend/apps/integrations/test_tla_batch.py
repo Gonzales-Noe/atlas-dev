@@ -6,7 +6,12 @@ from django.test import SimpleTestCase, override_settings
 
 from apps.integrations.course_brief import get_course_brief
 from apps.integrations.cot_prompt_builder import CoTPromptBuilder
-from apps.integrations.tla_generation import build_tla_rows_prompt, map_max_tokens, parse_tla_rows
+from apps.integrations.tla_generation import (
+    assessment_batch_max_tokens,
+    build_tla_rows_prompt,
+    map_max_tokens,
+    parse_tla_rows,
+)
 
 LOCMEM = {
     "default": {
@@ -72,6 +77,11 @@ class TlaBatchTests(SimpleTestCase):
         self.assertIn("Software", user)
         self.assertNotIn("raw passage that should stay out", user)
         self.assertNotIn("REFERENCE MATERIAL FROM KNOWLEDGE BASE", user)
+
+    def test_assessment_batch_stays_under_the_module_budget(self):
+        self.assertEqual(assessment_batch_max_tokens(1), 480)
+        self.assertEqual(assessment_batch_max_tokens(6), 960)
+        self.assertLess(assessment_batch_max_tokens(12), 1800)
 
     def test_index_map_stays_a_small_token_cap(self):
         self.assertEqual(map_max_tokens(1), 16)

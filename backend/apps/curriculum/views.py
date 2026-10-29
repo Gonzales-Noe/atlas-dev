@@ -3229,34 +3229,29 @@ Requirements:
             status=status.HTTP_201_CREATED,
         )
 
-    # Global knowledge base guides structure. Child chunks from this course's
-    # sidebar uploads supply the item subject matter.
-    search_query = request.data.get('search_query') or f"{course.course_title} {source['assessment_name']} assessment items TOS blooms score distribution"
-    reference = generation_reference(
-        search_query,
-        course=course,
-        institution_id=request.user.institution_id,
-        top_k=max(1, _to_int(request.data.get('top_k'), 5)),
-        selected_doc_ids=selected_doc_ids,
-    )
+    # One cached course brief, the same source modules use. Later batches
+    # of this assessment do not search or distill the uploads again.
+    from apps.integrations.course_brief import get_course_brief
+    from apps.integrations.tla_generation import assessment_batch_max_tokens
 
+    llm = LLMService()
+    course_brief, brief_cached = get_course_brief(
+        course,
+        institution_id=request.user.institution_id,
+        selected_doc_ids=selected_doc_ids,
+        llm=llm,
+        provider=provider,
+    )
     logger.info(
-        'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s',
+        'Assessment generation module grounding: matched_sections=%d total_sections=%d course_id=%s brief_cached=%s',
         len(section_module_matches),
         len(sections),
         str(course.course_id),
+        brief_cached,
     )
 
     system_prompt = (
-        "You are an expert university assessment designer with deep knowledge of Outcome-Based Education, "
-        "Bloom's Taxonomy, and the Table of Specifications (TOS). You create rigorous, fair assessments "
-        "aligned to the given item slots. Return ONLY valid JSON. No markdown fences, no commentary."
-    )
-
-    llm = LLMService()
-    reference_summary = CoTPromptBuilder._format_context(
-        reference["source_chunks"],
-        reference["structure_summary"],
+        "You write multiple-choice assessment items. Reply with JSON only. No markdown."
     )
     providers_unavailable = False
 
@@ -3264,8 +3259,8 @@ Requirements:
         section_key = _normalize_topic_key(section.get('section_title'))
         matched_module = section_module_matches.get(section_key)
         if not matched_module:
-            return 'No matched saved module for this section.'
-        return _module_prompt_excerpt(matched_module)
+            return ''
+        return _module_prompt_excerpt(matched_module, char_limit=480)
 
     def _call_model(prompt, max_tokens):
         nonlocal providers_unavailable
@@ -3285,101 +3280,46 @@ Requirements:
             raise
 
     def _slice_prompt(slice_section):
-        slot_json = json.dumps(_compact_assessment_slot(slice_section), ensure_ascii=False, indent=2)
-        count = len(slice_section.get('items') or [])
+        slots = _compact_assessment_slot(slice_section).get('items') or []
+        count = len(slots)
         section_title = slice_section.get('section_title') or ''
-        return f"""Generate {count} multiple-choice items for one assessment section.
+        slot_json = json.dumps(slots, ensure_ascii=False, separators=(',', ':'))
+        excerpt = _module_excerpt_for(slice_section)
+        lines = [
+            f"Course: {course.course_title} ({course.course_code})",
+            f"Assessment: {source['assessment_name']}",
+            f"Section: {section_title}",
+        ]
+        if extra_instructions:
+            lines.append(f"Instructions: {extra_instructions[:300]}")
+        lines.extend([
+            "",
+            "Course brief:",
+            (course_brief or "No course brief.").strip(),
+            "",
+            "Module:",
+            excerpt or "None",
+            "",
+            f"Write {count} items, one per slot, in this order.",
+            slot_json,
+            "",
+            'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
+            "Keep each slot's item_number, bloom_level, bloom_verb, and ilo_refs.",
+            "Use bloom_verb in the stem when it is set. Assess ilo_text when it is set.",
+            "Exactly 4 choices. correct_answer is A, B, C, or D. answer_key is one sentence.",
+            "No placeholder text. JSON only.",
+        ])
+        return "\n".join(lines)
 
-Course: {course.course_title} ({course.course_code})
-Assessment: {source['assessment_name']}
-Section topic: {section_title}
-Extra instructions: {extra_instructions or 'None'}
-
-REFERENCE SUMMARY:
-{reference_summary[:1800] or 'No summary available.'}
-
-MATCHED MODULE:
-{_module_excerpt_for(slice_section)}
-
-ITEM SLOTS (write one original item for each slot and keep its item_number, bloom_level, bloom_verb, and ilo_refs):
-{slot_json}
-
-Return one JSON object:
-{{
-  "section_title": "{section_title}",
-  "items": [
-    {{
-      "item_number": 1,
-      "question_text": "Original question about this topic",
-      "choices": ["A. first option", "B. second option", "C. third option", "D. fourth option"],
-      "correct_answer": "A",
-      "answer_key": "Why the correct choice is right",
-      "bloom_level": "Remember",
-      "bloom_verb": "",
-      "ilo_refs": []
-    }}
-  ]
-}}
-
-Rules:
-- Write exactly {count} items, using each slot's item_number, bloom_level, bloom_verb, and ilo_text as set on the Table of Specifications.
-- Each question_text is a new stem about this section topic at that slot's Bloom level. When bloom_verb is set, the stem must use that verb. When ilo_text is set, the item must assess that outcome.
-- Each item has exactly 4 real choices. correct_answer is A, B, C, or D.
-- answer_key explains why the correct choice is right.
-- Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
-- Return JSON only.
-"""
-
-    def _item_prompt(section, blueprint_item):
-        slot = {
-            'item_number': blueprint_item.get('item_number'),
-            'section_title': section.get('section_title') or '',
-            'exam_label': section.get('exam_label') or '',
-            'bloom_level': blueprint_item.get('bloom_level') or '',
-            'bloom_verb': blueprint_item.get('bloom_verb') or '',
-            'ilo_refs': blueprint_item.get('ilo_refs') or [],
-        }
-        slot_json = json.dumps(slot, ensure_ascii=False, indent=2)
-        return f"""Generate ONE multiple-choice item as JSON.
-
-Course: {course.course_title} ({course.course_code})
-Assessment: {source['assessment_name']}
-Extra instructions: {extra_instructions or 'None'}
-
-REFERENCE SUMMARY:
-{reference_summary[:1800] or 'No summary available.'}
-
-MATCHED MODULE:
-{_module_excerpt_for(section)}
-
-SLOT (this item has no question yet):
-{slot_json}
-
-Return one JSON object with question_text, choices, correct_answer, and answer_key.
-Keep item_number {slot['item_number']} and bloom_level "{slot['bloom_level']}".
-Write the stem at bloom_level "{slot['bloom_level']}". When bloom_verb is set, use that verb. When ilo_text is set, assess that outcome.
-choices must be exactly four real options in the shape ["A. first option", "B. second option", "C. third option", "D. fourth option"].
-correct_answer is A, B, C, or D.
-answer_key explains why that choice is correct.
-Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
-Return JSON only.
-"""
-
-    def _accept_single_item(parsed, blueprint_item, section):
-        if not isinstance(parsed, dict):
-            return None
-        item = _normalize_slot_item(parsed, blueprint_item, section)
-        errors = _generated_item_quality_errors(item)
-        if _errors_are_only_missing_answer_key(errors):
-            item = _fill_answer_key_fallback(item)
-            errors = _generated_item_quality_errors(item)
-        if errors:
-            return None
-        return item
-
-    def _generate_one_slot(section, blueprint_item):
-        raw = _call_model(_item_prompt(section, blueprint_item), 1800)
-        return _accept_single_item(_parse_model_json(raw), blueprint_item, section)
+    def _generate_slice(slice_section):
+        count = len(slice_section.get('items') or [])
+        raw = _call_model(_slice_prompt(slice_section), assessment_batch_max_tokens(count))
+        parsed = _parse_model_json(raw)
+        if isinstance(parsed, list):
+            parsed = {'items': parsed}
+        if isinstance(parsed, dict):
+            return _collect_section_items(slice_section, parsed)
+        return {}, [item.get('item_number') for item in (slice_section.get('items') or [])]
 
     incremental = _to_bool(request.data.get('incremental'), False)
     planned_numbers = []
@@ -3489,16 +3429,8 @@ Return JSON only.
             slice_section = _section_for_slots(section, item_slice)
             retry_numbers = [item.get('item_number') for item in item_slice]
             try:
-                raw = _call_model(
-                    _slice_prompt(slice_section),
-                    min(4000, max(1800, 700 * len(item_slice))),
-                )
-                parsed = _parse_model_json(raw)
-                if isinstance(parsed, list):
-                    parsed = {'items': parsed}
-                if isinstance(parsed, dict):
-                    got, retry_numbers = _collect_section_items(slice_section, parsed)
-                    accepted.update(got)
+                got, retry_numbers = _generate_slice(slice_section)
+                accepted.update(got)
             except Exception:
                 logger.exception(
                     'Assessment section batch failed for %s',
@@ -3506,20 +3438,23 @@ Return JSON only.
                 )
             if providers_unavailable:
                 break
-            by_number = {_to_int(item.get('item_number'), 0): item for item in item_slice}
-            for number in retry_numbers:
-                if providers_unavailable:
-                    break
-                blueprint_item = by_number.get(_to_int(number, 0))
-                if not blueprint_item:
-                    continue
-                try:
-                    generated_item = _generate_one_slot(section, blueprint_item)
-                except Exception:
-                    logger.exception('Assessment item retry failed for item %s', number)
-                    generated_item = None
-                if generated_item:
-                    accepted[_to_int(number, 0)] = generated_item
+            if not retry_numbers:
+                continue
+            missing_numbers = {_to_int(number, 0) for number in retry_numbers}
+            missing = [
+                item for item in item_slice
+                if _to_int(item.get('item_number'), 0) in missing_numbers
+            ]
+            if not missing:
+                continue
+            try:
+                got, _still_missing = _generate_slice(_section_for_slots(section, missing))
+                accepted.update(got)
+            except Exception:
+                logger.exception(
+                    'Assessment section retry failed for %s',
+                    section.get('section_title'),
+                )
         for number, item in accepted.items():
             saved_numbers.add(number)
         ordered = [accepted[number] for number in sorted(accepted)]
