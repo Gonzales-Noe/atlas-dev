@@ -3132,9 +3132,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setSyllabusData(current => {
       let next = current
       const iloNeeded = aiPipelineDrafts
-        .filter(draft => draft.section === 'ilo')
+        .filter(draft => draft.arrField === 'ilos')
         .reduce((max, draft) => Math.max(max, (draft.arrIndex ?? 0) + 1), 0)
-      if (iloNeeded) next = ensureIloCount(next, Math.max(ILO_FIELD_COUNT, iloNeeded))
+      if (iloNeeded) next = ensureIloCount(next, iloNeeded)
       const chapterNeeded = aiPipelineDrafts
         .filter(draft => draft.arrField === 'tla_chapters')
         .reduce((max, draft) => Math.max(max, (draft.arrIndex ?? 0) + 1), 0)
