@@ -4544,7 +4544,7 @@ def generate_syllabus_field(request):
         if section == "topic_map":
             source_chunks = []
             context_summary = ""
-        elif section in {"week_plan", "topics", "topic_outcome"}:
+        elif section in {"week_plan", "topics", "topic_outcome", "rationale", "tlas"}:
             from apps.integrations.course_brief import get_course_brief
 
             course_brief, brief_cached = get_course_brief(
