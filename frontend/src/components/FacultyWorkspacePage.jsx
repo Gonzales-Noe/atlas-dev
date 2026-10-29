@@ -9358,6 +9358,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {assessments.map(a => (
                   <Box
                     key={a.assessment_id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenAssessment(a)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleOpenAssessment(a)
+                      }
+                    }}
                     sx={{
                       display: 'flex',
                       gap: 1,
@@ -9368,9 +9377,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       borderRadius: 1.5,
                       border: '1px solid rgba(255,255,255,0.09)',
                       cursor: 'pointer',
+                      userSelect: 'none',
                       '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(22,163,74,0.20)' },
                     }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1 }} onClick={() => handleOpenAssessment(a)}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, pointerEvents: 'none' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
                         <Typography variant="caption" sx={{ color: '#777', fontWeight: 700 }}>
                           Assessment ID
@@ -9380,21 +9390,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           size="small"
                           sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 20, fontSize: '0.68rem' }}
                         />
-                        <Tooltip title={copiedAssessmentId === String(a.assessment_id || '') ? 'Copied!' : 'Copy full UUID'}>
-                          <IconButton
-                            size="small"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              copyAssessmentId(a.assessment_id)
-                            }}
-                            sx={{ color: MAROON, p: 0.4 }}
-                          >
-                            <ContentCopyIcon sx={{ fontSize: '0.85rem' }} />
-                          </IconButton>
-                        </Tooltip>
                       </Box>
-                      <Typography variant="body2" sx={{ color: '#333', flex: 1, fontWeight: 500, ml: 1, textTransform: 'uppercase' }}>{a.title}</Typography>
+                      <Typography variant="body2" sx={{ color: '#F0F0F2', flex: 1, fontWeight: 500, ml: 1, textTransform: 'uppercase' }}>{a.title}</Typography>
                     </Box>
+                    <Tooltip title={copiedAssessmentId === String(a.assessment_id || '') ? 'Copied!' : 'Copy full UUID'}>
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          copyAssessmentId(a.assessment_id)
+                        }}
+                        sx={{ color: MAROON, p: 0.4 }}
+                      >
+                        <ContentCopyIcon sx={{ fontSize: '0.85rem' }} />
+                      </IconButton>
+                    </Tooltip>
                     {a.qa_report?.summary && (
                       <Chip
                         label={a.qa_report.summary.passed === a.qa_report.summary.items && a.qa_report.allocation_ok ? 'Passed' : 'Review'}
