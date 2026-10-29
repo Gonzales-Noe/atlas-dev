@@ -532,7 +532,8 @@ class ChildChunk(models.Model):
     parent = models.ForeignKey(ParentChunk, on_delete=models.CASCADE)
     uploader = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
     overlap_text = models.TextField(null=True, blank=True)
-    embedding_vector = VectorField(dimensions=1536, null=True, blank=True)
+    # Same BGE-Base-v1.5 vectors as global_document_chunk. Parents are not embedded.
+    embedding_vector = VectorField(dimensions=768, null=True, blank=True)
 
     class Meta:
         db_table = 'child_chunk'

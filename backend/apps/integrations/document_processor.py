@@ -791,7 +791,7 @@ class DocumentProcessor:
                     {
                         "content": child_text,
                         "page_number": parent_page,
-                        "token_count": DocumentProcessor.count_tokens(child_text),
+                        "token_count": len(child_text) // 4 or 1,
                     }
                 )
 
@@ -800,7 +800,7 @@ class DocumentProcessor:
                     {
                         "content": parent_text,
                         "page_number": parent_page,
-                        "token_count": DocumentProcessor.count_tokens(parent_text),
+                        "token_count": len(parent_text) // 4 or 1,
                         "children": children,
                     }
                 )

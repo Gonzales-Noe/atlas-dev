@@ -531,15 +531,6 @@ def semantic_search_with_summary(
 
 # ── Course-specific retrieval ─────────────────────────────────────────────────
 
-def _to_1536_dim(vector: list) -> list:
-    """Pad or trim a vector to 1536 dimensions (matches ChildChunk storage format)."""
-    if len(vector) == 1536:
-        return vector
-    if len(vector) > 1536:
-        return vector[:1536]
-    return vector + [0.0] * (1536 - len(vector))
-
-
 def course_semantic_search(
     query: str,
     course,          # Course model instance
@@ -547,23 +538,37 @@ def course_semantic_search(
     selected_doc_ids: list | None = None,   # list of records_id UUID strings
 ) -> list:
     """
-    Search within course-specific ChildChunk embeddings.
+    Search child-chunk embeddings for one course's sidebar uploads.
 
-    Returns the top-k most relevant ParentChunk passages for *query*,
-    filtered to the given course (and optionally to specific uploaded files).
+    A file is included only when it belongs to this course id and, when the
+    course has a code, that same code. Checked sidebar files narrow the set
+    further. They cannot pull in another course's chunks.
 
-    Returns:
-        list of dicts: text, document_title, score
+    Each result keeps the matched child passage in ``text`` and the parent
+    section in ``parent_text``.
     """
     try:
-        query_vec_768 = embed_query(query)
-        query_vec = _to_1536_dim(query_vec_768)
+        course_id = getattr(course, "course_id", None)
+        course_code = str(getattr(course, "course_code", "") or "").strip()
+        institution_id = getattr(course, "institution_id", None)
+        if not course_id:
+            return []
+
+        query_vec = embed_query(query)
 
         child_qs = (
             ChildChunk.objects
-            .select_related("parent", "parent__records")
-            .filter(embedding_vector__isnull=False, parent__records__course=course)
+            .select_related("parent", "parent__records", "parent__records__course")
+            .filter(
+                embedding_vector__isnull=False,
+                parent__records__course_id=course_id,
+                parent__records__rag_status="COMPLETED",
+            )
         )
+        if course_code:
+            child_qs = child_qs.filter(parent__records__course__course_code__iexact=course_code)
+        if institution_id:
+            child_qs = child_qs.filter(parent__records__course__institution_id=institution_id)
         if selected_doc_ids:
             child_qs = child_qs.filter(parent__records__records_id__in=selected_doc_ids)
 
@@ -584,17 +589,28 @@ def course_semantic_search(
             pid = str(child.parent_id)
             prev = parent_best.get(pid)
             if prev is None or sim > prev["sim"]:
-                parent_best[pid] = {"chunk": child.parent, "sim": sim}
+                parent_best[pid] = {
+                    "chunk": child.parent,
+                    "sim": sim,
+                    "child_text": (child.overlap_text or "").strip(),
+                }
 
         if not parent_best:
             return []
 
-        parent_chunks = [v["chunk"] for v in parent_best.values()]
-        dense_scores  = [v["sim"]   for v in parent_best.values()]
+        entries = list(parent_best.values())
+        parent_chunks = [v["chunk"] for v in entries]
+        dense_scores  = [v["sim"]   for v in entries]
 
-        # Hybrid BM25 + dense scoring
+        # Hybrid BM25 + dense scoring. The child passage is included so the
+        # matched span is not dropped in favor of the longer parent section.
         if BM25_AVAILABLE and len(parent_chunks) > 1:
-            tokenized_corpus = [_tokenize_for_bm25(p.parent_content) for p in parent_chunks]
+            tokenized_corpus = [
+                _tokenize_for_bm25(
+                    f"{entry.get('child_text') or ''}\n{entry['chunk'].parent_content or ''}"
+                )
+                for entry in entries
+            ]
             bm25 = BM25Okapi(tokenized_corpus)
             query_tokens = _tokenize_for_bm25(query)
             bm25_raw = bm25.get_scores(query_tokens).tolist()
@@ -608,16 +624,27 @@ def course_semantic_search(
             final_scores = dense_scores
 
         ranked = sorted(
-            zip(final_scores, parent_chunks),
+            zip(final_scores, entries),
             key=lambda x: x[0],
             reverse=True,
         )[:top_k]
 
         results = []
-        for score, chunk in ranked:
+        for score, entry in ranked:
+            chunk = entry["chunk"]
+            records = chunk.records
+            course_row = getattr(records, "course", None)
+            child_text = (entry.get("child_text") or "").strip()
+            parent_text = (chunk.parent_content or "").strip()
+            storage_path = getattr(records, "storage_path", "") or "Course Upload"
             results.append({
-                "text":           chunk.parent_content,
-                "document_title": getattr(chunk.records, "storage_path", "Course Upload").split("/")[-1],
+                "text":           child_text or parent_text,
+                "parent_text":    parent_text,
+                "document_title": storage_path.split("/")[-1],
+                "module_tag":     chunk.module_tag or "",
+                "term_tag":       chunk.term_tag or "",
+                "course_id":      str(getattr(course_row, "course_id", None) or records.course_id or ""),
+                "course_code":    getattr(course_row, "course_code", "") or "",
                 "page_number":    None,
                 "score":          round(float(score), 4),
             })
@@ -662,4 +689,38 @@ def course_semantic_search_with_summary(
         "chunks": chunks,
         "context_summary": summary,
         "summary_sources": sources,
+    }
+
+
+def generation_reference(
+    query: str,
+    *,
+    course=None,
+    institution_id: str | None = None,
+    top_k: int = 5,
+    selected_doc_ids: list | None = None,
+) -> dict:
+    """Split retrieval into a structure guide and course source passages.
+
+    The institutional knowledge base supplies structure only. Subject matter
+    comes from child chunks of the sidebar uploads for this course id and code.
+    """
+    global_rag = semantic_search_with_summary(
+        query, institution_id=institution_id, top_k=top_k,
+    )
+    source_chunks: list = []
+    if course is not None:
+        course_rag = course_semantic_search_with_summary(
+            query=query,
+            course=course,
+            top_k=top_k,
+            selected_doc_ids=selected_doc_ids or None,
+        )
+        source_chunks = course_rag.get("chunks") or []
+
+    return {
+        "structure_summary": (global_rag.get("context_summary") or "").strip(),
+        "source_chunks": source_chunks,
+        "global_chunk_count": len(global_rag.get("chunks") or []),
+        "course_chunk_count": len(source_chunks),
     }
