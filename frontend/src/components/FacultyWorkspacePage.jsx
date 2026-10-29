@@ -1959,6 +1959,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [syllabusData, setSyllabusData] = useState(EMPTY_SYLLABUS)
   const [frameworkAssigning, setFrameworkAssigning] = useState(false)
   const [frameworkAssignError, setFrameworkAssignError] = useState('')
+  const frameworkAssignRun = useRef(0)
   const [adminFormatSections, setAdminFormatSections] = useState([])
   const [syllabusId, setSyllabusId]     = useState(null)
   const [activeTosId, setActiveTosId]   = useState(null)
@@ -2780,38 +2781,43 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       setAiError(message)
       return
     }
+    const run = ++frameworkAssignRun.current
     setFrameworkAssigning(true)
     setFrameworkAssignError('')
     setAiError('')
-    const result = await requestSyllabusField(api, {
-      course_id: courseId,
-      section: 'framework_columns',
-      field_label: 'Framework column numbers',
-      existing_content: '',
-      mode: 'generate',
-      provider: 'ollama',
-      top_k: 1,
-      extra_instructions: request.brief,
-    }, text => (parseFrameworkColumns(text) ? text : ''))
-    const parsed = parseFrameworkColumns(result.text)
-    const soHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SO_HEADERS.length, parsed.so, request.allowed.so) : []
-    const igaHeaders = parsed ? placeFrameworkNumbers(DEFAULT_IGA_HEADERS.length, parsed.iga, request.allowed.iga) : []
-    const cdioHeaders = parsed ? placeFrameworkNumbers(DEFAULT_CDIO_HEADERS.length, parsed.cdio, request.allowed.cdio) : []
-    const sdgHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SDG_HEADERS.length, parsed.sdg, request.allowed.sdg) : []
-    const placed = [soHeaders, igaHeaders, cdioHeaders, sdgHeaders].some(list => list.some(Boolean))
-    if (!placed) {
-      throw new Error('Ollama did not return framework column numbers.')
+    try {
+      const result = await requestSyllabusField(api, {
+        course_id: courseId,
+        section: 'framework_columns',
+        field_label: 'Framework column numbers',
+        existing_content: '',
+        mode: 'generate',
+        provider: 'ollama',
+        top_k: 1,
+        extra_instructions: request.brief,
+      }, text => (parseFrameworkColumns(text) ? text : ''))
+      const parsed = parseFrameworkColumns(result.text)
+      const soHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SO_HEADERS.length, parsed.so, request.allowed.so) : []
+      const igaHeaders = parsed ? placeFrameworkNumbers(DEFAULT_IGA_HEADERS.length, parsed.iga, request.allowed.iga) : []
+      const cdioHeaders = parsed ? placeFrameworkNumbers(DEFAULT_CDIO_HEADERS.length, parsed.cdio, request.allowed.cdio) : []
+      const sdgHeaders = parsed ? placeFrameworkNumbers(DEFAULT_SDG_HEADERS.length, parsed.sdg, request.allowed.sdg) : []
+      const placed = [soHeaders, igaHeaders, cdioHeaders, sdgHeaders].some(list => list.some(Boolean))
+      if (!placed) {
+        throw new Error('Ollama did not return framework column numbers.')
+      }
+      setIsDirty(true)
+      setSaveSuccess(false)
+      setSyllabusData(current => withMappedAssessmentCodes({
+        ...current,
+        framework_column_source: 'ollama',
+        so_headers: soHeaders,
+        iga_headers: igaHeaders,
+        cdio_headers: cdioHeaders,
+        sdg_headers: sdgHeaders,
+      }))
+    } finally {
+      if (frameworkAssignRun.current === run) setFrameworkAssigning(false)
     }
-    setIsDirty(true)
-    setSaveSuccess(false)
-    setSyllabusData(current => withMappedAssessmentCodes({
-      ...current,
-      framework_column_source: 'ollama',
-      so_headers: soHeaders,
-      iga_headers: igaHeaders,
-      cdio_headers: cdioHeaders,
-      sdg_headers: sdgHeaders,
-    }))
   }
 
   async function generateOneField(field) {
@@ -2893,7 +2899,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setFrameworkAssignError(String(message))
         setAiError(String(message))
       } finally {
-        setFrameworkAssigning(false)
         setAiGenerating(false)
       }
       return
@@ -2996,6 +3001,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     setSaveSuccess(false)
     setAiPipelineDrafts(null)
     setAiPipelineProgress(null)
+    setAiGenerating(false)
     setAiError('')
     setAiReviewOpen(false)
     const currentIndex = configuredSections.findIndex(section => section.key === activeConfiguredSection?.key)
@@ -3398,16 +3404,22 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })()
 
   useEffect(() => {
-    if (!frameworkAssignKey || !courseId) return undefined
+    if (!frameworkAssignKey || !courseId) {
+      frameworkAssignRun.current += 1
+      setFrameworkAssigning(false)
+      return undefined
+    }
     let cancelled = false
     assignFrameworkColumns().catch(err => {
       if (cancelled) return
       const message = err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Ollama could not assign the framework columns.'
       setFrameworkAssignError(String(message))
-    }).finally(() => {
-      if (!cancelled) setFrameworkAssigning(false)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      frameworkAssignRun.current += 1
+      setFrameworkAssigning(false)
+    }
   }, [frameworkAssignKey, courseId])
 
   useEffect(() => {
@@ -7355,6 +7367,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const aiSectionFields = getAiFieldsForCurrentSection()
       const focusedAiField = aiSectionFields.find(field => sameAiField(field, aiField)) || null
       const showSaveFooter = isDirty
+      const sectionWriting = writingStillRunning(
+        aiGenerating,
+        activeSyllabusSectionKey === 'mapping-of-at' && frameworkAssigning,
+        aiPipelineProgress,
+      )
+      const writingCaption = activeSyllabusSectionKey === 'mapping-of-at' && frameworkAssigning && !aiGenerating
+        ? 'Matching framework columns to the ILOs and topics.'
+        : `Writing ${Math.min((aiPipelineProgress?.completed || 0) + 1, aiPipelineProgress?.total || aiSectionFields.length || 1)} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           {/* scrollable content area */}
@@ -7597,8 +7617,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     Writing assistant
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
-                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress)
-                      ? `Writing ${Math.min((aiPipelineProgress?.completed || 0) + 1, aiPipelineProgress?.total || aiSectionFields.length || 1)} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                    {sectionWriting
+                      ? writingCaption
                       : focusedAiField
                         ? `Regenerate only ${focusedAiField.label}.`
                       : aiPipelineDrafts
@@ -7620,8 +7640,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     size="small"
                     variant="contained"
                     data-ai-regenerate="true"
-                    disabled={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) || (!focusedAiField && !aiSectionFields.length)}
-                    startIcon={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
+                    disabled={sectionWriting || (!focusedAiField && !aiSectionFields.length)}
+                    startIcon={sectionWriting ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                     onClick={() => focusedAiField ? generateOneField(focusedAiField) : handleGenerateSection()}
                     sx={{
                       bgcolor: '#16A34A',
@@ -7632,7 +7652,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       minHeight: 34,
                     }}
                   >
-                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? 'Writing…' : focusedAiField ? 'Regenerate' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                    {sectionWriting ? 'Writing…' : focusedAiField ? 'Regenerate' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
                   </Button>
                 )}
 
@@ -7654,7 +7674,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 )}
               </Box>
 
-              {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) && aiPipelineProgress && (
+              {sectionWriting && aiPipelineProgress && (
                 <Box sx={{ height: 4, borderRadius: 4, bgcolor: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
                   <Box sx={{
                     height: '100%',
