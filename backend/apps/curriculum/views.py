@@ -49,6 +49,8 @@ from .docx_builders import (
     make_landscape,
 )
 from .assessment_qa import (
+    SOURCE_CHECK_PACK,
+    SOURCE_LABELS,
     apply_source_results,
     approval_blockers,
     check_against_blueprint,
@@ -56,6 +58,7 @@ from .assessment_qa import (
     pack_source_batches,
     run_grouped_source_checks,
     source_batches,
+    source_check_max_tokens,
     verdicts_without_passages,
 )
 from .consistency_checker import (
@@ -2262,6 +2265,54 @@ def _module_match_blob(module):
     return ' '.join(parts)
 
 
+def _clip_words(text, limit):
+    body = str(text or '').strip()
+    if len(body) <= limit:
+        return body
+    clipped = body[:limit].rsplit(' ', 1)[0].strip()
+    return (clipped or body[:limit]) + '…'
+
+
+def _module_teaching_text(module, char_limit=2000):
+    """Lesson text for one module: introduction plus each subtopic's body.
+
+    The title-only excerpt left generation with nothing to ask about, so items
+    were written from general subject knowledge instead of the module.
+    """
+    module_content = module.module_content if isinstance(module.module_content, dict) else {}
+    parts = [f"Module: {getattr(module, 'module_title', '') or 'Module'}"]
+    introduction = _clip_words(module_content.get('introduction'), 600)
+    if introduction:
+        parts.append(introduction)
+    objectives = [
+        str(value).strip()
+        for value in (module_content.get('learning_objectives') or [])
+        if str(value).strip()
+    ]
+    if objectives:
+        parts.append('Objectives: ' + '; '.join(objectives[:6]))
+    used = len('\n'.join(parts))
+    for subtopic in (module_content.get('subtopics') or []):
+        if not isinstance(subtopic, dict):
+            continue
+        title = str(subtopic.get('title') or '').strip()
+        body = str(subtopic.get('content') or '').strip()
+        block = f"{title}: {body}".strip(': ') if title or body else ''
+        if not block:
+            continue
+        room = char_limit - used - 1
+        if room < 80:
+            break
+        block = _clip_words(block, room)
+        parts.append(block)
+        used += len(block) + 1
+    activity = module_content.get('short_activity') if isinstance(module_content.get('short_activity'), dict) else {}
+    description = str(activity.get('description') or '').strip()
+    if description and used < char_limit - 40:
+        parts.append('Activity: ' + _clip_words(description, char_limit - used))
+    return '\n'.join(parts)[:char_limit]
+
+
 def _module_prompt_excerpt(module, char_limit=1200):
     module_content = module.module_content if isinstance(module.module_content, dict) else {}
     lines = [
@@ -2292,6 +2343,52 @@ def _module_prompt_excerpt(module, char_limit=1200):
 
     text = '\n'.join(lines)
     return text[:char_limit]
+
+
+def _topic_upload_passages(course, topics, selected_doc_ids, top_k=3):
+    """Retrieve one passage set per topic from this course's uploads.
+
+    Batch generation used to see only a course brief and a title list, so the
+    items were not written from the uploaded material.
+    """
+    labels = []
+    seen = set()
+    for topic in topics or []:
+        label = str(topic or '').strip()
+        key = _normalize_topic_key(label)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        labels.append(label)
+    if not labels:
+        return {}
+    queries = [f"{getattr(course, 'course_title', '')} {label}".strip() for label in labels]
+    try:
+        vectors = embed_queries(queries)
+    except Exception:
+        logger.exception('Assessment topic embeddings failed')
+        return {}
+    if len(vectors) != len(queries):
+        return {}
+    found = {}
+    for label, query, vector in zip(labels, queries, vectors):
+        if vector is None:
+            continue
+        try:
+            chunks = course_semantic_search(
+                query,
+                course=course,
+                top_k=top_k,
+                selected_doc_ids=selected_doc_ids or None,
+                query_vec=vector,
+            )
+        except Exception:
+            logger.exception('Assessment topic search failed for %s', label)
+            chunks = []
+        text = _clip_words(_qa_passage_text(chunks, ''), 1800)
+        if text:
+            found[_normalize_topic_key(label)] = text
+    return found
 
 
 def _match_sections_to_course_modules(course, sections):
@@ -2816,7 +2913,7 @@ def generate_assessment(request):
 
         section_key = _normalize_topic_key(target_section.get('section_title'))
         matched_module = section_module_matches.get(section_key)
-        module_excerpt = _module_prompt_excerpt(matched_module) if matched_module else ''
+        module_excerpt = _module_teaching_text(matched_module) if matched_module else ''
 
         search_query = request.data.get('search_query') or (
             f"{course.course_title} {source['assessment_name']} {target_section.get('section_title')} MCQ"
@@ -2950,6 +3047,7 @@ Requirements:
 6. If relation context is provided, the item should be meaningfully related but not a duplicate.
 7. The slot has no question yet. Write a new question_text and four real choices. Do not use placeholder text such as ellipsis, TBD, N/A, or Option A.
 8. Put the explanation of the correct choice in answer_key.
+9. The keyed answer must be stated in the reference material or the matched module text. Do not name a standard, scale, method, or principle that text does not name.
 """
 
         llm = LLMService()
@@ -3248,16 +3346,18 @@ Requirements:
     )
 
     system_prompt = (
-        "You write multiple-choice assessment items. Reply with JSON only. No markdown."
+        "You write multiple-choice assessment items from the supplied course text. "
+        "Reply with JSON only. No markdown."
     )
     providers_unavailable = False
+    topic_passages = {}
 
     def _module_excerpt_for(section):
         section_key = _normalize_topic_key(section.get('section_title'))
         matched_module = section_module_matches.get(section_key)
         if not matched_module:
             return ''
-        return _module_prompt_excerpt(matched_module, char_limit=480)
+        return _module_teaching_text(matched_module, char_limit=1800)
 
     def _call_model(prompt, max_tokens):
         nonlocal providers_unavailable
@@ -3282,6 +3382,7 @@ Requirements:
         section_title = slice_section.get('section_title') or ''
         slot_json = json.dumps(slots, ensure_ascii=False, separators=(',', ':'))
         excerpt = _module_excerpt_for(slice_section)
+        passages = topic_passages.get(_normalize_topic_key(section_title), '')
         lines = [
             f"Course: {course.course_title} ({course.course_code})",
             f"Assessment: {source['assessment_name']}",
@@ -3294,8 +3395,11 @@ Requirements:
             "Course brief:",
             (course_brief or "No course brief.").strip(),
             "",
-            "Module:",
+            "Module lesson:",
             excerpt or "None",
+            "",
+            "Uploaded passages:",
+            passages or "None",
             "",
             f"Write {count} items, one per slot, in this order.",
             slot_json,
@@ -3303,6 +3407,8 @@ Requirements:
             'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
             "Keep each slot's item_number, bloom_level, bloom_verb, and ilo_refs.",
             "Use bloom_verb in the stem when it is set. Assess ilo_text when it is set.",
+            "The keyed answer must be stated in the module lesson or the uploaded passages.",
+            "Do not name a standard, scale, method, or principle that text does not name.",
             "Exactly 4 choices. correct_answer is A, B, C, or D. answer_key is one sentence.",
             "No placeholder text. JSON only.",
         ])
@@ -3411,6 +3517,12 @@ Requirements:
             remaining -= len(take)
             narrowed.append(_section_for_slots(section, take))
         sections = narrowed
+
+    topic_passages.update(_topic_upload_passages(
+        course,
+        [section.get('section_title') for section in sections],
+        selected_doc_ids,
+    ))
 
     accepted_by_section = []
     saved_numbers = set()
@@ -3699,25 +3811,29 @@ def _load_faculty_assessment(request, assessment_id):
 
 
 def _check_assessment_sources(course, batches, section_matches, top_k, selected_doc_ids):
-    """Judge items from the matched module text, in one short Groq call.
+    """Judge each item against the module lesson and the uploaded passages.
 
-    A topic with no module still searches that course's uploads. The call uses
-    a non-reasoning Groq model and does not fall through to Ollama.
+    A matching module used to replace the upload search with a short title
+    list, and one call tried to judge up to 40 items. The reply then stopped
+    before the last items. The call uses a non-reasoning Groq model and does
+    not fall through to Ollama.
     """
     from concurrent.futures import ThreadPoolExecutor
     from django.db import close_old_connections, connection
 
-    ready = []
-    searches = []
+    topics = []
+    seen = set()
+    excerpts = {}
     for batch in batches:
-        matched = section_matches.get(_normalize_topic_key(batch['topic']))
-        excerpt = _module_prompt_excerpt(matched) if matched else ''
-        if excerpt:
-            ready.append((batch, excerpt))
-        else:
-            searches.append(batch)
+        key = _normalize_topic_key(batch['topic'])
+        if key not in excerpts:
+            matched = section_matches.get(key)
+            excerpts[key] = _module_teaching_text(matched, char_limit=2000) if matched else ''
+        if key and key not in seen:
+            seen.add(key)
+            topics.append((key, batch['topic']))
 
-    queries = [f"{course.course_title} {batch['topic']}".strip() for batch in searches]
+    queries = [f"{course.course_title} {topic}".strip() for _key, topic in topics]
     try:
         vectors = embed_queries(queries) if queries else []
     except Exception:
@@ -3727,7 +3843,7 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
         vectors = [None] * len(queries)
 
     def passages_for(spec):
-        batch, query, vector = spec
+        key, query, vector = spec
         chunks = []
         if vector is not None:
             chunks = course_semantic_search(
@@ -3737,7 +3853,7 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
                 selected_doc_ids=selected_doc_ids or None,
                 query_vec=vector,
             )
-        return batch, _qa_passage_text(chunks, '')
+        return key, _qa_passage_text(chunks, '')
 
     def passages_for_thread(spec):
         close_old_connections()
@@ -3746,22 +3862,28 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
         finally:
             connection.close()
 
-    specs = list(zip(searches, queries, vectors))
+    specs = [
+        (key, query, vector)
+        for (key, _topic), query, vector in zip(topics, queries, vectors)
+    ]
     if len(specs) > 1:
         with ThreadPoolExecutor(max_workers=min(4, len(specs))) as pool:
             retrieved = list(pool.map(passages_for_thread, specs))
     else:
         retrieved = [passages_for(spec) for spec in specs]
+    uploads = {key: text for key, text in retrieved}
 
     prepared = []
     results = []
-    for batch, passages in ready + retrieved:
+    for batch in batches:
+        key = _normalize_topic_key(batch['topic'])
+        passages = "\n\n".join(part for part in (excerpts.get(key), uploads.get(key)) if part)
         if passages:
             prepared.append({**batch, 'passages': passages})
         else:
             results.extend(verdicts_without_passages(batch['items']))
 
-    groups = pack_source_batches(prepared, size=40, char_budget=12000)
+    groups = pack_source_batches(prepared, size=SOURCE_CHECK_PACK, char_budget=9000)
     llm = LLMService()
 
     def complete(group):
@@ -3770,12 +3892,34 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
         return llm.generate_quick_json(
             messages=[{'role': 'user', 'content': user_prompt}],
             system=system_prompt,
-            max_tokens=min(2048, max(256, item_count * 60)),
+            max_tokens=source_check_max_tokens(item_count),
         )
 
     model_results, errors = run_grouped_source_checks(groups, complete)
     results.extend(model_results)
-    return results, errors, len(groups)
+    calls = len(groups)
+
+    covered = {
+        row['item_id']
+        for row in results
+        if row.get('item_id') and row.get('verdict') in SOURCE_LABELS
+    }
+    retry = []
+    for batch in prepared:
+        missed = [
+            item for item in (batch.get('items') or [])
+            if str(item.get('item_id') or '') not in covered
+        ]
+        if missed:
+            retry.append({**batch, 'items': missed})
+    if retry:
+        retry_groups = pack_source_batches(retry, size=SOURCE_CHECK_PACK, char_budget=9000)
+        retry_results, retry_errors = run_grouped_source_checks(retry_groups, complete)
+        results.extend(retry_results)
+        errors.extend(retry_errors)
+        calls += len(retry_groups)
+
+    return results, errors, calls
 
 
 def _qa_passage_text(chunks, excerpt):
@@ -3785,8 +3929,8 @@ def _qa_passage_text(chunks, excerpt):
         if not isinstance(chunk, dict):
             continue
         parent = str(chunk.get('parent_text') or '').strip()
-        if len(parent) > 500:
-            parent = parent[:500].rsplit(' ', 1)[0].strip() + '…'
+        if len(parent) > 1400:
+            parent = parent[:1400].rsplit(' ', 1)[0].strip() + '…'
         lean.append({**chunk, 'parent_text': parent})
     chunk_text = CoTPromptBuilder._format_source_passages(lean) if lean else ''
     return "\n\n".join(part for part in (chunk_text, excerpt) if part)

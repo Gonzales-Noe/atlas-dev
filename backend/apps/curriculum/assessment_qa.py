@@ -14,7 +14,8 @@ from apps.curriculum.consistency_checker import titles_match, verb_levels
 logger = logging.getLogger(__name__)
 
 SOURCE_CHECK_WORKERS = 2
-_PASSAGE_CHAR_LIMIT = 700
+SOURCE_CHECK_PACK = 8
+_PASSAGE_CHAR_LIMIT = 3600
 
 BLOOM_ORDER = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
 SOURCE_LABELS = {'supported', 'unsupported', 'contradicted'}
@@ -261,6 +262,16 @@ def verdicts_without_passages(items):
     return verdicts
 
 
+def source_check_max_tokens(item_count):
+    """Room for one evidence sentence per item.
+
+    A 60-token allowance cut the reply off, so the last items in a long
+    batch came back with no verdict.
+    """
+    count = max(1, int(item_count or 1))
+    return min(2048, max(384, count * 140))
+
+
 def _clip_passages(text, limit=_PASSAGE_CHAR_LIMIT):
     text = str(text or '').strip()
     if len(text) <= limit:
@@ -362,21 +373,44 @@ def _take_group_result(group, call, results, errors):
         errors.append(f'{topics}: {exc}')
 
 
+def _load_json_payload(text):
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if not match:
+            return None
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            return None
+
+
+def _salvage_result_objects(text):
+    """Keep finished verdict objects when the reply is cut off mid-array."""
+    rows = []
+    for match in re.finditer(r'\{[^{}]*\}', text):
+        try:
+            row = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict) and row.get('item_id'):
+            rows.append(row)
+    return rows
+
+
 def parse_source_results(raw):
     text = str(raw or '').strip()
     text = re.sub(r'^```(?:json)?\s*', '', text)
     text = re.sub(r'\s*```$', '', text).strip()
-    try:
-        payload = json.loads(text)
-    except json.JSONDecodeError:
-        match = re.search(r'\{.*\}', text, re.DOTALL)
-        if not match:
-            return []
-        try:
-            payload = json.loads(match.group(0))
-        except json.JSONDecodeError:
-            return []
-    rows = payload.get('results') if isinstance(payload, dict) else payload
+    payload = _load_json_payload(text)
+    rows = None
+    if isinstance(payload, dict):
+        rows = payload.get('results')
+    elif isinstance(payload, list):
+        rows = payload
+    if not isinstance(rows, list) or not rows:
+        rows = _salvage_result_objects(text)
     if not isinstance(rows, list):
         return []
     parsed = []
