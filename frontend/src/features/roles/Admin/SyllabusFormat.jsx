@@ -110,7 +110,6 @@ function chipSx(color) {
 export default function SyllabusFormat() {
   const [customization, setCustomization] = useState({
     header_image_url: '',
-    footer_image_url: '',
     header_text: '',
     footer_text: '',
     syllabus_template_name: '',
@@ -118,7 +117,7 @@ export default function SyllabusFormat() {
   })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [brandingBusy, setBrandingBusy] = useState('')
+  const [headerBusy, setHeaderBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -602,58 +601,45 @@ export default function SyllabusFormat() {
     }
   }
 
-  const brandingCopy = {
-    header_image_url: {
-      noun: 'header',
-      saved: 'Header template saved. Exported documents and bubble answer sheets use it as the letterhead.',
-      removed: 'Header template removed. Exports and bubble answer sheets no longer include it.',
-    },
-    footer_image_url: {
-      noun: 'footer',
-      saved: 'Footer template saved. Exported documents and bubble answer sheets print it at the bottom of each page.',
-      removed: 'Footer template removed. Exports and bubble answer sheets no longer include it.',
-    },
-  }
-
-  async function saveBrandingImage(field, nextUrl) {
-    // Persist each template on its own so the upload is not blocked by section
+  async function saveHeaderImage(nextUrl) {
+    // Persist the header on its own so the upload is not blocked by section
     // validation, and so the image applies to every institution's exports.
-    const copy = brandingCopy[field]
-    const previous = customization[field] || ''
+    const previous = customization.header_image_url || ''
     setError('')
     setNotice('')
-    setBrandingBusy(field)
-    setCustomization(current => ({ ...current, [field]: nextUrl }))
+    setHeaderBusy(true)
+    setCustomization(current => ({ ...current, header_image_url: nextUrl }))
     try {
-      const { data } = await api.patch('/users/institution-customization/', { [field]: nextUrl })
+      const { data } = await api.patch('/users/institution-customization/', { header_image_url: nextUrl })
       setCustomization(current => ({
         ...current,
-        [field]: data?.[field] ?? nextUrl,
+        header_image_url: data?.header_image_url ?? nextUrl,
       }))
-      setNotice(nextUrl ? copy.saved : copy.removed)
+      setNotice(nextUrl
+        ? 'Header template saved. Every exported DOCX and PDF uses it as the letterhead.'
+        : 'Header template removed. Exports use the generated text letterhead again.')
       return true
     } catch (err) {
-      setCustomization(current => ({ ...current, [field]: previous }))
-      setError(err.response?.data?.detail || `Could not save the ${copy.noun} template.`)
+      setCustomization(current => ({ ...current, header_image_url: previous }))
+      setError(err.response?.data?.detail || 'Could not save the header template.')
       return false
     } finally {
-      setBrandingBusy('')
+      setHeaderBusy(false)
     }
   }
 
-  function readBrandingFile(file, field) {
-    const noun = brandingCopy[field].noun
+  function readHeaderFile(file) {
     if (!file) return
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
-      setError(`Choose a PNG, JPG or WebP image for the ${noun}.`)
+      setError('Choose a PNG, JPG or WebP image for the header.')
       return
     }
     if (file.size > 1024 * 1024) {
-      setError(`Keep the ${noun} image under 1 MB so it can be saved with the format.`)
+      setError('Keep the header image under 1 MB so it can be saved with the format.')
       return
     }
     const reader = new FileReader()
-    reader.onload = () => { saveBrandingImage(field, String(reader.result || '')) }
+    reader.onload = () => { saveHeaderImage(String(reader.result || '')) }
     reader.onerror = () => setError('Could not read that image. Try another file.')
     reader.readAsDataURL(file)
   }
@@ -715,11 +701,10 @@ export default function SyllabusFormat() {
     try {
       // Do not echo syllabus_field_map. The save endpoint used to rebuild
       // sections from that map and drop the table cells just written above.
-      // Header and footer templates are saved on their own as soon as they are uploaded.
+      // The header template is saved on its own as soon as it is uploaded.
       const customizationFields = { ...customization }
       delete customizationFields.syllabus_field_map
       delete customizationFields.header_image_url
-      delete customizationFields.footer_image_url
       const response = await api.patch('/users/institution-customization/', {
         ...customizationFields,
         syllabus_sections: payload,
@@ -1578,76 +1563,6 @@ export default function SyllabusFormat() {
   const visibleCount = sections.filter(section => section.enabled !== false).length
   const fixedCount = sections.filter(section => section.is_static).length
 
-  function brandingCard({ field, title, description, emptyText, inputId, noun }) {
-    const url = customization[field]
-    const busy = brandingBusy === field
-    return (
-      <GlassCard>
-        <Stack spacing={1.5}>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1.5}
-            alignItems={{ sm: 'center' }}
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
-                {title}
-              </Typography>
-              <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                {description}
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
-              <OutlineBtn
-                small
-                disabled={busy}
-                onClick={() => document.getElementById(inputId)?.click()}
-              >
-                <CloudUploadIcon sx={{ fontSize: '1rem' }} />
-                {busy ? `Saving ${noun}…` : (url ? `Replace ${noun}` : `Upload ${noun}`)}
-              </OutlineBtn>
-              {url && (
-                <OutlineBtn small disabled={busy} onClick={() => saveBrandingImage(field, '')}>
-                  Remove
-                </OutlineBtn>
-              )}
-            </Stack>
-          </Stack>
-          <input
-            id={inputId}
-            hidden
-            type="file"
-            accept="image/png,image/jpeg,image/webp"
-            onChange={event => { readBrandingFile(event.target.files?.[0], field); event.target.value = '' }}
-          />
-          {url ? (
-            <Box
-              sx={{
-                border: '1px solid var(--border-color)',
-                borderRadius: 2,
-                p: 1,
-                bgcolor: '#fff',
-                maxWidth: 760,
-              }}
-            >
-              <Box
-                component="img"
-                src={url}
-                alt={`${title} preview`}
-                sx={{ display: 'block', width: '100%', height: 'auto' }}
-              />
-            </Box>
-          ) : (
-            <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
-              {emptyText}
-            </Typography>
-          )}
-        </Stack>
-      </GlassCard>
-    )
-  }
-
   return (
     <AdminLayout>
       <PageHeader
@@ -1662,22 +1577,72 @@ export default function SyllabusFormat() {
         <LoadingState label="Loading the syllabus format…" />
       ) : (
         <Stack spacing={2.5}>
-          {brandingCard({
-            field: 'header_image_url',
-            noun: 'header',
-            title: 'Document header',
-            inputId: 'syllabus-header-upload',
-            description: 'Upload one header template. It becomes the letterhead of every exported DOCX and PDF for this institution — no text is added beside it. Only admins see this setting; Faculty never upload one.',
-            emptyText: 'No header template yet. Exports fall back to the generated Batangas State University letterhead.',
-          })}
-          {brandingCard({
-            field: 'footer_image_url',
-            noun: 'footer',
-            title: 'Document footer',
-            inputId: 'syllabus-footer-upload',
-            description: 'Upload one footer template. It is printed at the bottom of every exported DOCX and PDF, and on bubble answer sheets, for this institution. Only admins see this setting.',
-            emptyText: 'No footer template yet. Exports keep the page number and leave the footer blank.',
-          })}
+          <GlassCard>
+            <Stack spacing={1.5}>
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1.5}
+                alignItems={{ sm: 'center' }}
+                justifyContent="space-between"
+              >
+                <Box>
+                  <Typography sx={{ color: 'var(--text-primary)', fontWeight: 800, mb: 0.5 }}>
+                    Document header
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                    Upload one header template. It becomes the letterhead of every exported DOCX and PDF for this
+                    institution — no text is added beside it. Only admins see this setting; Faculty never upload one.
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                  <OutlineBtn
+                    small
+                    disabled={headerBusy}
+                    onClick={() => document.getElementById('syllabus-header-upload')?.click()}
+                  >
+                    <CloudUploadIcon sx={{ fontSize: '1rem' }} />
+                    {headerBusy
+                      ? 'Saving header…'
+                      : (customization.header_image_url ? 'Replace header' : 'Upload header')}
+                  </OutlineBtn>
+                  {customization.header_image_url && (
+                    <OutlineBtn small disabled={headerBusy} onClick={() => saveHeaderImage('')}>
+                      Remove
+                    </OutlineBtn>
+                  )}
+                </Stack>
+              </Stack>
+              <input
+                id="syllabus-header-upload"
+                hidden
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={event => { readHeaderFile(event.target.files?.[0]); event.target.value = '' }}
+              />
+              {customization.header_image_url ? (
+                <Box
+                  sx={{
+                    border: '1px solid var(--border-color)',
+                    borderRadius: 2,
+                    p: 1,
+                    bgcolor: '#fff',
+                    maxWidth: 760,
+                  }}
+                >
+                  <Box
+                    component="img"
+                    src={customization.header_image_url}
+                    alt="Header template preview"
+                    sx={{ display: 'block', width: '100%', height: 'auto' }}
+                  />
+                </Box>
+              ) : (
+                <Typography variant="caption" sx={{ color: 'var(--text-tertiary)' }}>
+                  No header template yet. Exports fall back to the generated Batangas State University letterhead.
+                </Typography>
+              )}
+            </Stack>
+          </GlassCard>
 
           <Box sx={{
             display: 'grid',

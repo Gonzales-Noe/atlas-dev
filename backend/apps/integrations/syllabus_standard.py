@@ -103,7 +103,6 @@ class StandardDocument:
     college: str = 'College of Informatics and Computing Sciences'
     program: str = 'Bachelor of Science in Information Technology'
     title: str = 'COURSE INFORMATION SYLLABUS (CIS)'
-    footer_image: str = ''
 
 
 # ── value helpers ───────────────────────────────────────────────────────────
@@ -823,7 +822,6 @@ def build_standard_document(syllabus, branding=None):
         college=FIXED_COLLEGE,
         program=FIXED_PROGRAM,
         title=FIXED_TITLE,
-        footer_image=_s(branding.get('footer_image') or branding.get('footer_image_url')),
     )
 
 
@@ -959,23 +957,18 @@ def _add_letterhead_lines_docx(container, lines):
 CONTENT_WIDTH_INCHES = 7.27
 # A portrait-shaped upload must not push the rest of the syllabus off the page.
 MAX_HEADER_INCHES = 2.5
-MAX_FOOTER_INCHES = 0.7
-
-
-def _fitted_image_size(px_width, px_height, max_height):
-    """Fit an uploaded template to the text column, capped in height."""
-    if not px_width or not px_height:
-        return CONTENT_WIDTH_INCHES, max_height
-    width = CONTENT_WIDTH_INCHES
-    height = width * px_height / px_width
-    if height > max_height:
-        height = max_height
-        width = height * px_width / px_height
-    return width, height
 
 
 def _header_image_size(px_width, px_height):
-    return _fitted_image_size(px_width, px_height, MAX_HEADER_INCHES)
+    """Fit the uploaded template to the text column, capped in height."""
+    if not px_width or not px_height:
+        return CONTENT_WIDTH_INCHES, MAX_HEADER_INCHES
+    width = CONTENT_WIDTH_INCHES
+    height = width * px_height / px_width
+    if height > MAX_HEADER_INCHES:
+        height = MAX_HEADER_INCHES
+        width = height * px_width / px_height
+    return width, height
 
 
 def _render_letterhead_docx(doc, letterhead):
@@ -1314,41 +1307,20 @@ def _add_field(paragraph, instruction):
     _field_run(end)
 
 
-def _add_page_footer(doc, footer_image=''):
+def _add_page_footer(doc):
     from docx.enum.text import WD_ALIGN_PARAGRAPH
-    from docx.image.image import Image as DocxImage
-    from docx.shared import Inches, Pt
 
-    image = _decode_image(footer_image)
     for section in doc.sections:
         footer = section.footer
         footer.is_linked_to_previous = False
-        image_paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
-        number_paragraph = image_paragraph
-        if image:
-            section.bottom_margin = Inches(1.15)
-            section.footer_distance = Inches(0.15)
-            image_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            image_paragraph.paragraph_format.space_before = Pt(0)
-            image_paragraph.paragraph_format.space_after = Pt(0)
-            try:
-                info = DocxImage.from_blob(image)
-                width, height = _fitted_image_size(info.px_width, info.px_height, MAX_FOOTER_INCHES)
-                image_paragraph.add_run().add_picture(
-                    BytesIO(image),
-                    width=Inches(width),
-                    height=Inches(height),
-                )
-                number_paragraph = footer.add_paragraph()
-            except Exception:
-                number_paragraph = image_paragraph
-        number_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = number_paragraph.add_run('Page ')
+        paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = paragraph.add_run('Page ')
         _set_run_font_docx(run, size=7.5)
-        _add_field(number_paragraph, ' PAGE ')
-        run = number_paragraph.add_run(' of ')
+        _add_field(paragraph, ' PAGE ')
+        run = paragraph.add_run(' of ')
         _set_run_font_docx(run, size=7.5)
-        _add_field(number_paragraph, ' NUMPAGES ')
+        _add_field(paragraph, ' NUMPAGES ')
 
 
 def build_standard_syllabus_docx(syllabus, branding=None):
@@ -1373,7 +1345,7 @@ def build_standard_syllabus_docx(syllabus, branding=None):
             _add_paragraph_docx(doc, block)
         else:
             _add_table_docx(doc, block)
-    _add_page_footer(doc, document.footer_image)
+    _add_page_footer(doc)
 
     buffer = BytesIO()
     doc.save(buffer)
@@ -1708,30 +1680,9 @@ def _build_reportlab_story(document):
     return story
 
 
-def _reportlab_canvas(footer_bytes=None):
+def _reportlab_canvas():
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas as canvas_module
-
-    reader = None
-    draw_w = draw_h = 0
-    if footer_bytes:
-        try:
-            from reportlab.lib.utils import ImageReader
-
-            reader = ImageReader(BytesIO(footer_bytes))
-            pixel_w, pixel_h = reader.getSize()
-            max_w = A4[0] - 68
-            max_h = MAX_FOOTER_INCHES * 72
-            if pixel_w > 0 and pixel_h > 0:
-                draw_w = max_w
-                draw_h = max_w * (pixel_h / pixel_w)
-                if draw_h > max_h:
-                    draw_h = max_h
-                    draw_w = max_h * (pixel_w / pixel_h)
-            else:
-                reader = None
-        except Exception:
-            reader = None
 
     class NumberedCanvas(canvas_module.Canvas):
         def __init__(self, *args, **kwargs):
@@ -1746,20 +1697,6 @@ def _reportlab_canvas(footer_bytes=None):
             total = len(self._saved_page_states)
             for state in self._saved_page_states:
                 self.__dict__.update(state)
-                if reader is not None and draw_w > 0 and draw_h > 0:
-                    try:
-                        self.drawImage(
-                            reader,
-                            (A4[0] - draw_w) / 2,
-                            28,
-                            width=draw_w,
-                            height=draw_h,
-                            mask='auto',
-                            preserveAspectRatio=True,
-                            anchor='c',
-                        )
-                    except Exception:
-                        pass
                 self.setFont(PDF_FONT, 7.5)
                 self.setFillColorRGB(0.27, 0.27, 0.27)
                 self.drawRightString(A4[0] - 34, 18, f'Page {self._pageNumber} of {total}')
@@ -1773,20 +1710,19 @@ def _pdf_via_reportlab(document):
     from reportlab.lib.pagesizes import A4
     from reportlab.platypus import SimpleDocTemplate
 
-    footer_bytes = _decode_image(document.footer_image)
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         topMargin=0.5 * 72,
-        bottomMargin=(1.15 if footer_bytes else 0.5) * 72,
+        bottomMargin=0.5 * 72,
         leftMargin=0.5 * 72,
         rightMargin=0.5 * 72,
         title=document.title,
     )
     doc.build(
         _build_reportlab_story(document),
-        canvasmaker=_reportlab_canvas(footer_bytes),
+        canvasmaker=_reportlab_canvas(),
     )
     return buffer.getvalue()
 
