@@ -1,5 +1,7 @@
 from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
 from django.core import signing
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
@@ -19,6 +21,7 @@ from apps.integrations.models import (
     UserRole,
 )
 from apps.integrations.fixed_syllabus import attach_shared_syllabus_format, seed_course_syllabi
+from apps.users.otp import OTP_ALPHABET, OTP_LENGTH, normalize_otp
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
@@ -35,6 +38,22 @@ ROLE_DASHBOARD_MAP = {
 
 PASSWORD_RESET_SALT = 'atlas.password-reset'
 PASSWORD_RESET_CACHE_PREFIX = 'atlas:password-reset:'
+
+
+def enforce_password_strength(password, *, email='', full_name=''):
+    """Apply Django's password validators to ATLAS's custom password_hash field."""
+
+    class _SimilarityUser:
+        def __init__(self):
+            self.email = email or ''
+            self.username = email or ''
+            self.first_name = full_name or ''
+            self.last_name = ''
+
+    try:
+        validate_password(password, user=_SimilarityUser())
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(list(exc.messages)) from exc
 
 
 def normalize_role(role):
@@ -190,6 +209,28 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError('A user with this email already exists.')
         return normalized
 
+    def validate_institution_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError('Institution name is required.')
+        # Never attach a new signup to a school that already exists.
+        if Institution.objects.filter(name__iexact=name).exists():
+            raise serializers.ValidationError(
+                'An institution with this name already exists. Ask your administrator for an account.'
+            )
+        return name
+
+    def validate(self, attrs):
+        try:
+            enforce_password_strength(
+                attrs.get('password', ''),
+                email=attrs.get('email', ''),
+                full_name=attrs.get('full_name', ''),
+            )
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'password': exc.detail}) from exc
+        return attrs
+
     def validate_role(self, value):
         if value in {UserRole.STUDENT, 'student'}:
             raise serializers.ValidationError(
@@ -213,30 +254,25 @@ class RegisterSerializer(serializers.Serializer):
         full_name = validated_data.pop('full_name', '').strip()
         trial_started_at, trial_ends_at = trial_expiry()
 
-        institution, _ = Institution.objects.get_or_create(
-            name=institution_name,
-            defaults={
-                'plan_tier': 'free',
-                'subscription_status': SubscriptionStatusEnum.TRIALING,
-                'application_status': 'active',
-                'payment_status': PaymentStatusEnum.UNPAID,
-                'selected_plan': selected_plan,
-                'is_active': True,
-                'trial_started_at': trial_started_at,
-                'trial_ends_at': trial_ends_at,
-            },
-        )
+        if Institution.objects.filter(name__iexact=institution_name).exists():
+            raise serializers.ValidationError({
+                'institution_name': (
+                    'An institution with this name already exists. '
+                    'Ask your administrator for an account.'
+                ),
+            })
 
-        if not institution.application_status == 'active':
-            if selected_plan:
-                institution.selected_plan = selected_plan
-            institution.application_status = 'pending_review'
-            institution.payment_status = 'unpaid'
-            institution.is_active = False
-            update_fields = ['application_status', 'payment_status', 'is_active']
-            if selected_plan:
-                update_fields.append('selected_plan')
-            institution.save(update_fields=update_fields)
+        institution = Institution.objects.create(
+            name=institution_name,
+            plan_tier='free',
+            subscription_status=SubscriptionStatusEnum.TRIALING,
+            application_status='active',
+            payment_status=PaymentStatusEnum.UNPAID,
+            selected_plan=selected_plan,
+            is_active=True,
+            trial_started_at=trial_started_at,
+            trial_ends_at=trial_ends_at,
+        )
 
         attach_shared_syllabus_format(institution)
 
@@ -259,15 +295,25 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 class PasswordResetVerifySerializer(serializers.Serializer):
     email = serializers.EmailField()
-    otp = serializers.CharField(min_length=4, max_length=4)
+    otp = serializers.CharField(max_length=16)
 
     def validate_email(self, value):
         return value.strip().lower()
+
+    def validate_otp(self, value):
+        normalized = normalize_otp(value)
+        if len(normalized) != OTP_LENGTH or any(char not in OTP_ALPHABET for char in normalized):
+            raise serializers.ValidationError('Enter the 8-character code from the email.')
+        return normalized
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
     reset_token = serializers.CharField()
     new_password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
+
+    def validate_new_password(self, value):
+        enforce_password_strength(value)
+        return value
 
 
 class UserAccountSerializer(serializers.ModelSerializer):
@@ -345,6 +391,17 @@ class FacultyCreateSerializer(serializers.Serializer):
         if UserProfile.objects.filter(email__iexact=normalized).exists():
             raise serializers.ValidationError('A user with this email already exists.')
         return normalized
+
+    def validate(self, attrs):
+        try:
+            enforce_password_strength(
+                attrs.get('password', ''),
+                email=attrs.get('email', ''),
+                full_name=attrs.get('full_name', ''),
+            )
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'password': exc.detail}) from exc
+        return super().validate(attrs)
 
     @staticmethod
     def _get_assignment_section(institution, section_code):
@@ -501,13 +558,13 @@ class ContactFormSerializer(serializers.Serializer):
     message = serializers.CharField()
 
     def validate_name(self, value):
-        value = value.strip()
+        value = ''.join(char for char in value.strip() if char.isprintable() and char not in '\r\n')
         if not value:
             raise serializers.ValidationError('Name is required.')
         return value
 
     def validate_institution(self, value):
-        value = value.strip()
+        value = ''.join(char for char in value.strip() if char.isprintable() and char not in '\r\n')
         if not value:
             raise serializers.ValidationError('Institution is required.')
         return value
@@ -545,6 +602,14 @@ class ProfileSettingsUpdateSerializer(serializers.Serializer):
                 raise serializers.ValidationError({
                     'current_password': 'Current password is incorrect.',
                 })
+            try:
+                enforce_password_strength(
+                    attrs['new_password'],
+                    email=getattr(user, 'email', ''),
+                    full_name=getattr(user, 'full_name', ''),
+                )
+            except serializers.ValidationError as exc:
+                raise serializers.ValidationError({'new_password': exc.detail}) from exc
 
         return attrs
 

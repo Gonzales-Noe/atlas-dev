@@ -1,15 +1,15 @@
 # backend/requirements.txt — ATLAS Backend Production Dependencies
 
 # ── Core Framework ─────────────────────────────────────────
-Django==5.1
-djangorestframework==3.15
+Django==5.2.18
+djangorestframework==3.16.1
 gunicorn==22.0.0
 channels==4.3.2                 # ASGI / Channels (listed in INSTALLED_APPS)
 daphne==4.2.1                   # ASGI server package required by channels setup
 channels-redis==4.2.0           # Optional; used when REDIS_HOST is set
 
 # ── Authentication ──────────────────────────────────────────
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.5.1
 
 # ── Async Task Queue ────────────────────────────────────────
 celery==5.4.0
@@ -27,7 +27,6 @@ liteparse>=2.16.0               # PDFium PDF → Markdown fallback when Docling 
 docling==2.142.1                # Primary syllabus layout/table parser (University Syllabus Format)
 weasyprint>=62.0                # Styled syllabus PDF export (HTML/CSS); ReportLab used if unavailable
 pypdf==4.0.0                    # PDF parsing (fallback)
-PyPDF2==3.0.1                   # PDF manipulation
 openpyxl>=3.1.0                 # XLSX file reading (syllabus upload)
 
 # ── Text Processing & Embeddings ───────────────────────────
@@ -52,8 +51,7 @@ opencv-python-headless>=4.9.0   # Computer vision for bubble sheet scanning
 numpy>=1.26.0                   # Numerical ops for image processing
 
 # ── Utilities ───────────────────────────────────────────────
-python-decouple==3.8            # .env variable loading
 python-dotenv>=1.0.0            # .env loading for manage.py
 Pillow==10.4.0                  # image handling
 whitenoise==6.7.0               # static file serving
-django-cors-headers==4.4.0      # CORS headers for frontend
+django-cors-headers==4.9.0      # CORS headers for frontend

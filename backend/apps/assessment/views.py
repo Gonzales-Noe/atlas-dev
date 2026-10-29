@@ -124,6 +124,6 @@ def generate_assessment(request):
             "Error generating %s for course %r", assessment_type, course_name
         )
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

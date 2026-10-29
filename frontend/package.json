@@ -16,7 +16,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.1",
     "@mui/material": "^9.0.1",
-    "axios": "^1.5.0",
+    "axios": "^1.21.0",
     "docx-preview": "^0.4.1",
     "lucide-react": "^1.16.0",
     "pdfjs-dist": "^6.4.299",
@@ -24,8 +24,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.16.0",
-    "recharts": "^3.9.2",
-    "xlsx": "^0.18.5"
+    "recharts": "^3.9.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.7.0",

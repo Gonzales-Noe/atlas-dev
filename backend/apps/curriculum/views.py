@@ -626,7 +626,7 @@ def generate_syllabus(request):
     except Exception as exc:
         logger.exception("Error generating syllabus for %r", course_name)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -906,7 +906,7 @@ def generate_module(request):
     except Exception as exc:
         logger.exception("Error generating module %r for course %r", module_title, course_name)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -1039,7 +1039,7 @@ def check_syllabus_module_consistency(request, course_id):
             report = apply_topic_judgments(report, parse_topic_judgments(raw))
         except Exception as exc:
             logger.exception('Topic wording review failed for course %s', course_id)
-            cot_error = str(exc)
+            cot_error = 'Wording review could not be completed.'
     report['checked_at'] = checked_now()
     if cot_error:
         report['cot_error'] = cot_error
@@ -1125,7 +1125,7 @@ def generate_subtopic_content(request):
     except Exception as exc:
         logger.exception("Error generating subtopic content for %r", subtopic_title)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -1192,7 +1192,7 @@ def module_ai_assist(request):
     except Exception as exc:
         logger.exception("Error in module AI assist for module %s", module_id)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -4210,7 +4210,7 @@ def export_assessment_docx(request):
     except Exception as exc:
         logger.exception('Error generating DOCX for assessment export')
         return Response(
-            {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            {'success': False, 'error': 'Could not generate that document.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -4245,8 +4245,7 @@ def _course_request_section(request, section_id):
         return None, None
     section = Section.objects.filter(section_id=section_id).filter(
         Q(institution_id=request.user.institution_id)
-        | Q(program__institution_id=request.user.institution_id)
-        | Q(institution__isnull=True, program__isnull=True),
+        | Q(program__institution_id=request.user.institution_id),
     ).first()
     if not section:
         return None, Response(
@@ -4572,9 +4571,22 @@ def generate_syllabus_field(request):
     except Exception as exc:
         logger.exception("Error in generate_syllabus_field for course %r", course_id)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
+
+
+def _reject_mismatched_upload(file_obj, filename):
+    from apps.integrations.document_processor import upload_type_error
+
+    extension = filename.rsplit('.', 1)[-1] if '.' in (filename or '') else ''
+    message = upload_type_error(file_obj, extension)
+    if not message:
+        return None
+    return Response(
+        {"success": False, "detail": message},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 def _extract_text_from_file(file_obj, filename: str) -> str:
@@ -5279,7 +5291,7 @@ def export_syllabus_docx(request):
     except Exception as exc:
         logger.exception('Error generating DOCX for syllabus export')
         return Response(
-            {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            {'success': False, 'error': 'Could not generate that document.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -5353,7 +5365,7 @@ def export_syllabus_pdf(request):
     except Exception as exc:
         logger.exception('Error generating styled syllabus PDF')
         return Response(
-            {'success': False, 'error': f'Failed to generate PDF: {exc}'},
+            {'success': False, 'error': 'Could not generate that document.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -5438,7 +5450,7 @@ def export_tos_docx(request):
     except Exception as exc:
         logger.exception('Error generating DOCX for Table of Specifications export')
         return Response(
-            {'success': False, 'error': f'Failed to generate Table of Specifications: {exc}'},
+            {'success': False, 'error': 'Could not generate that document.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -5522,6 +5534,10 @@ def export_module_docx(request):
             {'success': False, 'error': 'Template must be a DOCX file.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    if template_file:
+        rejected_template = _reject_mismatched_upload(template_file, template_file.name)
+        if rejected_template:
+            return rejected_template
 
     try:
         from io import BytesIO
@@ -5556,7 +5572,7 @@ def export_module_docx(request):
     except Exception as exc:
         logger.exception('Error generating DOCX for module export')
         return Response(
-            {'success': False, 'error': f'Failed to generate DOCX: {exc}'},
+            {'success': False, 'error': 'Could not generate that document.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -5596,6 +5612,9 @@ def prepare_syllabus_tabs(request):
             {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    rejected_upload = _reject_mismatched_upload(file_obj, filename)
+    if rejected_upload:
+        return rejected_upload
 
     try:
         data = file_obj.read()
@@ -5611,7 +5630,7 @@ def prepare_syllabus_tabs(request):
     except Exception as exc:
         logger.exception('prepare_syllabus_tabs failed')
         return Response(
-            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            {"success": False, "error": "Could not read that syllabus file."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -5667,6 +5686,9 @@ def import_syllabus_json(request):
             {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    rejected_upload = _reject_mismatched_upload(file_obj, filename)
+    if rejected_upload:
+        return rejected_upload
 
     try:
         from io import BytesIO
@@ -5687,7 +5709,7 @@ def import_syllabus_json(request):
     except Exception as exc:
         logger.exception('import_syllabus_json failed')
         return Response(
-            {"success": False, "error": f"Failed to read the syllabus: {exc}"},
+            {"success": False, "error": "Could not read that syllabus file."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -5751,13 +5773,16 @@ def parse_syllabus_upload(request):
             {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    rejected_upload = _reject_mismatched_upload(file_obj, filename)
+    if rejected_upload:
+        return rejected_upload
 
     # ── Extract text ──────────────────────────────────────────────────────
     try:
         extracted_text = _extract_text_from_file(file_obj, filename)
     except Exception as exc:
         return Response(
-            {"success": False, "error": f"Failed to extract text: {exc}"},
+            {"success": False, "error": "Could not read that file."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -5889,7 +5914,7 @@ def parse_syllabus_upload(request):
     except Exception as exc:
         logger.exception("Error in parse_syllabus_upload for course %r", course_id)
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -5934,13 +5959,16 @@ def segment_syllabus_upload(request):
             {"success": False, "detail": "Unsupported file type. Please upload PDF, DOCX, XLSX, or TXT."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    rejected_upload = _reject_mismatched_upload(file_obj, filename)
+    if rejected_upload:
+        return rejected_upload
 
     # Extract text
     try:
         extracted_text = _extract_text_from_file(file_obj, filename)
     except Exception as exc:
         return Response(
-            {"success": False, "error": f"Failed to extract text: {exc}"},
+            {"success": False, "error": "Could not read that file."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -5968,7 +5996,7 @@ def segment_syllabus_upload(request):
             )
         except ValueError as exc:
             return Response(
-                {"success": False, "error": f"Segmentation failed: {exc}"},
+                {"success": False, "error": "Could not split that syllabus."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -6023,7 +6051,7 @@ def segment_syllabus_upload(request):
     except Exception as exc:
         logger.exception("Error during syllabus text segmentation")
         return Response(
-            {"success": False, "error": f"Failed to segment syllabus: {exc}"},
+            {"success": False, "error": "Could not split that syllabus."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -6091,7 +6119,7 @@ def parse_syllabus_segment(request):
             )
         except ValueError as exc:
             return Response(
-                {"success": False, "error": f"Parsing section {section_key} failed: {exc}"},
+                {"success": False, "error": "Could not read that syllabus section."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 
@@ -6144,7 +6172,7 @@ def parse_syllabus_segment(request):
     except Exception as exc:
         logger.exception("Error during syllabus section parsing: %s", section_key)
         return Response(
-            {"success": False, "error": f"Failed to parse section {section_key}: {exc}"},
+            {"success": False, "error": "Could not read that syllabus section."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
@@ -6216,6 +6244,6 @@ def compute_curriculum_metrics(request):
     except Exception as exc:
         logger.exception("Error computing curriculum metrics")
         return Response(
-            {"success": False, "error": str(exc)},
+            {"success": False, "error": "Something went wrong. Please try again."},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )

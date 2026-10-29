@@ -19,8 +19,6 @@ def home_redirect(_request):
         'status': 'ok',
         'service': 'ATLAS API',
         'health': '/health/',
-        'admin': '/admin/',
-        'api': '/api/',
     })
 
 
