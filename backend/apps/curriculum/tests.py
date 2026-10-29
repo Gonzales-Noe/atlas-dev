@@ -7,6 +7,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from apps.curriculum.docx_builders import build_tos_docx
 from apps.curriculum.views import (
     _align_generated_section_to_blueprint,
+    _build_plain_assessment_docx,
     _build_sectioned_assessment_payload,
     _coerce_generated_item_fields,
     _collect_section_items,
@@ -602,3 +603,102 @@ class TosExportDocumentTests(SimpleTestCase):
         self.assertNotIn('SOME OTHER COLLEGE', text)
         self.assertNotIn('BatStateU-Lipa Campus', text)
         self.assertNotIn('JUNK DOCUMENT TITLE', text)
+
+
+class AssessmentDocxFormatTests(SimpleTestCase):
+    """A downloaded assessment is the exam, then answer letters on the last page."""
+
+    def _paragraphs(self, document):
+        return [paragraph.text for paragraph in document.paragraphs]
+
+    def _has_page_break(self, document):
+        from docx.oxml.ns import qn
+
+        for paragraph in document.paragraphs:
+            for br in paragraph._element.findall('.//' + qn('w:br')):
+                if br.get(qn('w:type')) == 'page':
+                    return True
+        return False
+
+    def test_questions_and_choices_then_answer_letters_on_the_last_page(self):
+        document = _build_plain_assessment_docx(
+            {
+                'title': 'IT 321 Prelim Examination',
+                'assessment_type': 'prelim',
+                'total_items': 2,
+                'items': [
+                    {
+                        'item_number': 1,
+                        'section_title': 'Foundations of HCI',
+                        'bloom_level': 'Remember',
+                        'bloom_verb': 'Identify',
+                        'ilo_refs': ['ILO1'],
+                        'question_text': 'Which field studies how people use computers?',
+                        'choices': ['A. Human-computer interaction', 'Graphic design', 'Accounting', 'Botany'],
+                        'correct_answer': 'A',
+                        'answer_key': 'HCI is the study of people and computers.',
+                    },
+                    {
+                        'item_number': 2,
+                        'question_text': 'A prototype is used to do what?',
+                        'choices': ['Hide the design', 'B. Try an idea with users', 'Skip testing', 'Replace the users'],
+                        'correct_answer': 'B',
+                        'answer_key': 'Prototypes are tried with users.',
+                    },
+                ],
+            },
+            include_choices=True,
+            include_answer_key=True,
+        )
+
+        paragraphs = self._paragraphs(document)
+        text = '\n'.join(paragraphs)
+        answer_at = paragraphs.index('1. A')
+
+        self.assertIn('IT 321 Prelim Examination', text)
+        self.assertIn('1. Which field studies how people use computers?', text)
+        self.assertIn('A. Human-computer interaction', text)
+        self.assertIn('B. Graphic design', text)
+        self.assertIn('2. A prototype is used to do what?', text)
+        self.assertIn('B. Try an idea with users', text)
+        self.assertEqual(paragraphs[answer_at:answer_at + 2], ['1. A', '2. B'])
+        self.assertTrue(self._has_page_break(document))
+        self.assertLess(paragraphs.index('1. Which field studies how people use computers?'), answer_at)
+        for label in (
+            'Bloom',
+            'Remember',
+            'Identify',
+            'ILO',
+            'Foundations of HCI',
+            'Correct Answer',
+            'Answer Key',
+            'Explanation',
+            'Type:',
+            'Total Items',
+            'HCI is the study of people and computers.',
+        ):
+            self.assertNotIn(label, text)
+
+    def test_exam_copy_omits_the_answer_page(self):
+        document = _build_plain_assessment_docx(
+            {
+                'title': 'Quiz',
+                'items': [
+                    {
+                        'item_number': 1,
+                        'question_text': 'Pick one.',
+                        'choices': ['First', 'Second'],
+                        'correct_answer': 'A',
+                        'answer_key': 'Because the first choice is right.',
+                    },
+                ],
+            },
+            include_choices=True,
+            include_answer_key=False,
+        )
+        text = '\n'.join(self._paragraphs(document))
+        self.assertIn('1. Pick one.', text)
+        self.assertIn('A. First', text)
+        self.assertNotIn('1. A', text)
+        self.assertNotIn('Because the first choice is right.', text)
+        self.assertFalse(self._has_page_break(document))

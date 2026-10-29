@@ -8870,7 +8870,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   setExportMenuAnchor(null)
                   handleExportAssessmentDocx({ includeChoices: true, includeAnswerKey: true })
                 }}>
-                  Questions + Choices + Answer Key
+                  Questions + choices, answers on the last page
                 </MenuItem>
               </Menu>
             </Box>
