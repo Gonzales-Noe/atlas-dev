@@ -342,8 +342,16 @@ def omr_jobs(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        scan_upload = serializer.validated_data["scan_bundle"]
+        scan_name = (getattr(scan_upload, "name", "") or "").lower()
+        scan_kind = scan_name.rsplit(".", 1)[-1] if "." in scan_name else ""
+        from apps.integrations.document_processor import upload_type_error
+        upload_error = upload_type_error(scan_upload, scan_kind)
+        if upload_error:
+            return Response({"success": False, "detail": upload_error}, status=status.HTTP_400_BAD_REQUEST)
+
         scan_bundle_path, scan_ext = _save_upload(
-            serializer.validated_data["scan_bundle"], "inputs", str(course_id)
+            scan_upload, "inputs", str(course_id)
         )
         allowed_scan_ext = {".zip", ".pdf", ".jpg", ".jpeg", ".png"}
         if scan_ext not in allowed_scan_ext:
@@ -373,8 +381,9 @@ def omr_jobs(request):
                 run_omr_job.delay(str(job.job_id))
             else:
                 run_omr_job(str(job.job_id))
-        except Exception as exc:  # pragma: no cover - depends on worker/broker availability
-            queue_warning = str(exc)
+        except Exception:  # pragma: no cover - depends on worker/broker availability
+            logger.exception("OMR job %s could not be queued", job.job_id)
+            queue_warning = "The scan was saved, but automatic grading did not start."
 
         return Response(
             {
@@ -939,7 +948,6 @@ def _visible_sections(faculty):
         qs = qs.filter(
             Q(institution_id=faculty.institution_id)
             | Q(program__institution_id=faculty.institution_id)
-            | Q(institution__isnull=True, program__isnull=True)
         )
     return qs.order_by("code")
 
@@ -1547,7 +1555,11 @@ def bubble_sheet_generate_pdf(request, template_id):
         svc = BubbleSheetGeneratorService()
         pdf_bytes, layout_metadata = svc.generate(t)
     except RuntimeError as exc:
-        return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.exception("Grading request failed")
+        return Response(
+            {"success": False, "detail": "That request could not be completed."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     # Persist layout so the scanner can use it later
     t.layout_metadata = layout_metadata
@@ -1584,7 +1596,11 @@ def bubble_sheet_student_qr(request, template_id):
         from apps.grading.services.bubble_sheet_generator import BubbleSheetGeneratorService
         png_bytes = BubbleSheetGeneratorService.generate_student_qr(student_id)
     except RuntimeError as exc:
-        return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.exception("Grading request failed")
+        return Response(
+            {"success": False, "detail": "That request could not be completed."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     return HttpResponse(png_bytes, content_type="image/png")
 
@@ -1694,7 +1710,11 @@ def bubble_sheet_scan(request):
     try:
         result = BubbleSheetScannerService().scan(image_path_abs, t)
     except RuntimeError as exc:
-        return Response({"success": False, "detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        logger.exception("Grading request failed")
+        return Response(
+            {"success": False, "detail": "That request could not be completed."},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
 
     if _sectioned_block(result["student_identifier"]) is None:
         image_path_abs.unlink(missing_ok=True)

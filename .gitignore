@@ -68,8 +68,11 @@ backend/check_course_*.py
 backend/TODO.md
 backend/SUPABASE_DB_CONNECTION_ERROR.md
 
-# OMR scan uploads
+# OMR scan uploads and generated sample sheets (student numbers and answer keys)
 backend/media/bubble_sheets/scans/
+backend/media/bubble_sheets/samples/*.pdf
+backend/media/bubble_sheets/samples/*.png
+backend/media/bubble_sheets/samples/*.json
 
 # Syllabus template uploads (local media; do not commit)
 backend/media/syllabus_templates/

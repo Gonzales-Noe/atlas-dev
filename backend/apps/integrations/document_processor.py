@@ -66,6 +66,47 @@ class _LCEmbeddingsAdapter:
         return self._model.encode([text], show_progress_bar=False)[0].tolist()
 
 
+_UPLOAD_SIGNATURES = {
+    'pdf': (b'%PDF',),
+    'docx': (b'PK\x03\x04', b'PK\x05\x06', b'PK\x07\x08'),
+    'xlsx': (b'PK\x03\x04', b'PK\x05\x06', b'PK\x07\x08'),
+    'xls': (b'\xd0\xcf\x11\xe0',),
+    'png': (b'\x89PNG\r\n\x1a\n',),
+    'jpg': (b'\xff\xd8\xff',),
+    'jpeg': (b'\xff\xd8\xff',),
+    'zip': (b'PK\x03\x04', b'PK\x05\x06', b'PK\x07\x08'),
+}
+
+
+def _read_upload_head(file_obj, size=16):
+    position = file_obj.tell() if hasattr(file_obj, 'tell') else None
+    head = file_obj.read(size) or b''
+    if hasattr(file_obj, 'seek'):
+        file_obj.seek(0 if position is None else position)
+    return head
+
+
+def upload_type_error(file_obj, file_type):
+    """Return an error string when the bytes do not match the declared type."""
+    kind = (file_type or '').lower().strip().lstrip('.')
+    if not kind:
+        return 'Unsupported file type.'
+    size = getattr(file_obj, 'size', 0) or 0
+    if size > 50 * 1024 * 1024:
+        return 'File too large. Maximum size: 50MB'
+    if kind == 'txt':
+        if b'\x00' in _read_upload_head(file_obj, 512):
+            return 'The file contents are not plain text.'
+        return ''
+    signatures = _UPLOAD_SIGNATURES.get(kind)
+    if not signatures:
+        return f'Unsupported file type: {kind}'
+    head = _read_upload_head(file_obj, 16)
+    if not any(head.startswith(signature) for signature in signatures):
+        return f'The file contents do not match a {kind.upper()} document.'
+    return ''
+
+
 class DocumentProcessor:
     """Service for processing and chunking documents."""
     
@@ -128,29 +169,11 @@ class DocumentProcessor:
     @staticmethod
     def validate_file(file, file_type):
         """
-        Validate uploaded file.
-        
-        Args:
-            file: Django UploadedFile object
-            file_type (str): 'pdf' or 'docx'
-            
-        Returns:
-            tuple: (is_valid, error_message)
+        Validate an upload by size and file signature, not the browser MIME type.
         """
-        if file_type not in DocumentProcessor.SUPPORTED_TYPES:
-            return False, f"Unsupported file type: {file_type}"
-        
-        if file.size > DocumentProcessor.MAX_FILE_SIZE:
-            return False, f"File too large. Maximum size: 50MB"
-        
-        # Validate MIME type
-        if file_type == 'pdf':
-            if not file.content_type == 'application/pdf':
-                return False, "Invalid PDF file"
-        elif file_type == 'docx':
-            if 'wordprocessingml' not in file.content_type:
-                return False, "Invalid DOCX file"
-        
+        message = upload_type_error(file, file_type)
+        if message:
+            return False, message
         return True, ""
     
     @staticmethod

@@ -2,15 +2,15 @@
 # Use OpenRouter/OpenAI for embeddings via API if needed.
 
 # ── Core Framework ─────────────────────────────────────────
-Django==5.1
-djangorestframework==3.15
+Django==5.2.18
+djangorestframework==3.16.1
 gunicorn==22.0.0
 channels==4.3.2
 daphne==4.2.1
 channels-redis==4.2.0
 
 # ── Authentication ──────────────────────────────────────────
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.5.1
 
 # ── Async Task Queue ────────────────────────────────────────
 celery==5.4.0
@@ -27,7 +27,6 @@ python-docx>=1.2.0,<2.0.0
 pymupdf>=1.24.0
 liteparse>=2.16.0
 pypdf==4.0.0
-PyPDF2==3.0.1
 openpyxl>=3.1.0
 
 # ── Text Processing (no local ML models) ───────────────────
@@ -50,8 +49,7 @@ qrcode[pil]>=7.4.2
 numpy>=1.26.0
 
 # ── Utilities ───────────────────────────────────────────────
-python-decouple==3.8
 python-dotenv>=1.0.0
 Pillow==10.4.0
 whitenoise==6.7.0
-django-cors-headers==4.4.0
+django-cors-headers==4.9.0
