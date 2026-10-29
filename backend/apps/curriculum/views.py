@@ -2528,7 +2528,36 @@ def _next_missing_item_number(assessment, total_items):
     return None
 
 
+def _assessment_docx_items(assessment_payload):
+    """Questions in number order, whether they arrive grouped or as a flat list."""
+    collected = []
+    sections = assessment_payload.get('sections') if isinstance(assessment_payload, dict) else None
+    if isinstance(sections, list) and sections:
+        for section in sections:
+            if isinstance(section, dict):
+                collected.extend(section.get('items') or [])
+    elif isinstance(assessment_payload, dict):
+        collected.extend(assessment_payload.get('items') or [])
+    items = [item for item in collected if isinstance(item, dict)]
+    items.sort(key=lambda item: (_to_int(item.get('item_number'), 10**9), str(item.get('question_text') or '')))
+    return items
+
+
+def _exam_choice_line(choice, index):
+    text = re.sub(r'^[A-Da-d][\.\)]\s*', '', str(choice or '').strip()).strip()
+    if not text:
+        return ''
+    return f'{chr(65 + index)}. {text}'
+
+
+def _exam_answer_letter(item):
+    raw = str(item.get('correct_answer') or '').strip().upper()
+    match = re.match(r'^([A-D])(?:\b|[\.\)])', raw)
+    return match.group(1) if match else ''
+
+
 def _build_plain_assessment_docx(assessment_payload, include_choices=True, include_answer_key=True):
+    """Exam pages are the question and its choices. Answer letters, if requested, start on the last page."""
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -2540,67 +2569,43 @@ def _build_plain_assessment_docx(assessment_payload, include_choices=True, inclu
         section.left_margin = Inches(1.1)
         section.right_margin = Inches(1.1)
 
-    maroon = RGBColor(0x8B, 0x00, 0x00)
-
     title = doc.add_paragraph()
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = title.add_run(assessment_payload.get('title') or 'Assessment')
     run.bold = True
     run.font.size = Pt(15)
-    run.font.color.rgb = maroon
-
-    subtitle = doc.add_paragraph(
-        f"Type: {assessment_payload.get('assessment_type', '')} | "
-        f"Total Items: {assessment_payload.get('total_items', 0)}"
-    )
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    if subtitle.runs:
-        subtitle.runs[0].font.size = Pt(10)
+    run.font.color.rgb = RGBColor(0x8B, 0x00, 0x00)
 
     doc.add_paragraph()
-
-    for section in assessment_payload.get('sections', []):
-        sec_heading = doc.add_heading(section.get('section_title') or 'Section', level=1)
-        if sec_heading.runs:
-            sec_heading.runs[0].font.color.rgb = maroon
-
-        bloom_dist = section.get('bloom_distribution') or {}
-        if bloom_dist:
-            bloom_line = ', '.join(f"{k}: {v}" for k, v in bloom_dist.items() if v)
-            if bloom_line:
-                doc.add_paragraph(f"Bloom Distribution (TOS): {bloom_line}")
-
-        for item in section.get('items', []):
-            text = f"{item.get('item_number')}. {item.get('question_text') or ''}".strip()
-            p = doc.add_paragraph(text, style='List Number')
-            if include_choices:
-                for choice in (item.get('choices') or [])[:4]:
-                    choice_text = str(choice or '').strip()
-                    if choice_text:
-                        doc.add_paragraph(choice_text, style='List Bullet 2')
-            meta_parts = []
-            if include_answer_key and item.get('bloom_level'):
-                meta_parts.append(f"Bloom: {item['bloom_level']}")
-            if include_answer_key and item.get('bloom_verb'):
-                meta_parts.append(f"Verb: {item['bloom_verb']}")
-            if include_answer_key and item.get('ilo_refs'):
-                refs = ', '.join(str(v) for v in item['ilo_refs'])
-                meta_parts.append(f"ILO: {refs}")
-            if include_answer_key and item.get('correct_answer'):
-                meta_parts.append(f"Correct Answer: {item['correct_answer']}")
-            if meta_parts:
-                meta = doc.add_paragraph(' | '.join(meta_parts))
-                if meta.runs:
-                    meta.runs[0].italic = True
-                    meta.runs[0].font.size = Pt(9)
-            if include_answer_key and item.get('answer_key'):
-                answer_key = doc.add_paragraph(f"Answer Key: {item['answer_key']}")
-                if answer_key.runs:
-                    answer_key.runs[0].font.size = Pt(9)
-            if p.runs:
-                p.runs[0].font.size = Pt(11)
-
+    items = _assessment_docx_items(assessment_payload)
+    for index, item in enumerate(items, start=1):
+        number = _to_int(item.get('item_number'), 0) or index
+        question = doc.add_paragraph(f"{number}. {str(item.get('question_text') or '').strip()}")
+        if question.runs:
+            question.runs[0].font.size = Pt(11)
+        if include_choices:
+            for choice_index, choice in enumerate((item.get('choices') or [])[:4]):
+                line = _exam_choice_line(choice, choice_index)
+                if not line:
+                    continue
+                choice_paragraph = doc.add_paragraph(line)
+                choice_paragraph.paragraph_format.left_indent = Inches(0.35)
+                if choice_paragraph.runs:
+                    choice_paragraph.runs[0].font.size = Pt(11)
         doc.add_paragraph()
+
+    if include_answer_key:
+        letters = [
+            (_to_int(item.get('item_number'), 0) or index, _exam_answer_letter(item))
+            for index, item in enumerate(items, start=1)
+        ]
+        letters = [(number, letter) for number, letter in letters if letter]
+        if letters:
+            doc.add_page_break()
+            for number, letter in letters:
+                answer = doc.add_paragraph(f'{number}. {letter}')
+                if answer.runs:
+                    answer.runs[0].font.size = Pt(12)
 
     return doc
 
