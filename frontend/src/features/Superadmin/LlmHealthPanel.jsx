@@ -47,20 +47,40 @@ function unusedText(row) {
   return { primary: 'Not published', secondary: '' }
 }
 
-function isApiAccount(row) {
-  return row.id !== 'ollama' && row.configured && row.instance
+const MONITOR_ORDER = ['groq', 'openrouter', 'cloudflare', 'ollama']
+
+const ACCOUNT_TITLES = {
+  groq: 'Groq API key',
+  openrouter: 'OpenRouter key',
+  cloudflare: 'Cloudflare',
+  ollama: 'Ollama',
+}
+
+function providerId(row) {
+  return String(row.id || '').replace(/-\d+$/, '')
+}
+
+function monitoredAccounts(rows) {
+  return rows
+    .filter(row => MONITOR_ORDER.includes(providerId(row)))
+    .sort((a, b) => {
+      const order = MONITOR_ORDER.indexOf(providerId(a)) - MONITOR_ORDER.indexOf(providerId(b))
+      if (order !== 0) return order
+      return (Number(a.instance) || 0) - (Number(b.instance) || 0)
+    })
 }
 
 function accountName(row) {
-  if (!isApiAccount(row)) return row.label
-  return `${row.label} · Account ${row.instance}`
+  const id = providerId(row)
+  const base = ACCOUNT_TITLES[id] || row.label
+  if (id !== 'groq' && id !== 'openrouter') return base
+  const index = Number(row.instance) || 1
+  if (index <= 1) return `${base} (original)`
+  return `${base} ${index - 1}`
 }
 
 function accountMeta(row) {
-  const parts = []
-  if (row.model) parts.push(row.model)
-  if (row.key_hint) parts.push(`key ···${row.key_hint}`)
-  return parts.join(' · ')
+  return row.model || ''
 }
 
 function noteText(row) {
@@ -121,6 +141,7 @@ export default function LlmHealthPanel() {
   }, [load, loadTraffic])
 
   const minutes = Math.round((traffic.window_seconds || 120) / 60)
+  const accounts = monitoredAccounts(providers)
 
   return (
     <>
@@ -189,15 +210,15 @@ export default function LlmHealthPanel() {
           style={{ marginBottom: 0, minWidth: 0 }}
         >
           <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
-            Every API key is its own account. Unused quota and the time a reached limit comes back are listed for each one.
+            Groq and OpenRouter list the original key, then key 1 and key 2. Cloudflare and Ollama follow.
           </p>
           {error && (
             <p style={{ margin: 0, color: '#FFB74D', fontSize: '0.85rem' }}>{error}</p>
           )}
-          {!error && !loading && providers.length === 0 && (
+          {!error && !loading && accounts.length === 0 && (
             <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No accounts are configured.</p>
           )}
-          {providers.length > 0 && (
+          {accounts.length > 0 && (
             <div>
               <div className="llm-account-row llm-account-head">
                 <div>Account</div>
@@ -205,7 +226,7 @@ export default function LlmHealthPanel() {
                 <div>Unused</div>
                 <div>Returns</div>
               </div>
-              {providers.map(row => {
+              {accounts.map(row => {
                 const unused = unusedText(row)
                 const note = noteText(row)
                 return (

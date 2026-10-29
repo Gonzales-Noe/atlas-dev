@@ -192,7 +192,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual([row['label'] for row in rows], ['Groq', 'Groq'])
         self.assertEqual([row['instance'] for row in rows], [1, 2])
         self.assertEqual([row['tokens_remaining'] for row in rows], [40, 10])
-        self.assertEqual([row['key_hint'] for row in rows], ['ey-a', 'ey-b'])
+        self.assertNotIn('key_hint', rows[0])
         self.assertEqual(rows[0]['id'], 'groq-1')
         self.assertEqual(rows[1]['id'], 'groq-2')
 
