@@ -399,6 +399,7 @@ class Assessment(models.Model):
     term = models.CharField(max_length=100)
     status = models.CharField(max_length=50, default='Draft')
     generated_at = models.DateTimeField(null=True, blank=True)
+    qa_report = models.JSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'assessments'

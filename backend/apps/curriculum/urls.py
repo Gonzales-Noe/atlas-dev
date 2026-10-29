@@ -13,8 +13,23 @@ urlpatterns = [
     ),
     path("generate-syllabus/", views.generate_syllabus, name="generate_syllabus"),
     path("generate-module/", views.generate_module, name="generate_module"),
+    path(
+        "course/<uuid:course_id>/consistency-check/",
+        views.check_syllabus_module_consistency,
+        name="check_syllabus_module_consistency",
+    ),
     path("generate-assessment/", views.generate_assessment, name="generate_assessment"),
     path("assessment/<uuid:assessment_id>/", views.get_assessment_detail, name="get_assessment_detail"),
+    path(
+        "assessment/<uuid:assessment_id>/qa/",
+        views.run_assessment_qa,
+        name="run_assessment_qa",
+    ),
+    path(
+        "assessment/<uuid:assessment_id>/approve/",
+        views.approve_assessment,
+        name="approve_assessment",
+    ),
     path("assessment-item/<uuid:item_id>/", views.update_assessment_item, name="update_assessment_item"),
     path("module/<uuid:module_id>/", views.get_module_detail, name="get_module_detail"),
     path("module/<uuid:module_id>/save/", views.save_module_content, name="save_module_content"),

@@ -797,7 +797,8 @@ OUTPUT — Return the module plan using exactly this structure:
         if ilos:
             ilo_step = (
                 "\nStep 2 — Review the Course ILOs in COURSE DATA. "
-                "Map each learning objective you write to one or more of those ILOs."
+                "Map each learning objective you write to one or more of those ILOs. "
+                "Put only those ILO numbers in ilo_refs."
             )
         else:
             ilo_step = (
@@ -850,6 +851,7 @@ OUTPUT RULES:
     "...",
     "..."
   ],
+  "ilo_refs": [1],
   "subtopics": [
     {{
       "id": "st_0",
