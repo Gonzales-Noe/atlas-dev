@@ -1310,7 +1310,17 @@ function inlineInput(value, onChange, minWidth = 80, onFocus, options = {}) {
   )
 }
 
-function TopicsCell({ value, onChange }) {
+function sameAiField(field, selected) {
+  if (!field || !selected || field.fieldType !== selected.fieldType) return false
+  if (field.fieldType === 'simple') return field.field === selected.field
+  if (field.fieldType === 'array') return field.arrField === selected.arrField && field.arrIndex === selected.arrIndex
+  if (field.fieldType === 'arrayObj') {
+    return field.arrField === selected.arrField && field.arrIndex === selected.arrIndex && field.arrObjKey === selected.arrObjKey
+  }
+  return false
+}
+
+function TopicsCell({ value, onChange, onFocus, selected }) {
   const ref = useRef(null)
   useLayoutEffect(() => {
     const el = ref.current
@@ -1323,7 +1333,8 @@ function TopicsCell({ value, onChange }) {
       ref={ref}
       value={value}
       onChange={onChange}
-      style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
+      onFocus={onFocus}
+      style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
     />
   )
 }
@@ -2748,6 +2759,65 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }))
   }
 
+  async function generateOneField(field) {
+    if (!course || !field) return
+    const source = syllabusData
+    setAiGenerating(true)
+    setAiError('')
+    setAiPipelineDrafts(null)
+    setAiPipelineProgress({ completed: 0, total: 1, label: field.label })
+    try {
+      const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : undefined
+      let extra = ''
+      let shape = text => shapeGeneratedField(field.section, text)
+      if (field.arrField === 'tla_chapters') {
+        const chapter = (source.tla_chapters || [])[field.arrIndex] || {}
+        const span = weekSpan(chapter.weeks)
+        const examRow = isFinalWeekRow({ weeks: chapter.weeks, title: chapter.topics })
+        const withActivity = span >= 2 && !examRow
+        const title = String(chapter.topics || '').split('\n').map(line => line.trim()).find(Boolean) || ''
+        if (field.arrObjKey === 'topics') {
+          extra = [
+            title ? `Topic title: ${title}. The first line must be this title.` : 'Continue the course sequence.',
+            chapter.weeks ? `This row covers week ${chapter.weeks}.` : '',
+            withActivity
+              ? 'This topic spans two weeks. Write 1 to 3 topic titles. Under each title, indent 1 or 2 subtopic titles. Then a blank line and one activity title for the whole cell. Only one activity.'
+              : 'This topic covers one week. Write the topic title, then one indented subtopic. No activity.',
+            'Titles only. No sentences. Do not write the week numbers in this cell.',
+          ].filter(Boolean).join(' ')
+          shape = text => shapeTopicsCell(text, { span: examRow ? 1 : span, activity: withActivity })
+        } else if (field.arrObjKey === 'outcomes') {
+          extra = `Topic: ${title || 'this topic'}.`
+          shape = shapeOutcome
+        }
+      }
+      const fieldResult = await requestSyllabusField(api, {
+        course_id: courseId,
+        section: field.section,
+        field_label: field.label,
+        existing_content: '',
+        mode: 'generate',
+        top_k: 5,
+        extra_instructions: extra,
+        assessment_criteria: source.assessment_criteria || '',
+        selected_doc_ids: selectedIds,
+      }, shape)
+      if (!fieldResult.text) {
+        throw new Error(`The AI did not return text for "${field.label}". Try again.`)
+      }
+      setAiPipelineDrafts([{ ...field, text: fieldResult.text }])
+      setAiPipelineProgress(null)
+      setAiGenerating(false)
+      setAiReviewOpen(true)
+      notifyGenerationComplete('Syllabus', field.label)
+    } catch (err) {
+      setAiError(extractApiError(err))
+      setAiPipelineProgress(null)
+    } finally {
+      setAiGenerating(false)
+    }
+  }
+
   async function handleGenerateSection() {
     let source = syllabusData
     if (activeSyllabusSectionKey === 'mapping-of-at') {
@@ -2876,6 +2946,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
   function regenerateAiDrafts() {
     setAiReviewOpen(true)
+    if (aiPipelineDrafts?.length === 1) {
+      generateOneField(aiPipelineDrafts[0])
+      return
+    }
     handleGenerateSection()
   }
 
@@ -6084,6 +6158,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={{ ...TABLE_TD, minWidth: 380, verticalAlign: 'top' }}>
                       <TopicsCell
                         value={ch.topics || ''}
+                        selected={sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'topics' })}
+                        onFocus={() => setAiField({ section: 'topics', label: `Topics / Reading List ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'topics' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'topics', e.target.value)}
                       />
                     </td>
@@ -6093,10 +6169,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <td style={{ ...TABLE_TD, minWidth: 300, verticalAlign: 'top' }}>
                       <textarea
                         value={ch.outcomes || ''}
+                        onFocus={() => setAiField({ section: 'topic_outcome', label: `Topic Outcomes ${i + 1}`, fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' })}
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' }) ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -6990,6 +7067,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
     if (activeTab === 'syllabus') {
       const aiSectionFields = getAiFieldsForCurrentSection()
+      const focusedAiField = aiSectionFields.find(field => sameAiField(field, aiField)) || null
       const showSaveFooter = isDirty
       return (
         <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -7212,6 +7290,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
                     {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress)
                       ? `Writing ${Math.min((aiPipelineProgress?.completed || 0) + 1, aiPipelineProgress?.total || aiSectionFields.length || 1)} of ${aiPipelineProgress?.total || aiSectionFields.length}: ${aiPipelineProgress?.label || 'Getting started'}`
+                      : focusedAiField
+                        ? `Regenerate only ${focusedAiField.label}.`
                       : aiPipelineDrafts
                         ? 'Your drafts are ready. Review them before adding them to your syllabus.'
                         : activeSyllabusSectionKey === 'mapping-of-at'
@@ -7226,13 +7306,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                 </Box>
 
-                {!aiPipelineDrafts && (
+                {(!aiPipelineDrafts || focusedAiField) && (
                   <Button
                     size="small"
                     variant="contained"
-                    disabled={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) || !aiSectionFields.length}
+                    disabled={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) || (!focusedAiField && !aiSectionFields.length)}
                     startIcon={writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
-                    onClick={handleGenerateSection}
+                    onClick={() => focusedAiField ? generateOneField(focusedAiField) : handleGenerateSection()}
                     sx={{
                       bgcolor: '#16A34A',
                       '&:hover': { bgcolor: '#15803D' },
@@ -7242,7 +7322,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       minHeight: 34,
                     }}
                   >
-                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? 'Writing…' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
+                    {writingStillRunning(aiGenerating, frameworkAssigning, aiPipelineProgress) ? 'Writing…' : focusedAiField ? 'Regenerate' : activeSyllabusSectionKey === 'mapping-of-at' ? 'Assign columns' : activeSyllabusSectionKey === 'tla-activities' ? 'Create weekly rows' : aiSectionFields.length === 1 ? 'Create draft' : 'Create drafts'}
                   </Button>
                 )}
 
