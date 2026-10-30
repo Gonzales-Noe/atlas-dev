@@ -8861,7 +8861,14 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 onClick={openApproveDialog}
                 sx={{ borderColor: MAROON, color: MAROON, borderRadius: 1.5, textTransform: 'none',
                       fontSize: '0.75rem', px: 1.25, py: 0.35, borderWidth: '1px', borderStyle: 'solid',
-                      '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON } }}>
+                      '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                      '&.Mui-disabled': {
+                        color: '#A1A1AA',
+                        WebkitTextFillColor: '#A1A1AA',
+                        borderColor: '#6B7280',
+                        bgcolor: 'transparent',
+                        opacity: 1,
+                      } }}>
                 {String(assessmentDetail.status || '').toLowerCase() === 'approved' ? 'Approved' : 'Approve'}
               </Button>
               <Button
@@ -8915,6 +8922,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   borderWidth: '1px',
                   borderStyle: 'solid',
                   '&:hover': { bgcolor: MAROON_LIGHT, borderColor: MAROON },
+                  '&.Mui-disabled': {
+                    color: '#A1A1AA',
+                    WebkitTextFillColor: '#A1A1AA',
+                    borderColor: '#6B7280',
+                    bgcolor: 'transparent',
+                    opacity: 1,
+                  },
+                  '&.Mui-disabled .MuiButton-startIcon, &.Mui-disabled .MuiButton-endIcon': {
+                    color: '#A1A1AA',
+                  },
                 }}>
                 {assessmentExporting ? 'Exporting…' : 'Export DOCX'}
               </Button>
