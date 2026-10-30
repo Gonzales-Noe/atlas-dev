@@ -14,7 +14,7 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', minWidth: 0 }}>
       <Tooltip title="Back to courses">
         <IconButton onClick={onBack} size="small"
-          sx={{ width: 38, height: 38, borderRadius: 2, color: 'rgba(255,255,255,0.8)', bgcolor: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', flexShrink: 0, '&:hover': { bgcolor: 'rgba(255,255,255,0.12)', color: '#fff' } }}>
+          sx={{ width: 38, height: 38, borderRadius: 2, color: 'var(--workspace-text)', bgcolor: 'var(--workspace-card)', border: '1px solid var(--workspace-border)', flexShrink: 0, '&:hover': { bgcolor: 'var(--workspace-hover)', color: 'var(--workspace-text)' } }}>
           <ArrowBackIcon fontSize="small" />
         </IconButton>
       </Tooltip>
@@ -22,14 +22,14 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
         <SchoolIcon sx={{ color: '#fff', fontSize: 22 }} />
       </Box>
       <Box sx={{ minWidth: 0, flex: '1 1 auto' }}>
-        <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: '#fff', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Typography sx={{ fontWeight: 800, fontSize: '1rem', color: 'var(--workspace-text)', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {course?.course_title || 'Course Workspace'}
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.3, minWidth: 0, flexWrap: 'wrap' }}>
           {course?.course_code && (
             <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: '#E24B4A' }}>{course.course_code}</Typography>
           )}
-          <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>Now working on: {activeLabel}</Typography>
+          <Typography sx={{ fontSize: '0.72rem', color: 'var(--workspace-muted)' }}>Now working on: {activeLabel}</Typography>
         </Box>
       </Box>
       <Tooltip title={done ? 'Mark this module as not yet approved' : 'Approve this generation (Step 11: Faculty Review and Approval)'}>

@@ -30,6 +30,7 @@ import {
   fetchAcademicStructure,
 } from './academicApi'
 import { ROUTES } from '../../../config/route'
+import { BookOpen, CircleCheck, Pause, Users } from 'lucide-react'
 import { PageHeader, GlassCard, StatCard, StatusChip, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
 const inputSx = {
@@ -786,10 +787,10 @@ export default function AdminAccountManagement() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Faculty"    value={faculty.length}    icon="👨‍🏫" accent="#E24B4A" />
-        <StatCard title="Active Faculty"   value={activeFaculty}     icon="✅" accent="#5EDA7E" />
-        <StatCard title="Inactive"         value={inactiveFaculty}   icon="⏸️" accent="#FFB74D" />
-        <StatCard title="Courses Assigned" value={totalCourses}       icon="📚" accent="#60AAFF" />
+        <StatCard title="Total Faculty"    value={faculty.length}    icon={<Users size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Active Faculty"   value={activeFaculty}     icon={<CircleCheck size={18} color="#5EDA7E" />} accent="#5EDA7E" />
+        <StatCard title="Inactive"         value={inactiveFaculty}   icon={<Pause size={18} color="#FFB74D" />} accent="#FFB74D" />
+        <StatCard title="Courses Assigned" value={totalCourses}       icon={<BookOpen size={18} color="#60AAFF" />} accent="#60AAFF" />
       </div>
 
       {/* Filter bar */}
@@ -1195,7 +1196,7 @@ export default function AdminAccountManagement() {
           <Stack spacing={1.75}>
             {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
             {createForms.map((form, formIndex) => (
-              <Box key={formIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: '14px', p: 2, bgcolor: 'rgba(255,255,255,0.02)' }}>
+              <Box key={formIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: '14px', p: 2, bgcolor: 'var(--bg-header)' }}>
                 <Stack direction="row" alignItems="center" sx={{ mb: 1.5, justifyContent: 'space-between' }}>
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Box sx={{ width: 22, height: 22, borderRadius: '50%', bgcolor: 'rgba(34,197,94,0.15)', color: '#4ADE80', fontSize: '0.72rem', fontWeight: 800, display: 'grid', placeItems: 'center' }}>

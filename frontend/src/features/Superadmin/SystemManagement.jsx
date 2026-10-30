@@ -6,6 +6,7 @@ import {
 } from '@mui/material'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
+import { Cloud, HardDrive, ShieldCheck, Zap } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import LlmHealthPanel from './LlmHealthPanel'
 
@@ -49,10 +50,10 @@ export default function SystemManagement() {
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="System Health"    value="99.7%" icon="⚡" trend="Excellent" accent="#5EDA7E" />
-        <StatCard title="Disk Usage"       value="78%"   icon="💾" accent="#FFB74D" />
-        <StatCard title="Active Cloud Svc" value="12"    icon="☁️" accent="#60AAFF" />
-        <StatCard title="Critical Alerts"  value="0"     icon="🛡️" trend="All Clear" accent="#5EDA7E" />
+        <StatCard title="System Health"    value="99.7%" icon={<Zap size={18} color="#5EDA7E" />} trend="Excellent" accent="#5EDA7E" />
+        <StatCard title="Disk Usage"       value="78%"   icon={<HardDrive size={18} color="#FFB74D" />} accent="#FFB74D" />
+        <StatCard title="Active Cloud Svc" value="12"    icon={<Cloud size={18} color="#60AAFF" />} accent="#60AAFF" />
+        <StatCard title="Critical Alerts"  value="0"     icon={<ShieldCheck size={18} color="#5EDA7E" />} trend="All Clear" accent="#5EDA7E" />
       </div>
 
       {/* Resource usage chart */}

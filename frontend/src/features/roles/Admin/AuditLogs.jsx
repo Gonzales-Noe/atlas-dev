@@ -7,31 +7,39 @@ import {
   TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Stack, Alert,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
+import {
+  BookOpen, Bot, ClipboardList, Cloud, Download, FilePen, FileText,
+  FolderUp, LayoutGrid, Lock, Pause, Pin, Play, Star, Trash2, UserPlus,
+} from 'lucide-react'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import { PageHeader, GlassCard, OutlineBtn } from '../../../components/ui'
 
-const actionIcon = a => {
-  const action = (a || '').toLowerCase()
-  if (action.includes('login'))    return '🔐'
-  if (action.includes('syllabus')) return '📋'
-  if (action.includes('assess'))   return '📝'
-  if (action.includes('module'))   return '🧩'
-  if (action.includes('grade'))    return '⭐'
-  if (action.includes('upload'))   return '📁'
-  if (action.includes('export'))   return '⬇️'
-  if (action.includes('backup'))   return '☁️'
-  if (action.includes('ai'))       return '🤖'
-  if (action.includes('faculty_account_created')) return '👤'
-  if (action.includes('course_assigned'))         return '📚'
-  if (action.includes('account_deactivated'))     return '⏸️'
-  if (action.includes('account_reactivated'))     return '▶️'
-  if (action.includes('account_deleted'))         return '🗑️'
-  if (action.includes('institution_deactivated')) return '⏸️'
-  if (action.includes('institution_reactivated')) return '▶️'
-  if (action.includes('institution_deleted'))     return '🗑️'
-  if (action.includes('admin_document_upload'))   return '📄'
-  return '📌'
+function ActionIcon({ action }) {
+  const key = (action || '').toLowerCase()
+  const pairs = [
+    ['faculty_account_created', UserPlus],
+    ['course_assigned', BookOpen],
+    ['account_deactivated', Pause],
+    ['account_reactivated', Play],
+    ['account_deleted', Trash2],
+    ['institution_deactivated', Pause],
+    ['institution_reactivated', Play],
+    ['institution_deleted', Trash2],
+    ['admin_document_upload', FileText],
+    ['login', Lock],
+    ['syllabus', ClipboardList],
+    ['assess', FilePen],
+    ['module', LayoutGrid],
+    ['grade', Star],
+    ['upload', FolderUp],
+    ['export', Download],
+    ['backup', Cloud],
+    ['ai', Bot],
+  ]
+  const match = pairs.find(([token]) => key.includes(token))
+  const Icon = match ? match[1] : Pin
+  return <Icon size={16} strokeWidth={2.25} aria-hidden="true" style={{ flexShrink: 0 }} />
 }
 
 const actionLabel = a => {
@@ -204,7 +212,7 @@ export default function AdminAuditLogs() {
           count={total} rowsPerPage={rowsPerPage} page={page}
           onPageChange={(_, p) => setPage(p)}
           onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value,10)); setPage(0) }}
-          sx={{ borderTop: '1px solid rgba(255,255,255,0.07) !important' }}
+          sx={{ borderTop: '1px solid var(--border-color) !important' }}
         />
       </GlassCard>
 
@@ -221,7 +229,12 @@ export default function AdminAuditLogs() {
                   {[
                     { label: 'TIMESTAMP', value: selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—' },
                     { label: 'USER',      value: selectedLog.user || 'Unknown user' },
-                    { label: 'ACTION',    value: `${actionIcon(selectedLog.action)} ${actionLabel(selectedLog.action) || '—'}` },
+                    { label: 'ACTION',    value: (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <ActionIcon action={selectedLog.action} />
+                        {actionLabel(selectedLog.action) || '—'}
+                      </span>
+                    ) },
                     { label: 'RESOURCE',  value: selectedLog.resource_type ? detailLabel(selectedLog.resource_type) : '—' },
                   ].map(({ label, value }) => (
                     <div key={label}>

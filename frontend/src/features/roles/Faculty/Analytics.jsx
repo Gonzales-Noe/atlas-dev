@@ -372,7 +372,7 @@ export default function FacultyAnalytics() {
                                           value={pct ?? 0}
                                           sx={{
                                             width: '100%', height: 4, borderRadius: 2, mt: 0.3,
-                                            bgcolor: 'rgba(255,255,255,0.1)',
+                                            bgcolor: 'var(--border-color)',
                                             '& .MuiLinearProgress-bar': { bgcolor: c },
                                           }}
                                         />

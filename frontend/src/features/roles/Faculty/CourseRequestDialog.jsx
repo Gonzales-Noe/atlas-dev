@@ -21,7 +21,7 @@ const FIELD_SX = {
   '& .MuiOutlinedInput-root': {
     color: 'var(--text-primary)',
     '& fieldset': { borderColor: 'var(--border-color)' },
-    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
+    '&:hover fieldset': { borderColor: 'var(--text-tertiary)' },
     '&.Mui-focused fieldset': { borderColor: '#AA2423' },
     '&.Mui-error fieldset': { borderColor: 'var(--red-status)' },
   },

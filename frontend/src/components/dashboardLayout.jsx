@@ -175,8 +175,8 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         {/* Subtle grid */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(var(--shell-grid) 1px, transparent 1px),
+                            linear-gradient(90deg, var(--shell-grid) 1px, transparent 1px)`,
           backgroundSize: '52px 52px',
         }} />
       </div>

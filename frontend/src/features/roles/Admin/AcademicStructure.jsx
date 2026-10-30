@@ -13,6 +13,7 @@ import {
   COURSE_CATEGORIES, SECTION_YEARS, createCourse, createSection, deleteCourse, deleteSection,
   fetchAcademicStructure, fetchCourseRequests, reviewCourseRequest, updateCourse, updateSection,
 } from './academicApi'
+import { BookOpen, Mail, Puzzle } from 'lucide-react'
 import { GlassCard, OutlineBtn, PageHeader, PrimaryBtn, StatCard, StatusChip } from '../../../components/ui'
 import LoadingState from '../../../components/LoadingState'
 
@@ -33,7 +34,7 @@ const bodyCellSx = { borderBottom: '1px solid var(--border-color)' }
 const groupHeaderSx = {
   ...bodyCellSx, py: 1, fontWeight: 800, fontSize: '0.75rem',
   letterSpacing: '0.06em', textTransform: 'uppercase',
-  color: 'var(--text-secondary)', backgroundColor: 'rgba(255,255,255,0.03)',
+  color: 'var(--text-secondary)', backgroundColor: 'var(--bg-header)',
 }
 const groupCountSx = { marginLeft: 8, fontWeight: 500, letterSpacing: 0, textTransform: 'none' }
 const emptyStructure = { sections: [], courses: [] }
@@ -228,9 +229,9 @@ export default function AdminAcademicStructure() {
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Sections" value={loading ? '—' : structure.sections.length} icon="🧩" accent="#FFD60A" />
-        <StatCard title="Courses" value={loading ? '—' : structure.courses.length} icon="📚" accent="#E24B4A" />
-        <StatCard title="Pending requests" value={loading ? '—' : pendingRequests.length} icon="✉️" accent="#60AAFF" />
+        <StatCard title="Sections" value={loading ? '—' : structure.sections.length} icon={<Puzzle size={18} color="#C4A000" />} accent="#FFD60A" />
+        <StatCard title="Courses" value={loading ? '—' : structure.courses.length} icon={<BookOpen size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Pending requests" value={loading ? '—' : pendingRequests.length} icon={<Mail size={18} color="#60AAFF" />} accent="#60AAFF" />
       </div>
 
       {pendingRequests.length > 0 && (

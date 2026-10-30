@@ -32,7 +32,7 @@ export default function FacultyWorkspace() {
           variant="text"
           startIcon={<ArrowBackIcon />}
           onClick={() => navigate(ROUTES.FACULTY.DASHBOARD)}
-          sx={{ mb: 3, color: 'var(--text-primary)', textTransform: 'none', '&:hover': { background: 'rgba(255,255,255,0.1)' } }}
+          sx={{ mb: 3, color: 'var(--text-primary)', textTransform: 'none', '&:hover': { background: 'var(--border-color)' } }}
         >
           Back to courses
         </Button>
@@ -69,7 +69,7 @@ export default function FacultyWorkspace() {
                 <Button
                   size="small"
                   variant="outlined"
-                  sx={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', textTransform: 'none', borderRadius: 2, '&:hover': { borderColor: 'var(--text-primary)', background: 'rgba(255,255,255,0.05)' } }}
+                  sx={{ color: 'var(--text-primary)', borderColor: 'var(--border-color)', textTransform: 'none', borderRadius: 2, '&:hover': { borderColor: 'var(--text-primary)', background: 'var(--shell-btn-bg)' } }}
                   onClick={() => navigate(ROUTES.FACULTY.MODULE)}
                 >
                   Go to module builder
@@ -131,7 +131,7 @@ export default function FacultyWorkspace() {
                   <Button
                     variant="contained"
                     startIcon={<BarChartIcon />}
-                    sx={{ background: 'rgba(255,255,255,0.1)', color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.2)' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
+                    sx={{ background: '#AA2423', color: '#fff', '&:hover': { background: '#6E1212' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
                     onClick={() => navigate(ROUTES.FACULTY.ANALYTICS)}
                   >
                     Open analytics

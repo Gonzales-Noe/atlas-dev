@@ -17,6 +17,7 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
+import { BookOpen, ClipboardList } from 'lucide-react'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import useDebouncedValue from '../../../hooks/useDebouncedValue'
@@ -89,7 +90,7 @@ const CAT_STYLE = {
 
 function CategoryBadge({ cat }) {
   const label = normalizeDocTypeLabel(cat)
-  const c = CAT_STYLE[cat] || CAT_STYLE[label] || { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }
+  const c = CAT_STYLE[cat] || CAT_STYLE[label] || { bg: 'var(--shell-btn-bg)', border: 'var(--shell-btn-border)', color: 'var(--text-secondary)' }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, border: `1px solid ${c.border}`, borderRadius: 7, padding: '3px 9px', fontSize: '0.7rem', fontWeight: 700, color: c.color, letterSpacing: '0.04em', fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap' }}>
       {label}
@@ -279,7 +280,7 @@ export default function AdminKnowledgeBase() {
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px)', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon="📚" accent="#E24B4A" />
+        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon={<BookOpen size={18} color="#E24B4A" />} accent="#E24B4A" />
       </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
@@ -290,10 +291,10 @@ export default function AdminKnowledgeBase() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-                background: activeCategory === cat ? 'linear-gradient(135deg,#8E1C1B,#AA2423)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${activeCategory === cat ? 'rgba(170,36,35,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                background: activeCategory === cat ? 'linear-gradient(135deg,#8E1C1B,#AA2423)' : 'var(--shell-btn-bg)',
+                border: `1px solid ${activeCategory === cat ? 'rgba(170,36,35,0.5)' : 'var(--border-color)'}`,
                 borderRadius: 8, padding: '5px 13px',
-                color: activeCategory === cat ? '#fff' : 'rgba(255,255,255,0.5)',
+                color: activeCategory === cat ? '#fff' : 'var(--text-secondary)',
                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
                 fontFamily: 'var(--font-sans)', transition: 'all 200ms',
               }}>
@@ -306,7 +307,7 @@ export default function AdminKnowledgeBase() {
 
       <div style={{ marginBottom: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-          <span>📋</span>
+          <ClipboardList size={16} color="var(--text-tertiary)" aria-hidden="true" />
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.06em' }}>
             INDEXED DOCUMENTS ({filtered.length})
           </span>
@@ -446,15 +447,15 @@ export default function AdminKnowledgeBase() {
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
                   style={{
-                    border: `2px dashed ${dragOver ? 'rgba(56,189,248,0.6)' : 'rgba(255,255,255,0.12)'}`,
+                    border: `2px dashed ${dragOver ? 'rgba(56,189,248,0.6)' : 'var(--shell-btn-border)'}`,
                     borderRadius: 12, padding: '22px 16px',
                     display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                     cursor: 'pointer',
-                    background: dragOver ? 'rgba(56,189,248,0.06)' : 'rgba(255,255,255,0.02)',
+                    background: dragOver ? 'rgba(56,189,248,0.06)' : 'var(--bg-header)',
                     transition: 'all 200ms',
                   }}
                 >
-                  <UploadFileIcon sx={{ fontSize: 32, color: dragOver ? '#38BDF8' : 'rgba(255,255,255,0.25)' }} />
+                  <UploadFileIcon sx={{ fontSize: 32, color: dragOver ? '#38BDF8' : 'var(--text-tertiary)' }} />
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '0.84rem', fontWeight: 600, color: dragOver ? '#38BDF8' : 'var(--text-secondary)' }}>
                       Drop a file here or <span style={{ color: '#38BDF8', textDecoration: 'underline' }}>browse</span>
@@ -480,7 +481,7 @@ export default function AdminKnowledgeBase() {
                   variant="indeterminate"
                   sx={{
                     height: 10, borderRadius: 999,
-                    backgroundColor: 'rgba(255,255,255,0.08)',
+                    backgroundColor: 'var(--shell-hover-bg)',
                     '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(135deg,#8E1C1B,#AA2423)' },
                   }}
                 />
@@ -518,8 +519,8 @@ function DocumentCard({ doc, onView, onDelete }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        background: hovered ? 'rgba(255,255,255,0.07)' : 'var(--bg-card)',
-        border: `1px solid ${hovered ? 'rgba(255,255,255,0.15)' : 'var(--border-color)'}`,
+        background: hovered ? 'var(--border-color)' : 'var(--bg-card)',
+        border: `1px solid ${hovered ? 'var(--shell-btn-border)' : 'var(--border-color)'}`,
         borderRadius: 16, padding: '16px 18px',
         backdropFilter: 'blur(16px)', cursor: 'pointer',
         transition: 'all 200ms',

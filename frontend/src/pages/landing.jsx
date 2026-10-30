@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { Box, Button, Container, Typography, Grid, Card, CardContent, AppBar, Toolbar, Stack } from '@mui/material'
+import { ClipboardList, GraduationCap, ListChecks, Star } from 'lucide-react'
 import { useAuth } from '../store/authStore'
 import atlasLogo from '../assets/atlas-logo.webp'
 
@@ -131,17 +132,17 @@ export default function LandingPage() {
           <Grid container spacing={4} sx={{ mb: 8 }}>
             {[
               {
-                icon: '🎓',
+                icon: <GraduationCap size={36} color="#AA2423" aria-hidden="true" />,
                 title: 'Set Up Your Course',
                 desc: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course.',
               },
               {
-                icon: '📋',
+                icon: <ClipboardList size={36} color="#AA2423" aria-hidden="true" />,
                 title: 'Generate Your Syllabus & Modules',
                 desc: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials, not generic templates.',
               },
               {
-                icon: '✅',
+                icon: <ListChecks size={36} color="#AA2423" aria-hidden="true" />,
                 title: 'Build Your Assessments',
                 desc: 'Generate ILO-mapped exams in multiple formats. Every item is tagged by Bloom\'s Taxonomy level and comes with automated answer key or essay rubric.',
               },
@@ -149,7 +150,7 @@ export default function LandingPage() {
               <Grid item xs={12} md={4} key={idx}>
                 <Card sx={{ boxShadow: 'none', border: '1px solid #EEE', textAlign: 'center' }}>
                   <CardContent>
-                    <Typography sx={{ fontSize: '3rem', mb: 2 }}>{feature.icon}</Typography>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>{feature.icon}</Box>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
                       {feature.title}
                     </Typography>
@@ -216,7 +217,7 @@ export default function LandingPage() {
                   }}
                 >
                   <CardContent>
-                    <Typography sx={{ mb: 2, fontSize: '1.3rem' }}>★★★★★</Typography>
+                    <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center', gap: 0.5 }}>{Array.from({ length: 5 }, (_, star) => <Star key={star} size={16} color="#fff" fill="#fff" aria-hidden="true" />)}</Box>
                     <Typography sx={{ mb: 3, lineHeight: 1.6, fontStyle: 'italic' }}>
                       "{testimonial.quote}"
                     </Typography>

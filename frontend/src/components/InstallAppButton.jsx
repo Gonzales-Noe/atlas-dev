@@ -64,7 +64,7 @@ export default function InstallAppButton({
           width: '100%',
           background: 'transparent',
           border: 'none',
-          color: '#F0F0F2',
+          color: 'var(--text-primary)',
           fontSize: '0.85rem',
           fontWeight: 500,
           padding: '10px 14px',
