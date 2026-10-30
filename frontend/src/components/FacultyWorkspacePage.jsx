@@ -1001,6 +1001,101 @@ function filterDeliveryOptions(options, input) {
   return [...starts, ...contains]
 }
 
+function approvalNoteSuggestions(record) {
+  const suggestions = []
+  const add = (text) => {
+    const note = String(text || '').trim()
+    if (note && !suggestions.includes(note)) suggestions.push(note)
+  }
+  for (const line of record?.details || []) {
+    if (/matches its TOS cell/i.test(line)) continue
+    add(line)
+  }
+  add(record?.evidence)
+  add('Accepted for this exam.')
+  return suggestions
+}
+
+function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
+  const current = String(value || '')
+  return (
+    <Box>
+      <Typography sx={{ color: '#F4F4F5', fontWeight: 700, fontSize: '0.95rem', mb: 0.4 }}>
+        {label}
+      </Typography>
+      {reason ? (
+        <Typography sx={{ color: '#D4D4D8', fontSize: '0.875rem', lineHeight: 1.45, mb: 0.75 }}>
+          {reason}
+        </Typography>
+      ) : null}
+      <Autocomplete
+        freeSolo
+        autoHighlight
+        clearOnBlur={false}
+        size="small"
+        options={suggestions}
+        value={current || null}
+        inputValue={current}
+        onChange={(_, next) => onChange(typeof next === 'string' ? next : '')}
+        onInputChange={(_, next, reason) => {
+          if (reason === 'input' || reason === 'clear') onChange(next)
+        }}
+        filterOptions={(options, state) => {
+          const typed = state.inputValue.trim()
+          const query = typed.toLowerCase()
+          const matches = query
+            ? options.filter(option => option.toLowerCase().includes(query))
+            : options
+          if (!typed || options.some(option => option.toLowerCase() === query)) return matches
+          return matches.length ? matches : [typed]
+        }}
+        renderInput={params => (
+          <TextField
+            {...params}
+            placeholder="Choose a note or type your own"
+            multiline
+            minRows={2}
+            sx={{
+              '& .MuiInputBase-root': {
+                fontSize: '0.9rem',
+                lineHeight: 1.45,
+                bgcolor: '#1A1A1F',
+                color: '#F4F4F5',
+                alignItems: 'flex-start',
+                pr: '36px !important',
+              },
+              '& .MuiInputBase-input': { color: '#F4F4F5' },
+              '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1, fontSize: '0.9rem' },
+              '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.18)' },
+              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(134,239,172,0.55)' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#86EFAC' },
+              '& .MuiSvgIcon-root': { color: '#D4D4D8' },
+              '& .MuiAutocomplete-endAdornment': { top: 8 },
+            }}
+          />
+        )}
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: '#242428',
+              color: '#F4F4F5',
+              border: '1px solid rgba(255,255,255,0.16)',
+              '& .MuiAutocomplete-option': {
+                fontSize: '0.875rem',
+                lineHeight: 1.4,
+                whiteSpace: 'normal',
+                alignItems: 'flex-start',
+                py: 1,
+              },
+              '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(22,163,74,0.28)' },
+            },
+          },
+        }}
+      />
+    </Box>
+  )
+}
+
 function DeliveryMethodField({ value, onChange }) {
   const current = String(value || '')
   const readOnlySyllabus = React.useContext(SyllabusLockContext)
@@ -8980,33 +9075,33 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
 
             <Dialog open={approveOpen} onClose={() => { if (!approving) setApproveOpen(false) }} maxWidth="sm" fullWidth>
-              <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem' }}>Approve assessment</DialogTitle>
+              <DialogTitle sx={{ fontWeight: 700, fontSize: '1.05rem', color: '#F4F4F5' }}>Approve assessment</DialogTitle>
               <DialogContent>
-                <Stack spacing={1.5} sx={{ mt: 0.5 }}>
-                  <DialogContentText sx={{ fontSize: '0.84rem' }}>
+                <Stack spacing={2} sx={{ mt: 0.5 }}>
+                  <DialogContentText sx={{ fontSize: '0.9rem', color: '#E4E4E7', lineHeight: 1.45 }}>
                     {assessmentDetail.qa_report?.ready_to_approve
                       ? 'Every item matches its TOS cell and the keyed answer is supported by the source passages.'
-                      : 'Write a note for each item that did not pass. The note is stored with your approval.'}
+                      : 'Choose a suggested note or type your own. The note is stored with your approval.'}
                   </DialogContentText>
                   {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
-                    <TextField
+                    <ApprovalNoteField
                       label="Why the TOS counts still stand"
                       value={allocationNote}
-                      onChange={e => setAllocationNote(e.target.value)}
-                      fullWidth size="small" multiline minRows={2}
+                      suggestions={['The TOS counts still stand for this exam.', 'Accepted for this exam.']}
+                      onChange={setAllocationNote}
                     />
                   )}
                   {Object.values(assessmentDetail.qa_report?.items || {})
                     .filter(record => !record.passed)
                     .sort((a, b) => (a.item_number || 0) - (b.item_number || 0))
                     .map(record => (
-                      <TextField
+                      <ApprovalNoteField
                         key={record.item_id}
                         label={`Item ${record.item_number}`}
-                        helperText={[...(record.details || []), record.evidence].filter(Boolean).join(' ')}
+                        reason={[...(record.details || []), record.evidence].filter(Boolean).join(' ')}
+                        suggestions={approvalNoteSuggestions(record)}
                         value={approveNotes[record.item_id] || ''}
-                        onChange={e => setApproveNotes(current => ({ ...current, [record.item_id]: e.target.value }))}
-                        fullWidth size="small" multiline minRows={2}
+                        onChange={next => setApproveNotes(current => ({ ...current, [record.item_id]: next }))}
                       />
                     ))}
                 </Stack>
