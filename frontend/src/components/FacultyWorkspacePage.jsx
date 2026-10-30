@@ -2365,7 +2365,24 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [moduleSaving, setModuleSaving]             = useState(false)
   const [consistencyReport, setConsistencyReport]   = useState(null)
   const [consistencyChecking, setConsistencyChecking] = useState(false)
-  const [closedCheckPanels, setClosedCheckPanels]   = useState({})
+  const [openCheckPanels, setOpenCheckPanels]       = useState({})
+  const [assessmentCheckFocusId, setAssessmentCheckFocusId] = useState('')
+  useEffect(() => {
+    setOpenCheckPanels(current => {
+      const keep = activeTab === 'module'
+        ? key => key.startsWith('module:')
+        : activeTab === 'assessment'
+          ? key => key.startsWith('assessment-')
+          : () => false
+      const next = {}
+      let changed = false
+      Object.entries(current).forEach(([key, open]) => {
+        if (open && keep(key)) next[key] = true
+        else changed = true
+      })
+      return changed ? next : current
+    })
+  }, [activeTab])
   const [qaRunning, setQaRunning]                   = useState(false)
   const [approveOpen, setApproveOpen]               = useState(false)
   const [approveNotes, setApproveNotes]             = useState({})
@@ -4435,7 +4452,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       }, { timeout: 120000 })
       const report = data.report || null
       setConsistencyReport(report)
-      setClosedCheckPanels(current => ({ ...current, [`module:${courseId}`]: false }))
+      setOpenCheckPanels({ [`module:${courseId}`]: true })
       if (report) setSyllabusData(current => ({ ...current, consistency_report: report }))
     } catch (err) {
       setActionError(extractApiError(err))
@@ -4445,11 +4462,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   function renderCheckResultsPanel(title, body, panelKey) {
-    if (!body || closedCheckPanels[panelKey]) return null
+    if (!body || !openCheckPanels[panelKey]) return null
     return (
       <CheckResultsPanel
         title={title}
-        onClose={() => setClosedCheckPanels(current => ({ ...current, [panelKey]: true }))}
+        onClose={() => setOpenCheckPanels(current => {
+          const next = { ...current }
+          delete next[panelKey]
+          return next
+        })}
       >
         {body}
       </CheckResultsPanel>
@@ -4551,11 +4572,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         setAssessmentDetail(data.assessment)
         setSelectedAssessment(current => ({ ...(current || {}), status: data.assessment.status }))
       }
-      setClosedCheckPanels(current => ({
-        ...current,
-        [`assessment-list:${courseId}`]: false,
-        [`assessment-open:${id}`]: false,
-      }))
+      const viewingThis = String(assessmentDetail?.assessment_id || '') === String(id)
+      if (viewingThis) {
+        setOpenCheckPanels({ [`assessment-open:${id}`]: true })
+      } else {
+        setAssessmentCheckFocusId(String(id))
+        setOpenCheckPanels({ [`assessment-list:${courseId}`]: true })
+      }
       workspaceApi.execute()
     } catch (err) {
       setActionError(extractApiError(err))
@@ -9571,6 +9594,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {a.qa_report?.summary && (
                       <Chip
                         label={a.qa_report.summary.passed === a.qa_report.summary.items && a.qa_report.allocation_ok ? 'Passed' : 'Review'}
+                        onClick={e => {
+                          e.stopPropagation()
+                          setAssessmentCheckFocusId(String(a.assessment_id))
+                          setOpenCheckPanels({ [`assessment-list:${courseId}`]: true })
+                        }}
                         size="small"
                         sx={{
                           height: 18, fontSize: '0.65rem', fontWeight: 700,
@@ -9607,9 +9635,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             )}
           </Stack>
           </Box>
-          {assessments.some(a => a.qa_report?.summary) && renderCheckResultsPanel(
+          {renderCheckResultsPanel(
             'Assessment checks',
-            assessments.map(a => (
+            (assessmentCheckFocusId
+              ? assessments.filter(a => String(a.assessment_id) === String(assessmentCheckFocusId))
+              : assessments
+            ).map(a => (
               <React.Fragment key={`qa-${a.assessment_id}`}>
                 {renderAssessmentCheckFindings(a.qa_report, a.title)}
               </React.Fragment>
