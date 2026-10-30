@@ -1035,6 +1035,12 @@ function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
         autoHighlight
         clearOnBlur={false}
         size="small"
+        sx={{
+          '& .MuiAutocomplete-endAdornment': {
+            top: '50% !important',
+            transform: 'translateY(-50%) !important',
+          },
+        }}
         options={suggestions}
         value={current || null}
         inputValue={current}
@@ -1056,7 +1062,7 @@ function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
             {...params}
             placeholder="Choose a note or type your own"
             multiline
-            minRows={2}
+            minRows={1}
             sx={{
               '& .MuiInputBase-root': {
                 fontSize: '0.9rem',
@@ -1066,13 +1072,19 @@ function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
                 alignItems: 'flex-start',
                 pr: '36px !important',
               },
-              '& .MuiInputBase-input': { color: 'var(--workspace-text)' },
+              '& .MuiInputBase-input': {
+                color: 'var(--workspace-text)',
+                overflow: 'hidden',
+              },
               '& .MuiInputBase-input::placeholder': { color: 'var(--workspace-muted)', opacity: 1, fontSize: '0.9rem' },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'var(--workspace-border)' },
               '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(226,75,74,0.55)' },
               '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#E24B4A' },
               '& .MuiSvgIcon-root': { color: 'var(--workspace-muted)' },
-              '& .MuiAutocomplete-endAdornment': { top: 8 },
+              '& .MuiAutocomplete-endAdornment': {
+                top: '50% !important',
+                transform: 'translateY(-50%) !important',
+              },
             }}
           />
         )}
@@ -2388,6 +2400,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [qaRunning, setQaRunning]                   = useState(false)
   const [approveOpen, setApproveOpen]               = useState(false)
   const [approveNotes, setApproveNotes]             = useState({})
+  const [selectedApproveIds, setSelectedApproveIds] = useState([])
+  const [sharedApproveNote, setSharedApproveNote]   = useState('')
+  const [approveError, setApproveError]             = useState('')
   const [allocationNote, setAllocationNote]         = useState('')
   const [approving, setApproving]                   = useState(false)
   const [moduleExporting, setModuleExporting]       = useState(false)
@@ -4592,10 +4607,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function openApproveDialog() {
     const items = assessmentDetail?.qa_report?.items || {}
     const notes = {}
+    const failedIds = []
     Object.values(items).forEach(record => {
-      if (record?.item_id && record.override_note) notes[record.item_id] = record.override_note
+      if (!record?.item_id || record.passed) return
+      failedIds.push(record.item_id)
+      if (record.override_note) notes[record.item_id] = record.override_note
     })
     setApproveNotes(notes)
+    setSelectedApproveIds(failedIds)
+    setSharedApproveNote('')
+    setApproveError('')
     setAllocationNote(assessmentDetail?.qa_report?.approval?.allocation_note || '')
     setApproveOpen(true)
   }
@@ -4603,11 +4624,30 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleApproveAssessment() {
     const assessmentId = assessmentDetail?.assessment_id
     if (!assessmentId || approving) return
+    const notes = { ...approveNotes }
+    const shared = sharedApproveNote.trim()
+    const failed = Object.values(assessmentDetail?.qa_report?.items || {}).filter(record => record && !record.passed)
+    const selected = new Set(selectedApproveIds.map(id => String(id)))
+    if (failed.some(record => selected.has(String(record.item_id)))) {
+      if (!shared) {
+        setApproveError('Write one note for the selected items.')
+        return
+      }
+      failed.forEach(record => {
+        if (selected.has(String(record.item_id))) notes[record.item_id] = shared
+      })
+    }
+    const missing = failed.filter(record => !String(notes[record.item_id] || '').trim())
+    if (missing.length) {
+      setApproveError('Each item needs a note. Select the items and write one note, or leave a note on any item you unchecked.')
+      return
+    }
     setApproving(true)
+    setApproveError('')
     setActionError('')
     try {
       const { data } = await api.post(`/curriculum/assessment/${assessmentId}/approve/`, {
-        notes: approveNotes,
+        notes,
         allocation_note: allocationNote,
       })
       if (data.assessment) {
@@ -4618,7 +4658,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       showButtonNotice('Assessment approved.')
       workspaceApi.execute()
     } catch (err) {
-      setActionError(extractApiError(err) || 'Could not approve this assessment.')
+      const blockers = err?.response?.data?.blockers
+      const detail = extractApiError(err) || 'Could not approve this assessment.'
+      setApproveError(Array.isArray(blockers) && blockers.length ? blockers.join(' ') : detail)
     } finally {
       setApproving(false)
     }
@@ -6006,21 +6048,37 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
   }
 
-  async function handleViewBubbleSheet() {
+  async function handleViewBubbleSheet(template) {
+    const sheet = template?.template_id ? template : answerSheetTemplate
     setBubbleSheetPreviewLoading(true)
     setActionError('')
     try {
-      if (!answerSheetTemplate?.template_id) {
+      if (!sheet?.template_id) {
         setActionError('No answer sheet template exists yet. Create one first.')
         return
       }
       const pdfR = await api.post(
-        `/grading/bubble/templates/${answerSheetTemplate.template_id}/generate-pdf/`,
+        `/grading/bubble/templates/${sheet.template_id}/generate-pdf/`,
         {},
         { responseType: 'blob' }
       )
-      setBubbleSheetPreviewUrl(URL.createObjectURL(pdfR.data))
-      setBubbleSheetPreviewTitle(answerSheetTemplate.name)
+      const blob = pdfR.data
+      const type = String(blob?.type || '')
+      if (type && !type.includes('pdf')) {
+        let message = 'Failed to load the answer sheet.'
+        try {
+          const parsed = JSON.parse(await blob.text())
+          message = parsed?.detail || parsed?.error || message
+        } catch { /* keep the fallback */ }
+        setActionError(message)
+        return
+      }
+      const pdfBlob = type === 'application/pdf' ? blob : new Blob([blob], { type: 'application/pdf' })
+      setBubbleSheetPreviewUrl(current => {
+        if (current) URL.revokeObjectURL(current)
+        return URL.createObjectURL(pdfBlob)
+      })
+      setBubbleSheetPreviewTitle(sheet.name || 'Answer sheet')
       setBubbleSheetPreviewOpen(true)
     } catch (err) {
       setActionError(extractApiError(err) || 'Failed to load bubble sheet preview.')
@@ -6079,24 +6137,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           num_id_columns: Number(answerSheetForm.num_id_columns),
         },
       }
+      let saved = null
       if (answerSheetTemplate?.template_id) {
-        // Update existing template
         const r = await api.patch(
           `/grading/bubble/templates/${answerSheetTemplate.template_id}/`,
           payload
         )
-        setAnswerSheetTemplate(r?.data?.template || null)
+        saved = r?.data?.template || null
       } else {
-        // Create new template
         const r = await api.post('/grading/bubble/templates/', {
           ...payload,
           course_id: courseId,
           assessment_id: assessmentDetail.assessment_id,
         })
-        setAnswerSheetTemplate(r?.data?.template || null)
+        saved = r?.data?.template || null
       }
+      setAnswerSheetTemplate(saved)
       setAnswerSheetDialogOpen(false)
       showButtonNotice('Answer sheet saved.')
+      if (saved?.template_id) await handleViewBubbleSheet(saved)
     } catch (err) {
       setActionError(extractApiError(err) || 'Could not save the answer sheet.')
     } finally {
@@ -9100,14 +9159,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
 
             <Dialog open={approveOpen} onClose={() => { if (!approving) setApproveOpen(false) }} maxWidth="sm" fullWidth>
-              <DialogTitle sx={{ fontWeight: 700, fontSize: '1.05rem', color: '#F4F4F5' }}>Approve assessment</DialogTitle>
+              <DialogTitle sx={{ fontWeight: 700, fontSize: '1.05rem', color: 'var(--workspace-text)' }}>Approve assessment</DialogTitle>
               <DialogContent>
                 <Stack spacing={2} sx={{ mt: 0.5 }}>
-                  <DialogContentText sx={{ fontSize: '0.9rem', color: '#E4E4E7', lineHeight: 1.45 }}>
+                  <DialogContentText sx={{ fontSize: '0.9rem', color: 'var(--workspace-muted)', lineHeight: 1.45 }}>
                     {assessmentDetail.qa_report?.ready_to_approve
                       ? 'Every item matches its TOS cell and the keyed answer is supported by the source passages.'
-                      : 'Choose a suggested note or type your own. The note is stored with your approval.'}
+                      : 'Select the items, write one note, then approve. Uncheck an item if it needs its own note.'}
                   </DialogContentText>
+                  {approveError ? <Alert severity="error">{approveError}</Alert> : null}
                   {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
                     <ApprovalNoteField
                       label="Why the TOS counts still stand"
@@ -9116,19 +9176,97 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       onChange={setAllocationNote}
                     />
                   )}
-                  {Object.values(assessmentDetail.qa_report?.items || {})
-                    .filter(record => !record.passed)
-                    .sort((a, b) => (a.item_number || 0) - (b.item_number || 0))
-                    .map(record => (
-                      <ApprovalNoteField
-                        key={record.item_id}
-                        label={`Item ${record.item_number}`}
-                        reason={[...(record.details || []), record.evidence].filter(Boolean).join(' ')}
-                        suggestions={approvalNoteSuggestions(record)}
-                        value={approveNotes[record.item_id] || ''}
-                        onChange={next => setApproveNotes(current => ({ ...current, [record.item_id]: next }))}
-                      />
-                    ))}
+                  {(() => {
+                    const failedRecords = Object.values(assessmentDetail.qa_report?.items || {})
+                      .filter(record => record && !record.passed)
+                      .sort((a, b) => (a.item_number || 0) - (b.item_number || 0))
+                    if (!failedRecords.length) return null
+                    const selected = new Set(selectedApproveIds.map(id => String(id)))
+                    const allSelected = failedRecords.every(record => selected.has(String(record.item_id)))
+                    const someSelected = failedRecords.some(record => selected.has(String(record.item_id)))
+                    const selectedRecords = failedRecords.filter(record => selected.has(String(record.item_id)))
+                    const sharedSuggestions = []
+                    selectedRecords.forEach(record => {
+                      approvalNoteSuggestions(record).forEach(note => {
+                        if (note && !sharedSuggestions.includes(note)) sharedSuggestions.push(note)
+                      })
+                    })
+                    return (
+                      <>
+                        <Box
+                          component="label"
+                          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, cursor: 'pointer', color: 'var(--workspace-text)', fontWeight: 700 }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={allSelected}
+                            indeterminate={someSelected && !allSelected}
+                            onChange={(_, checked) => {
+                              setApproveError('')
+                              setSelectedApproveIds(checked ? failedRecords.map(record => record.item_id) : [])
+                            }}
+                            sx={{ color: 'var(--workspace-muted)', '&.Mui-checked, &.MuiCheckbox-indeterminate': { color: '#AA2423' } }}
+                          />
+                          Select all items
+                        </Box>
+                        {failedRecords.map(record => {
+                          const isSelected = selected.has(String(record.item_id))
+                          const reason = [...(record.details || []), record.evidence].filter(Boolean).join(' ')
+                          return (
+                            <Box key={record.item_id}>
+                              <Box
+                                component="label"
+                                sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5, cursor: 'pointer' }}
+                              >
+                                <Checkbox
+                                  size="small"
+                                  checked={isSelected}
+                                  onChange={(_, checked) => {
+                                    setApproveError('')
+                                    setSelectedApproveIds(current => {
+                                      const next = new Set(current.map(id => String(id)))
+                                      if (checked) next.add(String(record.item_id))
+                                      else next.delete(String(record.item_id))
+                                      return failedRecords.map(item => item.item_id).filter(id => next.has(String(id)))
+                                    })
+                                  }}
+                                  sx={{ mt: -0.25, color: 'var(--workspace-muted)', '&.Mui-checked': { color: '#AA2423' } }}
+                                />
+                                <Box sx={{ pt: 0.85, minWidth: 0 }}>
+                                  <Typography sx={{ color: 'var(--workspace-text)', fontWeight: 700, fontSize: '0.95rem' }}>
+                                    Item {record.item_number}
+                                  </Typography>
+                                  {reason ? (
+                                    <Typography sx={{ color: 'var(--workspace-muted)', fontSize: '0.875rem', lineHeight: 1.45 }}>
+                                      {reason}
+                                    </Typography>
+                                  ) : null}
+                                </Box>
+                              </Box>
+                              {!isSelected && (
+                                <Box sx={{ pl: 4.5, mt: 0.75 }}>
+                                  <ApprovalNoteField
+                                    label="Note for this item"
+                                    suggestions={approvalNoteSuggestions(record)}
+                                    value={approveNotes[record.item_id] || ''}
+                                    onChange={next => setApproveNotes(current => ({ ...current, [record.item_id]: next }))}
+                                  />
+                                </Box>
+                              )}
+                            </Box>
+                          )
+                        })}
+                        {someSelected && (
+                          <ApprovalNoteField
+                            label={allSelected ? 'One note for every item' : 'One note for the selected items'}
+                            suggestions={sharedSuggestions.length ? sharedSuggestions : ['Accepted for this exam.']}
+                            value={sharedApproveNote}
+                            onChange={next => { setApproveError(''); setSharedApproveNote(next) }}
+                          />
+                        )}
+                      </>
+                    )
+                  })()}
                 </Stack>
               </DialogContent>
               <DialogActions>
@@ -9958,12 +10096,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 transition: 'border-color 0.15s, background-color 0.15s',
               }}
             >
-              <DownloadIcon sx={{ fontSize: 36, color: sourceDropActive ? MAROON : '#9CA3AF' }} />
-              <Typography sx={{ color: '#E5E7EB', fontSize: '0.92rem', lineHeight: 1.4 }}>
-                <Box component="span" sx={{ fontWeight: 800, color: '#F9FAFB' }}>Choose a file</Box>
+              <DownloadIcon sx={{ fontSize: 36, color: sourceDropActive ? MAROON : 'var(--workspace-muted)' }} />
+              <Typography sx={{ color: 'var(--workspace-text)', fontSize: '0.92rem', lineHeight: 1.4 }}>
+                <Box component="span" sx={{ fontWeight: 800, color: 'var(--workspace-text)' }}>Choose a file</Box>
                 {' or drag it here.'}
               </Typography>
-              <Typography variant="caption" sx={{ color: uploadFile ? '#E24B4A' : '#9CA3AF' }}>
+              <Typography variant="caption" sx={{ color: uploadFile ? '#E24B4A' : 'var(--workspace-muted)' }}>
                 {uploadFile ? uploadFile.name : 'PDF or DOCX only'}
               </Typography>
               <input hidden type="file" disabled={uploading}
@@ -10344,28 +10482,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
           {bubbleSheetPreviewTitle}
         </DialogTitle>
-        <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden' }}>
-          <object
-            data={bubbleSheetPreviewUrl}
-            type="application/pdf"
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-          >
-            <Box sx={{ p: 3, textAlign: 'center' }}>
-              <Typography sx={{ fontSize: '0.85rem', color: '#666', mb: 1.5 }}>
-                Your browser cannot display the PDF inline.
-              </Typography>
-              <Button variant="outlined" startIcon={<DownloadIcon />}
-                onClick={() => {
-                  const link = document.createElement('a')
-                  link.href = bubbleSheetPreviewUrl
-                  link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
-                  link.click()
-                }}
-                sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-                Download PDF instead
-              </Button>
-            </Box>
-          </object>
+        <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden', bgcolor: '#fff' }}>
+          <iframe
+            title={bubbleSheetPreviewTitle || 'Answer sheet'}
+            src={bubbleSheetPreviewUrl}
+            style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#fff' }}
+          />
         </DialogContent>
         <DialogActions sx={{ px: 3, py: 1.5 }}>
           <Button onClick={() => {

@@ -389,18 +389,6 @@ export default function SidebarUserMenu({
                 size="small"
                 sx={{ ...PROFILE_FIELD_SX, mb: 2 }}
               />
-              <TextField
-                label="Display image URL"
-                type="url"
-                value={profileForm.picture_url}
-                onChange={event => setProfileForm(form => ({ ...form, picture_url: event.target.value }))}
-                inputProps={{ maxLength: 500 }}
-                placeholder="https://example.com/photo.jpg"
-                helperText="Use a public image URL. Leave blank to use your initials."
-                fullWidth
-                size="small"
-                sx={{ ...PROFILE_FIELD_SX, mb: 2 }}
-              />
 
               <Divider sx={{ borderColor: 'var(--shell-divider)', mb: 1.5 }} />
               {!changePasswordOpen ? (
