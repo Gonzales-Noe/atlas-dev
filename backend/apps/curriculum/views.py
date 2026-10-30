@@ -2758,6 +2758,47 @@ def _exam_choice_line(choice, index):
     return f'{chr(65 + index)}. {text}'
 
 
+def _add_answer_key_columns(doc, letters, columns=4):
+    """Answer letters on the last page. Fill a column top to bottom, then the next column."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt
+
+    columns = max(1, int(columns or 1))
+    row_count = (len(letters) + columns - 1) // columns
+    table = doc.add_table(rows=row_count, cols=columns)
+    table.autofit = False
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    borders = OxmlElement('w:tblBorders')
+    for edge in ('top', 'left', 'bottom', 'right', 'insideH', 'insideV'):
+        element = OxmlElement(f'w:{edge}')
+        element.set(qn('w:val'), 'nil')
+        element.set(qn('w:sz'), '0')
+        element.set(qn('w:space'), '0')
+        element.set(qn('w:color'), 'auto')
+        borders.append(element)
+    tblPr.append(borders)
+    width = Inches(6.3)
+    table.allow_autofit = False
+    tblW = tblPr.find(qn('w:tblW'))
+    if tblW is None:
+        tblW = OxmlElement('w:tblW')
+        tblPr.append(tblW)
+    tblW.set(qn('w:w'), str(int(width.twips)))
+    tblW.set(qn('w:type'), 'dxa')
+    for index, (number, letter) in enumerate(letters):
+        col, row = divmod(index, row_count)
+        cell = table.cell(row, col)
+        cell.text = f'{number}. {letter}'
+        paragraph = cell.paragraphs[0]
+        paragraph.paragraph_format.space_before = Pt(0)
+        paragraph.paragraph_format.space_after = Pt(2)
+        for run in paragraph.runs:
+            run.font.size = Pt(12)
+    return table
+
+
 def _exam_answer_letter(item):
     raw = str(item.get('correct_answer') or '').strip().upper()
     match = re.match(r'^([A-D])(?:\b|[\.\)])', raw)
@@ -2810,10 +2851,7 @@ def _build_plain_assessment_docx(assessment_payload, include_choices=True, inclu
         letters = [(number, letter) for number, letter in letters if letter]
         if letters:
             doc.add_page_break()
-            for number, letter in letters:
-                answer = doc.add_paragraph(f'{number}. {letter}')
-                if answer.runs:
-                    answer.runs[0].font.size = Pt(12)
+            _add_answer_key_columns(doc, letters, columns=4)
 
     return doc
 

@@ -657,7 +657,6 @@ class AssessmentDocxFormatTests(SimpleTestCase):
 
         paragraphs = self._paragraphs(document)
         text = '\n'.join(paragraphs)
-        answer_at = paragraphs.index('1. A')
 
         self.assertIn('IT 321 Prelim Examination', text)
         self.assertIn('1. Which field studies how people use computers?', text)
@@ -665,9 +664,12 @@ class AssessmentDocxFormatTests(SimpleTestCase):
         self.assertIn('B. Graphic design', text)
         self.assertIn('2. A prototype is used to do what?', text)
         self.assertIn('B. Try an idea with users', text)
-        self.assertEqual(paragraphs[answer_at:answer_at + 2], ['1. A', '2. B'])
+        self.assertNotIn('1. A', text)
+        self.assertEqual(len(document.tables), 1)
+        self.assertEqual(len(document.tables[0].columns), 4)
+        self.assertEqual(document.tables[0].cell(0, 0).text.strip(), '1. A')
+        self.assertEqual(document.tables[0].cell(0, 1).text.strip(), '2. B')
         self.assertTrue(self._has_page_break(document))
-        self.assertLess(paragraphs.index('1. Which field studies how people use computers?'), answer_at)
         for label in (
             'Bloom',
             'Remember',
@@ -706,6 +708,33 @@ class AssessmentDocxFormatTests(SimpleTestCase):
         self.assertNotIn('1. A', text)
         self.assertNotIn('Because the first choice is right.', text)
         self.assertFalse(self._has_page_break(document))
+        self.assertEqual(document.tables, [])
+
+    def test_answer_letters_fill_down_each_column_before_the_next(self):
+        items = [
+            {
+                'item_number': number,
+                'question_text': f'Question {number}',
+                'choices': ['One', 'Two', 'Three', 'Four'],
+                'correct_answer': 'ABCD'[(number - 1) % 4],
+            }
+            for number in range(1, 6)
+        ]
+        document = _build_plain_assessment_docx(
+            {'title': 'Exam', 'items': items},
+            include_choices=True,
+            include_answer_key=True,
+        )
+        table = document.tables[0]
+        self.assertEqual(len(table.columns), 4)
+        self.assertEqual(
+            [cell.text.strip() for cell in table.rows[0].cells],
+            ['1. A', '3. C', '5. A', ''],
+        )
+        self.assertEqual(
+            [cell.text.strip() for cell in table.rows[1].cells],
+            ['2. B', '4. D', '', ''],
+        )
 
 
 class ModuleTeachingTextTests(SimpleTestCase):
