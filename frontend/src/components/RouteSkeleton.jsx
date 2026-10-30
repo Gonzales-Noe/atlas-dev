@@ -2,7 +2,7 @@ const bar = (width, height = 14) => ({
   height,
   width,
   borderRadius: 10,
-  background: 'linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.12) 37%, rgba(255,255,255,0.05) 63%)',
+  background: 'linear-gradient(90deg, #E6EAF0 25%, #F7F9FC 37%, #E6EAF0 63%)',
   backgroundSize: '400% 100%',
   animation: 'atlas-skeleton 1.4s ease infinite',
 })
@@ -15,7 +15,7 @@ export default function RouteSkeleton({ compact = false }) {
       style={{
         minHeight: compact ? 0 : '100vh',
         boxSizing: 'border-box',
-        background: compact ? 'transparent' : '#08080A',
+        background: compact ? 'transparent' : '#F7F9FC',
         padding: compact ? '16px' : '32px 24px',
       }}
     >
