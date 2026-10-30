@@ -318,9 +318,14 @@ def grouped_source_check_prompt(groups):
         "\n\n".join(blocks)
         + "\n\nFor each item decide one verdict:\n"
         "- supported: the passages already state the idea the keyed answer uses. "
-        "A new case of that idea is supported. "
-        "If the passages say a poor medical interface can cause harm, a new question about small touch targets on a hospital screen is supported.\n"
-        "- unsupported: the keyed answer depends on a named heuristic, scale, or standard the passages never name\n"
+        "A new case of that same idea is supported. Do not require the passage to name the example. "
+        "If the passages say a poor medical interface can cause harm, a question about small touch targets on a hospital screen is supported. "
+        "If the passages say designs must follow WCAG and reduce digital exclusion, a question about light gray text on a white page failing inclusive design is supported.\n"
+        "- unsupported: the keyed answer depends on a named heuristic, scale, or standard the passages never name, "
+        "such as Visibility of system status or the System Usability Scale. "
+        "Also unsupported when the answer's specific claim is a different idea, even if a broader word in the passages is related. "
+        "Safety in the passages does not support a privacy claim. "
+        "Adoption in the passages does not support onboarding, tutorial-skip behavior, or comfort with voice.\n"
         "- contradicted: those passages state the opposite of the keyed answer\n\n"
         'Return {"results": [{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", '
         '"evidence": "<one sentence>"}]}'

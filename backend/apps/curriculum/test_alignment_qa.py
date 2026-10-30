@@ -363,4 +363,6 @@ class AssessmentQaTests(SimpleTestCase):
         self.assertIn('History', user)
         self.assertIn('A passage.', user)
         self.assertIn('small touch targets', user)
+        self.assertIn('light gray text', user)
         self.assertIn('named heuristic', user)
+        self.assertIn('comfort with voice', user)
