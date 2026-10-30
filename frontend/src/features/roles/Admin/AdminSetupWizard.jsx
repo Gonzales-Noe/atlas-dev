@@ -495,7 +495,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
         <Stepper activeStep={activeStep} alternativeLabel sx={{
           '& .MuiStepLabel-label': { color: 'var(--text-tertiary)', fontSize: '0.72rem' },
           '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
-          '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.12)' },
+          '& .MuiStepIcon-root': { color: 'var(--shell-btn-border)' },
           '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#E24B4A' },
         }}>
           {WIZARD_STEPS.map(step => <Step key={step.key}><StepLabel>{step.label}</StepLabel></Step>)}

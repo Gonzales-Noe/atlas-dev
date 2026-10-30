@@ -3,9 +3,9 @@ const GENERATION_NOTIFICATIONS_KEY = 'atlas_generation_notifications'
 
 export function getThemePreference() {
   try {
-    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark'
+    return localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'
   } catch {
-    return 'dark'
+    return 'light'
   }
 }
 
@@ -81,7 +81,7 @@ export function notifyGenerationComplete(category, itemName = '') {
   const body = label ? `${label} is ready.` : `${category} generation is complete.`
   const notification = new Notification(`${category} ready`, {
     body,
-    icon: '/favicon.svg',
+    icon: '/favicon-red.svg',
     tag: `atlas-generation-${category.toLowerCase().replace(/\s+/g, '-')}`,
   })
   notification.onclick = () => {

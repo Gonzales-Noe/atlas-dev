@@ -10,6 +10,7 @@ import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import SuperAdminLayout from './SuperAdminLayout'
+import { CircleCheck, Landmark, Users } from 'lucide-react'
 import { StatCard, PageHeader, StatusChip, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api from '../../config/api'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
@@ -157,9 +158,9 @@ export default function AccountManagement() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <StatCard title="Total Institutions" value={accounts.length} icon="🏛️" accent="#E24B4A" />
-        <StatCard title="Active" value={accounts.filter(a => a.status === 'active').length} icon="✅" accent="#5EDA7E" />
-        <StatCard title="Total Users" value={accounts.reduce((sum, account) => sum + account.users, 0).toLocaleString()} icon="👥" accent="#60AAFF" />
+        <StatCard title="Total Institutions" value={accounts.length} icon={<Landmark size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Active" value={accounts.filter(a => a.status === 'active').length} icon={<CircleCheck size={18} color="#5EDA7E" />} accent="#5EDA7E" />
+        <StatCard title="Total Users" value={accounts.reduce((sum, account) => sum + account.users, 0).toLocaleString()} icon={<Users size={18} color="#60AAFF" />} accent="#60AAFF" />
         <StatCard title="Pending Review" value={pendingApplications.length} icon="⏳" accent="#FFB74D" />
       </div>
 

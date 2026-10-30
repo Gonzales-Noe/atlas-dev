@@ -880,14 +880,14 @@ export default function SyllabusFormat() {
           bgcolor: isActive ? 'rgba(142,28,27,0.14)' : 'transparent',
           color: 'inherit',
           transition: 'border-color 160ms ease, background 160ms ease',
-          '&:hover': { borderColor: 'rgba(226,75,74,0.35)', bgcolor: 'rgba(255,255,255,0.03)' },
+          '&:hover': { borderColor: 'rgba(226,75,74,0.35)', bgcolor: 'var(--bg-header)' },
         }}
       >
         <Stack direction="row" spacing={1.1} alignItems="flex-start">
           <Box sx={{
             width: 30, height: 30, borderRadius: 1.5, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            bgcolor: isActive ? 'rgba(226,75,74,0.16)' : 'rgba(255,255,255,0.05)',
+            bgcolor: isActive ? 'rgba(226,75,74,0.16)' : 'var(--shell-btn-bg)',
             color: isActive ? '#E24B4A' : 'var(--text-secondary)',
           }}>
             <Icon sx={{ fontSize: '1rem' }} />
@@ -1028,7 +1028,7 @@ export default function SyllabusFormat() {
         border: '1px solid var(--border-color)', px: 1, py: 0.5, textAlign: 'left',
         color: 'var(--text-secondary)', fontWeight: 400, whiteSpace: 'pre-wrap',
       },
-      '& th': { color: 'var(--text-primary)', fontWeight: 600, bgcolor: 'rgba(255,255,255,0.03)' },
+      '& th': { color: 'var(--text-primary)', fontWeight: 600, bgcolor: 'var(--bg-header)' },
     }
     const cellInputSx = {
       width: '100%', minWidth: 56, boxSizing: 'border-box',
@@ -1054,7 +1054,7 @@ export default function SyllabusFormat() {
 
     return (
       <Box key={table.key} sx={{ border: '1px solid var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
-        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'var(--bg-header)' }}>
           <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
             <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5, minWidth: 0, flex: 1 }}>
               <TextField
@@ -1248,7 +1248,7 @@ export default function SyllabusFormat() {
     if (!activeBlueprintTabs.length) return null
     return (
       <Box sx={{ border: '1px solid var(--border-color)', borderRadius: 2, overflow: 'hidden' }}>
-        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+        <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'var(--bg-header)' }}>
           <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flexWrap: 'wrap', rowGap: 0.5 }}>
             <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
               Framework tabs
@@ -1276,7 +1276,7 @@ export default function SyllabusFormat() {
       <Stack spacing={2}>
         {activeBlueprintGroups.map(group => (
           <Box key={group.title} sx={{ border: '1px solid var(--border-color)', borderRadius: 2.5, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+            <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'var(--bg-header)' }}>
               <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
                 <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {group.title}
@@ -1300,7 +1300,7 @@ export default function SyllabusFormat() {
         ))}
         {extras.length > 0 && (
           <Box sx={{ border: '1px solid var(--border-color)', borderRadius: 2.5, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'rgba(255,255,255,0.03)' }}>
+            <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--border-color)', bgcolor: 'var(--bg-header)' }}>
               <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Additional fields
               </Typography>

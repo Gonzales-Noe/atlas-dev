@@ -37,6 +37,7 @@ import DownloadIcon from '@mui/icons-material/Download'
 import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import FlagIcon from '@mui/icons-material/Flag'
+import StarIcon from '@mui/icons-material/Star'
 import KeyIcon from '@mui/icons-material/Key'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SyncIcon from '@mui/icons-material/Sync'
@@ -46,11 +47,11 @@ import { extractApiError } from '../utils'
 // ── Constants ──────────────────────────────────────────────────────────────
 const MAROON       = '#8E1C1B'
 const MAROON_LIGHT = 'rgba(170,36,35,0.16)'
-const BG           = '#0F0F12'
-const SURFACE      = '#18181E'
-const TEXT          = '#F0F0F2'
-const MUTED         = 'rgba(255,255,255,0.58)'
-const BORDER        = 'rgba(255,255,255,0.09)'
+const BG           = 'var(--workspace-bg)'
+const SURFACE      = 'var(--workspace-panel)'
+const TEXT          = 'var(--workspace-text)'
+const MUTED         = 'var(--workspace-muted)'
+const BORDER        = 'var(--workspace-border)'
 const DIALOG_PAPER_SX = {
   bgcolor: SURFACE,
   color: TEXT,
@@ -300,14 +301,14 @@ function TemplateRow({ template: t, onRefresh, onSetKey, onModifyTemplate }) {
         <Box sx={{ flex: 1 }}>
           <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{t.name}</Typography>
           <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.5 }}>
-            <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
-            <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.08)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            <Chip label={`${t.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }} />
             <Chip
               label={t.has_answer_key ? 'Key set' : 'No key'}
               size="small"
               sx={{
                 height: 18, fontSize: '0.65rem',
-                bgcolor: t.has_answer_key ? 'rgba(170,36,35,0.18)' : 'rgba(255,255,255,0.08)',
+                bgcolor: t.has_answer_key ? 'rgba(170,36,35,0.18)' : 'var(--workspace-hover)',
                 color: t.has_answer_key ? '#E24B4A' : MUTED,
                 border: `1px solid ${t.has_answer_key ? 'rgba(226,75,74,0.28)' : BORDER}`,
               }}
@@ -669,7 +670,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         {err && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{err}</Alert>}
         <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
           Click the correct answer for each item. Items with no selection will be excluded from grading.
-          ★ marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
+          The star marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
           Saving re-scores sheets that were already scanned.
         </Typography>
         <Stack spacing={0.75}>
@@ -712,7 +713,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                       '&:hover': { borderColor: '#E24B4A', bgcolor: key[String(itemNo)] === BONUS_KEY ? '#6E1212' : MAROON_LIGHT },
                     }}
                   >
-                    ★
+                    <StarIcon sx={{ fontSize: 14 }} />
                   </Box>
                 </Box>
               ))}
@@ -823,7 +824,7 @@ function ResultsTab({ courseId, templates, onNotice }) {
               <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, overflow: 'hidden' }}>
                 <Table size="small" sx={{
                   '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER },
-                  '& .MuiTableRow-root:hover': { bgcolor: 'rgba(255,255,255,0.04)' },
+                  '& .MuiTableRow-root:hover': { bgcolor: 'var(--workspace-card)' },
                 }}>
                   <TableHead>
                     <TableRow sx={{ bgcolor: BG }}>

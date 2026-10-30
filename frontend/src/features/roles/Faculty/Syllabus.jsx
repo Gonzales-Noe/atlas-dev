@@ -195,7 +195,7 @@ export default function FacultySyllabus() {
                   <Button variant="outlined" disabled={!actionEnabled || currentSection.is_static} onClick={handleSectionSave} sx={{ borderColor: '#8E1C1B', color: '#8E1C1B', textTransform: 'none', py: 1.5, borderRadius: 2, '&:hover': { background: 'rgba(142, 28, 27, 0.08)' } }}>
                     Save Section
                   </Button>
-                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'rgba(255,255,255,0.05)' } }}>
+                  <Button variant="text" disabled={!actionEnabled} onClick={handleCompleteSyllabus} sx={{ color: 'var(--text-secondary)', textTransform: 'none', py: 1.5, '&:hover': { background: 'var(--shell-btn-bg)' } }}>
                     Mark Syllabus Complete
                   </Button>
                 </Stack>
@@ -256,7 +256,7 @@ export default function FacultySyllabus() {
               variant="contained"
               disabled={!actionEnabled}
               onClick={handleDownloadSyllabus}
-              sx={{ mt: 2, background: 'rgba(255,255,255,0.1)', color: '#fff', '&:hover': { background: 'rgba(255,255,255,0.2)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
+              sx={{ mt: 2, background: '#AA2423', color: '#fff', '&:hover': { background: '#6E1212' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
             >
               Download Syllabus
             </Button>

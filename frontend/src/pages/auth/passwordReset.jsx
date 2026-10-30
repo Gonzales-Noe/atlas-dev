@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import CircularProgress from '@mui/material/CircularProgress'
-import { Eye, EyeOff } from 'lucide-react'
+import { CircleCheck, Eye, EyeOff, KeyRound, Lock, Mail, PartyPopper } from 'lucide-react'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/route'
 import atlasLogo        from '../../assets/atlas-logo.webp'
@@ -53,10 +53,10 @@ function ResetCodeInput({ value, onChange }) {
 const STEPS = { EMAIL: 0, OTP: 1, NEW_PASSWORD: 2, DONE: 3 }
 
 const STEP_CONFIG = [
-  { icon: '🔐', bubble: "Forgot your password? No worries!" },
-  { icon: '📧', bubble: "Check your email for the OTP!" },
-  { icon: '🔑', bubble: "Almost there! Set your new password." },
-  { icon: '🎉', bubble: "You're all set! Welcome back." },
+  { Icon: Lock, bubble: "Forgot your password? No worries!" },
+  { Icon: Mail, bubble: "Check your email for the OTP!" },
+  { Icon: KeyRound, bubble: "Almost there! Set your new password." },
+  { Icon: PartyPopper, bubble: "You're all set! Welcome back." },
 ]
 
 const NAV_LINKS = [
@@ -546,9 +546,11 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                 {STEP_CONFIG[step]?.bubble}
               </div>
 
-              {/* Mascot image (falls back to emoji icon when image is unavailable) */}
-              <div style={{ fontSize: '5rem', lineHeight: 1, filter: 'drop-shadow(0 8px 24px rgba(0,0,0,0.5))', transition: 'all 0.4s ease' }}>
-                {STEP_CONFIG[step]?.icon}
+              <div style={{ lineHeight: 1, filter: 'drop-shadow(0 8px 24px rgba(170,36,35,0.25))', transition: 'all 0.4s ease', color: '#AA2423' }}>
+                {(() => {
+                  const StepIcon = STEP_CONFIG[step]?.Icon
+                  return StepIcon ? <StepIcon size={72} strokeWidth={1.5} aria-hidden="true" /> : null
+                })()}
               </div>
 
               {/* Step progress bar */}
@@ -765,7 +767,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
             {/* ── STEP 3: Done ──────────────────────────────────────── */}
             {step === STEPS.DONE && (
               <div key="done" className="step-enter" style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '4rem', marginBottom: '1.25rem', lineHeight: 1 }}>✅</div>
+                <div style={{ marginBottom: '1.25rem', lineHeight: 1, color: '#22A06B' }}><CircleCheck size={64} strokeWidth={1.5} aria-hidden="true" /></div>
                 <h1 style={{ fontSize: '1.7rem', fontWeight: 800, margin: '0 0 0.6rem', letterSpacing: '-0.01em' }}>
                   Password <span className="glow-text">Reset!</span>
                 </h1>

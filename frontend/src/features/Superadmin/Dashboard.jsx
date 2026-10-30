@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
+import { CircleCheck, Landmark, Users } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader, MetricRow } from '../../components/ui'
 import api from '../../config/api'
 import LlmHealthPanel from './LlmHealthPanel'
@@ -69,9 +70,9 @@ export default function SuperAdminDashboard() {
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Total Institutions" value={valueFor('Institutions')} icon="🏛️" accent="#E24B4A" />
-        <StatCard title="Active Institutions" value={valueFor('Active institutions')} icon="✅" accent="#5EDA7E" />
-        <StatCard title="Users" value={valueFor('Users')} icon="👥" accent="#60AAFF" />
+        <StatCard title="Total Institutions" value={valueFor('Institutions')} icon={<Landmark size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Active Institutions" value={valueFor('Active institutions')} icon={<CircleCheck size={18} color="#5EDA7E" />} accent="#5EDA7E" />
+        <StatCard title="Users" value={valueFor('Users')} icon={<Users size={18} color="#60AAFF" />} accent="#60AAFF" />
         <StatCard title="Pending Applications" value={valueFor('Pending applications')} icon="⏳" accent="#FFB74D" />
       </div>
 

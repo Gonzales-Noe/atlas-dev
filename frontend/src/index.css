@@ -57,6 +57,18 @@
   --shell-chip-hover-bg:   rgba(255, 255, 255, 0.08);
   --shell-nav-active-bg:       linear-gradient(135deg, rgba(142, 28, 27, 0.35), rgba(170, 36, 35, 0.20));
   --shell-nav-active-border:   rgba(170, 36, 35, 0.35);
+  --shell-grid:                rgba(255, 255, 255, 0.018);
+
+  /* Faculty workspace surfaces. Portaled dialogs inherit these from body. */
+  --workspace-bg:     #0F0F12;
+  --workspace-panel:  #16161E;
+  --workspace-card:   rgba(255, 255, 255, 0.04);
+  --workspace-hover:  rgba(255, 255, 255, 0.08);
+  --workspace-border: rgba(255, 255, 255, 0.10);
+  --workspace-text:   #F0F0F2;
+  --workspace-muted:  rgba(255, 255, 255, 0.62);
+  --workspace-faint:  rgba(255, 255, 255, 0.38);
+  --workspace-input:  rgba(255, 255, 255, 0.05);
 
   /* Status */
   --green:  #34C759;
@@ -453,8 +465,19 @@ body.atlas-light {
   --shell-nav-active-border:   rgba(142, 28, 27, 0.35);
   /* Role badge labels need a darker red to stay legible on the light shell. */
   --shell-badge-text:          #8E1C1B;
+  --shell-grid:                rgba(0, 0, 0, 0.045);
+  --workspace-bg:     #F7F9FC;
+  --workspace-panel:  #FFFFFF;
+  --workspace-card:   #FFFFFF;
+  --workspace-hover:  rgba(0, 0, 0, 0.05);
+  --workspace-border: rgba(0, 0, 0, 0.10);
+  --workspace-text:   #1A1A1A;
+  --workspace-muted:  rgba(0, 0, 0, 0.62);
+  --workspace-faint:  rgba(0, 0, 0, 0.40);
+  --workspace-input:  #FFFFFF;
   color: var(--text-primary);
   background: var(--bg-base);
+  color-scheme: light;
 }
 
 body.atlas-light #root {
@@ -572,15 +595,10 @@ body.atlas-light #root {
   color: var(--text-primary);
 }
 
-/* Faculty course workspace follows the shared admin dark visual system. */
+/* Faculty course workspace. Surface colors follow the theme tokens above. */
 .faculty-workspace {
-  --workspace-bg: #0F0F12;
-  --workspace-panel: #16161E;
-  --workspace-card: rgba(255,255,255,0.04);
-  --workspace-border: rgba(255,255,255,0.09);
-  --workspace-text: #F0F0F2;
-  --workspace-muted: rgba(255,255,255,0.5);
   color: var(--workspace-text);
+  color-scheme: dark;
 }
 .faculty-workspace .MuiPaper-root,
 .faculty-workspace .MuiCard-root,
@@ -608,7 +626,7 @@ body.atlas-light #root {
 }
 .faculty-workspace .MuiOutlinedInput-root,
 .faculty-workspace .MuiInputBase-root {
-  background: rgba(255,255,255,0.05) !important;
+  background: var(--workspace-input) !important;
   color: var(--workspace-text) !important;
 }
 .faculty-workspace .MuiOutlinedInput-notchedOutline {
@@ -634,7 +652,7 @@ body.atlas-light #root {
   border-color: var(--workspace-border) !important;
 }
 .faculty-workspace th {
-  background: rgba(255,255,255,0.05) !important;
+  background: var(--workspace-hover) !important;
 }
 .faculty-workspace .MuiDivider-root {
   border-color: var(--workspace-border) !important;
@@ -642,7 +660,7 @@ body.atlas-light #root {
 .faculty-workspace .MuiDrawer-paper,
 .faculty-workspace .MuiMenu-paper,
 .faculty-workspace .MuiDialog-paper {
-  background: #16161E !important;
+  background: var(--workspace-panel) !important;
   color: var(--workspace-text) !important;
   border-color: var(--workspace-border) !important;
 }
@@ -673,5 +691,48 @@ body.atlas-light #root {
 }
 .faculty-workspace .MuiInputBase-root.Mui-disabled,
 .faculty-workspace .MuiOutlinedInput-root.Mui-disabled {
-  background: rgba(255,255,255,0.05) !important;
+  background: var(--workspace-input) !important;
+}
+
+body.atlas-light .faculty-workspace {
+  color: var(--workspace-text);
+  color-scheme: light;
+}
+body.atlas-light .faculty-workspace input,
+body.atlas-light .faculty-workspace textarea,
+body.atlas-light .faculty-workspace select {
+  color-scheme: light;
+}
+body.atlas-light .faculty-workspace .MuiPaper-root,
+body.atlas-light .faculty-workspace .MuiCard-root,
+body.atlas-light .faculty-workspace .MuiAccordion-root {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Auth screens stay white in both themes. */
+body:has(.atlas-auth),
+body:has(.atlas-auth) #root {
+  background: #ffffff !important;
+  color-scheme: light;
+}
+
+/* Landing stays white in both themes. */
+body:has(.atlas-landing),
+body:has(.atlas-landing) #root {
+  background: #ffffff !important;
+  color-scheme: light;
+}
+.atlas-landing {
+  background: #ffffff !important;
+  color: #1A1A1A;
+  color-scheme: light;
+}
+.atlas-landing .glow-text {
+  background-image: linear-gradient(135deg, #8E1C1B, #AA2423, #E24B4A);
+}
+body.atlas-light .atlas-landing h1,
+body.atlas-light .atlas-landing h2,
+body.atlas-light .atlas-landing h3,
+body.atlas-light .atlas-landing p {
+  color: inherit;
 }

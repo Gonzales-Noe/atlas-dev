@@ -7,7 +7,7 @@
 // and both sidebars follow.
 
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, KeyRound, LogOut, Settings, UserRound } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, LogOut, Settings, Sun, UserRound } from 'lucide-react'
 import InstallAppButton from './InstallAppButton'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
 import Alert from '@mui/material/Alert'
@@ -33,23 +33,23 @@ import {
 } from '../utils/userPreferences'
 
 const DIALOG_PAPER_SX = {
-  bgcolor: '#18181E',
-  color: '#F0F0F2',
+  bgcolor: 'var(--shell-menu-bg)',
+  color: 'var(--text-primary)',
   backgroundImage: 'none',
-  border: '1px solid rgba(255,255,255,0.1)',
+  border: '1px solid var(--shell-menu-border)',
   borderRadius: 3,
 }
 const PROFILE_FIELD_SX = {
   '& .MuiOutlinedInput-root': {
-    color: '#F0F0F2',
-    bgcolor: '#111318',
-    '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
-    '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
+    color: 'var(--text-primary)',
+    bgcolor: 'var(--input-bg)',
+    '& fieldset': { borderColor: 'var(--shell-btn-border)' },
+    '&:hover fieldset': { borderColor: 'var(--text-tertiary)' },
     '&.Mui-focused fieldset': { borderColor: '#AA2423' },
   },
-  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.58)' },
-  '& .MuiInputLabel-root.Mui-focused': { color: '#E24B4A' },
-  '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.48)' },
+  '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
+  '& .MuiInputLabel-root.Mui-focused': { color: 'var(--brand-accent)' },
+  '& .MuiFormHelperText-root': { color: 'var(--text-tertiary)' },
 }
 
 export default function SidebarUserMenu({
@@ -86,6 +86,12 @@ export default function SidebarUserMenu({
   const [appInstalled, setAppInstalled] = useState(() => isStandaloneDisplay())
   // Collapsed sidebars show only the avatar, so it centres and tightens up.
   const tight = collapsed && !isMobile
+
+  useEffect(() => {
+    const syncTheme = () => setThemePreferenceState(getThemePreference())
+    window.addEventListener('atlas-theme-change', syncTheme)
+    return () => window.removeEventListener('atlas-theme-change', syncTheme)
+  }, [])
 
   useEffect(() => {
     if (isStandaloneDisplay()) {
@@ -297,6 +303,26 @@ export default function SidebarUserMenu({
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            style={{ ...itemStyle, justifyContent: 'space-between' }}
+            onClick={() => {
+              const nextTheme = themePreference === 'light' ? 'dark' : 'light'
+              setThemePreferenceState(setThemePreference(nextTheme))
+            }}
+            onMouseEnter={enter}
+            onMouseLeave={leave}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--shell-icon-strong)', flexShrink: 0 }}>
+                <Sun size={18} strokeWidth={2.25} aria-hidden="true" />
+              </span>
+              Light mode
+            </span>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? '#AA2423' : 'var(--text-tertiary)' }}>
+              {themePreference === 'light' ? 'On' : 'Off'}
+            </span>
+          </button>
           <div style={{ height: 1, background: 'var(--shell-divider)', margin: '4px 0' }} />
           <button
             type="button"
@@ -340,10 +366,10 @@ export default function SidebarUserMenu({
                     : (user?.name || user?.email || 'U')[0].toUpperCase()}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 700, color: '#F0F0F2' }} noWrap>
+                  <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }} noWrap>
                     {user?.name || user?.email?.split('@')[0] || 'User'}
                   </Typography>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.58)', overflowWrap: 'anywhere' }}>
+                  <Typography variant="body2" sx={{ color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
                     {user?.email || 'No email available'}
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E24B4A' }}>{metaLabel}</Typography>
@@ -376,7 +402,7 @@ export default function SidebarUserMenu({
                 sx={{ ...PROFILE_FIELD_SX, mb: 2 }}
               />
 
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mb: 1.5 }} />
+              <Divider sx={{ borderColor: 'var(--shell-divider)', mb: 1.5 }} />
               {!changePasswordOpen ? (
                 <Button
                   type="button"
@@ -390,7 +416,7 @@ export default function SidebarUserMenu({
               ) : (
                 <>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', fontWeight: 700 }}>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 700 }}>
                       CHANGE PASSWORD
                     </Typography>
                     <Button
@@ -426,7 +452,7 @@ export default function SidebarUserMenu({
                               aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                               title={showCurrentPassword ? 'Hide current password' : 'Show current password'}
                               onClick={() => setShowCurrentPassword(show => !show)}
-                              sx={{ color: 'rgba(255,255,255,0.58)' }}
+                              sx={{ color: 'var(--text-secondary)' }}
                             >
                               {showCurrentPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </IconButton>
@@ -454,7 +480,7 @@ export default function SidebarUserMenu({
                               aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
                               title={showNewPassword ? 'Hide new password' : 'Show new password'}
                               onClick={() => setShowNewPassword(show => !show)}
-                              sx={{ color: 'rgba(255,255,255,0.58)' }}
+                              sx={{ color: 'var(--text-secondary)' }}
                             >
                               {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </IconButton>
@@ -481,7 +507,7 @@ export default function SidebarUserMenu({
                               aria-label={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                               title={showConfirmPassword ? 'Hide confirmation password' : 'Show confirmation password'}
                               onClick={() => setShowConfirmPassword(show => !show)}
-                              sx={{ color: 'rgba(255,255,255,0.58)' }}
+                              sx={{ color: 'var(--text-secondary)' }}
                             >
                               {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </IconButton>
@@ -517,11 +543,11 @@ export default function SidebarUserMenu({
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
               <div style={{ padding: '4px 0 14px' }}>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block', mb: 0.5 }}>
                   APPEARANCE
                 </Typography>
                 <FormControlLabel
-                  sx={{ ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: '#F0F0F2', fontSize: '0.85rem' } }}
+                  sx={{ ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: 'var(--text-primary)', fontSize: '0.85rem' } }}
                   label="Light mode"
                   labelPlacement="start"
                   control={(
@@ -536,9 +562,9 @@ export default function SidebarUserMenu({
                   )}
                 />
               </div>
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
+              <Divider sx={{ borderColor: 'var(--shell-divider)' }} />
               <FormControlLabel
-                sx={{ mt: 1, ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: '#F0F0F2', fontSize: '0.85rem' } }}
+                sx={{ mt: 1, ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: 'var(--text-primary)', fontSize: '0.85rem' } }}
                 label="Generation notifications"
                 labelPlacement="start"
                 control={(
@@ -553,7 +579,7 @@ export default function SidebarUserMenu({
                   />
                 )}
               />
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block', mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
                 Notify when syllabus, module, or assessment generation finishes.
               </Typography>
               {notificationPreferenceMessage && (
@@ -561,9 +587,9 @@ export default function SidebarUserMenu({
                   {notificationPreferenceMessage}
                 </Alert>
               )}
-              <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mt: 1.5 }} />
+              <Divider sx={{ borderColor: 'var(--shell-divider)', mt: 1.5 }} />
               <FormControlLabel
-                sx={{ mt: 1, ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: '#F0F0F2', fontSize: '0.85rem' } }}
+                sx={{ mt: 1, ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: 'var(--text-primary)', fontSize: '0.85rem' } }}
                 label="Keep sidebar collapsed"
                 labelPlacement="start"
                 control={(
@@ -578,14 +604,14 @@ export default function SidebarUserMenu({
                   />
                 )}
               />
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block', mt: 0.5 }}>
+              <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
                 Remember the sidebar width for this account across dashboard pages.
               </Typography>
               {!appInstalled && (
                 <>
-                  <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)', mt: 1.5 }} />
+                  <Divider sx={{ borderColor: 'var(--shell-divider)', mt: 1.5 }} />
                   <div style={{ padding: '14px 0 4px' }}>
-                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 1 }}>
+                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block', mb: 1 }}>
                       DEVICE
                     </Typography>
                     {canInstallApp ? (
@@ -596,14 +622,14 @@ export default function SidebarUserMenu({
                           padding: '0.65rem 1rem',
                           fontSize: '0.85rem',
                           borderRadius: 10,
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          color: '#F0F0F2',
+                          background: 'var(--shell-btn-bg)',
+                          border: '1px solid var(--shell-btn-border)',
+                          color: 'var(--text-primary)',
                           fontWeight: 600,
                         }}
                       />
                     ) : (
-                      <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.45)', display: 'block' }}>
+                      <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block' }}>
                         On Chrome/Edge, an Install button appears when ATLAS is installable. On iPhone/iPad, use Share → Add to Home Screen.
                       </Typography>
                     )}

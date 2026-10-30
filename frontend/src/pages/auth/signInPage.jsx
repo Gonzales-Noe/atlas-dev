@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
-import { Eye, EyeOff } from 'lucide-react';
+import { BookOpen, Eye, EyeOff, X } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
@@ -43,8 +43,6 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});
 
@@ -58,13 +56,6 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     setLoading,
     setError,
   };
-
-  useEffect(() => {
-    setMounted(true);
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -136,22 +127,22 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   }
 
   return (
-    <div style={isModal ? {
+    <div className="atlas-auth" style={isModal ? {
       position: 'fixed',
       inset: 0,
-      background: 'rgba(10,10,11,0.85)',
+      background: 'rgba(255,255,255,0.82)',
       backdropFilter: 'blur(10px)',
       WebkitBackdropFilter: 'blur(10px)',
       zIndex: 9999,
       display: 'flex',
       flexDirection: 'column',
-      color: '#F0F0F0',
+      color: '#1A1A1A',
       fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
       overflowY: 'auto',
     } : {
       minHeight: '100vh',
-      background: '#0A0A0B',
-      color: '#F0F0F0',
+      background: '#FFFFFF',
+      color: '#1A1A1A',
       fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
       display: 'flex',
       flexDirection: 'column',
@@ -162,7 +153,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         * { box-sizing: border-box; }
 
         .auth-nav-link {
-          color: rgba(255,255,255,0.55);
+          color: rgba(0,0,0,0.62);
           text-decoration: none;
           font-size: 0.82rem;
           font-weight: 600;
@@ -170,16 +161,16 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           transition: color 0.2s;
           padding: 4px 0;
         }
-        .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.active { color: #E24B4A; }
+        .auth-nav-link:hover { color: #1A1A1A; }
+        .auth-nav-link.active { color: #AA2423; }
 
         .dark-input {
           width: 100%;
-          background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.12);
+          background: #FFFFFF;
+          border: 1px solid rgba(0,0,0,0.12);
           border-radius: 12px;
           padding: 0.85rem 1.1rem;
-          color: #F0F0F0;
+          color: #1A1A1A;
           font-family: inherit;
           font-size: 0.92rem;
           outline: none;
@@ -188,9 +179,9 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
         .dark-input:focus {
           border-color: rgba(170,36,35,0.7);
-          background: rgba(255,255,255,0.09);
+          background: #FFFFFF;
         }
-        .dark-input::placeholder { color: rgba(255,255,255,0.28); }
+        .dark-input::placeholder { color: rgba(0,0,0,0.38); }
 
         .password-input-wrap { position: relative; }
         .password-input-wrap .dark-input { padding-right: 3rem; }
@@ -203,12 +194,12 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           align-items: center;
           justify-content: center;
           padding: 0.25rem;
-          color: rgba(255,255,255,0.55);
+          color: rgba(0,0,0,0.55);
           background: none;
           border: 0;
           cursor: pointer;
         }
-        .password-toggle:hover { color: #fff; }
+        .password-toggle:hover { color: #1A1A1A; }
         .password-toggle:focus-visible { outline: 2px solid #FF6B6B; outline-offset: 2px; }
 
         .btn-primary {
@@ -247,9 +238,9 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
         .btn-google {
           width: 100%;
-          background: rgba(255,255,255,0.05);
-          color: rgba(255,255,255,0.8);
-          border: 1px solid rgba(255,255,255,0.14);
+          background: #FFFFFF;
+          color: #1A1A1A;
+          border: 1px solid rgba(0,0,0,0.12);
           border-radius: 12px;
           padding: 0.85rem;
           font-family: inherit;
@@ -263,24 +254,25 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           gap: 10px;
         }
         .btn-google:hover {
-          border-color: rgba(255,255,255,0.28);
-          background: rgba(255,255,255,0.09);
+          border-color: rgba(0,0,0,0.24);
+          background: rgba(0,0,0,0.03);
         }
 
         .glass-panel {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.09);
+          background: rgba(255,255,255,0.78);
+          border: 1px solid rgba(0,0,0,0.08);
           border-radius: 24px;
+          box-shadow: 0 18px 50px rgba(0,0,0,0.08);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
         }
 
         .error-box {
-          background: rgba(170,36,35,0.15);
-          border: 1px solid rgba(170,36,35,0.35);
+          background: rgba(170,36,35,0.08);
+          border: 1px solid rgba(170,36,35,0.28);
           border-radius: 10px;
           padding: 0.75rem 1rem;
-          color: #FF8080;
+          color: #8E1C1B;
           font-size: 0.85rem;
           margin-bottom: 1rem;
         }
@@ -304,7 +296,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
+          background-image: linear-gradient(135deg, #8E1C1B, #AA2423, #E24B4A);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -320,7 +312,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           content: '';
           flex: 1;
           height: 1px;
-          background: rgba(255,255,255,0.1);
+          background: rgba(0,0,0,0.1);
         }
 
         .mobile-menu-drawer {
@@ -328,8 +320,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           top: 64px;
           left: 0;
           right: 0;
-          background: rgba(10,10,11,0.97);
-          border-bottom: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.94);
+          border-bottom: 1px solid rgba(0,0,0,0.08);
           backdrop-filter: blur(20px);
           z-index: 998;
           padding: 1.25rem 1.5rem;
@@ -379,11 +371,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .speech-bubble {
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(255,255,255,0.82);
+          border: 1px solid rgba(0,0,0,0.08);
           border-radius: 20px;
           padding: 1rem 1.4rem;
-          color: #F0F0F0;
+          color: #1A1A1A;
           font-weight: 600;
           font-size: 0.95rem;
           position: relative;
@@ -398,7 +390,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           left: 50%;
           transform: translateX(-50%);
           border: 10px solid transparent;
-          border-top-color: rgba(255,255,255,0.08);
+          border-top-color: rgba(255,255,255,0.82);
           border-bottom: 0;
         }
         
@@ -408,7 +400,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           top: 1rem;
           white-space: nowrap;
           overflow: hidden;
-          border-right: 2px solid #F0F0F0;
+          border-right: 2px solid #1A1A1A;
           animation: typing 2.5s steps(35, end) forwards, blink 0.75s step-end infinite;
         }
         @keyframes typing {
@@ -417,7 +409,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
         @keyframes blink {
           from, to { border-color: transparent; }
-          50% { border-color: #F0F0F0; }
+          50% { border-color: #1A1A1A; }
         }
 
         @media (max-width: 768px) {
@@ -439,32 +431,33 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
       {/* Grid overlay */}
       <div style={{
         position: 'fixed', inset: 0,
-        backgroundImage: `linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)`,
+        backgroundImage: `linear-gradient(rgba(0,0,0,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.045) 1px, transparent 1px)`,
         backgroundSize: '60px 60px',
         pointerEvents: 'none', zIndex: 0,
       }} />
 
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       {isModal && (
-        <button onClick={onClose} style={{
-          position: 'absolute', top: 24, right: 24, background: 'rgba(255,255,255,0.1)', border: 'none',
-          color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', zIndex: 10000,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.2rem',
+        <button onClick={onClose} aria-label="Close" style={{
+          position: 'absolute', top: 24, right: 24, background: 'rgba(0,0,0,0.05)', border: '1px solid rgba(0,0,0,0.08)',
+          color: '#1A1A1A', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'background 0.2s'
         }}
-          onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.2)'}
-          onMouseLeave={(e) => e.target.style.background = 'rgba(255,255,255,0.1)'}
+          onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.1)'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(0,0,0,0.05)'}
         >
-          ✕
+          <X size={18} />
         </button>
       )}
 
       {!isModal && (
         <nav style={{
           position: 'relative', zIndex: 999,
-          background: scrolled ? 'rgba(10,10,11,0.9)' : 'transparent',
-          borderBottom: scrolled ? '1px solid rgba(255,255,255,0.07)' : 'none',
-          backdropFilter: scrolled ? 'blur(20px)' : 'none',
+          background: 'rgba(255,255,255,0.72)',
+          borderBottom: '1px solid rgba(0,0,0,0.08)',
+          backdropFilter: 'blur(18px)',
+          WebkitBackdropFilter: 'blur(18px)',
           transition: 'all 0.3s ease',
         }}>
           <div style={{
@@ -491,7 +484,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               {[0, 1, 2].map(i => (
                 <span key={i} style={{
                   display: 'block', width: 22, height: 2,
-                  background: '#fff', borderRadius: 2,
+                  background: '#1A1A1A', borderRadius: 2,
                   transition: 'all 0.3s ease',
                   transform: isMenuOpen
                     ? i === 0 ? 'rotate(45deg) translate(5px,5px)'
@@ -525,8 +518,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '45%',
-              background: 'linear-gradient(145deg, rgba(142,28,27,0.4), rgba(226, 75, 74, 0))',
-              borderRight: '1px solid rgba(255,255,255,0.08)',
+              background: 'linear-gradient(145deg, rgba(170,36,35,0.12), rgba(255,255,255,0))',
+              borderRight: '1px solid rgba(0,0,0,0.06)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
@@ -536,13 +529,14 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 300, height: 300, background: 'rgba(142, 28, 27, 0.8)', top: -60, left: -60 }} />
+            <Orb style={{ width: 300, height: 300, background: 'rgba(170,36,35,0.16)', top: -60, left: -60 }} />
             <Orb style={{ width: 200, height: 200, background: 'rgba(226, 75, 74, 0)', bottom: -40, right: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+              <BookOpen size={22} color="#AA2423" aria-hidden="true" />
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
-                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Welcome back! Ready to teach smarter? 📚</span>
-                <span className="typing-text">Welcome back! Ready to teach smarter? 📚</span>
+                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Welcome back! Ready to teach smarter?</span>
+                <span className="typing-text">Welcome back! Ready to teach smarter?</span>
               </div>
               <img
                 src={atlasMascot}
@@ -565,7 +559,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
                   Welcome Back to <span className="glow-text">ATLAS!</span>
                 </h1>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', margin: 0 }}>
+                <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.88rem', margin: 0 }}>
                   Sign in to your institution's platform.
                 </p>
               </div>
@@ -575,7 +569,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               {/* Form */}
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 <div>
-                  <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
+                  <label style={{ fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)', fontWeight: 600, letterSpacing: '0.05em', display: 'block', marginBottom: 6 }}>
                     EMAIL
                   </label>
                   <input
@@ -592,7 +586,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <label style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.45)', fontWeight: 600, letterSpacing: '0.05em' }}>
+                    <label style={{ fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)', fontWeight: 600, letterSpacing: '0.05em' }}>
                       PASSWORD
                     </label>
                     {isModal ? (
@@ -634,7 +628,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
               {/* Divider */}
               <div className="divider-line">
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.78rem', fontWeight: 600 }}>OR</span>
+                <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '0.78rem', fontWeight: 600 }}>OR</span>
               </div>
 
               {/* Google — rectangular GIS button, centered */}
@@ -652,7 +646,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               />
 
               {/* Sign Up */}
-              <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
+              <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(0,0,0,0.55)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
                 Don't have an account?{' '}
                 {isModal ? (
                   <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>

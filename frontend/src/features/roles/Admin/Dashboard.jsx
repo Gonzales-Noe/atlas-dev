@@ -7,12 +7,13 @@ import Alert from '@mui/material/Alert'
 import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
 import { fetchSetupStatus } from './academicApi'
+import { BookOpen, Hand, Users } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
 
 const secondaryActionSx = {
   color: 'var(--text-primary)',
-  background: 'rgba(255,255,255,0.06)',
-  border: '1px solid rgba(255,255,255,0.14)',
+  background: 'var(--shell-btn-bg)',
+  border: '1px solid var(--shell-btn-border)',
   borderRadius: 10,
   padding: '10px 16px',
   textDecoration: 'none',
@@ -36,7 +37,7 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <PageHeader
-        title={`Welcome, ${user?.name || 'Admin'} 👋`}
+        title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Welcome, {user?.name || 'Admin'} <Hand size={22} strokeWidth={2.25} aria-hidden="true" /></span>}
         subtitle="Institutional overview — manage your faculty and academic structure"
       />
 
@@ -68,8 +69,8 @@ export default function AdminDashboard() {
       </GlassCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon="👨‍🏫" accent="#E24B4A" />
-        <StatCard title="Active Courses" value={setup ? setup.course_count : '—'} icon="📚" accent="#60AAFF" />
+        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon={<Users size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Active Courses" value={setup ? setup.course_count : '—'} icon={<BookOpen size={18} color="#60AAFF" />} accent="#60AAFF" />
       </div>
     </AdminLayout>
   )

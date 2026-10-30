@@ -1,8 +1,10 @@
 /* ATLAS web service worker — enables installability + light offline shell. */
-const CACHE_NAME = 'atlas-web-v4'
+const CACHE_NAME = 'atlas-web-v5'
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',
+  '/favicon-red.svg',
+  '/icons/favicon-32.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
 ]

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import CircularProgress from '@mui/material/CircularProgress';
-import { Check, Circle, Eye, EyeOff } from 'lucide-react';
+import { Check, Circle, Eye, EyeOff, PartyPopper, School } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
@@ -655,7 +655,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             {success ? (
               <div className="form-enter" style={{ textAlign: 'center' }}>
                 <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.5rem' }} />
-                <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🎉</div>
+                <div style={{ marginBottom: '1rem', color: '#AA2423' }}><PartyPopper size={48} strokeWidth={1.5} aria-hidden="true" /></div>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 1rem' }}>
                   Application <span className="glow-text">Submitted!</span>
                 </h1>
@@ -841,9 +841,10 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             <Orb style={{ width: 200, height: 200, background: 'rgba(142, 28, 27, 0.5), rgba(226, 75, 74, 0)', bottom: -40, left: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
+              <School size={22} color="#AA2423" aria-hidden="true" />
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
-                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Let's get your institution set up! 🏫</span>
-                <span className="typing-text">Let's get your institution set up! 🏫</span>
+                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Let's get your institution set up!</span>
+                <span className="typing-text">Let's get your institution set up!</span>
               </div>
 
               <img

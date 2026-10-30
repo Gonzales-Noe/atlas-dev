@@ -32,7 +32,7 @@ import { extractApiError } from '../utils'
 // ── Constants ─────────────────────────────────────────────────────────────
 const MAROON       = '#AA2423'
 const MAROON_LIGHT = 'rgba(170,36,35,0.16)'
-const BG           = '#0F0F12'
+const BG           = 'var(--workspace-bg)'
 
 const STATUS_CFG = {
   queued:          { label: 'Queued',           color: '#607D8B' },
@@ -50,10 +50,10 @@ const ACTIVE_STATUSES = new Set(['queued', 'processing'])
 function SCard({ title, action, children }) {
   return (
     <Paper elevation={0}
-      sx={{ border: '1px solid rgba(255,255,255,0.09)', borderRadius: 2.5, mb: 2, overflow: 'hidden', bgcolor: 'rgba(255,255,255,0.04)' }}>
-      <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'rgba(255,255,255,0.05)', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center' }}>
+      sx={{ border: '1px solid var(--workspace-border)', borderRadius: 2.5, mb: 2, overflow: 'hidden', bgcolor: 'var(--workspace-card)' }}>
+      <Box sx={{ px: 2.5, py: 1.25, bgcolor: 'var(--workspace-card)', borderBottom: '1px solid var(--workspace-hover)', display: 'flex', alignItems: 'center' }}>
         <Typography variant="subtitle2"
-          sx={{ fontWeight: 700, color: '#F0F0F2', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+          sx={{ fontWeight: 700, color: 'var(--workspace-text)', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
           {title}
         </Typography>
         {action}
@@ -98,7 +98,7 @@ function FilePickerBtn({ label, file, accept, onChange, disabled }) {
         startIcon={<CloudUploadIcon sx={{ fontSize: '0.9rem !important' }} />}
         sx={{
           textTransform: 'none', fontSize: '0.75rem', borderRadius: 1.5,
-          borderColor: file ? MAROON : 'rgba(255,255,255,0.2)', color: file ? '#E24B4A' : 'rgba(255,255,255,0.55)',
+          borderColor: file ? MAROON : 'var(--workspace-hover)', color: file ? '#E24B4A' : 'var(--workspace-muted)',
           '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT },
         }}>
         {file ? file.name : label}
@@ -287,11 +287,11 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
   return (
     <Box>
       {/* Sub-section tabs */}
-      <Box sx={{ borderBottom: '2px solid rgba(255,255,255,0.08)', mb: 2.5 }}>
+      <Box sx={{ borderBottom: '2px solid var(--workspace-hover)', mb: 2.5 }}>
         <Tabs value={omrSub} onChange={(_, v) => setOmrSub(v)}
           sx={{
             minHeight: 38,
-            '& .MuiTab-root': { minHeight: 38, py: 0, fontSize: '0.78rem', textTransform: 'none', fontWeight: 500, color: 'rgba(255,255,255,0.5)' },
+            '& .MuiTab-root': { minHeight: 38, py: 0, fontSize: '0.78rem', textTransform: 'none', fontWeight: 500, color: 'var(--workspace-muted)' },
             '& .Mui-selected': { color: MAROON + ' !important', fontWeight: 700 },
             '& .MuiTabs-indicator': { bgcolor: MAROON, height: 2.5 },
           }}>
@@ -316,12 +316,12 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             {tplLoading && templates.length === 0
               ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} sx={{ color: MAROON }} /></Box>
               : templates.length === 0
-                ? <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center', py: 2 }}>No templates yet.</Typography>
+                ? <Typography variant="body2" sx={{ color: 'var(--workspace-faint)', textAlign: 'center', py: 2 }}>No templates yet.</Typography>
                 : <Stack spacing={1}>
                     {templates.map(t => (
                       <Box key={t.template_id}
-                        sx={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: 1.5, p: 1.25, bgcolor: 'rgba(255,255,255,0.03)' }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#F0F0F2' }}>{t.name}</Typography>
+                        sx={{ border: '1px solid var(--workspace-hover)', borderRadius: 1.5, p: 1.25, bgcolor: 'var(--workspace-card)' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--workspace-text)' }}>{t.name}</Typography>
                         <Box sx={{ display: 'flex', gap: 0.75, mt: 0.5, flexWrap: 'wrap' }}>
                           {t.form_code && <Chip label={t.form_code} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />}
                           {t.total_items != null && <Chip label={`${t.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem' }} />}
@@ -358,12 +358,12 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                 onChange={e => setTplForm(f => ({ ...f, confidence_threshold: e.target.value }))} />
               <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 0.5 }}>Template JSON *</Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--workspace-muted)', display: 'block', mb: 0.5 }}>Template JSON *</Typography>
                   <FilePickerBtn label="Choose template.json" file={tplFile} accept=".json"
                     onChange={setTplFile} disabled={tplSaving} />
                 </Box>
                 <Box>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 0.5 }}>Evaluation JSON *</Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--workspace-muted)', display: 'block', mb: 0.5 }}>Evaluation JSON *</Typography>
                   <FilePickerBtn label="Choose evaluation.json" file={evalFile} accept=".json"
                     onChange={setEvalFile} disabled={tplSaving} />
                 </Box>
@@ -393,22 +393,22 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             {jobsLoading && jobs.length === 0
               ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} sx={{ color: MAROON }} /></Box>
               : jobs.length === 0
-                ? <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center', py: 2 }}>No jobs yet.</Typography>
+                ? <Typography variant="body2" sx={{ color: 'var(--workspace-faint)', textAlign: 'center', py: 2 }}>No jobs yet.</Typography>
                 : <Stack spacing={1}>
                     {jobs.map(j => (
                       <Box key={j.job_id}
                         onClick={() => { setSelectedJobId(j.job_id); setOmrSub('results') }}
                         sx={{
-                          border: `1px solid ${selectedJobId === j.job_id ? MAROON : 'rgba(255,255,255,0.08)'}`,
+                          border: `1px solid ${selectedJobId === j.job_id ? MAROON : 'var(--workspace-hover)'}`,
                           borderRadius: 1.5, p: 1.25, cursor: 'pointer',
-                          bgcolor: selectedJobId === j.job_id ? MAROON_LIGHT : 'rgba(255,255,255,0.03)',
+                          bgcolor: selectedJobId === j.job_id ? MAROON_LIGHT : 'var(--workspace-card)',
                           '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT },
                           transition: 'all 0.15s',
                         }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
                           <StatusChip status={j.status} />
                           <Typography variant="caption"
-                            sx={{ color: 'rgba(255,255,255,0.55)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            sx={{ color: 'var(--workspace-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {j.job_id.slice(0, 8)}…
                           </Typography>
                           <Tooltip title="View Results">
@@ -417,10 +417,10 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                         </Box>
                         {ACTIVE_STATUSES.has(j.status) && (
                           <LinearProgress variant="determinate" value={j.progress_pct || 0}
-                            sx={{ height: 3, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.12)', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+                            sx={{ height: 3, borderRadius: 2, bgcolor: 'var(--workspace-border)', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
                         )}
                         <Box sx={{ display: 'flex', gap: 1, mt: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
+                          <Typography variant="caption" sx={{ color: 'var(--workspace-muted)' }}>
                             {j.processed_sheets ?? 0}/{j.total_sheets ?? 0} sheets
                           </Typography>
                           {j.flagged_sheets > 0 && (
@@ -462,7 +462,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                 }
               </LF>
               <Box>
-                <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mb: 0.5 }}>
+                <Typography variant="caption" sx={{ color: 'var(--workspace-muted)', display: 'block', mb: 0.5 }}>
                   Scan Bundle (ZIP, PDF, JPG, PNG) *
                 </Typography>
                 <FilePickerBtn label="Choose scan bundle" file={scanBundle}
@@ -500,7 +500,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             }>
             <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center' }}>
               <StatusChip status={selectedJob.status} />
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>
+              <Typography variant="caption" sx={{ color: 'var(--workspace-muted)' }}>
                 {selectedJob.processed_sheets ?? 0} / {selectedJob.total_sheets ?? 0} sheets
               </Typography>
               {selectedJob.flagged_sheets > 0 && (
@@ -514,7 +514,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             </Box>
             {ACTIVE_STATUSES.has(selectedJob.status) && (
               <LinearProgress variant="determinate" value={selectedJob.progress_pct || 0}
-                sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: 'rgba(255,255,255,0.12)', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+                sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: 'var(--workspace-border)', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
             )}
             {selectedJob.error_message && (
               <Alert severity="error" sx={{ mt: 1.25, py: 0.25, fontSize: '0.78rem' }}>
@@ -542,9 +542,9 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
               {flaggedOnly ? 'Flagged Only' : 'Show All'}
             </Button>
             {autoMapMsg && (
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)' }}>{autoMapMsg}</Typography>
+              <Typography variant="caption" sx={{ color: 'var(--workspace-muted)' }}>{autoMapMsg}</Typography>
             )}
-            <Typography variant="caption" sx={{ color: '#aaa', ml: 'auto' }}>
+            <Typography variant="caption" sx={{ color: 'var(--workspace-muted)', ml: 'auto' }}>
               {resultsTotal} result{resultsTotal !== 1 ? 's' : ''}
             </Typography>
           </Box>
@@ -554,7 +554,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             {resultsLoading
               ? <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}><CircularProgress size={24} sx={{ color: MAROON }} /></Box>
               : results.length === 0
-                ? <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center', py: 3 }}>
+                ? <Typography variant="body2" sx={{ color: 'var(--workspace-faint)', textAlign: 'center', py: 3 }}>
                     {selectedJob.status === 'failed'
                       ? 'Job failed — no results available.'
                       : ACTIVE_STATUSES.has(selectedJob.status)
@@ -564,21 +564,21 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                 : <Box sx={{ overflowX: 'auto' }}>
                     <table style={{ borderCollapse: 'collapse', fontSize: '0.82rem', width: '100%' }}>
                       <thead>
-                        <tr style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                        <tr style={{ backgroundColor: 'var(--workspace-card)' }}>
                           {['Sheet File', 'Student ID', 'Normalized', 'Score', 'Max', '%', 'Confidence', 'Flag'].map(h => (
-                            <th key={h} style={{ padding: '6px 10px', borderBottom: '2px solid rgba(255,255,255,0.1)', textAlign: 'left', color: '#F0F0F2', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                            <th key={h} style={{ padding: '6px 10px', borderBottom: '2px solid var(--workspace-border)', textAlign: 'left', color: 'var(--workspace-text)', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {results.map((r, i) => (
                           <tr key={r.result_id ?? i}
-                            style={{ backgroundColor: r.is_flagged ? 'rgba(255,159,10,0.12)' : (i % 2 === 0 ? 'rgba(255,255,255,0.03)' : 'transparent') }}>
-                            <td style={{ padding: '4px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#F0F0F2' }}>
+                            style={{ backgroundColor: r.is_flagged ? 'rgba(255,159,10,0.12)' : (i % 2 === 0 ? 'var(--workspace-card)' : 'transparent') }}>
+                            <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--workspace-border)', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--workspace-text)' }}>
                               <Tooltip title={r.sheet_filename || ''}><span>{r.sheet_filename}</span></Tooltip>
                             </td>
-                            <td style={{ padding: '4px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)', color: '#F0F0F2' }}>{r.student_identifier_raw}</td>
-                            <td style={{ padding: '4px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)', fontFamily: 'monospace', fontSize: '0.75rem', color: '#F0F0F2' }}>
+                            <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--workspace-border)', color: 'var(--workspace-text)' }}>{r.student_identifier_raw}</td>
+                            <td style={{ padding: '4px 10px', borderBottom: '1px solid var(--workspace-border)', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--workspace-text)' }}>
                               {r.student_identifier_normalized || '—'}
                             </td>
                             <td style={{ padding: '4px 10px', borderBottom: '1px solid #f0f0f0', textAlign: 'right' }}>{r.score_raw ?? '—'}</td>
@@ -609,7 +609,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
       )}
 
       {omrSub === 'results' && !selectedJobId && (
-        <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.45)', textAlign: 'center', mt: 5 }}>
+        <Typography variant="body2" sx={{ color: 'var(--workspace-faint)', textAlign: 'center', mt: 5 }}>
           Select a job from the Grading Jobs tab to view its results.
         </Typography>
       )}

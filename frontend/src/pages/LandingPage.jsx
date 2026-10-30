@@ -63,8 +63,8 @@ function GlassCard({ children, style, className = '' }) {
     <div
       className={`neon-border-glow ${className}`}
       style={{
-        background: 'rgba(255,255,255,0.04)',
-        border: '1px solid rgba(255,255,255,0.10)',
+        background: 'rgba(0,0,0,0.048)',
+        border: '1px solid rgba(0,0,0,0.12)',
         borderRadius: 20,
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
@@ -81,7 +81,7 @@ const PACKAGES = [
   {
     name: 'Starter',
     tagline: 'A private server and database to begin.',
-    color: 'rgba(142,28,27,0.25)',
+    color: 'rgba(142,28,27,0.08)',
     border: 'rgba(170,36,35,0.4)',
     glow: 'rgba(142,28,27,0.15)',
     features: [
@@ -95,7 +95,7 @@ const PACKAGES = [
   {
     name: 'Professional',
     tagline: 'A larger private deployment for the whole institution.',
-    color: 'rgba(142,28,27,0.35)',
+    color: 'rgba(142,28,27,0.12)',
     border: 'rgba(226,75,74,0.6)',
     glow: 'rgba(170,36,35,0.25)',
     badge: 'Recommended',
@@ -110,7 +110,7 @@ const PACKAGES = [
   {
     name: 'Custom',
     tagline: 'Capacity that grows as you do.',
-    color: 'rgba(110,18,18,0.25)',
+    color: 'rgba(110,18,18,0.08)',
     border: 'rgba(226,75,74,0.3)',
     glow: 'rgba(142,28,27,0.1)',
     features: [
@@ -336,10 +336,10 @@ export default function LandingPage() {
   const [pricingRef, pricingInView] = useInView()
 
   return (
-    <div ref={pageRef} style={{
+    <div ref={pageRef} className="atlas-landing" style={{
       minHeight: '100vh',
-      background: '#0A0A0B',
-      color: '#F0F0F0',
+      background: '#FFFFFF',
+      color: '#1A1A1A',
       fontFamily: '"Plus Jakarta Sans", "Inter", sans-serif',
       overflowX: 'hidden',
     }}>
@@ -368,8 +368,8 @@ export default function LandingPage() {
         }
         .atlas-btn-outline {
           background: transparent;
-          color: #F0F0F0;
-          border: 1px solid rgba(255,255,255,0.2);
+          color: #1A1A1A;
+          border: 1px solid rgba(0,0,0,0.14);
           border-radius: 12px;
           font-family: inherit;
           font-weight: 600;
@@ -377,12 +377,12 @@ export default function LandingPage() {
           transition: all 0.25s ease;
         }
         .atlas-btn-outline:hover {
-          border-color: rgba(255,255,255,0.5);
-          background: rgba(255,255,255,0.07);
+          border-color: rgba(17,17,17,0.58);
+          background: rgba(0,0,0,0.084);
         }
 
         .nav-link {
-          color: rgba(255,255,255,0.65);
+          color: rgba(17,17,17,0.73);
           text-decoration: none;
           font-size: 0.82rem;
           font-weight: 600;
@@ -395,15 +395,15 @@ export default function LandingPage() {
           padding: 4px 0;
         }
         .nav-link:hover, .nav-link.active {
-          color: #fff;
+          color: #1A1A1A;
         }
         .nav-link.active {
           border-bottom: 2px solid #AA2423;
         }
 
         .feature-card {
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.045);
+          border: 1px solid rgba(0,0,0,0.096);
           border-radius: 20px;
           padding: 2rem;
           transition: all 0.35s ease;
@@ -429,8 +429,8 @@ export default function LandingPage() {
         }
 
         .testimonial-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.09);
+          background: rgba(0,0,0,0.048);
+          border: 1px solid rgba(0,0,0,0.108);
           border-radius: 20px;
           padding: 2rem;
           transition: all 0.3s ease;
@@ -442,7 +442,7 @@ export default function LandingPage() {
         }
 
         .pricing-card {
-          background: rgba(255,255,255,0.03);
+          background: rgba(0,0,0,0.045);
           border-radius: 24px;
           padding: 2.5rem;
           transition: all 0.35s ease;
@@ -456,8 +456,8 @@ export default function LandingPage() {
         }
 
         .team-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.048);
+          border: 1px solid rgba(0,0,0,0.096);
           border-radius: 20px;
           padding: 1.5rem 1.5rem 2rem;
           text-align: center;
@@ -493,8 +493,8 @@ export default function LandingPage() {
         }
 
         .stat-card {
-          background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(0,0,0,0.048);
+          border: 1px solid rgba(0,0,0,0.096);
           border-radius: 16px;
           padding: 1.5rem;
           text-align: center;
@@ -519,8 +519,8 @@ export default function LandingPage() {
           top: 72px;
           left: 0;
           right: 0;
-          background: rgba(10,10,11,0.97);
-          border-bottom: 1px solid rgba(255,255,255,0.1);
+          background: #FFFFFF;
+          border-bottom: 1px solid rgba(0,0,0,0.12);
           backdrop-filter: blur(20px);
           z-index: 999;
           padding: 1.5rem;
@@ -645,11 +645,11 @@ export default function LandingPage() {
 
         .contact-input {
           width: 100%;
-          background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(0,0,0,0.06);
+          border: 1px solid rgba(0,0,0,0.14);
           border-radius: 12px;
           padding: 0.9rem 1.2rem;
-          color: #F0F0F0;
+          color: #1A1A1A;
           font-family: inherit;
           font-size: 0.95rem;
           outline: none;
@@ -661,7 +661,7 @@ export default function LandingPage() {
           border-color: rgba(170,36,35,0.6);
         }
         .contact-input::placeholder {
-          color: rgba(255,255,255,0.3);
+          color: rgba(17,17,17,0.38);
         }
         select.contact-input {
           appearance: none;
@@ -671,8 +671,8 @@ export default function LandingPage() {
           background-repeat: no-repeat;
         }
         .contact-input option {
-          background: #0A0A0B;
-          color: #F0F0F0;
+          background: #FFFFFF;
+          color: #1A1A1A;
         }
 
         .divider {
@@ -753,8 +753,11 @@ export default function LandingPage() {
         position: 'fixed',
         top: 0, left: 0, right: 0,
         zIndex: 1000,
+        background: 'rgba(255,255,255,0.72)',
+        borderBottom: '1px solid rgba(0,0,0,0.08)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
         transition: 'all 0.35s ease',
-       
       }}>
         <div style={{
           maxWidth: 1200,
@@ -806,12 +809,12 @@ export default function LandingPage() {
           <button
             className="hamburger"
             onClick={() => setMobileOpen(!mobileOpen)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', flexDirection: 'column', gap: 5 }}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1A1A1A', display: 'flex', flexDirection: 'column', gap: 5 }}
           >
             {[0,1,2].map(i => (
               <span key={i} style={{
                 display: 'block', width: 24, height: 2,
-                background: '#fff', borderRadius: 2,
+                background: '#1A1A1A', borderRadius: 2,
                 transition: 'all 0.3s ease',
                 transform: mobileOpen
                   ? i === 0 ? 'rotate(45deg) translate(5px,5px)'
@@ -855,7 +858,7 @@ export default function LandingPage() {
         {/* Grid overlay */}
         <div style={{
           position: 'absolute', inset: 0,
-          backgroundImage: `linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(0,0,0,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.045) 1px, transparent 1px)`,
           backgroundSize: '60px 60px',
           zIndex: 0,
         }} />
@@ -877,7 +880,7 @@ export default function LandingPage() {
 
             <p className="hero-subtitle" style={{
               fontSize: '1.2rem',
-              color: 'rgba(255,255,255,0.6)',
+              color: 'rgba(17,17,17,0.68)',
               lineHeight: 1.7,
               margin: '0 0 2rem',
               maxWidth: '100%',
@@ -906,12 +909,12 @@ export default function LandingPage() {
                 'Your own server and database',
               ].map((label) => (
                 <div key={label} style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  background: 'rgba(0,0,0,0.06)',
+                  border: '1px solid rgba(0,0,0,0.12)',
                   borderRadius: 100,
                   padding: '7px 12px',
                   fontSize: '0.78rem',
-                  color: 'rgba(255,255,255,0.6)',
+                  color: 'rgba(17,17,17,0.68)',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
@@ -943,13 +946,13 @@ export default function LandingPage() {
         </div>
 
         <div className="scroll-indicator">
-          <span style={{ fontSize: '0.7rem', letterSpacing: '0.1em', color: 'rgba(255,255,255,0.4)' }}>SCROLL</span>
-          <div style={{ width: 1, height: 40, background: 'linear-gradient(to bottom, rgba(255,255,255,0.3), transparent)' }} />
+          <span style={{ fontSize: '0.7rem', letterSpacing: '0.1em', color: 'rgba(17,17,17,0.48)' }}>SCROLL</span>
+          <div style={{ width: 1, height: 40, background: 'linear-gradient(to bottom, rgba(17,17,17,0.38), transparent)' }} />
         </div>
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────────── */}
-      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(142,28,27,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(142,28,27,0.06)', borderTop: '1px solid rgba(0,0,0,0.072)', borderBottom: '1px solid rgba(0,0,0,0.072)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
             {[
@@ -962,7 +965,7 @@ export default function LandingPage() {
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#E24B4A', lineHeight: 1.3 }}>
                   {title}
                 </div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.55rem', lineHeight: 1.5 }}>{label}</div>
+                <div style={{ color: 'rgba(17,17,17,0.58)', fontSize: '0.85rem', marginTop: '0.55rem', lineHeight: 1.5 }}>{label}</div>
               </div>
             ))}
           </div>
@@ -1000,8 +1003,8 @@ export default function LandingPage() {
                 }}>
                   <f.icon size={22} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
                 </div>
-                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#F0F0F0' }}>{f.title}</h3>
-                <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#1A1A1A' }}>{f.title}</h3>
+                <p style={{ color: 'rgba(17,17,17,0.63)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
               </div>
             ))}
           </div>
@@ -1009,7 +1012,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── TESTIMONIALS ────────────────────────────────────────────────────── */}
-      <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(0,0,0,0.045)', borderTop: '1px solid rgba(0,0,0,0.072)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
             <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
@@ -1031,7 +1034,7 @@ export default function LandingPage() {
                     <Star key={star} size={16} color="#E24B4A" fill="#E24B4A" aria-hidden="true" />
                   ))}
                 </div>
-                <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
+                <p style={{ color: 'rgba(17,17,17,0.78)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
                   "{t.quote}"
                 </p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -1045,8 +1048,8 @@ export default function LandingPage() {
                     {t.author[0]}
                   </div>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#F0F0F0' }}>{t.author}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{t.role}</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#1A1A1A' }}>{t.author}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'rgba(17,17,17,0.48)' }}>{t.role}</div>
                   </div>
                 </div>
               </div>
@@ -1065,7 +1068,7 @@ export default function LandingPage() {
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               A Private Deployment for Your Institution
             </h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', marginTop: '0.75rem', fontSize: '0.95rem', maxWidth: 720, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7 }}>
+            <p style={{ color: 'rgba(17,17,17,0.58)', marginTop: '0.75rem', fontSize: '0.95rem', maxWidth: 720, marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7 }}>
               Starter, Professional, or Custom. Setup, an annual license, and maintenance are quoted together.
             </p>
             <div className="divider" />
@@ -1094,10 +1097,10 @@ export default function LandingPage() {
                   <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#E24B4A', margin: '0 0 0.4rem' }}>
                     {plan.name}
                   </h3>
-                  <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
+                  <p style={{ color: 'rgba(17,17,17,0.63)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
                 </div>
 
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.15rem', marginBottom: '1.5rem', flex: 1 }}>
+                <div style={{ borderTop: '1px solid rgba(0,0,0,0.096)', paddingTop: '1.15rem', marginBottom: '1.5rem', flex: 1 }}>
                   {plan.features.map((feat) => (
                         <div key={feat} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
                           <span style={{
@@ -1109,7 +1112,7 @@ export default function LandingPage() {
                           }}>
                             <Check size={12} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
                           </span>
-                          <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
+                          <span style={{ color: 'rgba(17,17,17,0.83)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
                         </div>
                   ))}
                 </div>
@@ -1125,14 +1128,14 @@ export default function LandingPage() {
             ))}
           </div>
 
-          <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.45)', fontSize: '0.88rem', marginTop: '2.5rem', lineHeight: 1.7, maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
+          <p style={{ textAlign: 'center', color: 'rgba(17,17,17,0.53)', fontSize: '0.88rem', marginTop: '2.5rem', lineHeight: 1.7, maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
             Each school gets its own ATLAS. When you outgrow a package, that deployment expands with you.
           </p>
         </div>
       </section>
 
       {/* ── TEAM ────────────────────────────────────────────────────────────── */}
-      <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(0,0,0,0.072)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
             <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
@@ -1160,7 +1163,7 @@ export default function LandingPage() {
                 }}>
                   <img src={member.image} alt={member.name} width={800} height={1000} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
-                <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
+                <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#1A1A1A' }}>{member.name}</h3>
                 <p style={{ color: '#E24B4A', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
               </div>
             ))}
@@ -1169,7 +1172,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── CONTACT / CTA ───────────────────────────────────────────────────── */}
-      <section id="contact" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' }}>
+      <section id="contact" style={{ padding: '7rem 2rem', background: 'rgba(0,0,0,0.045)', borderTop: '1px solid rgba(0,0,0,0.072)', position: 'relative', overflow: 'hidden' }}>
         <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.15)', top: -100, right: -100 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
@@ -1180,7 +1183,7 @@ export default function LandingPage() {
                 Request an<br />
                 <span className="glow-text">Institutional Demo</span>
               </h2>
-              <p style={{ color: 'rgba(255,255,255,0.55)', lineHeight: 1.8, fontSize: '0.95rem', marginBottom: '2rem' }}>
+              <p style={{ color: 'rgba(17,17,17,0.63)', lineHeight: 1.8, fontSize: '0.95rem', marginBottom: '2rem' }}>
                 Tell us which package fits your institution: Starter, Professional, or Custom.
                 We size a private ATLAS deployment to that package, then expand it when you need more room.
               </p>
@@ -1202,8 +1205,8 @@ export default function LandingPage() {
                       <Icon size={18} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>{label}</div>
-                      <div style={{ fontSize: '0.92rem', color: '#F0F0F0' }}>{value}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(17,17,17,0.43)', marginBottom: 2 }}>{label}</div>
+                      <div style={{ fontSize: '0.92rem', color: '#1A1A1A' }}>{value}</div>
                     </div>
                   </div>
                 ))}
@@ -1212,7 +1215,7 @@ export default function LandingPage() {
 
             <GlassCard style={{ padding: '2.5rem' }}>
               <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', position: 'relative' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#F0F0F0' }}>Request a demo or quote</h3>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#1A1A1A' }}>Request a demo or quote</h3>
                 <input className="contact-input" name="name" value={contactForm.name} onChange={handleContactChange} placeholder="Your Name" maxLength={120} autoComplete="name" />
                 <input className="contact-input" name="email" type="email" value={contactForm.email} onChange={handleContactChange} placeholder="Institutional Email" maxLength={254} autoComplete="email" />
                 <input className="contact-input" name="institution" value={contactForm.institution} onChange={handleContactChange} placeholder="Institution Name" maxLength={200} autoComplete="organization" />
@@ -1260,19 +1263,19 @@ export default function LandingPage() {
 
       {/* ── FOOTER ──────────────────────────────────────────────────────────── */}
       <footer style={{
-        borderTop: '1px solid rgba(255,255,255,0.07)',
+        borderTop: '1px solid rgba(0,0,0,0.084)',
         padding: '2.5rem 2rem',
         background: '#060607',
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <img src={atlasLogo} alt="ATLAS" width={640} height={188} loading="lazy" decoding="async" style={{ height: 28, width: 'auto', objectFit: 'contain', display: 'block' }} />
-            <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
+            <span style={{ color: 'rgba(17,17,17,0.33)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
-            <Link to="/legal/privacy" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
-            <Link to="/legal/terms" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
-            <Link to="/contact" style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
+            <Link to="/legal/privacy" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link to="/legal/terms" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
+            <Link to="/contact" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
           </div>
         </div>
       </footer>

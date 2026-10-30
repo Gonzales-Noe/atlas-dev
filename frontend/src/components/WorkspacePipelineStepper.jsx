@@ -23,7 +23,7 @@ export const PIPELINE_STEPS = [
 
 function Connector({ filled }) {
   return (
-    <Box sx={{ flex: 1, minWidth: 10, height: 3, borderRadius: 99, mx: 0.25, bgcolor: 'rgba(255,255,255,0.10)', overflow: 'hidden', position: 'relative' }}>
+    <Box sx={{ flex: 1, minWidth: 10, height: 3, borderRadius: 99, mx: 0.25, bgcolor: 'var(--workspace-border)', overflow: 'hidden', position: 'relative' }}>
       <Box sx={{ position: 'absolute', inset: 0, background: filled ? '#AA2423' : 'transparent' }} />
     </Box>
   )
@@ -37,17 +37,17 @@ function StepNode({ step, index, active, done, locked, onSelect, compact }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
         sx={{ display: 'flex', alignItems: 'center', gap: 1.1, cursor: 'pointer', px: 1.5, py: 0.9, borderRadius: 2, bgcolor: active ? 'rgba(170,36,35,0.16)' : 'transparent' }}>
         <Box sx={{ position: 'relative', display: 'flex' }}>
-          <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: done ? '#AA2423' : 'rgba(255,255,255,0.07)', color: done ? '#fff' : '#aaa' }}>
+          <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: done ? '#AA2423' : 'var(--workspace-border)', color: done ? '#fff' : 'var(--workspace-muted)' }}>
             <StepIcon sx={{ fontSize: 19 }} />
           </Box>
-          <Box sx={{ position: 'absolute', right: -5, bottom: -4, bgcolor: '#0F0F12', borderRadius: '50%', display: 'flex' }}>
+          <Box sx={{ position: 'absolute', right: -5, bottom: -4, bgcolor: 'var(--workspace-bg)', borderRadius: '50%', display: 'flex' }}>
             {done ? <CheckCircleIcon sx={{ fontSize: 18, color: '#4ADE80' }} /> : locked ? <LockIcon sx={{ fontSize: 15, color: '#666' }} /> : <RadioButtonUncheckedIcon sx={{ fontSize: 16, color: '#555' }} />}
           </Box>
         </Box>
         {!compact && (
           <Box sx={{ textAlign: 'left' }}>
-            <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: '#888' }}>STEP {index + 1}</Typography>
-            <Typography sx={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff' }}>{step.label}</Typography>
+            <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--workspace-muted)' }}>STEP {index + 1}</Typography>
+            <Typography sx={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--workspace-text)' }}>{step.label}</Typography>
             <Typography sx={{ fontSize: '0.68rem', fontWeight: 700, color: done ? '#4ADE80' : '#666' }}>{done ? 'Done' : 'Not started'}</Typography>
           </Box>
         )}
@@ -75,10 +75,10 @@ export default function WorkspacePipelineStepper({ activeTab, isStepDone, onSele
         })}
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 1 }}>
-        <Box sx={{ flex: 1, height: 6, borderRadius: 99, bgcolor: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, height: 6, borderRadius: 99, bgcolor: 'var(--workspace-hover)', overflow: 'hidden' }}>
           <Box sx={{ height: '100%', width: pct + '%', background: '#AA2423' }} />
         </Box>
-        <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#999' }}>{done}/{total} complete</Typography>
+        <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--workspace-muted)' }}>{done}/{total} complete</Typography>
       </Box>
     </Box>
   )
