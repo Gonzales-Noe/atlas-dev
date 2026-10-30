@@ -318,15 +318,19 @@ def grouped_source_check_prompt(groups):
         "\n\n".join(blocks)
         + "\n\nFor each item decide one verdict:\n"
         "- supported: the passages already state the idea the keyed answer uses. "
-        "A new case of that same idea is supported. Do not require the passage to name the example. "
-        "If the passages say a poor medical interface can cause harm, a question about small touch targets on a hospital screen is supported. "
-        "If the passages say designs must follow WCAG and reduce digital exclusion, a question about light gray text on a white page failing inclusive design is supported.\n"
+        "A new situation that shows that same idea is supported. Do not require the passage to name the example. "
+        "If the passages say a poor medical interface can cause harm, small touch targets on a hospital screen are supported. "
+        "If the passages say designs must follow WCAG and reduce digital exclusion, light gray text on a white page is supported. "
+        "If the passages say people abandon frustrating products, a long terms page or a simpler workflow that removes that frustration is supported.\n"
         "- unsupported: the keyed answer depends on a named heuristic, scale, or standard the passages never name, "
         "such as Visibility of system status or the System Usability Scale. "
-        "Also unsupported when the answer's specific claim is a different idea, even if a broader word in the passages is related. "
-        "Safety in the passages does not support a privacy claim. "
-        "Adoption in the passages does not support onboarding, tutorial-skip behavior, or comfort with voice.\n"
+        "Also unsupported when the keyed answer's idea is different from the passages. "
+        "Privacy is different from physical hazards and cognitive overload. "
+        "Trust is different from abandoning a frustrating product, unless the passages already discuss trust. "
+        "Comfort with voice is different from adoption when the passages never discuss voice. "
+        "Skipping a tutorial is different from abandoning a frustrating product when the passages never discuss tutorials.\n"
         "- contradicted: those passages state the opposite of the keyed answer\n\n"
+        "Return one result for every item. Copy each item_id exactly.\n"
         'Return {"results": [{"item_id": "<id>", "verdict": "supported|unsupported|contradicted", '
         '"evidence": "<one sentence>"}]}'
     )
@@ -433,6 +437,29 @@ def parse_source_results(raw):
             'evidence': str(row.get('evidence') or '').strip(),
         })
     return parsed
+
+
+def align_verdict_ids(results, batches):
+    """Attach a verdict when the model returns the item number instead of its id."""
+    known = set()
+    by_number = {}
+    for batch in batches or []:
+        for item in batch.get('items') or []:
+            item_id = str(item.get('item_id') or '').strip()
+            number = str(item.get('item_number') or '').strip()
+            if item_id:
+                known.add(item_id)
+            if item_id and number:
+                by_number[number] = item_id
+    aligned = []
+    for row in results or []:
+        if not isinstance(row, dict):
+            continue
+        raw_id = str(row.get('item_id') or '').strip()
+        if raw_id not in known and raw_id in by_number:
+            row = {**row, 'item_id': by_number[raw_id]}
+        aligned.append(row)
+    return aligned
 
 
 def source_check_failure_message(error):

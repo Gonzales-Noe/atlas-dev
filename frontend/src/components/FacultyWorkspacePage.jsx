@@ -5071,6 +5071,26 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return Number(exam.totalItems || 0)
   }
 
+  function plannedBloomCounts(selectedTopics) {
+    const exam = getAssessmentBlueprint().selectedExam
+    const bloomKeys = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    const counts = Object.fromEntries(bloomKeys.map(key => [key, 0]))
+    if (!exam) return []
+    const selected = new Set((selectedTopics || []).map(topic => String(topic || '').trim().toLowerCase()))
+    for (const row of exam.topics || []) {
+      const name = String(row?.topic || row?.label || '').trim().toLowerCase()
+      if (selected.size > 0 && !selected.has(name)) continue
+      const bloom = row?.bloom_items || {}
+      for (const key of bloomKeys) counts[key] += Number(bloom?.[key]) || 0
+    }
+    return bloomKeys
+      .filter(key => counts[key] > 0)
+      .map(key => ({
+        level: key.charAt(0).toUpperCase() + key.slice(1),
+        count: counts[key],
+      }))
+  }
+
   async function handleAssessmentGenSubmit() {
     if (!course) return
     const blueprint = getAssessmentBlueprint()
@@ -5129,7 +5149,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           requested: planned,
           detail: data?.completed
             ? `${generated} of ${planned || generated} items ready`
-            : `Writing the next items after ${generated}…`,
+            : (data?.batch_bloom
+              ? `Wrote ${data.batch_bloom_count} ${data.batch_bloom}. Writing the next Bloom group…`
+              : `Writing the next items after ${generated}…`),
         })
         if (latestSummary?.assessment_id && generated > 0) {
           refreshAssessmentItems(latestSummary).catch(() => {})
@@ -9004,6 +9026,32 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </SectionCard>
             ) : (
               <Stack spacing={0.6}>
+                {(() => {
+                  const order = ['Remember', 'Understand', 'Apply', 'Analyze', 'Evaluate', 'Create']
+                  const counts = {}
+                  for (const item of assessmentDetail.items || []) {
+                    const level = String(item.bloom_level || '').trim()
+                    if (!level) continue
+                    counts[level] = (counts[level] || 0) + 1
+                  }
+                  const labels = [
+                    ...order.filter(level => counts[level]),
+                    ...Object.keys(counts).filter(level => !order.includes(level)),
+                  ]
+                  if (!labels.length) return null
+                  return (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, px: 0.25 }}>
+                      {labels.map(level => (
+                        <Chip
+                          key={level}
+                          size="small"
+                          label={`${level} ${counts[level]}`}
+                          sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700, height: 22, fontSize: '0.68rem' }}
+                        />
+                      ))}
+                    </Box>
+                  )
+                })()}
                 {(assessmentDetail.items || []).map(item => {
                   const isEditing = editingItemId === item.item_id
                   const draft = isEditing ? editingItemDraft : null
@@ -9299,8 +9347,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     {majorExams.length > 0 && (
                       <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.55)', display: 'block', mt: 0.75 }}>
                         {(() => {
-                          const allocated = Number(blueprint.totalItems || 0)
-                          return `${allocated} item${allocated === 1 ? '' : 's'} allocated by TOS`
+                          const allocated = plannedAssessmentItemCount(assessmentGenSelectedTopics)
+                          const blooms = plannedBloomCounts(assessmentGenSelectedTopics)
+                          const counts = blooms.map(row => `${row.level} ${row.count}`).join(' · ')
+                          const total = `${allocated} item${allocated === 1 ? '' : 's'} allocated by TOS`
+                          return counts ? `${total}. ${counts}.` : total
                         })()}
                       </Typography>
                     )}
