@@ -400,22 +400,12 @@ function PdfPreviewDialog({ title, url, onClose, onDownload }) {
         <VisibilityIcon sx={{ fontSize: 18, opacity: 0.7 }} />
         {title}
       </DialogTitle>
-      <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden' }}>
-        <object
-          data={url}
-          type="application/pdf"
-          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-        >
-          <Box sx={{ p: 3, textAlign: 'center' }}>
-            <Typography sx={{ fontSize: '0.85rem', color: MUTED, mb: 1.5 }}>
-              Your browser cannot display the PDF inline.
-            </Typography>
-            <Button variant="outlined" startIcon={<DownloadIcon />} onClick={onDownload}
-              sx={{ borderColor: MAROON, color: MAROON, textTransform: 'none', fontSize: '0.82rem' }}>
-              Download PDF instead
-            </Button>
-          </Box>
-        </object>
+      <DialogContent dividers sx={{ p: 0, height: 'calc(85vh - 130px)', minHeight: 400, overflow: 'hidden', bgcolor: '#fff' }}>
+        <iframe
+          title={title || 'Answer sheet'}
+          src={url}
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#fff' }}
+        />
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>

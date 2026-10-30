@@ -1567,7 +1567,7 @@ def bubble_sheet_generate_pdf(request, template_id):
 
     response = HttpResponse(pdf_bytes, content_type="application/pdf")
     safe_name = t.name.replace(" ", "_")[:60]
-    response["Content-Disposition"] = f'attachment; filename="bubble_sheet_{safe_name}.pdf"'
+    response["Content-Disposition"] = f'inline; filename="bubble_sheet_{safe_name}.pdf"'
     return response
 
 

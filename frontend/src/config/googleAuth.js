@@ -104,7 +104,7 @@ export async function mountGoogleSignInButton(container, {
   onCredential,
   onError,
   context = 'signin',
-  theme = 'filled_black',
+  theme = 'outline',
   width,
 } = {}) {
   if (!container) return () => {}

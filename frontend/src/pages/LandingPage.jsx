@@ -1265,17 +1265,17 @@ export default function LandingPage() {
       <footer style={{
         borderTop: '1px solid rgba(0,0,0,0.084)',
         padding: '2.5rem 2rem',
-        background: '#060607',
+        background: '#FFFFFF',
       }}>
         <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <img src={atlasLogo} alt="ATLAS" width={640} height={188} loading="lazy" decoding="async" style={{ height: 28, width: 'auto', objectFit: 'contain', display: 'block' }} />
-            <span style={{ color: 'rgba(17,17,17,0.33)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
+            <span style={{ color: 'rgba(17,17,17,0.55)', fontSize: '0.82rem' }}>© 2026 ATLAS. All rights reserved.</span>
           </div>
           <div style={{ display: 'flex', gap: '2rem' }}>
-            <Link to="/legal/privacy" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
-            <Link to="/legal/terms" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
-            <Link to="/contact" style={{ color: 'rgba(17,17,17,0.38)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
+            <Link to="/legal/privacy" style={{ color: 'rgba(17,17,17,0.62)', fontSize: '0.82rem', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link to="/legal/terms" style={{ color: 'rgba(17,17,17,0.62)', fontSize: '0.82rem', textDecoration: 'none' }}>Terms and Conditions</Link>
+            <Link to="/contact" style={{ color: 'rgba(17,17,17,0.62)', fontSize: '0.82rem', textDecoration: 'none' }}>Contact</Link>
           </div>
         </div>
       </footer>
