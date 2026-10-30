@@ -55,7 +55,7 @@ export default function LandingPage() {
               <Button
                 variant="contained"
                 onClick={handleGetStarted}
-                sx={{ background: '#15803D', '&:hover': { background: '#14532D' } }}
+                sx={{ background: '#8E1C1B', '&:hover': { background: '#6E1212' } }}
               >
                 Dashboard
               </Button>
@@ -64,14 +64,14 @@ export default function LandingPage() {
                 <Button
                   variant="outlined"
                   onClick={handleSignIn}
-                  sx={{ borderColor: '#15803D', color: '#15803D' }}
+                  sx={{ borderColor: '#8E1C1B', color: '#8E1C1B' }}
                 >
                   SIGN IN
                 </Button>
                 <Button
                   variant="contained"
                   onClick={() => navigate('/signup')}
-                  sx={{ background: '#15803D', '&:hover': { background: '#14532D' } }}
+                  sx={{ background: '#8E1C1B', '&:hover': { background: '#6E1212' } }}
                 >
                   SIGN UP
                 </Button>
@@ -95,12 +95,12 @@ export default function LandingPage() {
             size="large"
             onClick={handleGetStarted}
             sx={{
-              background: '#15803D',
+              background: '#8E1C1B',
               px: 4,
               py: 1.5,
               fontSize: '1rem',
               fontWeight: 600,
-              '&:hover': { background: '#14532D' },
+              '&:hover': { background: '#6E1212' },
             }}
           >
             Get Started
@@ -209,7 +209,7 @@ export default function LandingPage() {
                 <Card
                   sx={{
                     boxShadow: 'none',
-                    bgcolor: '#15803D',
+                    bgcolor: '#8E1C1B',
                     color: '#FFF',
                     textAlign: 'center',
                     p: 3,
@@ -260,7 +260,7 @@ export default function LandingPage() {
                   }}
                 >
                   <Typography sx={{ fontWeight: 700, mb: 1 }}>{member.name}</Typography>
-                  <Typography sx={{ color: '#15803D', fontSize: '0.9rem' }}>{member.title}</Typography>
+                  <Typography sx={{ color: '#8E1C1B', fontSize: '0.9rem' }}>{member.title}</Typography>
                 </Card>
               </Grid>
             ))}
@@ -272,12 +272,12 @@ export default function LandingPage() {
               size="large"
               onClick={() => navigate('/signup')}
               sx={{
-                background: '#15803D',
+                background: '#8E1C1B',
                 px: 4,
                 py: 1.5,
                 fontSize: '1rem',
                 fontWeight: 600,
-                '&:hover': { background: '#14532D' },
+                '&:hover': { background: '#6E1212' },
               }}
             >
               Sign Up

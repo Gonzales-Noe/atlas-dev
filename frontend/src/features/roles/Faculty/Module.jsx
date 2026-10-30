@@ -62,14 +62,14 @@ export default function FacultyModule() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Card sx={cardStyles}>
-              <CardHeader title="Create New Module" titleTypographyProps={{ fontWeight: 700 }} avatar={<ViewModuleIcon sx={{ color: '#15803D' }} />} />
+              <CardHeader title="Create New Module" titleTypographyProps={{ fontWeight: 700 }} avatar={<ViewModuleIcon sx={{ color: '#8E1C1B' }} />} />
               <CardContent>
                 <Stack spacing={2}>
                   <TextField label="Module Title" value={formState.title} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, title: e.target.value })} fullWidth size="small" />
                   <TextField label="Week" value={formState.week} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, week: e.target.value })} fullWidth size="small" />
                   <TextField label="Intended Outcome" value={formState.outcome} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, outcome: e.target.value })} fullWidth size="small" />
                   <TextField label="Summary" value={formState.summary} disabled={!isEnabled} onChange={(e) => setFormState({ ...formState, summary: e.target.value })} multiline rows={4} fullWidth size="small" />
-                  <Button variant="contained" disabled={!isEnabled || !formState.title} onClick={handleSubmit} sx={{ background: '#15803D', '&:hover': { background: '#14532D' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
+                  <Button variant="contained" disabled={!isEnabled || !formState.title} onClick={handleSubmit} sx={{ background: '#8E1C1B', '&:hover': { background: '#6E1212' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                     Add Module
                   </Button>
                 </Stack>

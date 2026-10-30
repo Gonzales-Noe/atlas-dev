@@ -79,7 +79,7 @@ function normalizeDocTypeLabel(value) {
 }
 
 const CAT_STYLE = {
-  CHED_Handbook: { bg: 'rgba(22,163,74,0.14)', border: 'rgba(22,163,74,0.35)', color: '#86EFAC' },
+  CHED_Handbook: { bg: 'rgba(170,36,35,0.14)', border: 'rgba(170,36,35,0.35)', color: '#E24B4A' },
   Syllabus:      { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
   Assessment:    { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
   Policy:        { bg: 'rgba(168,85,247,0.12)', border: 'rgba(168,85,247,0.3)', color: '#C084FC' },
@@ -279,7 +279,7 @@ export default function AdminKnowledgeBase() {
       {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px)', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon="📚" accent="#86EFAC" />
+        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon="📚" accent="#E24B4A" />
       </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
@@ -290,8 +290,8 @@ export default function AdminKnowledgeBase() {
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {categories.map(cat => (
               <button key={cat} onClick={() => setActiveCategory(cat)} style={{
-                background: activeCategory === cat ? 'linear-gradient(135deg,#15803D,#16A34A)' : 'rgba(255,255,255,0.05)',
-                border: `1px solid ${activeCategory === cat ? 'rgba(22,163,74,0.5)' : 'rgba(255,255,255,0.1)'}`,
+                background: activeCategory === cat ? 'linear-gradient(135deg,#8E1C1B,#AA2423)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${activeCategory === cat ? 'rgba(170,36,35,0.5)' : 'rgba(255,255,255,0.1)'}`,
                 borderRadius: 8, padding: '5px 13px',
                 color: activeCategory === cat ? '#fff' : 'rgba(255,255,255,0.5)',
                 fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer',
@@ -481,7 +481,7 @@ export default function AdminKnowledgeBase() {
                   sx={{
                     height: 10, borderRadius: 999,
                     backgroundColor: 'rgba(255,255,255,0.08)',
-                    '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(135deg,#15803D,#16A34A)' },
+                    '& .MuiLinearProgress-bar': { borderRadius: 999, background: 'linear-gradient(135deg,#8E1C1B,#AA2423)' },
                   }}
                 />
               </div>

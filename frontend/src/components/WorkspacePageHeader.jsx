@@ -18,7 +18,7 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
           <ArrowBackIcon fontSize="small" />
         </IconButton>
       </Tooltip>
-      <Box sx={{ width: 42, height: 42, borderRadius: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'linear-gradient(135deg, #14532D, #16A34A)', boxShadow: '0 4px 14px rgba(22,163,74,0.35)' }}>
+      <Box sx={{ width: 42, height: 42, borderRadius: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, background: 'linear-gradient(135deg, #6E1212, #AA2423)', boxShadow: '0 4px 14px rgba(170,36,35,0.35)' }}>
         <SchoolIcon sx={{ color: '#fff', fontSize: 22 }} />
       </Box>
       <Box sx={{ minWidth: 0, flex: '1 1 auto' }}>
@@ -27,7 +27,7 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
         </Typography>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mt: 0.3, minWidth: 0, flexWrap: 'wrap' }}>
           {course?.course_code && (
-            <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: '#86EFAC' }}>{course.course_code}</Typography>
+            <Typography sx={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: '#E24B4A' }}>{course.course_code}</Typography>
           )}
           <Typography sx={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)' }}>Now working on: {activeLabel}</Typography>
         </Box>
@@ -36,7 +36,7 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
         <span>
           <Button onClick={onToggleDone} disabled={Boolean(actionLoading)} size="small"
             startIcon={done ? <CheckCircleIcon fontSize="small" /> : <RadioButtonUncheckedIcon fontSize="small" />}
-            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: 2, px: 1.75, py: 0.9, flexShrink: 0, color: done ? '#fff' : '#86EFAC', bgcolor: done ? '#16A34A' : 'rgba(22,163,74,0.12)', border: '1px solid rgba(22,163,74,0.45)', '&:hover': { bgcolor: done ? '#14532D' : 'rgba(22,163,74,0.22)' } }}>
+            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.78rem', borderRadius: 2, px: 1.75, py: 0.9, flexShrink: 0, color: done ? '#fff' : '#E24B4A', bgcolor: done ? '#AA2423' : 'rgba(170,36,35,0.12)', border: '1px solid rgba(170,36,35,0.45)', '&:hover': { bgcolor: done ? '#6E1212' : 'rgba(170,36,35,0.22)' } }}>
             {done ? 'Approved' : 'Mark as Done'}
           </Button>
         </span>

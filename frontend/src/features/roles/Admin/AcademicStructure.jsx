@@ -229,7 +229,7 @@ export default function AdminAcademicStructure() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard title="Sections" value={loading ? '—' : structure.sections.length} icon="🧩" accent="#FFD60A" />
-        <StatCard title="Courses" value={loading ? '—' : structure.courses.length} icon="📚" accent="#86EFAC" />
+        <StatCard title="Courses" value={loading ? '—' : structure.courses.length} icon="📚" accent="#E24B4A" />
         <StatCard title="Pending requests" value={loading ? '—' : pendingRequests.length} icon="✉️" accent="#60AAFF" />
       </div>
 
@@ -341,7 +341,7 @@ export default function AdminAcademicStructure() {
                                 <IconButton aria-label={`Delete section ${section.code}`} size="small"
                                   disabled={saving}
                                   onClick={() => run(() => deleteSection(section.section_id), 'Section removed.')}
-                                  sx={{ color: '#86EFAC' }}>
+                                  sx={{ color: '#E24B4A' }}>
                                   <DeleteOutlinedIcon fontSize="small" />
                                 </IconButton>
                               </TableCell>
@@ -439,7 +439,7 @@ export default function AdminAcademicStructure() {
                                   sx={{ color: 'var(--text-secondary)' }}><EditIcon fontSize="small" /></IconButton>
                                 <IconButton aria-label={`Delete course ${course.course_code}`} size="small" disabled={saving}
                                   onClick={() => run(() => deleteCourse(course.course_id), 'Course removed.')}
-                                  sx={{ color: '#86EFAC' }}><DeleteOutlinedIcon fontSize="small" /></IconButton>
+                                  sx={{ color: '#E24B4A' }}><DeleteOutlinedIcon fontSize="small" /></IconButton>
                               </TableCell>
                             </TableRow>
                           ))}

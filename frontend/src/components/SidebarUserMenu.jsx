@@ -45,10 +45,10 @@ const PROFILE_FIELD_SX = {
     bgcolor: '#111318',
     '& fieldset': { borderColor: 'rgba(255,255,255,0.12)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
-    '&.Mui-focused fieldset': { borderColor: '#16A34A' },
+    '&.Mui-focused fieldset': { borderColor: '#AA2423' },
   },
   '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.58)' },
-  '& .MuiInputLabel-root.Mui-focused': { color: '#86EFAC' },
+  '& .MuiInputLabel-root.Mui-focused': { color: '#E24B4A' },
   '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.48)' },
 }
 
@@ -225,7 +225,7 @@ export default function SidebarUserMenu({
         {/* Avatar */}
         <div style={{
           width: 32, height: 32, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #15803D, #16A34A)',
+          background: 'linear-gradient(135deg, #8E1C1B, #AA2423)',
           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
           fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
         }}>
@@ -331,7 +331,7 @@ export default function SidebarUserMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
                 <div style={{
                   width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                  background: 'linear-gradient(135deg, #15803D, #16A34A)',
+                  background: 'linear-gradient(135deg, #8E1C1B, #AA2423)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#fff', fontWeight: 800, fontSize: '1.1rem',
                 }}>
@@ -346,7 +346,7 @@ export default function SidebarUserMenu({
                   <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.58)', overflowWrap: 'anywhere' }}>
                     {user?.email || 'No email available'}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#86EFAC' }}>{metaLabel}</Typography>
+                  <Typography variant="caption" sx={{ color: '#E24B4A' }}>{metaLabel}</Typography>
                 </div>
               </div>
 
@@ -383,7 +383,7 @@ export default function SidebarUserMenu({
                   variant="outlined"
                   startIcon={<KeyRound size={16} />}
                   onClick={() => setChangePasswordOpen(true)}
-                  sx={{ borderColor: 'var(--shell-btn-border)', color: 'var(--text-primary)', textTransform: 'none', '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: 'rgba(22,163,74,0.08)' } }}
+                  sx={{ borderColor: 'var(--shell-btn-border)', color: 'var(--text-primary)', textTransform: 'none', '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: 'rgba(170,36,35,0.08)' } }}
                 >
                   Change password
                 </Button>
@@ -502,7 +502,7 @@ export default function SidebarUserMenu({
                 variant="contained"
                 disabled={profileSaving}
                 startIcon={profileSaving ? <CircularProgress size={14} color="inherit" /> : null}
-                sx={{ bgcolor: '#15803D', '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontWeight: 700 }}
+                sx={{ bgcolor: '#8E1C1B', '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 700 }}
               >
                 {profileSaving ? 'Saving…' : 'Save Profile'}
               </Button>
@@ -529,8 +529,8 @@ export default function SidebarUserMenu({
                       checked={themePreference === 'light'}
                       onChange={handleThemePreferenceChange}
                       sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: '#86EFAC' },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#15803D' },
+                        '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
                       }}
                     />
                   )}
@@ -547,8 +547,8 @@ export default function SidebarUserMenu({
                     onChange={handleNotificationPreferenceChange}
                     disabled={notificationPreferenceBusy || typeof window === 'undefined' || !('Notification' in window)}
                     sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#86EFAC' },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#15803D' },
+                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
                     }}
                   />
                 )}
@@ -572,8 +572,8 @@ export default function SidebarUserMenu({
                     onChange={event => onSidebarCollapsedChange?.(event.target.checked)}
                     disabled={isMobile || !onSidebarCollapsedChange}
                     sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#86EFAC' },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#15803D' },
+                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
                     }}
                   />
                 )}

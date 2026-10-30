@@ -81,9 +81,9 @@ const PACKAGES = [
   {
     name: 'Starter',
     tagline: 'A private server and database to begin.',
-    color: 'rgba(21,128,61,0.25)',
-    border: 'rgba(22,163,74,0.4)',
-    glow: 'rgba(21,128,61,0.15)',
+    color: 'rgba(142,28,27,0.25)',
+    border: 'rgba(170,36,35,0.4)',
+    glow: 'rgba(142,28,27,0.15)',
     features: [
       'Syllabus, modules, and assessments',
       'OMR scanning',
@@ -95,9 +95,9 @@ const PACKAGES = [
   {
     name: 'Professional',
     tagline: 'A larger private deployment for the whole institution.',
-    color: 'rgba(21,128,61,0.35)',
-    border: 'rgba(134,239,172,0.6)',
-    glow: 'rgba(22,163,74,0.25)',
+    color: 'rgba(142,28,27,0.35)',
+    border: 'rgba(226,75,74,0.6)',
+    glow: 'rgba(170,36,35,0.25)',
     badge: 'Recommended',
     features: [
       'A larger private server and database',
@@ -110,9 +110,9 @@ const PACKAGES = [
   {
     name: 'Custom',
     tagline: 'Capacity that grows as you do.',
-    color: 'rgba(20,83,45,0.2)',
-    border: 'rgba(134,239,172,0.3)',
-    glow: 'rgba(21,128,61,0.1)',
+    color: 'rgba(110,18,18,0.25)',
+    border: 'rgba(226,75,74,0.3)',
+    glow: 'rgba(142,28,27,0.1)',
     features: [
       'Servers and databases added as you grow',
       'More faculty added when you need them',
@@ -128,37 +128,37 @@ const FEATURES = [
     icon: GraduationCap,
     title: 'Set Up Your Course',
     desc: 'Input your course title, program outcomes, credit units, and intended students. ATLAS ingests and configures everything it needs to build around your specific course.',
-    accent: 'rgba(21,128,61,0.3)',
+    accent: 'rgba(142,28,27,0.3)',
   },
   {
     icon: ClipboardList,
     title: 'Generate Your Syllabus & Modules',
     desc: 'In minutes, ATLAS produces a complete week-by-week, CHED OBE-compliant structure — all grounded in your course materials, not generic templates.',
-    accent: 'rgba(21,128,61,0.3)',
+    accent: 'rgba(142,28,27,0.3)',
   },
   {
     icon: FileCheck,
     title: 'Build Your Assessments',
     desc: "Generate ILO-mapped exams, then scan bubble sheets on ATLAS Mobile. Every item is tagged by Bloom's Taxonomy level and comes with an answer key or essay rubric.",
-    accent: 'rgba(20,83,45,0.3)',
+    accent: 'rgba(110,18,18,0.3)',
   },
   {
     icon: BarChart3,
     title: 'Descriptive Analytics',
     desc: 'See which learning outcomes a course, college, or campus is struggling with. Reports stay on your deployment and sit beside live grading, so login and scoring stay responsive.',
-    accent: 'rgba(22,163,74,0.3)',
+    accent: 'rgba(170,36,35,0.3)',
   },
   {
     icon: LayoutDashboard,
     title: 'Admin Dashboard',
     desc: 'Provision faculty accounts, monitor institutional performance, and generate compliance reports — all from a unified dashboard built for academic leaders.',
-    accent: 'rgba(21,128,61,0.3)',
+    accent: 'rgba(142,28,27,0.3)',
   },
   {
     icon: Server,
     title: 'Private Deployment',
     desc: 'Each institution receives its own server, database, and web address. When more faculty or another campus needs access, that deployment is enlarged. Your data stays on your system.',
-    accent: 'rgba(134,239,172,0.3)',
+    accent: 'rgba(226,75,74,0.3)',
   },
 ]
 
@@ -351,7 +351,7 @@ export default function LandingPage() {
         html { scroll-behavior: smooth; }
 
         .atlas-btn-primary {
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -363,8 +363,8 @@ export default function LandingPage() {
         }
         .atlas-btn-primary:hover {
           transform: translateY(-2px);
-          box-shadow: 0 8px 32px rgba(21,128,61,0.5);
-          background: linear-gradient(135deg, #14532D, #16A34A);
+          box-shadow: 0 8px 32px rgba(142,28,27,0.5);
+          background: linear-gradient(135deg, #6E1212, #AA2423);
         }
         .atlas-btn-outline {
           background: transparent;
@@ -398,7 +398,7 @@ export default function LandingPage() {
           color: #fff;
         }
         .nav-link.active {
-          border-bottom: 2px solid #16A34A;
+          border-bottom: 2px solid #AA2423;
         }
 
         .feature-card {
@@ -417,12 +417,12 @@ export default function LandingPage() {
           border-radius: 20px;
           opacity: 0;
           transition: opacity 0.35s ease;
-          background: linear-gradient(135deg, rgba(21,128,61,0.12), transparent);
+          background: linear-gradient(135deg, rgba(142,28,27,0.12), transparent);
         }
         .feature-card:hover {
-          border-color: rgba(22,163,74,0.4);
+          border-color: rgba(170,36,35,0.4);
           transform: translateY(-4px);
-          box-shadow: 0 20px 60px rgba(21,128,61,0.15);
+          box-shadow: 0 20px 60px rgba(142,28,27,0.15);
         }
         .feature-card:hover::before {
           opacity: 1;
@@ -436,8 +436,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .testimonial-card:hover {
-          border-color: rgba(22,163,74,0.35);
-          background: rgba(21,128,61,0.08);
+          border-color: rgba(170,36,35,0.35);
+          background: rgba(142,28,27,0.08);
           transform: translateY(-3px);
         }
 
@@ -452,7 +452,7 @@ export default function LandingPage() {
           transform: translateY(-6px);
         }
         .pricing-card.popular {
-          background: rgba(21,128,61,0.15);
+          background: rgba(142,28,27,0.15);
         }
 
         .team-card {
@@ -464,8 +464,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .team-card:hover {
-          border-color: rgba(22,163,74,0.4);
-          background: rgba(21,128,61,0.08);
+          border-color: rgba(170,36,35,0.4);
+          background: rgba(142,28,27,0.08);
           transform: translateY(-4px);
         }
 
@@ -486,7 +486,7 @@ export default function LandingPage() {
         .fade-up:nth-child(6) { transition-delay: 0.5s; }
 
         .glow-text {
-          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
+          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -501,8 +501,8 @@ export default function LandingPage() {
           transition: all 0.3s ease;
         }
         .stat-card:hover {
-          border-color: rgba(22,163,74,0.4);
-          background: rgba(21,128,61,0.08);
+          border-color: rgba(170,36,35,0.4);
+          background: rgba(142,28,27,0.08);
         }
 
         .contact-honeypot {
@@ -587,20 +587,20 @@ export default function LandingPage() {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          background: rgba(22,163,74,0.15);
-          border: 1px solid rgba(22,163,74,0.35);
+          background: rgba(170,36,35,0.15);
+          border: 1px solid rgba(170,36,35,0.35);
           border-radius: 100px;
           padding: 6px 16px;
           font-size: 0.78rem;
           font-weight: 600;
-          color: #86EFAC;
+          color: #E24B4A;
           letter-spacing: 0.05em;
           margin-bottom: 1.5rem;
           animation: badge-pulse 2.5s ease-in-out infinite;
         }
         @keyframes badge-pulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.25); }
-          50% { box-shadow: 0 0 0 8px rgba(22,163,74,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(170,36,35,0.25); }
+          50% { box-shadow: 0 0 0 8px rgba(170,36,35,0); }
         }
 
         .hero-cta-group {
@@ -633,7 +633,7 @@ export default function LandingPage() {
           top: -12px;
           left: 50%;
           transform: translateX(-50%);
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: white;
           font-size: 0.72rem;
           font-weight: 700;
@@ -658,14 +658,14 @@ export default function LandingPage() {
           resize: none;
         }
         .contact-input:focus {
-          border-color: rgba(22,163,74,0.6);
+          border-color: rgba(170,36,35,0.6);
         }
         .contact-input::placeholder {
           color: rgba(255,255,255,0.3);
         }
         select.contact-input {
           appearance: none;
-          background-image: linear-gradient(45deg, transparent 50%, rgba(134,239,172,0.8) 50%), linear-gradient(135deg, rgba(134,239,172,0.8) 50%, transparent 50%);
+          background-image: linear-gradient(45deg, transparent 50%, rgba(226,75,74,0.8) 50%), linear-gradient(135deg, rgba(226,75,74,0.8) 50%, transparent 50%);
           background-position: calc(100% - 18px) 50%, calc(100% - 12px) 50%;
           background-size: 6px 6px, 6px 6px;
           background-repeat: no-repeat;
@@ -678,7 +678,7 @@ export default function LandingPage() {
         .divider {
           width: 60px;
           height: 3px;
-          background: linear-gradient(90deg, #15803D, #16A34A);
+          background: linear-gradient(90deg, #8E1C1B, #AA2423);
           border-radius: 3px;
           margin: 1rem auto 0;
         }
@@ -694,13 +694,13 @@ export default function LandingPage() {
           padding: 2px; /* Border thickness */
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.8) 12.5%,
-            rgba(21, 128, 61, 0.8) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.8) 62.5%,
-            rgba(21, 128, 61, 0.8) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.8) 12.5%,
+            rgba(142, 28, 27, 0.8) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.8) 62.5%,
+            rgba(142, 28, 27, 0.8) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -725,13 +725,13 @@ export default function LandingPage() {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.5) 12.5%,
-            rgba(21, 128, 61, 0.5) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.5) 62.5%,
-            rgba(21, 128, 61, 0.5) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.5) 12.5%,
+            rgba(142, 28, 27, 0.5) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.5) 62.5%,
+            rgba(142, 28, 27, 0.5) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -848,9 +848,9 @@ export default function LandingPage() {
       <section id="home" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', paddingTop: 72 }}>
 
         {/* Background orbs */}
-        <Orb style={{ width: 600, height: 600, background: 'rgba(21,128,61,0.18)', top: -100, left: -150 }} />
-        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.12)', bottom: -100, right: -100 }} />
-        <Orb style={{ width: 300, height: 300, background: 'rgba(20,83,45,0.2)', top: '40%', left: '60%' }} />
+        <Orb style={{ width: 600, height: 600, background: 'rgba(142,28,27,0.18)', top: -100, left: -150 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.12)', bottom: -100, right: -100 }} />
+        <Orb style={{ width: 300, height: 300, background: 'rgba(110,18,18,0.2)', top: '40%', left: '60%' }} />
 
         {/* Grid overlay */}
         <div style={{
@@ -916,7 +916,7 @@ export default function LandingPage() {
                   alignItems: 'center',
                   gap: 6,
                 }}>
-                  <Check size={14} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
+                  <Check size={14} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
                   {label}
                 </div>
               ))}
@@ -935,7 +935,7 @@ export default function LandingPage() {
                 width: '100%',
                 maxWidth: 360,
                 display: 'block',
-                filter: 'drop-shadow(0 20px 40px rgba(21,128,61,0.25))',
+                filter: 'drop-shadow(0 20px 40px rgba(142,28,27,0.25))',
                 transform: 'translateX(0)'
               }}
             />
@@ -949,7 +949,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── STATS ───────────────────────────────────────────────────────────── */}
-      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(21,128,61,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <section ref={statsRef} style={{ padding: '4rem 2rem', background: 'rgba(142,28,27,0.06)', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
             {[
@@ -959,7 +959,7 @@ export default function LandingPage() {
               { title: 'Sized to you', label: 'More faculty or another campus expands your deployment' },
             ].map(({ title, label }, i) => (
               <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#86EFAC', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#E24B4A', lineHeight: 1.3 }}>
                   {title}
                 </div>
                 <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.85rem', marginTop: '0.55rem', lineHeight: 1.5 }}>{label}</div>
@@ -971,11 +971,11 @@ export default function LandingPage() {
 
       {/* ── FEATURES ────────────────────────────────────────────────────────── */}
       <section id="features" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.1)', top: '10%', right: -150 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.1)', top: '10%', right: -150 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
+            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
               Everything Your Course Needs <br />
               <span className="glow-text">to Teach Smarter</span>
@@ -993,12 +993,12 @@ export default function LandingPage() {
                 <div style={{
                   width: 52, height: 52,
                   background: f.accent,
-                  border: '1px solid rgba(22,163,74,0.25)',
+                  border: '1px solid rgba(170,36,35,0.25)',
                   borderRadius: 14,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   marginBottom: '1.2rem',
                 }}>
-                  <f.icon size={22} color="#86EFAC" strokeWidth={1.75} aria-hidden="true" />
+                  <f.icon size={22} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
                 </div>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#F0F0F0' }}>{f.title}</h3>
                 <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
@@ -1012,7 +1012,7 @@ export default function LandingPage() {
       <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
+            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               What Educators Are Saying
             </h2>
@@ -1028,7 +1028,7 @@ export default function LandingPage() {
               <div key={i} className={`testimonial-card fade-up neon-border-glow ${testimonialsInView ? 'visible' : ''}`}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: '1rem' }} aria-label={`${t.stars} stars`}>
                   {Array.from({ length: t.stars }, (_, star) => (
-                    <Star key={star} size={16} color="#86EFAC" fill="#86EFAC" aria-hidden="true" />
+                    <Star key={star} size={16} color="#E24B4A" fill="#E24B4A" aria-hidden="true" />
                   ))}
                 </div>
                 <p style={{ color: 'rgba(255,255,255,0.7)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
@@ -1037,10 +1037,10 @@ export default function LandingPage() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: '50%',
-                    background: 'rgba(22,163,74,0.25)',
-                    border: '1px solid rgba(22,163,74,0.4)',
+                    background: 'rgba(170,36,35,0.25)',
+                    border: '1px solid rgba(170,36,35,0.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.9rem', color: '#86EFAC', fontWeight: 700,
+                    fontSize: '0.9rem', color: '#E24B4A', fontWeight: 700,
                   }}>
                     {t.author[0]}
                   </div>
@@ -1057,11 +1057,11 @@ export default function LandingPage() {
 
       {/* ── PRICING ─────────────────────────────────────────────────────────── */}
       <section id="pricing" style={{ padding: '7rem 2rem', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 600, height: 600, background: 'rgba(21,128,61,0.12)', bottom: -200, left: -150 }} />
+        <Orb style={{ width: 600, height: 600, background: 'rgba(142,28,27,0.12)', bottom: -200, left: -150 }} />
 
         <div style={{ maxWidth: 1180, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PACKAGES</p>
+            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PACKAGES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               A Private Deployment for Your Institution
             </h2>
@@ -1091,7 +1091,7 @@ export default function LandingPage() {
                 {plan.badge && <div className="popular-badge">{plan.badge}</div>}
 
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#86EFAC', margin: '0 0 0.4rem' }}>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#E24B4A', margin: '0 0 0.4rem' }}>
                     {plan.name}
                   </h3>
                   <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
@@ -1102,12 +1102,12 @@ export default function LandingPage() {
                         <div key={feat} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
                           <span style={{
                             width: 20, height: 20, borderRadius: '50%',
-                            background: 'rgba(22,163,74,0.2)',
-                            border: '1px solid rgba(22,163,74,0.4)',
+                            background: 'rgba(170,36,35,0.2)',
+                            border: '1px solid rgba(170,36,35,0.4)',
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             marginRight: 10, flexShrink: 0, marginTop: 1,
                           }}>
-                            <Check size={12} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
+                            <Check size={12} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
                           </span>
                           <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
                         </div>
@@ -1135,7 +1135,7 @@ export default function LandingPage() {
       <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
+            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               Built by Students.<br />Made for Teachers.
             </h2>
@@ -1152,8 +1152,8 @@ export default function LandingPage() {
                 <div style={{
                   width: '100%', height: 280,
                   borderRadius: 16,
-                  background: 'rgba(22,163,74,0.1)',
-                  border: '1px solid rgba(22,163,74,0.2)',
+                  background: 'rgba(170,36,35,0.1)',
+                  border: '1px solid rgba(170,36,35,0.2)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   margin: '0 auto 1.5rem',
                   overflow: 'hidden',
@@ -1161,7 +1161,7 @@ export default function LandingPage() {
                   <img src={member.image} alt={member.name} width={800} height={1000} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
                 <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#F0F0F0' }}>{member.name}</h3>
-                <p style={{ color: '#86EFAC', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
+                <p style={{ color: '#E24B4A', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
               </div>
             ))}
           </div>
@@ -1170,12 +1170,12 @@ export default function LandingPage() {
 
       {/* ── CONTACT / CTA ───────────────────────────────────────────────────── */}
       <section id="contact" style={{ padding: '7rem 2rem', background: 'rgba(255,255,255,0.015)', borderTop: '1px solid rgba(255,255,255,0.06)', position: 'relative', overflow: 'hidden' }}>
-        <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -100, right: -100 }} />
+        <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.15)', top: -100, right: -100 }} />
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div className="contact-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
             <div>
-              <p style={{ color: '#86EFAC', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
+              <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
               <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
                 Request an<br />
                 <span className="glow-text">Institutional Demo</span>
@@ -1194,12 +1194,12 @@ export default function LandingPage() {
                   <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     <div style={{
                       width: 40, height: 40, borderRadius: 10,
-                      background: 'rgba(22,163,74,0.15)',
-                      border: '1px solid rgba(22,163,74,0.3)',
+                      background: 'rgba(170,36,35,0.15)',
+                      border: '1px solid rgba(170,36,35,0.3)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                     }}>
-                      <Icon size={18} color="#86EFAC" strokeWidth={1.75} aria-hidden="true" />
+                      <Icon size={18} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
                     </div>
                     <div>
                       <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>{label}</div>
@@ -1236,7 +1236,7 @@ export default function LandingPage() {
                       ? '1px solid rgba(88, 204, 135, 0.5)'
                       : '1px solid rgba(239, 68, 68, 0.5)',
                     background: contactStatus.type === 'success'
-                      ? 'rgba(22,163,74,0.12)'
+                      ? 'rgba(170,36,35,0.12)'
                       : 'rgba(239, 68, 68, 0.12)',
                     color: contactStatus.type === 'success' ? '#c9f7d6' : '#ffd1d1',
                     display: 'flex',
@@ -1244,7 +1244,7 @@ export default function LandingPage() {
                     gap: 8,
                   }}>
                     {contactStatus.type === 'success'
-                      ? <Check size={16} color="#86EFAC" strokeWidth={2.5} aria-hidden="true" />
+                      ? <Check size={16} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
                       : <span style={{ fontSize: '1rem' }}>!</span>}
                     <span>{contactStatus.message}</span>
                   </div>

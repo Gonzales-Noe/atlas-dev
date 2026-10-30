@@ -843,7 +843,7 @@ export default function SyllabusFormat() {
               Default name: {labelEditor.blueprintLabel}
               {' · '}
               <Box component="button" type="button" onClick={resetLabel}
-                sx={{ background: 'none', border: 0, p: 0, color: '#86EFAC', cursor: 'pointer', fontSize: 'inherit' }}>
+                sx={{ background: 'none', border: 0, p: 0, color: '#E24B4A', cursor: 'pointer', fontSize: 'inherit' }}>
                 Restore
               </Box>
             </Typography>
@@ -876,19 +876,19 @@ export default function SyllabusFormat() {
           p: 1.25,
           borderRadius: 2,
           border: '1px solid',
-          borderColor: isActive ? 'rgba(134,239,172,0.55)' : 'var(--border-color)',
-          bgcolor: isActive ? 'rgba(21,128,61,0.14)' : 'transparent',
+          borderColor: isActive ? 'rgba(226,75,74,0.55)' : 'var(--border-color)',
+          bgcolor: isActive ? 'rgba(142,28,27,0.14)' : 'transparent',
           color: 'inherit',
           transition: 'border-color 160ms ease, background 160ms ease',
-          '&:hover': { borderColor: 'rgba(134,239,172,0.35)', bgcolor: 'rgba(255,255,255,0.03)' },
+          '&:hover': { borderColor: 'rgba(226,75,74,0.35)', bgcolor: 'rgba(255,255,255,0.03)' },
         }}
       >
         <Stack direction="row" spacing={1.1} alignItems="flex-start">
           <Box sx={{
             width: 30, height: 30, borderRadius: 1.5, flexShrink: 0,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            bgcolor: isActive ? 'rgba(134,239,172,0.16)' : 'rgba(255,255,255,0.05)',
-            color: isActive ? '#86EFAC' : 'var(--text-secondary)',
+            bgcolor: isActive ? 'rgba(226,75,74,0.16)' : 'rgba(255,255,255,0.05)',
+            color: isActive ? '#E24B4A' : 'var(--text-secondary)',
           }}>
             <Icon sx={{ fontSize: '1rem' }} />
           </Box>
@@ -1035,7 +1035,7 @@ export default function SyllabusFormat() {
       bgcolor: 'var(--input-bg)', color: 'var(--text-primary)',
       border: '1px solid var(--border-color)', borderRadius: 1,
       px: 0.75, py: 0.4, fontSize: '0.72rem', fontFamily: 'inherit', outline: 'none',
-      '&:focus': { borderColor: '#86EFAC' },
+      '&:focus': { borderColor: '#E24B4A' },
     }
     const headInputSx = { ...cellInputSx, fontWeight: 700 }
     const sampleRows = (view.defaultRows || []).filter(row => (row || []).some(cell => cell !== '' && cell !== null))
@@ -1332,7 +1332,7 @@ export default function SyllabusFormat() {
                 <Box sx={{
                   width: 38, height: 38, borderRadius: 2, flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  bgcolor: 'rgba(134,239,172,0.12)', color: '#86EFAC',
+                  bgcolor: 'rgba(226,75,74,0.12)', color: '#E24B4A',
                 }}>
                   {(() => {
                     const Icon = SECTION_ICONS[activeSection.editor] || WidgetsOutlinedIcon
@@ -1663,7 +1663,7 @@ export default function SyllabusFormat() {
 
                 <Stack direction="row" spacing={0.75} sx={{ flexWrap: 'wrap', rowGap: 0.75 }}>
                   <Chip size="small" label={`${sections.length} sections`} sx={{ height: 22, fontSize: '0.68rem', color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }} variant="outlined" />
-                  <Chip size="small" label={`${visibleCount} visible`} sx={chipSx('#86EFAC')} variant="outlined" />
+                  <Chip size="small" label={`${visibleCount} visible`} sx={chipSx('#E24B4A')} variant="outlined" />
                   <Chip size="small" label={`${fixedCount} fixed`} sx={chipSx('#FFB74D')} variant="outlined" />
                 </Stack>
 

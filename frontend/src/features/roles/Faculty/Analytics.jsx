@@ -179,7 +179,7 @@ export default function FacultyAnalytics() {
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-            <CircularProgress size={40} sx={{ color: '#15803D' }} />
+            <CircularProgress size={40} sx={{ color: '#8E1C1B' }} />
           </Box>
         ) : data?.message ? (
           <Card sx={{ ...cardStyles, p: 4, textAlign: 'center' }}>
@@ -205,7 +205,7 @@ export default function FacultyAnalytics() {
                 <Card sx={cardStyles}>
                   <CardContent sx={{ textAlign: 'center' }}>
                     <Typography color="text.secondary" variant="body2">Passing Threshold</Typography>
-                    <Typography sx={{ fontSize: '2rem', fontWeight: 800, color: '#15803D' }}>
+                    <Typography sx={{ fontSize: '2rem', fontWeight: 800, color: '#8E1C1B' }}>
                       {data.passing_threshold ?? 50}%
                     </Typography>
                   </CardContent>
@@ -316,7 +316,7 @@ export default function FacultyAnalytics() {
                             borderRadius: 12, border: '1px solid var(--border-color)',
                             background: 'var(--bg-card)', color: 'var(--text-primary)',
                           }} />
-                          <Bar dataKey="Avg %" fill="#15803D" radius={[0, 4, 4, 0]} barSize={22} />
+                          <Bar dataKey="Avg %" fill="#8E1C1B" radius={[0, 4, 4, 0]} barSize={22} />
                         </BarChart>
                       </ResponsiveContainer>
                     </CardContent>

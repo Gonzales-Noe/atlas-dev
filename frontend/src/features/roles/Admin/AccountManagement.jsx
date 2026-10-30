@@ -786,7 +786,7 @@ export default function AdminAccountManagement() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Faculty"    value={faculty.length}    icon="👨‍🏫" accent="#86EFAC" />
+        <StatCard title="Total Faculty"    value={faculty.length}    icon="👨‍🏫" accent="#E24B4A" />
         <StatCard title="Active Faculty"   value={activeFaculty}     icon="✅" accent="#5EDA7E" />
         <StatCard title="Inactive"         value={inactiveFaculty}   icon="⏸️" accent="#FFB74D" />
         <StatCard title="Courses Assigned" value={totalCourses}       icon="📚" accent="#60AAFF" />
@@ -852,7 +852,7 @@ export default function AdminAccountManagement() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         width: 34, height: 34, borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #15803D, #16A34A)',
+                        background: 'linear-gradient(135deg, #8E1C1B, #AA2423)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
                       }}>
@@ -952,7 +952,7 @@ export default function AdminAccountManagement() {
                       </MenuItem>
                       <MenuItem
                         onClick={() => { setConfirmDeleteAccount(fac); handleMenuClose() }}
-                        sx={{ color: '#86EFAC !important' }}
+                        sx={{ color: '#E24B4A !important' }}
                       >
                         Delete Account
                       </MenuItem>
@@ -991,7 +991,7 @@ export default function AdminAccountManagement() {
           {selectedFaculty && (
             <Stack spacing={2.5}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,#15803D,#16A34A)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
+                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,#8E1C1B,#AA2423)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem', fontWeight: 800, color: '#fff', flexShrink: 0 }}>
                   {initials(selectedFaculty)}
                 </div>
                 <div>
@@ -1080,13 +1080,13 @@ export default function AdminAccountManagement() {
                           disabled={removingId === item.assignment_id}
                           onClick={() => { setModalSuccess(''); setModalError(''); setConfirmUnassign(item) }}
                           sx={{
-                            color: 'var(--brand-green-bright, #4ADE80)',
+                            color: 'var(--brand-red-bright, #4ADE80)',
                             '&:hover': { background: 'rgba(231,76,60,0.12)' },
                             '&.Mui-disabled': { color: 'var(--text-tertiary)' },
                           }}
                         >
                           {removingId === item.assignment_id
-                            ? <CircularProgress size={16} sx={{ color: 'var(--brand-green-bright, #4ADE80)' }} />
+                            ? <CircularProgress size={16} sx={{ color: 'var(--brand-red-bright, #4ADE80)' }} />
                             : <DeleteOutlinedIcon fontSize="small" />}
                         </IconButton>
                       </div>

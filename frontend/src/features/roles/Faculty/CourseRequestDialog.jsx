@@ -17,12 +17,12 @@ import { COURSE_CATEGORIES, submitCourseRequest } from './courseRequestApi'
 
 const FIELD_SX = {
   '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
-  '& .MuiInputLabel-root.Mui-focused': { color: '#86EFAC' },
+  '& .MuiInputLabel-root.Mui-focused': { color: '#E24B4A' },
   '& .MuiOutlinedInput-root': {
     color: 'var(--text-primary)',
     '& fieldset': { borderColor: 'var(--border-color)' },
     '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.24)' },
-    '&.Mui-focused fieldset': { borderColor: '#16A34A' },
+    '&.Mui-focused fieldset': { borderColor: '#AA2423' },
     '&.Mui-error fieldset': { borderColor: 'var(--red-status)' },
   },
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
@@ -98,7 +98,7 @@ export default function CourseRequestDialog({ open, onClose, onSubmitted }) {
           '& .MuiStepLabel-label': { color: 'var(--text-secondary)', fontSize: '0.72rem' },
           '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
           '& .MuiStepIcon-root': { color: 'var(--text-tertiary)' },
-          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#15803D' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#8E1C1B' },
           '& .MuiStepIcon-text': { fill: 'var(--text-primary)' },
           '& .MuiStepIcon-root.Mui-active .MuiStepIcon-text': { fill: '#fff' },
           '& .MuiStepConnector-line': { borderColor: 'var(--border-color)' },
@@ -142,9 +142,9 @@ export default function CourseRequestDialog({ open, onClose, onSubmitted }) {
         <Box sx={{ display: 'flex', gap: 1 }}>
           {step > 0 && <Button onClick={back} disabled={submitting} sx={{ textTransform: 'none', color: 'var(--text-secondary)', '&:hover': { backgroundColor: 'var(--bg-card-hover)', color: 'var(--text-primary)' } }}>Back</Button>}
           {step < 2 ? (
-            <Button variant="contained" onClick={next} sx={{ background: '#15803D', textTransform: 'none', fontWeight: 700 }}>Continue</Button>
+            <Button variant="contained" onClick={next} sx={{ background: '#8E1C1B', textTransform: 'none', fontWeight: 700 }}>Continue</Button>
           ) : (
-            <Button variant="contained" onClick={submit} disabled={submitting} startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : null} sx={{ background: '#15803D', textTransform: 'none', fontWeight: 700 }}>
+            <Button variant="contained" onClick={submit} disabled={submitting} startIcon={submitting ? <CircularProgress size={14} color="inherit" /> : null} sx={{ background: '#8E1C1B', textTransform: 'none', fontWeight: 700 }}>
               {submitting ? 'Sending…' : 'Send for approval'}
             </Button>
           )}

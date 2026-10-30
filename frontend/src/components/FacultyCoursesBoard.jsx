@@ -28,7 +28,7 @@ import AutoAlert from './AutoAlert'
 import FacultyLayout from '../features/roles/Faculty/FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
+const CARD_COLORS = ['#8E1C1B', '#7C1616', '#6E1212', '#AA2423', '#E24B4A']
 
 export default function FacultyCoursesBoard() {
   const navigate = useNavigate()
@@ -122,7 +122,7 @@ export default function FacultyCoursesBoard() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: 'var(--brand-green-mid)' }} />
+            <CircularProgress sx={{ color: 'var(--brand-red-mid)' }} />
           </Box>
         ) : (
           <Box
@@ -140,15 +140,15 @@ export default function FacultyCoursesBoard() {
                 border: '2px dashed var(--border-active)',
                 cursor: 'pointer',
                 transition: 'border-color 0.15s, box-shadow 0.15s',
-                '&:hover': { borderColor: 'var(--brand-green-mid)', boxShadow: 'var(--shadow-lg)' },
+                '&:hover': { borderColor: 'var(--brand-red-mid)', boxShadow: 'var(--shadow-lg)' },
               }}
             >
               <CardActionArea sx={{ height: '100%' }}>
                 <CardContent sx={{ p: 2.5, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 160, gap: 1, '&:last-child': { pb: 2.5 } }}>
                   <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: 'var(--active-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <AddIcon sx={{ fontSize: 28, color: 'var(--brand-green-mid)' }} />
+                    <AddIcon sx={{ fontSize: 28, color: 'var(--brand-red-mid)' }} />
                   </Box>
-                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--brand-green-mid)', mt: 0.5 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 700, color: 'var(--brand-red-mid)', mt: 0.5 }}>
                     Request new course
                   </Typography>
                   <Typography variant="caption" sx={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
@@ -208,7 +208,7 @@ export default function FacultyCoursesBoard() {
 
       {/* -- Request new course dialog -- */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 800, color: 'var(--brand-green-mid)' }}>Request new course</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 800, color: 'var(--brand-red-mid)' }}>Request new course</DialogTitle>
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
           <Alert severity="info" sx={{ mb: 0 }}>Your admin reviews every request before the course appears in your workspace.</Alert>
           {sendError && (
@@ -267,7 +267,7 @@ export default function FacultyCoursesBoard() {
             onClick={handleSend}
             disabled={sending}
             startIcon={sending ? <CircularProgress size={14} color="inherit" /> : <AddIcon />}
-            sx={{ bgcolor: 'var(--brand-green-mid)', '&:hover': { bgcolor: 'var(--brand-green-core)' }, fontWeight: 700, borderRadius: 2 }}
+            sx={{ bgcolor: 'var(--brand-red-mid)', '&:hover': { bgcolor: 'var(--brand-red-core)' }, fontWeight: 700, borderRadius: 2 }}
           >
             {sending ? 'Sending…' : 'Send for approval'}
           </Button>

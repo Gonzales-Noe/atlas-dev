@@ -219,7 +219,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
               onChange={event => updateTableColumnGroup(sectionIndex, subsectionIndex, columnIndex, event.target.value)}
               sx={inputSx}
             />
-            <IconButton aria-label={`Remove column ${columnIndex + 1}`} onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)} sx={{ color: '#86EFAC' }}>
+            <IconButton aria-label={`Remove column ${columnIndex + 1}`} onClick={() => removeTableColumn(sectionIndex, subsectionIndex, columnIndex)} sx={{ color: '#E24B4A' }}>
               <DeleteOutlinedIcon />
             </IconButton>
           </Stack>
@@ -479,7 +479,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
       PaperProps={{ sx: dialogPaper }}
     >
       <Box sx={{ px: 3, pt: 2.5, pb: 1.5 }}>
-        <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#86EFAC', textTransform: 'uppercase' }}>
+        <Typography sx={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.12em', color: '#E24B4A', textTransform: 'uppercase' }}>
           First-time setup
         </Typography>
         <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', mt: 0.5 }}>
@@ -496,7 +496,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
           '& .MuiStepLabel-label': { color: 'var(--text-tertiary)', fontSize: '0.72rem' },
           '& .MuiStepLabel-label.Mui-active, & .MuiStepLabel-label.Mui-completed': { color: 'var(--text-primary)', fontWeight: 700 },
           '& .MuiStepIcon-root': { color: 'rgba(255,255,255,0.12)' },
-          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#86EFAC' },
+          '& .MuiStepIcon-root.Mui-active, & .MuiStepIcon-root.Mui-completed': { color: '#E24B4A' },
         }}>
           {WIZARD_STEPS.map(step => <Step key={step.key}><StepLabel>{step.label}</StepLabel></Step>)}
         </Stepper>
@@ -504,7 +504,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
       <LinearProgress
         variant="determinate"
         value={((activeStep + 1) / WIZARD_STEPS.length) * 100}
-        sx={{ height: 3, background: 'transparent', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg,#16A34A,#86EFAC)' } }}
+        sx={{ height: 3, background: 'transparent', '& .MuiLinearProgress-bar': { background: 'linear-gradient(90deg,#AA2423,#E24B4A)' } }}
       />
 
       <DialogContent dividers sx={{ px: 3, py: 2.5, bgcolor: 'var(--bg-card)', borderColor: 'var(--border-color) !important' }}>
@@ -526,7 +526,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                   variant="outlined"
                   startIcon={<CloudUploadIcon />}
                   disabled={saving}
-                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#86EFAC', color: '#86EFAC' }}
+                  sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: '#E24B4A', color: '#E24B4A' }}
                 >
                   {templateName || 'Upload syllabus template (PDF or DOCX)'}
                   <input hidden type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -560,7 +560,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         label="Fixed for all"
                         sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
                       />
-                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#86EFAC' }}>
+                      <IconButton aria-label={`Remove ${section.label || 'section'}`} onClick={() => setSections(current => current.filter((_, i) => i !== index))} sx={{ color: '#E24B4A' }}>
                         <DeleteOutlinedIcon />
                       </IconButton>
                     </Stack>
@@ -606,7 +606,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                                 label="Required"
                                 sx={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}
                               />
-                              <IconButton aria-label={`Remove ${subsection.label || 'subsection'}`} onClick={() => removeSubsection(index, subsectionIndex)} sx={{ color: '#86EFAC' }}>
+                              <IconButton aria-label={`Remove ${subsection.label || 'subsection'}`} onClick={() => removeSubsection(index, subsectionIndex)} sx={{ color: '#E24B4A' }}>
                                 <DeleteOutlinedIcon />
                               </IconButton>
                             </Stack>
@@ -666,7 +666,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         size="small"
                         sx={inputSx}
                       />
-                      <IconButton aria-label="Remove section" disabled={assignmentGroups.length === 1} onClick={() => setAssignmentGroups(current => current.filter((_, i) => i !== groupIndex))} sx={{ color: '#86EFAC' }}>
+                      <IconButton aria-label="Remove section" disabled={assignmentGroups.length === 1} onClick={() => setAssignmentGroups(current => current.filter((_, i) => i !== groupIndex))} sx={{ color: '#E24B4A' }}>
                         <DeleteOutlinedIcon />
                       </IconButton>
                     </Stack>
@@ -675,7 +675,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         <Box key={courseIndex} sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '150px 1fr auto' }, gap: 1 }}>
                           <TextField label="Course code" value={course.course_code} onChange={event => updateCourse(groupIndex, courseIndex, 'course_code', event.target.value)} size="small" sx={inputSx} />
                           <TextField label="Course name" value={course.course_title} onChange={event => updateCourse(groupIndex, courseIndex, 'course_title', event.target.value)} size="small" sx={inputSx} />
-                          <IconButton aria-label="Remove course" disabled={group.courses.length === 1} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: item.courses.filter((_, j) => j !== courseIndex) } : item))} sx={{ color: '#86EFAC' }}>
+                          <IconButton aria-label="Remove course" disabled={group.courses.length === 1} onClick={() => setAssignmentGroups(current => current.map((item, i) => i === groupIndex ? { ...item, courses: item.courses.filter((_, j) => j !== courseIndex) } : item))} sx={{ color: '#E24B4A' }}>
                             <DeleteOutlinedIcon />
                           </IconButton>
                         </Box>
@@ -729,7 +729,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                     onChange={event => setKnowledgeFile(event.target.files?.[0] || null)} />
                 </Button>
                 {knowledgeFile && (
-                  <Button onClick={uploadKnowledgeBase} disabled={saving || knowledgeUploaded} startIcon={<AutoAwesomeIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#86EFAC' }}>
+                  <Button onClick={uploadKnowledgeBase} disabled={saving || knowledgeUploaded} startIcon={<AutoAwesomeIcon />} sx={{ alignSelf: 'flex-start', textTransform: 'none', color: '#E24B4A' }}>
                     {knowledgeUploaded ? 'Uploaded' : 'Upload knowledge base'}
                   </Button>
                 )}
