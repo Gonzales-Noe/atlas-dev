@@ -102,6 +102,222 @@ function LF({ label, ...props }) {
   )
 }
 
+function parseStudentIds(text) {
+  return [...new Set(
+    String(text || '')
+      .split(/[\s,;]+/)
+      .map(part => part.trim())
+      .filter(Boolean),
+  )]
+}
+
+function SectionsTab({ courseId }) {
+  const [sections, setSections] = useState([])
+  const [blocks, setBlocks] = useState([])
+  const [selectedId, setSelectedId] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [oneId, setOneId] = useState('')
+  const [pasted, setPasted] = useState('')
+  const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
+  const [noticeSeverity, setNoticeSeverity] = useState('success')
+
+  const load = useCallback(async () => {
+    if (!courseId) return
+    setLoading(true)
+    setError('')
+    try {
+      const r = await api.get(`/grading/blocks/?course_id=${courseId}`)
+      const nextSections = r.data.sections || []
+      setSections(nextSections)
+      setBlocks(r.data.blocks || [])
+      setSelectedId(current => (
+        nextSections.some(section => section.section_id === current)
+          ? current
+          : (nextSections[0]?.section_id || '')
+      ))
+    } catch (e) {
+      setError(extractApiError(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [courseId])
+
+  useEffect(() => { load() }, [load])
+
+  const students = blocks.filter(block => block.section_id === selectedId)
+
+  async function addIds(ids) {
+    const unique = [...new Set(ids.map(id => String(id).trim()).filter(Boolean))]
+    if (!selectedId) {
+      setError('Choose a section first.')
+      return
+    }
+    if (!unique.length) {
+      setError('Enter at least one student ID.')
+      return
+    }
+    setSaving(true)
+    setError('')
+    setNotice('')
+    try {
+      const r = await api.post('/grading/blocks/', {
+        course_id: courseId,
+        section_id: selectedId,
+        student_ids: unique,
+      })
+      const added = r.data.added?.length || (r.data.block ? 1 : 0)
+      const already = r.data.already_in_section || []
+      const other = r.data.in_other_section || []
+      const invalid = r.data.invalid || []
+      const parts = []
+      if (added) parts.push(`Added ${added}.`)
+      if (already.length) parts.push(`${already.length} already in this section.`)
+      if (other.length) parts.push(other.map(item => item.detail).join(' '))
+      if (invalid.length) parts.push(`${invalid.length} could not be read.`)
+      setNoticeSeverity(other.length || invalid.length ? 'warning' : 'success')
+      setNotice(parts.join(' ') || 'Nothing new to add.')
+      setOneId('')
+      setPasted('')
+      await load()
+    } catch (e) {
+      setError(extractApiError(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <SCard
+      title="Sections you handle"
+      action={
+        <Tooltip title="Refresh">
+          <IconButton size="small" onClick={load}><RefreshIcon sx={{ fontSize: 16 }} /></IconButton>
+        </Tooltip>
+      }
+    >
+      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.8rem' }}>{error}</Alert>}
+      {notice && <Alert severity={noticeSeverity} sx={{ mb: 1.5, fontSize: '0.8rem' }}>{notice}</Alert>}
+      {loading ? (
+        <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+      ) : sections.length === 0 ? (
+        <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
+          No section is assigned to you for this course yet.
+        </Typography>
+      ) : (
+        <Stack spacing={2}>
+          <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+            {sections.map(section => {
+              const on = section.section_id === selectedId
+              return (
+                <Button
+                  key={section.section_id}
+                  size="small"
+                  variant={on ? 'contained' : 'outlined'}
+                  onClick={() => { setSelectedId(section.section_id); setNotice(''); setError('') }}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 700,
+                    bgcolor: on ? MAROON : 'transparent',
+                    color: on ? '#fff' : TEXT,
+                    borderColor: on ? MAROON : BORDER,
+                    '&:hover': { bgcolor: on ? '#6E1212' : 'rgba(170,36,35,0.08)', borderColor: MAROON },
+                  }}
+                >
+                  {section.section_name} ({section.student_count})
+                </Button>
+              )
+            })}
+          </Stack>
+
+          <Box>
+            <Typography variant="caption" sx={{ color: MUTED, display: 'block', mb: 0.75 }}>
+              {students.length} student {students.length === 1 ? 'ID' : 'IDs'}
+            </Typography>
+            {students.length === 0 ? (
+              <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
+                No student IDs in this section yet.
+              </Typography>
+            ) : (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {students.map(student => (
+                  <Chip
+                    key={student.block_id}
+                    label={student.student_id}
+                    size="small"
+                    sx={{ height: 24, fontSize: '0.75rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }}
+                  />
+                ))}
+              </Box>
+            )}
+          </Box>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
+            <LF
+              label="Student ID"
+              value={oneId}
+              placeholder="23-35007"
+              onChange={e => setOneId(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  addIds([oneId])
+                }
+              }}
+              disabled={saving}
+              sx={{ maxWidth: 280 }}
+            />
+            <Button
+              size="small"
+              variant="contained"
+              disabled={saving || !oneId.trim()}
+              onClick={() => addIds([oneId])}
+              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', mt: { sm: 0.25 } }}
+            >
+              Add
+            </Button>
+          </Stack>
+
+          <Box>
+            <Typography variant="caption" sx={{ color: MUTED, display: 'block', mb: 0.75 }}>
+              Or paste several IDs, one per line
+            </Typography>
+            <TextField
+              value={pasted}
+              onChange={e => setPasted(e.target.value)}
+              placeholder={'23-35007\n23-35018'}
+              multiline
+              minRows={4}
+              fullWidth
+              size="small"
+              disabled={saving}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  color: TEXT,
+                  bgcolor: SURFACE,
+                  '& fieldset': { borderColor: BORDER },
+                  '&:hover fieldset': { borderColor: MAROON },
+                  '&.Mui-focused fieldset': { borderColor: MAROON },
+                },
+              }}
+            />
+            <Button
+              size="small"
+              variant="outlined"
+              disabled={saving || !pasted.trim()}
+              onClick={() => addIds(parseStudentIds(pasted))}
+              sx={{ mt: 1, color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: '#6E1212', bgcolor: 'rgba(170,36,35,0.08)' } }}
+            >
+              {saving ? 'Adding…' : 'Add pasted IDs'}
+            </Button>
+          </Box>
+        </Stack>
+      )}
+    </SCard>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────
 export default function BubbleSheetPanel({ courseId, assessments = [], onModifyTemplate, onNotice }) {
   const [tab, setTab] = useState(0)
@@ -142,6 +358,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
       >
         <Tab label="Templates" />
         <Tab label="Results" />
+        <Tab label="Sections" />
       </Tabs>
 
       {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{error}</Alert>}
@@ -163,6 +380,9 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
           templates={templates}
           onNotice={onNotice}
         />
+      )}
+      {tab === 2 && (
+        <SectionsTab courseId={courseId} />
       )}
     </Box>
   )

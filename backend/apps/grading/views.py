@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -952,6 +952,39 @@ def _visible_sections(faculty):
     return qs.order_by("code")
 
 
+def _handled_sections(faculty, course_id=""):
+    """Sections this faculty is assigned to teach, optionally for one course."""
+    if not faculty:
+        return Section.objects.none()
+    loads = CourseLoad.objects.filter(section__isnull=False)
+    if faculty.role not in (UserRole.ADMIN, UserRole.SUPERADMIN):
+        loads = loads.filter(faculty=faculty)
+    if course_id:
+        loads = loads.filter(course_id=course_id)
+    ids = set(loads.values_list("section_id", flat=True))
+    if course_id and _valid_uuid(course_id):
+        course_section_id = Course.objects.filter(pk=course_id).values_list("section_id", flat=True).first()
+        if course_section_id:
+            ids.add(course_section_id)
+    return (
+        Section.objects.filter(section_id__in=ids)
+        .annotate(student_count=Count("blocks"))
+        .order_by("code")
+    )
+
+
+def _split_student_ids(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        parts = []
+        for item in value:
+            parts.extend(_split_student_ids(item))
+        return parts
+    text = str(value).replace(",", "\n").replace(";", "\n").replace("\t", "\n")
+    return [part.strip() for part in text.splitlines() if part.strip()]
+
+
 def _not_in_section_response(student_id):
     return Response(
         {
@@ -973,93 +1006,131 @@ def _not_in_section_response(student_id):
 def grading_blocks(request):
     """
     GET  /api/grading/blocks/?student_id=&section_id=&course_id=
-         Students assigned to a section, plus the sections the faculty can pick
-         (`takes_course` marks sections linked to course_id via section_courses).
-    POST /api/grading/blocks/  {student_id, section_id | section, grade_level?, course_id?}
-         Add a student to a section and link that section to the course.
-         Rows seeded without a section are updated in place.
+         Students on the sections this faculty handles.
+    POST /api/grading/blocks/  {student_id | student_ids, section_id, grade_level?, course_id?}
+         Add one student ID, or many IDs pasted as a list or as text split on
+         lines, commas, or semicolons. A student already in another section is
+         reported and left where they are.
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
     faculty = _get_faculty_profile(request)
 
     if request.method == "GET":
+        course_id = request.query_params.get("course_id", "").strip()
+        if course_id and (not _valid_uuid(course_id) or not _faculty_can_access_course(faculty, course_id)):
+            return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+        handled = list(_handled_sections(faculty, course_id))
+        handled_ids = [s.section_id for s in handled]
         qs = (
             Block.objects.select_related("section")
-            .filter(section__isnull=False)
+            .filter(section_id__in=handled_ids)
             .order_by("section__code", "student_id")
         )
         student_id = request.query_params.get("student_id", "").strip()
         section_id = request.query_params.get("section_id", "").strip()
-        course_id = request.query_params.get("course_id", "").strip()
         if student_id:
             qs = qs.filter(student_id=student_id)
         if section_id and _valid_uuid(section_id):
             qs = qs.filter(section_id=section_id)
-        sections = []
-        for s in _visible_sections(faculty):
-            course_ids = {str(c.course_id) for c in s.taken_courses.all()}
-            sections.append({
-                "section_id": str(s.section_id),
-                "section_name": s.section_name,
-                "course_ids": sorted(course_ids),
-                "takes_course": bool(course_id) and course_id in course_ids,
-            })
         return Response({
             "success": True,
             "blocks": [_block_payload(b) for b in qs],
-            "sections": sections,
+            "sections": [
+                {
+                    "section_id": str(s.section_id),
+                    "section_name": s.section_name,
+                    "student_count": s.student_count,
+                }
+                for s in handled
+            ],
         })
 
     course_id = str(request.data.get("course_id") or "").strip()
     if course_id and (not _valid_uuid(course_id) or not _faculty_can_access_course(faculty, course_id)):
         return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
 
-    sid = _clean_student_id(request.data.get("student_id"))
     section_id = str(request.data.get("section_id") or "").strip()
     section_name = str(request.data.get("section") or "").strip()[:50]
     grade_level = str(request.data.get("grade_level") or "").strip()[:100]
-    if not sid:
+    handled = _handled_sections(faculty, course_id)
+    if section_id:
+        section = handled.filter(section_id=section_id).first() if _valid_uuid(section_id) else None
+    elif section_name:
+        section = handled.filter(code__iexact=section_name).first()
+    else:
+        section = None
+    if section is None:
         return Response(
-            {"success": False, "detail": "Enter a complete student ID (no '?' characters)."},
+            {"success": False, "detail": "Choose a section you handle."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if section_id:
-        section = _visible_sections(faculty).filter(section_id=section_id).first() if _valid_uuid(section_id) else None
-        if section is None:
-            return Response({"success": False, "detail": "Section not found."}, status=status.HTTP_404_NOT_FOUND)
-    elif section_name:
-        section = _visible_sections(faculty).filter(code__iexact=section_name).first()
-        if section is None:
-            section = Section.objects.create(
-                institution_id=faculty.institution_id if faculty else None,
-                code=section_name,
-            )
-    else:
-        return Response({"success": False, "detail": "Section is required."}, status=status.HTTP_400_BAD_REQUEST)
+    raw_ids = request.data.get("student_ids")
+    if raw_ids is None:
+        raw_ids = request.data.get("student_id")
+    cleaned = []
+    invalid = []
+    for raw in _split_student_ids(raw_ids):
+        sid = _clean_student_id(raw)
+        if not sid:
+            invalid.append(raw)
+        elif sid not in cleaned:
+            cleaned.append(sid)
+    if not cleaned:
+        return Response(
+            {"success": False, "detail": "Enter a complete student ID (no '?' characters).", "invalid": invalid},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
-    block = Block.objects.select_related("section").filter(student_id=sid).first()
-    if block and block.section_id and block.section_id != section.section_id:
+    added = []
+    already = []
+    other = []
+    with transaction.atomic():
+        for sid in cleaned:
+            block = Block.objects.select_related("section").filter(student_id=sid).first()
+            if block and block.section_id and block.section_id != section.section_id:
+                other.append({
+                    "student_id": sid,
+                    "section": block.section_name,
+                    "detail": f"{sid} is already in section {block.section_name}.",
+                })
+                continue
+            if block and block.section_id == section.section_id:
+                already.append(sid)
+                continue
+            if block is None:
+                block = Block(student_id=sid)
+            block.section = section
+            if grade_level or not block.grade_level:
+                block.grade_level = grade_level
+            block.save()
+            added.append(_block_payload(block))
+        if course_id and (added or already):
+            section.taken_courses.add(course_id)
+    single = request.data.get("student_ids") is None and len(cleaned) == 1 and not other
+    if request.data.get("student_ids") is None and len(cleaned) == 1 and other:
         return Response(
             {
                 "success": False,
                 "code": "student_in_other_section",
-                "block": _block_payload(block),
-                "detail": f"{sid} is already in section {block.section_name}.",
+                "detail": other[0]["detail"],
+                "block": {
+                    "student_id": other[0]["student_id"],
+                    "section": other[0]["section"],
+                },
             },
             status=status.HTTP_409_CONFLICT,
         )
-    with transaction.atomic():
-        if block is None:
-            block = Block(student_id=sid)
-        block.section = section
-        if grade_level or not block.grade_level:
-            block.grade_level = grade_level
-        block.save()
-        if course_id:
-            section.taken_courses.add(course_id)
-    return Response({"success": True, "block": _block_payload(block)}, status=status.HTTP_201_CREATED)
+    if single and added:
+        return Response({"success": True, "block": added[0]}, status=status.HTTP_201_CREATED)
+    return Response({
+        "success": True,
+        "added": added,
+        "already_in_section": already,
+        "in_other_section": other,
+        "invalid": invalid,
+    })
 
 
 # ── Sections / Reports / Item analysis ────────────────────────────────────────
