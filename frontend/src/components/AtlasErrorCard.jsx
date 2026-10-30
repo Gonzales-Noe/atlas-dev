@@ -40,9 +40,9 @@ export default function AtlasErrorCard({
         flexWrap: 'wrap',
         p: 3,
         borderRadius: 3,
-        bgcolor: '#16161E',
-        border: '1px solid rgba(226,75,74,0.35)',
-        boxShadow: '0 18px 50px rgba(0,0,0,0.35)',
+        bgcolor: '#FFFFFF',
+        border: '1px solid rgba(170,36,35,0.35)',
+        boxShadow: '0 18px 50px rgba(170,36,35,0.12)',
       }}
     >
       <Box
@@ -53,10 +53,10 @@ export default function AtlasErrorCard({
       />
       <Box sx={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', position: 'relative', textAlign: 'left' }}>
         <Box sx={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)' }}>
-          <Typography sx={{ color: '#E24B4A', fontWeight: 800, fontSize: '1.4rem', mb: 0.75 }}>
+          <Typography sx={{ color: '#8E1C1B', fontWeight: 800, fontSize: '1.4rem', mb: 0.75 }}>
             {title}
           </Typography>
-          <Typography sx={{ color: '#E5E7EB', fontSize: '1.2rem', lineHeight: 1.5 }}>
+          <Typography sx={{ color: '#1A1A1A', fontSize: '1.2rem', lineHeight: 1.5 }}>
             {message}
           </Typography>
         </Box>
