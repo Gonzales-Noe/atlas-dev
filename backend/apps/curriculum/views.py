@@ -51,6 +51,7 @@ from .docx_builders import (
 from .assessment_qa import (
     SOURCE_CHECK_PACK,
     SOURCE_LABELS,
+    align_verdict_ids,
     apply_source_results,
     approval_blockers,
     check_against_blueprint,
@@ -2149,6 +2150,32 @@ def _section_for_slots(section, items):
     }
 
 
+def _batches_by_bloom(items, size):
+    """One Bloom level per batch. A long level is split into batches of `size`."""
+    grouped = {}
+    order = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        level = normalize_bloom_key(item.get('bloom_level')) or 'remember'
+        if level not in grouped:
+            grouped[level] = []
+            order.append(level)
+        grouped[level].append(item)
+    rank = {name: index for index, name in enumerate(
+        ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create']
+    )}
+    seen = {level: index for index, level in enumerate(order)}
+    order.sort(key=lambda level: (rank.get(level, len(rank)), seen[level]))
+    batches = []
+    step = max(1, int(size or 1))
+    for level in order:
+        rows = grouped[level]
+        for start in range(0, len(rows), step):
+            batches.append(rows[start:start + step])
+    return batches
+
+
 def _prepare_generated_section(generated_section):
     if isinstance(generated_section, list):
         generated_section = {'items': generated_section}
@@ -3487,6 +3514,20 @@ Requirements:
             passages or "None",
             "",
             f"Write {count} college exam items, one per slot, in this order.",
+        ])
+        levels = []
+        for slot in slots:
+            level = str(slot.get('bloom_level') or '').strip()
+            if level and level not in levels:
+                levels.append(level)
+        if len(levels) == 1:
+            label = levels[0]
+            noun = 'item' if count == 1 else 'items'
+            lines.append(
+                f"This batch is {label} only: {count} {noun}. "
+                f"Label every item {label}."
+            )
+        lines.extend([
             slot_json,
             "",
             'Return {"items":[{"item_number":1,"question_text":"...","choices":["A. ...","B. ...","C. ...","D. ..."],"correct_answer":"A","answer_key":"...","bloom_level":"...","bloom_verb":"...","ilo_refs":[]}]}',
@@ -3550,7 +3591,7 @@ Requirements:
             if item_no > 0:
                 existing_numbers.add(item_no)
 
-        def _incremental_payload(batch_generated, saved_count, missing, detail=''):
+        def _incremental_payload(batch_generated, saved_count, missing, detail='', batch_bloom='', batch_bloom_count=0):
             completed = not missing
             next_status = 'Generated' if completed else 'Draft'
             update_fields = []
@@ -3571,6 +3612,8 @@ Requirements:
                 'total_items': planned_total,
                 'missing_item_numbers': missing,
                 'detail': detail,
+                'batch_bloom': batch_bloom,
+                'batch_bloom_count': batch_bloom_count,
                 'assessment': {
                     'assessment_id': str(incremental_assessment.assessment_id),
                     'title': incremental_assessment.title,
@@ -3591,21 +3634,18 @@ Requirements:
                 status=status.HTTP_200_OK,
             )
 
-        remaining = ASSESSMENT_SLOT_BATCH
         narrowed = []
         for section in sections:
-            if remaining <= 0:
-                break
-            kept = []
+            pending = []
             for item in (section.get('items') or []):
                 number = _to_int(item.get('item_number'), 0)
                 if number > 0 and number not in existing_numbers:
-                    kept.append(item)
-            if not kept:
+                    pending.append(item)
+            bloom_batches = _batches_by_bloom(pending, ASSESSMENT_SLOT_BATCH)
+            if not bloom_batches:
                 continue
-            take = kept[:remaining]
-            remaining -= len(take)
-            narrowed.append(_section_for_slots(section, take))
+            narrowed.append(_section_for_slots(section, bloom_batches[0]))
+            break
         sections = narrowed
 
     topic_passages.update(_topic_upload_passages(
@@ -3621,10 +3661,9 @@ Requirements:
             break
         section_items = [item for item in (section.get('items') or []) if isinstance(item, dict)]
         accepted = {}
-        for start in range(0, len(section_items), ASSESSMENT_SLOT_BATCH):
+        for item_slice in _batches_by_bloom(section_items, ASSESSMENT_SLOT_BATCH):
             if providers_unavailable:
                 break
-            item_slice = section_items[start:start + ASSESSMENT_SLOT_BATCH]
             slice_section = _section_for_slots(section, item_slice)
             retry_numbers = [item.get('item_number') for item in item_slice]
             try:
@@ -3734,7 +3773,16 @@ Requirements:
             for item in create_items
         ]
         detail = '' if returned_items or not missing else 'This batch did not return valid items.'
-        payload = _incremental_payload(len(returned_items), saved_count, missing, detail)
+        batch_bloom = ''
+        batch_bloom_count = 0
+        if len(sections) == 1:
+            distribution = sections[0].get('bloom_distribution') or {}
+            if len(distribution) == 1:
+                batch_bloom, batch_bloom_count = next(iter(distribution.items()))
+        payload = _incremental_payload(
+            len(returned_items), saved_count, missing, detail,
+            batch_bloom=batch_bloom, batch_bloom_count=batch_bloom_count,
+        )
         payload['returned_count'] = len(returned_items)
         payload['items'] = returned_items
         return Response(
@@ -4016,7 +4064,7 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
             return reply[0] if isinstance(reply, tuple) else reply
 
     model_results, errors = run_grouped_source_checks(groups, complete)
-    results.extend(model_results)
+    results.extend(align_verdict_ids(model_results, prepared))
     calls = len(groups)
 
     covered = {
@@ -4034,9 +4082,9 @@ def _check_assessment_sources(course, batches, section_matches, top_k, selected_
             retry.append({**batch, 'items': missed})
     paused = any('paused' in str(err).lower() for err in errors)
     if retry and not paused:
-        retry_groups = pack_source_batches(retry, size=SOURCE_CHECK_PACK, char_budget=9000)
+        retry_groups = pack_source_batches(retry, size=2, char_budget=9000)
         retry_results, retry_errors = run_grouped_source_checks(retry_groups, complete)
-        results.extend(retry_results)
+        results.extend(align_verdict_ids(retry_results, retry))
         errors.extend(retry_errors)
         calls += len(retry_groups)
 

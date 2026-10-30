@@ -13,6 +13,7 @@ from apps.curriculum.views import (
     _build_plain_assessment_docx,
     _build_sectioned_assessment_payload,
     _coerce_generated_item_fields,
+    _batches_by_bloom,
     _collect_section_items,
     _compact_assessment_slot,
     _derive_assessment_source,
@@ -772,3 +773,16 @@ class ModuleTeachingTextTests(SimpleTestCase):
         accepted, retry = _collect_section_items(section, generated)
         self.assertEqual(accepted, {})
         self.assertEqual(retry, [6])
+
+    def test_generation_batches_stay_on_one_bloom(self):
+        items = [
+            {'item_number': index, 'bloom_level': 'Remember'}
+            for index in range(1, 8)
+        ] + [
+            {'item_number': 8, 'bloom_level': 'Understand'},
+            {'item_number': 9, 'bloom_level': 'Understand'},
+        ]
+        batches = _batches_by_bloom(items, 6)
+        self.assertEqual([len(batch) for batch in batches], [6, 1, 2])
+        self.assertTrue(all(item['bloom_level'] == 'Remember' for item in batches[0] + batches[1]))
+        self.assertTrue(all(item['bloom_level'] == 'Understand' for item in batches[2]))

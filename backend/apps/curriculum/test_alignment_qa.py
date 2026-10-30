@@ -2,6 +2,7 @@ from django.test import SimpleTestCase
 
 from apps.curriculum.assessment_qa import (
     SOURCE_CHECK_PACK,
+    align_verdict_ids,
     apply_source_results,
     source_check_failure_message,
     approval_blockers,
@@ -365,4 +366,13 @@ class AssessmentQaTests(SimpleTestCase):
         self.assertIn('small touch targets', user)
         self.assertIn('light gray text', user)
         self.assertIn('named heuristic', user)
-        self.assertIn('comfort with voice', user)
+        self.assertIn('Comfort with voice', user)
+        self.assertIn('Copy each item_id exactly', user)
+
+    def test_item_number_still_attaches_the_verdict(self):
+        batches = [{'items': [{'item_id': 'item-49', 'item_number': 49}]}]
+        aligned = align_verdict_ids(
+            [{'item_id': '49', 'verdict': 'supported', 'evidence': 'The text says it.'}],
+            batches,
+        )
+        self.assertEqual(aligned[0]['item_id'], 'item-49')
