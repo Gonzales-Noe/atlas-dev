@@ -39,7 +39,7 @@ export default function FacultyWorkspace() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 12 }}>
-            <CircularProgress sx={{ color: '#15803D' }} />
+            <CircularProgress sx={{ color: '#8E1C1B' }} />
           </Box>
         ) : error ? (
           <Alert severity="error">{error}</Alert>
@@ -51,7 +51,7 @@ export default function FacultyWorkspace() {
               <Typography variant="h4" sx={{ fontWeight: 800, mb: 1 }}>
                 {course.course_title}
               </Typography>
-              <Typography variant="subtitle2" sx={{ color: '#15803D', mb: 2, fontWeight: 700, letterSpacing: '0.05em' }}>
+              <Typography variant="subtitle2" sx={{ color: '#8E1C1B', mb: 2, fontWeight: 700, letterSpacing: '0.05em' }}>
                 {course.course_code}
               </Typography>
               <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: 760, lineHeight: 1.6 }}>
@@ -61,7 +61,7 @@ export default function FacultyWorkspace() {
                 <Button
                   size="small"
                   variant="contained"
-                  sx={{ background: '#15803D', '&:hover': { background: '#14532D' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
+                  sx={{ background: '#8E1C1B', '&:hover': { background: '#6E1212' }, textTransform: 'none', fontWeight: 700, borderRadius: 2 }}
                   onClick={() => navigate(ROUTES.FACULTY.SYLLABUS)}
                 >
                   Open syllabus builder
@@ -81,8 +81,8 @@ export default function FacultyWorkspace() {
               <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(21, 128, 61, 0.08)' }}>
-                      <FolderOpenIcon sx={{ color: '#15803D', fontSize: 28 }} />
+                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(142, 28, 27, 0.08)' }}>
+                      <FolderOpenIcon sx={{ color: '#8E1C1B', fontSize: 28 }} />
                     </Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Workspace Summary
@@ -95,8 +95,8 @@ export default function FacultyWorkspace() {
               <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(21, 128, 61, 0.08)' }}>
-                      <DescriptionIcon sx={{ color: '#15803D', fontSize: 28 }} />
+                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(142, 28, 27, 0.08)' }}>
+                      <DescriptionIcon sx={{ color: '#8E1C1B', fontSize: 28 }} />
                     </Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Modules
@@ -109,8 +109,8 @@ export default function FacultyWorkspace() {
               <Card sx={{ borderRadius: 4, p: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.3)' }}>
                 <CardContent sx={{ p: 0, '&:last-child': { pb: 0 } }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(21, 128, 61, 0.08)' }}>
-                      <AssessmentIcon sx={{ color: '#15803D', fontSize: 28 }} />
+                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'rgba(142, 28, 27, 0.08)' }}>
+                      <AssessmentIcon sx={{ color: '#8E1C1B', fontSize: 28 }} />
                     </Box>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
                       Assessments

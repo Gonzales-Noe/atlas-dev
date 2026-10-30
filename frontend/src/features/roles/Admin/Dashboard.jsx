@@ -60,7 +60,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <Link to="/admin/academic-structure" style={{ color: '#fff', background: '#15803D', border: '1px solid rgba(22,163,74,0.6)', borderRadius: 10, padding: '10px 16px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Academic structure</Link>
+            <Link to="/admin/academic-structure" style={{ color: '#fff', background: '#8E1C1B', border: '1px solid rgba(170,36,35,0.6)', borderRadius: 10, padding: '10px 16px', textDecoration: 'none', fontSize: '0.82rem', fontWeight: 700 }}>Academic structure</Link>
             <Link to="/admin/account-management" style={secondaryActionSx}>Add faculty</Link>
             <Link to="/admin/knowledge-base" style={secondaryActionSx}>Set up knowledge base</Link>
           </div>
@@ -68,7 +68,7 @@ export default function AdminDashboard() {
       </GlassCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon="👨‍🏫" accent="#86EFAC" />
+        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon="👨‍🏫" accent="#E24B4A" />
         <StatCard title="Active Courses" value={setup ? setup.course_count : '—'} icon="📚" accent="#60AAFF" />
       </div>
     </AdminLayout>

@@ -171,7 +171,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           padding: 4px 0;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.active { color: #86EFAC; }
+        .auth-nav-link.active { color: #E24B4A; }
 
         .dark-input {
           width: 100%;
@@ -187,7 +187,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           margin-bottom: 0;
         }
         .dark-input:focus {
-          border-color: rgba(22,163,74,0.7);
+          border-color: rgba(170,36,35,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
@@ -213,7 +213,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -231,8 +231,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
-          background: linear-gradient(135deg, #14532D, #16A34A);
+          box-shadow: 0 8px 28px rgba(142,28,27,0.5);
+          background: linear-gradient(135deg, #6E1212, #AA2423);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -276,8 +276,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(22,163,74,0.15);
-          border: 1px solid rgba(22,163,74,0.35);
+          background: rgba(170,36,35,0.15);
+          border: 1px solid rgba(170,36,35,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -304,7 +304,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
+          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -358,13 +358,13 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.5) 12.5%,
-            rgba(21, 128, 61, 0.5) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.5) 62.5%,
-            rgba(21, 128, 61, 0.5) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.5) 12.5%,
+            rgba(142, 28, 27, 0.5) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.5) 62.5%,
+            rgba(142, 28, 27, 0.5) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -433,7 +433,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -120, right: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.15)', top: -120, right: -100 }} />
       <Orb style={{ width: 400, height: 400, background: 'rgba(100,0,0,0.12)', bottom: -80, left: -120 }} />
 
       {/* Grid overlay */}
@@ -525,7 +525,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '45%',
-              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
+              background: 'linear-gradient(145deg, rgba(142,28,27,0.4), rgba(226, 75, 74, 0))',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -536,8 +536,8 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 300, height: 300, background: 'rgba(21, 128, 61, 0.8)', top: -60, left: -60 }} />
-            <Orb style={{ width: 200, height: 200, background: 'rgba(134, 239, 172, 0)', bottom: -40, right: -40 }} />
+            <Orb style={{ width: 300, height: 300, background: 'rgba(142, 28, 27, 0.8)', top: -60, left: -60 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(226, 75, 74, 0)', bottom: -40, right: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
@@ -596,11 +596,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                       PASSWORD
                     </label>
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#86EFAC', fontWeight: 600 }}>
+                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#E24B4A', fontWeight: 600 }}>
                         Forgot password?
                       </button>
                     ) : (
-                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#86EFAC', fontWeight: 600, textDecoration: 'none' }}>
+                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#E24B4A', fontWeight: 600, textDecoration: 'none' }}>
                         Forgot password?
                       </Link>
                     )}
@@ -655,11 +655,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
                 Don't have an account?{' '}
                 {isModal ? (
-                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
+                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
                     Sign Up
                   </button>
                 ) : (
-                  <Link to={ROUTES.SIGN_UP} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>
+                  <Link to={ROUTES.SIGN_UP} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>
                     Sign Up
                   </Link>
                 )}

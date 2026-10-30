@@ -65,7 +65,7 @@ export default function FacultyAssessment() {
               <CardContent>
                 <Stack spacing={2}>
                   <TextField value={assessmentPrompt} onChange={(e) => setAssessmentPrompt(e.target.value)} multiline rows={6} placeholder="Enter a prompt or learning objective for the assessment..." fullWidth size="small" disabled={!canGenerate} />
-                  <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#15803D', '&:hover': { background: '#14532D' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
+                  <Button variant="contained" startIcon={<QuizIcon />} disabled={!canGenerate} onClick={handleGenerate} sx={{ background: '#8E1C1B', '&:hover': { background: '#6E1212' }, borderRadius: 2, textTransform: 'none', py: 1.5, fontWeight: 700 }}>
                     Generate Assessment Items
                   </Button>
                 </Stack>

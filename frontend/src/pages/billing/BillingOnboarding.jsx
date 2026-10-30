@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import api from '../../config/api'
 
 const PLANS = [
-  { name: 'Starter', price: '₱2,499', detail: '30 days · Up to 10 faculty accounts', accent: '#86EFAC' },
-  { name: 'Professional', price: '₱6,999', detail: '30 days · Up to 50 faculty accounts', accent: '#86EFAC' },
+  { name: 'Starter', price: '₱2,499', detail: '30 days · Up to 10 faculty accounts', accent: '#E24B4A' },
+  { name: 'Professional', price: '₱6,999', detail: '30 days · Up to 50 faculty accounts', accent: '#E24B4A' },
 ]
 
 const initialApplication = () => {
@@ -115,25 +115,25 @@ export default function BillingOnboarding() {
   return (
     <main className="billing-shell">
       <style>{`
-        .billing-shell { min-height:100vh; background:radial-gradient(circle at 80% 10%, #052E16 0, transparent 38%), #0a0a0b; color:#f5f5f5; font-family:"Plus Jakarta Sans", sans-serif; padding:48px 24px; }
+        .billing-shell { min-height:100vh; background:radial-gradient(circle at 80% 10%, #3F0A0A 0, transparent 38%), #0a0a0b; color:#f5f5f5; font-family:"Plus Jakarta Sans", sans-serif; padding:48px 24px; }
         .billing-wrap { max-width:960px; margin:0 auto; }
-        .billing-brand { color:#86EFAC; letter-spacing:.18em; font-weight:800; font-size:.8rem; }
+        .billing-brand { color:#E24B4A; letter-spacing:.18em; font-weight:800; font-size:.8rem; }
         .billing-header { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; margin:50px 0 34px; }
         .billing-header h1 { font-size:clamp(2rem,5vw,3.6rem); line-height:1.04; margin:0 0 12px; max-width:650px; }
         .billing-header p { color:#aaa; max-width:580px; line-height:1.7; margin:0; }
         .billing-stepper { display:flex; gap:10px; margin-bottom:30px; }
         .billing-step { flex:1; border-top:2px solid #333; padding-top:12px; color:#777; font-size:.76rem; text-transform:uppercase; letter-spacing:.1em; }
-        .billing-step.active { border-color:#16A34A; color:#fff; }
+        .billing-step.active { border-color:#AA2423; color:#fff; }
         .billing-panel { border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.045); padding:28px; border-radius:8px; }
         .billing-panel h2 { margin:0 0 8px; font-size:1.3rem; }
         .billing-muted { color:#999; line-height:1.6; }
         .plan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin:24px 0; }
         .plan-card { text-align:left; color:#fff; background:#151517; border:1px solid #343438; border-radius:7px; padding:20px; cursor:pointer; min-height:170px; }
-        .plan-card.selected { border-color:#16A34A; box-shadow:0 0 0 1px #16A34A; }
+        .plan-card.selected { border-color:#AA2423; box-shadow:0 0 0 1px #AA2423; }
         .plan-card strong { display:block; font-size:1rem; margin-bottom:28px; }
         .plan-price { font-size:1.65rem; font-weight:800; }
         .plan-detail { color:#999; font-size:.8rem; margin-top:8px; }
-        .billing-button { background:#16A34A; border:0; color:#fff; border-radius:6px; padding:13px 20px; font:inherit; font-weight:700; cursor:pointer; }
+        .billing-button { background:#AA2423; border:0; color:#fff; border-radius:6px; padding:13px 20px; font:inherit; font-weight:700; cursor:pointer; }
         .billing-button:disabled { opacity:.45; cursor:not-allowed; }
         .billing-button.secondary { background:transparent; border:1px solid #555; }
         .billing-actions { display:flex; gap:12px; justify-content:flex-end; margin-top:24px; }

@@ -12,8 +12,8 @@ import AtlasLogo from './AtlasLogo'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
-  superadmin: { label: 'Super Admin', accent: '#86EFAC' },
-  admin:      { label: 'Admin', accent: '#16A34A' },
+  superadmin: { label: 'Super Admin', accent: '#E24B4A' },
+  admin:      { label: 'Admin', accent: '#AA2423' },
   faculty:    { label: 'Faculty', accent: '#30D158' },
 }
 
@@ -43,7 +43,7 @@ function NavItem({ item, collapsed }) {
         border: isActive
           ? '1px solid var(--shell-nav-active-border)'
           : '1px solid transparent',
-        boxShadow: isActive ? '0 4px 16px rgba(21,128,61,0.2)' : 'none',
+        boxShadow: isActive ? '0 4px 16px rgba(142,28,27,0.2)' : 'none',
         transition: 'all 200ms cubic-bezier(0.4,0,0.2,1)',
         cursor: 'pointer',
         position: 'relative',
@@ -68,7 +68,7 @@ function NavItem({ item, collapsed }) {
             position: 'absolute',
             left: 0, top: '20%', bottom: '20%',
             width: 3,
-            background: 'linear-gradient(180deg, #86EFAC, #15803D)',
+            background: 'linear-gradient(180deg, #E24B4A, #8E1C1B)',
             borderRadius: '0 3px 3px 0',
           }} />
         )}
@@ -170,7 +170,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
 
       {/* ── Background orbs ─────────────────────────────────────────────── */}
       <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }}>
-        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'rgba(21,128,61,0.08)', filter: 'blur(100px)', top: -100, left: -100 }} />
+        <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: 'rgba(142,28,27,0.08)', filter: 'blur(100px)', top: -100, left: -100 }} />
         <div style={{ position: 'absolute', width: 350, height: 350, borderRadius: '50%', background: 'rgba(100,0,0,0.06)', filter: 'blur(80px)', bottom: -80, right: -80 }} />
         {/* Subtle grid */}
         <div style={{

@@ -26,8 +26,8 @@ function Orb({ style }) {
 function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <circle cx="7" cy="7" r="7" fill="rgba(22,163,74,0.25)" stroke="rgba(22,163,74,0.5)" strokeWidth="1" />
-      <path d="M4 7l2 2 4-4" stroke="#86EFAC" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="7" cy="7" r="7" fill="rgba(170,36,35,0.25)" stroke="rgba(170,36,35,0.5)" strokeWidth="1" />
+      <path d="M4 7l2 2 4-4" stroke="#E24B4A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -214,7 +214,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: color 0.2s;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.highlighted { color: #86EFAC !important; }
+        .auth-nav-link.highlighted { color: #E24B4A !important; }
 
         .dark-input {
           width: 100%;
@@ -229,7 +229,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: border-color 0.2s, background 0.2s;
         }
         .dark-input:focus {
-          border-color: rgba(22,163,74,0.7);
+          border-color: rgba(170,36,35,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input.email-invalid,
@@ -291,7 +291,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -309,8 +309,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
-          background: linear-gradient(135deg, #14532D, #16A34A);
+          box-shadow: 0 8px 28px rgba(142,28,27,0.5);
+          background: linear-gradient(135deg, #6E1212, #AA2423);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -354,8 +354,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(22,163,74,0.15);
-          border: 1px solid rgba(22,163,74,0.35);
+          background: rgba(170,36,35,0.15);
+          border: 1px solid rgba(170,36,35,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -397,7 +397,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #86EFAC, #BBF7D0, #16A34A);
+          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -461,9 +461,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         .custom-checkbox {
           width: 16px;
           height: 16px;
-          border: 1px solid rgba(22,163,74,0.5);
+          border: 1px solid rgba(170,36,35,0.5);
           border-radius: 4px;
-          background: rgba(22,163,74,0.1);
+          background: rgba(170,36,35,0.1);
           cursor: pointer;
           flex-shrink: 0;
           appearance: none;
@@ -472,8 +472,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           margin: 0;
         }
         .custom-checkbox:checked {
-          background: #16A34A;
-          border-color: #16A34A;
+          background: #AA2423;
+          border-color: #AA2423;
         }
         .custom-checkbox:checked::after {
           content: '✓';
@@ -521,13 +521,13 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.5) 12.5%,
-            rgba(21, 128, 61, 0.5) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.5) 62.5%,
-            rgba(21, 128, 61, 0.5) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.5) 12.5%,
+            rgba(142, 28, 27, 0.5) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.5) 62.5%,
+            rgba(142, 28, 27, 0.5) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -562,7 +562,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.14)', top: -100, left: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.14)', top: -100, left: -100 }} />
       <Orb style={{ width: 400, height: 400, background: 'rgba(100,0,0,0.12)', bottom: -80, right: -80 }} />
 
       {/* Grid overlay */}
@@ -794,11 +794,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.38)', margin: '1.25rem 0 0.75rem' }}>
                   Already have an account?{' '}
                   {isModal ? (
-                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
+                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
                       Sign In
                     </button>
                   ) : (
-                    <Link to={ROUTES.SIGN_IN} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                    <Link to={ROUTES.SIGN_IN} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
                   )}
                 </p>
 
@@ -812,9 +812,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   />
                   <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.5, textAlign: 'center' }}>
                     I agree to the{' '}
-                    <Link to={ROUTES.LEGAL_TERMS} style={{ color: '#86EFAC', fontWeight: 600 }}>Terms and Conditions of Use</Link>
+                    <Link to={ROUTES.LEGAL_TERMS} style={{ color: '#E24B4A', fontWeight: 600 }}>Terms and Conditions of Use</Link>
                     {' '}and{' '}
-                    <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: '#86EFAC', fontWeight: 600 }}>Privacy Policy</Link>
+                    <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: '#E24B4A', fontWeight: 600 }}>Privacy Policy</Link>
                   </span>
                 </label>
               </div>
@@ -826,7 +826,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             className="mascot-panel"
             style={{
               width: '44%',
-              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
+              background: 'linear-gradient(145deg, rgba(142,28,27,0.4), rgba(226, 75, 74, 0))',
               borderLeft: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -837,8 +837,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.8)', top: -60, right: -60 }} />
-            <Orb style={{ width: 200, height: 200, background: 'rgba(21, 128, 61, 0.5), rgba(134, 239, 172, 0)', bottom: -40, left: -40 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(142, 28, 27, 0.8)', top: -60, right: -60 }} />
+            <Orb style={{ width: 200, height: 200, background: 'rgba(142, 28, 27, 0.5), rgba(226, 75, 74, 0)', bottom: -40, left: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>

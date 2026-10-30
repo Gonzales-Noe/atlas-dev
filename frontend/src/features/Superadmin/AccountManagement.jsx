@@ -157,7 +157,7 @@ export default function AccountManagement() {
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
-        <StatCard title="Total Institutions" value={accounts.length} icon="🏛️" accent="#86EFAC" />
+        <StatCard title="Total Institutions" value={accounts.length} icon="🏛️" accent="#E24B4A" />
         <StatCard title="Active" value={accounts.filter(a => a.status === 'active').length} icon="✅" accent="#5EDA7E" />
         <StatCard title="Total Users" value={accounts.reduce((sum, account) => sum + account.users, 0).toLocaleString()} icon="👥" accent="#60AAFF" />
         <StatCard title="Pending Review" value={pendingApplications.length} icon="⏳" accent="#FFB74D" />
@@ -171,7 +171,7 @@ export default function AccountManagement() {
           </div>
         )}
         {error && (
-          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(134,239,172,0.12)', border: '1px solid rgba(134,239,172,0.4)', color: '#86EFAC', fontSize: '0.85rem' }}>
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(226,75,74,0.12)', border: '1px solid rgba(226,75,74,0.4)', color: '#E24B4A', fontSize: '0.85rem' }}>
             {error}
           </div>
         )}
@@ -233,9 +233,9 @@ export default function AccountManagement() {
                       <MenuItem onClick={() => { setSelectedAccount(acc); setUsageOpen(true); handleMenuClose() }}>View Usage</MenuItem>
                       <Divider sx={{ borderColor: 'rgba(255,255,255,0.08) !important', my: '4px !important' }} />
                       {acc.status === 'active'
-                        ? <MenuItem sx={{ color: '#86EFAC !important' }} onClick={() => setAccountActive(acc, false)}>Suspend Account</MenuItem>
+                        ? <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => setAccountActive(acc, false)}>Suspend Account</MenuItem>
                         : <MenuItem sx={{ color: '#5EDA7E !important' }} onClick={() => setAccountActive(acc, true)}>Reactivate Account</MenuItem>}
-                      <MenuItem sx={{ color: '#86EFAC !important' }} onClick={() => { setConfirmDeleteInstitution(acc); handleMenuClose() }}>Delete Institution</MenuItem>
+                      <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => { setConfirmDeleteInstitution(acc); handleMenuClose() }}>Delete Institution</MenuItem>
                     </Menu>
                   </TableCell>
                 </TableRow>
@@ -378,7 +378,7 @@ export default function AccountManagement() {
               </Select>
             </FormControl>
             <FormControlLabel
-              control={<Switch checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#15803D !important' } }} />}
+              control={<Switch checked={editForm.is_active} onChange={e => setEditForm({ ...editForm, is_active: e.target.checked })} sx={{ '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { backgroundColor: '#8E1C1B !important' } }} />}
               label={<span style={{ color: 'var(--text-primary)', fontSize: '0.88rem' }}>Active Account</span>}
             />
           </Stack>

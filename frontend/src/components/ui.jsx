@@ -23,7 +23,7 @@ export function PageHeader({ title, subtitle, action }) {
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
-export function StatCard({ title, value, sub, icon, trend, trendUp, accent = '#86EFAC' }) {
+export function StatCard({ title, value, sub, icon, trend, trendUp, accent = '#E24B4A' }) {
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -130,7 +130,7 @@ export function StatusChip({ label, type = 'default' }) {
     active:   { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: '#5EDA7E' },
     inactive: { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
     success:  { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: '#5EDA7E' },
-    error:    { bg: 'rgba(255,69,58,0.12)',  border: 'rgba(255,69,58,0.3)',  color: '#86EFAC' },
+    error:    { bg: 'rgba(255,69,58,0.12)',  border: 'rgba(255,69,58,0.3)',  color: '#E24B4A' },
     warning:  { bg: 'rgba(255,159,10,0.12)', border: 'rgba(255,159,10,0.3)', color: '#FFB74D' },
     info:     { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
     premium:  { bg: 'rgba(255,214,10,0.12)', border: 'rgba(255,214,10,0.3)', color: '#FFD60A' },
@@ -160,7 +160,7 @@ export function PrimaryBtn({ children, onClick, disabled, small, style = {} }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: disabled ? 'rgba(21,128,61,0.3)' : 'linear-gradient(135deg, #15803D, #16A34A)',
+        background: disabled ? 'rgba(142,28,27,0.3)' : 'linear-gradient(135deg, #8E1C1B, #AA2423)',
         color: '#fff',
         border: 'none',
         borderRadius: 10,
@@ -175,7 +175,7 @@ export function PrimaryBtn({ children, onClick, disabled, small, style = {} }) {
         whiteSpace: 'nowrap',
         ...style,
       }}
-      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(21,128,61,0.45)' } }}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(142,28,27,0.45)' } }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
     >
       {children}
@@ -229,7 +229,7 @@ export function MetricRow({ label, value, status, statusType, divider = true }) 
 }
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
-export function ProgressBar({ value, max = 100, color = '#15803D', label }) {
+export function ProgressBar({ value, max = 100, color = '#8E1C1B', label }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
   return (
     <div>

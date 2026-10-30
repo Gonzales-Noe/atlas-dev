@@ -87,8 +87,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { applyFixedSyllabusContent, applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const MAROON = '#16A34A'
-const MAROON_LIGHT = 'rgba(22,163,74,0.16)'
+const MAROON = '#AA2423'
+const MAROON_LIGHT = 'rgba(170,36,35,0.16)'
 const BG = '#0F0F12'
 
 // True while the syllabus is shown to a faculty member who is not its author:
@@ -1067,8 +1067,8 @@ function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
               '& .MuiInputBase-input': { color: '#F4F4F5' },
               '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.5)', opacity: 1, fontSize: '0.9rem' },
               '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.18)' },
-              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(134,239,172,0.55)' },
-              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#86EFAC' },
+              '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(226,75,74,0.55)' },
+              '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#E24B4A' },
               '& .MuiSvgIcon-root': { color: '#D4D4D8' },
               '& .MuiAutocomplete-endAdornment': { top: 8 },
             }}
@@ -1087,7 +1087,7 @@ function ApprovalNoteField({ label, reason, value, suggestions, onChange }) {
                 alignItems: 'flex-start',
                 py: 1,
               },
-              '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(22,163,74,0.28)' },
+              '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(170,36,35,0.28)' },
             },
           },
         }}
@@ -1134,8 +1134,8 @@ function DeliveryMethodField({ value, onChange }) {
             '& .MuiInputBase-input': { py: '5px' },
             '& .MuiInputBase-input::placeholder': { color: 'rgba(255,255,255,0.42)', opacity: 1 },
             '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.14)' },
-            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(134,239,172,0.45)' },
-            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#86EFAC' },
+            '& .MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(226,75,74,0.45)' },
+            '& .MuiOutlinedInput-root.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#E24B4A' },
             '& .MuiSvgIcon-root': { color: 'rgba(255,255,255,0.55)' },
           }}
         />
@@ -1147,7 +1147,7 @@ function DeliveryMethodField({ value, onChange }) {
             color: '#F0F0F2',
             border: '1px solid rgba(255,255,255,0.14)',
             '& .MuiAutocomplete-option': { fontSize: '0.82rem' },
-            '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(22,163,74,0.28)' },
+            '& .MuiAutocomplete-option.Mui-focused': { bgcolor: 'rgba(170,36,35,0.28)' },
           },
         },
       }}
@@ -1497,7 +1497,7 @@ function FixedBlueprintTable({ table }) {
 function GenButton({ children, ...props }) {
   return (
     <Button variant="contained" fullWidth {...props}
-      sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
+      sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 600, borderRadius: 1.5, ...props.sx }}>
       {children}
     </Button>
   )
@@ -1634,7 +1634,7 @@ function TopicsCell({ value, onChange, onPointerDown, selected }) {
       onChange={onChange}
       data-ai-field="true"
       onPointerDown={onPointerDown}
-      style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: readOnlySyllabus ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
+      style={{ width: '100%', fontSize: '0.82rem', border: selected ? '1px solid #E24B4A' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'hidden', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: readOnlySyllabus ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px', whiteSpace: 'pre-wrap' }}
     />
   )
 }
@@ -1736,12 +1736,12 @@ function MultiSelectCell({ value, options, onChange }) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '5px 12px', cursor: 'pointer', fontSize: '0.73rem',
-                  background: checked ? 'rgba(22,163,74,0.18)' : 'transparent',
-                   color: checked ? '#86EFAC' : '#F0F0F2',
+                  background: checked ? 'rgba(170,36,35,0.18)' : 'transparent',
+                   color: checked ? '#E24B4A' : '#F0F0F2',
                 }}
               >
                 <input type="checkbox" checked={checked} readOnly
-                  style={{ accentColor: '#15803D', flexShrink: 0, pointerEvents: 'none' }} />
+                  style={{ accentColor: '#8E1C1B', flexShrink: 0, pointerEvents: 'none' }} />
                 <span style={{ fontWeight: checked ? 700 : 400 }}>{label}</span>
               </div>
             )
@@ -1860,7 +1860,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
   }
 
   return (
-    <div style={{ '--c-card': '#16161E', '--c-border': 'rgba(255,255,255,0.09)', '--c-panel': '#0F0F12', '--c-text': '#F0F0F2', '--c-muted': 'rgba(255,255,255,0.5)', '--c-muted2': 'rgba(255,255,255,0.68)', '--c-accent': '#86EFAC', '--c-accent-br': 'rgba(134,239,172,0.45)', '--c-border2': 'rgba(255,255,255,0.14)' }}>
+    <div style={{ '--c-card': '#16161E', '--c-border': 'rgba(255,255,255,0.09)', '--c-panel': '#0F0F12', '--c-text': '#F0F0F2', '--c-muted': 'rgba(255,255,255,0.5)', '--c-muted2': 'rgba(255,255,255,0.68)', '--c-accent': '#E24B4A', '--c-accent-br': 'rgba(226,75,74,0.45)', '--c-border2': 'rgba(255,255,255,0.14)' }}>
       <div style={{ ...cardStyle, marginBottom: 14 }}>
         <div style={{ ...cardHeaderStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => setAtsOpen(o => !o)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -2184,7 +2184,7 @@ function CheckResultsPanel({ title, children, onClose }) {
       display: 'flex',
       flexDirection: 'column',
       bgcolor: '#12141A',
-      borderTop: '1px solid rgba(134,239,172,0.35)',
+      borderTop: '1px solid rgba(226,75,74,0.35)',
       position: 'relative',
     }}>
       <Box
@@ -2206,10 +2206,10 @@ function CheckResultsPanel({ title, children, onClose }) {
           justifyContent: 'center',
         }}
       >
-        <Box sx={{ width: 36, height: 3, mt: '5px', borderRadius: 2, bgcolor: 'rgba(134,239,172,0.55)' }} />
+        <Box sx={{ width: 36, height: 3, mt: '5px', borderRadius: 2, bgcolor: 'rgba(226,75,74,0.55)' }} />
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, px: 2, pt: 0.75 }}>
-        <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 800 }}>
+        <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800 }}>
           {title}
         </Typography>
         <IconButton
@@ -5825,7 +5825,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             />
 
             {assessmentBatchProgress && (
-              <Box sx={{ p: 1, border: '1px solid rgba(21,128,61,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
+              <Box sx={{ p: 1, border: '1px solid rgba(142,28,27,0.18)', borderRadius: 1.25, bgcolor: MAROON_LIGHT }}>
                 <Typography variant="caption" sx={{ color: MAROON, fontWeight: 700, display: 'block' }}>
                   {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested} items are generated. {assessmentBatchProgress.detail || 'Still generating...'}
                 </Typography>
@@ -6515,7 +6515,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 variant={fw.key === activeFwKey ? 'contained' : 'outlined'}
                 sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.25, minWidth: 0,
                   ...(fw.key === activeFwKey
-                    ? { bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' } }
+                    ? { bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' } }
                     : { borderColor: MAROON + '55', color: MAROON, '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT } }) }}>
                 {fw.key}
               </Button>
@@ -6865,7 +6865,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         onChange={e => setSylArrObj('tla_chapters', i, 'outcomes', e.target.value)}
                         onInput={e => { e.target.style.height = 'auto'; e.target.style.height = Math.max(e.target.scrollHeight, 44) + 'px' }}
                         ref={el => { if (el) { el.style.height = 'auto'; el.style.height = Math.max(el.scrollHeight, 44) + 'px'; } }}
-                        style={{ width: '100%', fontSize: '0.82rem', border: sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' }) ? '1px solid #86EFAC' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
+                        style={{ width: '100%', fontSize: '0.82rem', border: sameAiField(aiField, { fieldType: 'arrayObj', arrField: 'tla_chapters', arrIndex: i, arrObjKey: 'outcomes' }) ? '1px solid #E24B4A' : '1px solid rgba(255,255,255,0.14)', borderRadius: 4, padding: '4px 6px', resize: 'none', overflow: 'visible', outline: 'none', fontFamily: 'inherit', color: '#F0F0F2', background: syllabusLocked ? 'rgba(255,255,255,0.06)' : '#1A1A1F', boxSizing: 'border-box', lineHeight: 1.4, minHeight: '44px' }}
                       />
                     </td>
                     <td style={{ ...TABLE_TD, textAlign: 'center' }}>
@@ -6929,7 +6929,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
                               })
                             }}
-                            style={{ width: 16, height: 16, accentColor: '#86EFAC', cursor: 'pointer' }}
+                            style={{ width: 16, height: 16, accentColor: '#E24B4A', cursor: 'pointer' }}
                           />
                         </td>
                       )
@@ -7185,7 +7185,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Table of Specifications
               </Typography>
               <Chip label={`${tosExams.length} exam${tosExams.length !== 1 ? 's' : ''}`} size="small"
-                sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(21,128,61,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
+                sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(142,28,27,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
               <Box onClick={e => e.stopPropagation()} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 <Tooltip title="Download every examination as a landscape DOCX">
                   <span>
@@ -7283,8 +7283,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <th style={{ ...TABLE_TH, minWidth: 56, textAlign: 'center' }}>Min</th>
                             {BLOOM_KEYS.map(k => (
                               <React.Fragment key={k}>
-                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(21,128,61,0.05)' }}>Items</th>
-                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(21,128,61,0.05)' }}>%</th>
+                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(142,28,27,0.05)' }}>Items</th>
+                                <th style={{ ...TABLE_TH, minWidth: 54, textAlign: 'center', fontSize: '0.68rem', backgroundColor: 'rgba(142,28,27,0.05)' }}>%</th>
                               </React.Fragment>
                             ))}
                           </tr>
@@ -7390,7 +7390,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   const status   = keywordAlignStatus(row)
                                   const domBloom = dominantBloom(row)
                                   const statusCfg = {
-                                    confirmed:  { color: '#16a34a', icon: '✓', label: 'Confirmed' },
+                                    confirmed:  { color: '#AA2423', icon: '✓', label: 'Confirmed' },
                                     mismatch:   { color: '#dc2626', icon: '⚠', label: 'Mismatch'  },
                                     unlinked:   { color: '#d97706', icon: '⊘', label: 'Unlinked'  },
                                     unverified: { color: '#9ca3af', icon: '○', label: 'Unverified'},
@@ -7411,7 +7411,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                           {statusCfg.icon} {statusCfg.label}
                                         </span>
                                         {domBloom && (
-                                          <span style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(21,128,61,0.07)', color: MAROON, fontWeight: 700 }}>
+                                          <span style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(142,28,27,0.07)', color: MAROON, fontWeight: 700 }}>
                                             {domBloom.charAt(0).toUpperCase() + domBloom.slice(1)}
                                           </span>
                                         )}
@@ -7478,10 +7478,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               const share = totalPts > 0 ? (sumItems / totalPts) * 100 : 0
                               return (
                                 <React.Fragment key={k}>
-                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
+                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(142,28,27,0.04)' }}>
                                     {sumItems > 0 ? sumItems : ''}
                                   </td>
-                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(21,128,61,0.04)' }}>
+                                  <td style={{ ...TABLE_TD, fontWeight: 700, textAlign: 'center', backgroundColor: 'rgba(142,28,27,0.04)' }}>
                                     {share > 0 ? `${share.toFixed(1)}%` : ''}
                                   </td>
                                 </React.Fragment>
@@ -7608,17 +7608,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       <Box sx={{
         flexShrink: 0,
         bgcolor: '#15181A',
-        borderTop: '2px solid rgba(134,239,172,0.65)',
+        borderTop: '2px solid rgba(226,75,74,0.65)',
         px: 2,
         py: 1,
       }}>
         <Stack spacing={0.75}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             {moduleGenProgress
-              ? <CircularProgress size={16} sx={{ color: '#86EFAC', flexShrink: 0 }} />
-              : <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />}
+              ? <CircularProgress size={16} sx={{ color: '#E24B4A', flexShrink: 0 }} />
+              : <AutoAwesomeIcon sx={{ color: '#E24B4A', fontSize: '1.2rem', flexShrink: 0 }} />}
             <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
-              <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+              <Typography variant="caption" sx={{ color: '#E24B4A', display: 'block', fontWeight: 800 }}>
                 {moduleGenProgress?.label || 'Module generation'}
               </Typography>
               <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
@@ -7626,7 +7626,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Typography>
             </Box>
             {total > 0 && (
-              <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+              <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 700 }}>
                 {Math.min(completed, total)}/{total}
               </Typography>
             )}
@@ -7639,12 +7639,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   startIcon={<AddIcon />}
                   onClick={() => openGenerateDialog('single', null)}
                   sx={{
-                    borderColor: '#86EFAC',
-                    color: '#86EFAC',
+                    borderColor: '#E24B4A',
+                    color: '#E24B4A',
                     borderRadius: 1.5,
                     textTransform: 'none',
                     fontWeight: 700,
-                    '&:hover': { bgcolor: 'rgba(134,239,172,0.12)', borderColor: '#86EFAC' },
+                    '&:hover': { bgcolor: 'rgba(226,75,74,0.12)', borderColor: '#E24B4A' },
                     '&.Mui-disabled': { borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
                   }}
                 >
@@ -7659,12 +7659,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     : <Zap sx={{ fontSize: '1rem !important' }} />}
                   onClick={() => openGenerateDialog('all', null)}
                   sx={{
-                    bgcolor: '#16A34A',
+                    bgcolor: '#AA2423',
                     color: '#fff',
                     borderRadius: 1.5,
                     textTransform: 'none',
                     fontWeight: 700,
-                    '&:hover': { bgcolor: '#15803D' },
+                    '&:hover': { bgcolor: '#8E1C1B' },
                     '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
                   }}
                 >
@@ -7681,7 +7681,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 height: 4,
                 borderRadius: 4,
                 bgcolor: 'rgba(255,255,255,0.12)',
-                '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                '& .MuiLinearProgress-bar': { bgcolor: '#E24B4A' },
               }}
             />
           )}
@@ -7905,10 +7905,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 maxHeight: 190,
                 overflowY: 'auto',
                 bgcolor: '#111318',
-                borderColor: 'rgba(134,239,172,0.35)',
+                borderColor: 'rgba(226,75,74,0.35)',
               }}
             >
-              <Typography variant="subtitle2" sx={{ color: '#86EFAC', fontWeight: 700, mb: 1 }}>
+              <Typography variant="subtitle2" sx={{ color: '#E24B4A', fontWeight: 700, mb: 1 }}>
                 Review generated suggestions ({aiPipelineDrafts.length})
               </Typography>
               <Stack spacing={1.25}>
@@ -7931,7 +7931,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           {showSaveFooter && !syllabusLocked && (
             <Box sx={{
               flexShrink: 0,
-              bgcolor: '#16161E', borderTop: '1.5px solid rgba(134,239,172,0.35)',
+              bgcolor: '#16161E', borderTop: '1.5px solid rgba(226,75,74,0.35)',
               px: 2.5, py: 1.25,
               display: 'flex', alignItems: 'center', gap: 2,
               zIndex: 30,
@@ -7945,7 +7945,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Discard
               </Button>
               <Button variant="contained" size="small" disabled={saveLoading} onClick={handleSaveSyllabus}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5, minWidth: 100 }}>
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5, minWidth: 100 }}>
                 {saveLoading ? 'Saving...' : 'Save Syllabus'}
               </Button>
             </Box>
@@ -7955,16 +7955,16 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
-            borderTop: '2px solid rgba(134,239,172,0.65)',
+            borderTop: '2px solid rgba(226,75,74,0.65)',
             px: 2,
             py: 1,
             zIndex: 30,
           }}>
             <Stack spacing={0.75}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />
+                <AutoAwesomeIcon sx={{ color: '#E24B4A', fontSize: '1.2rem', flexShrink: 0 }} />
                 <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
-                  <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                  <Typography variant="caption" sx={{ color: '#E24B4A', display: 'block', fontWeight: 800 }}>
                     Writing assistant
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
@@ -7995,8 +7995,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     startIcon={sectionWriting ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                     onClick={() => focusedAiField ? generateOneField(focusedAiField) : handleGenerateSection()}
                     sx={{
-                      bgcolor: '#16A34A',
-                      '&:hover': { bgcolor: '#15803D' },
+                      bgcolor: '#AA2423',
+                      '&:hover': { bgcolor: '#8E1C1B' },
                       '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.62)', opacity: 1 },
                       textTransform: 'none',
                       fontWeight: 800,
@@ -8013,11 +8013,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     variant="outlined"
                     onClick={() => setAiReviewOpen(true)}
                     sx={{
-                      color: '#BBF7D0',
-                      borderColor: 'rgba(134,239,172,0.5)',
+                      color: '#F3B4B3',
+                      borderColor: 'rgba(226,75,74,0.5)',
                       textTransform: 'none',
                       fontWeight: 700,
-                      '&:hover': { borderColor: '#86EFAC', bgcolor: 'rgba(134,239,172,0.08)' },
+                      '&:hover': { borderColor: '#E24B4A', bgcolor: 'rgba(226,75,74,0.08)' },
                     }}
                   >
                     Review drafts
@@ -8030,7 +8030,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Box sx={{
                     height: '100%',
                     width: `${Math.min(92, (aiPipelineProgress.completed / Math.max(aiPipelineProgress.total, 1)) * 100)}%`,
-                    bgcolor: '#86EFAC',
+                    bgcolor: '#E24B4A',
                     transition: 'width 0.2s linear',
                   }} />
                 </Box>
@@ -8049,7 +8049,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               sx: {
                 bgcolor: '#15181A',
                 color: '#F9FAFB',
-                border: '1px solid rgba(134,239,172,0.35)',
+                border: '1px solid rgba(226,75,74,0.35)',
                 borderRadius: 2,
               },
             }}
@@ -8068,7 +8068,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <Box sx={{
                     height: '100%',
                     width: `${aiPipelineProgress?.total ? Math.min(92, (aiPipelineProgress.completed / aiPipelineProgress.total) * 100) : 30}%`,
-                    bgcolor: '#86EFAC',
+                    bgcolor: '#E24B4A',
                   }} />
                 </Box>
               ) : (
@@ -8085,7 +8085,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         borderRadius: 1.5,
                       }}
                     >
-                      <Typography variant="subtitle2" sx={{ color: '#BBF7D0', fontWeight: 800, mb: 0.75 }}>
+                      <Typography variant="subtitle2" sx={{ color: '#F3B4B3', fontWeight: 800, mb: 0.75 }}>
                         {draft.label}
                       </Typography>
                       {draft.fieldType === 'customTable' ? (
@@ -8096,7 +8096,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                 {draft.columns.map((column, columnIndex) => (
                                   <TableCell
                                     key={columnIndex}
-                                    sx={{ color: '#BBF7D0', fontWeight: 800, borderColor: 'rgba(255,255,255,0.16)' }}
+                                    sx={{ color: '#F3B4B3', fontWeight: 800, borderColor: 'rgba(255,255,255,0.16)' }}
                                   >
                                     {column}
                                   </TableCell>
@@ -8154,7 +8154,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       aria-label="Add drafts to syllabus and continue"
                       disabled={writingStillRunning(aiGenerating, false, aiPipelineProgress) || !aiPipelineDrafts?.length}
                       onClick={acceptAiDraftsAndContinue}
-                      sx={{ color: '#86EFAC', bgcolor: 'rgba(22,163,74,0.16)', '&:hover': { bgcolor: 'rgba(22,163,74,0.3)' } }}
+                      sx={{ color: '#E24B4A', bgcolor: 'rgba(170,36,35,0.16)', '&:hover': { bgcolor: 'rgba(170,36,35,0.3)' } }}
                     >
                       <CheckCircleOutlineIcon />
                     </IconButton>
@@ -8178,7 +8178,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       aria-label="Create drafts again"
                       disabled={writingStillRunning(aiGenerating, false, aiPipelineProgress) || !aiSectionFields.length}
                       onClick={regenerateAiDrafts}
-                      sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}
+                      sx={{ color: '#F3B4B3', bgcolor: 'rgba(226,75,74,0.12)', '&:hover': { bgcolor: 'rgba(226,75,74,0.24)' } }}
                     >
                       <ReplayIcon />
                     </IconButton>
@@ -8265,7 +8265,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     onClick={handleSaveModuleContent}
                     sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5,
                           textTransform: 'none', fontSize: '0.78rem', px: 1.5, py: 0.4,
-                          '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
+                          '&:hover': { bgcolor: '#6E1212' }, '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                     {moduleSaving ? 'Saving…' : 'Save'}
                   </Button>
                   <Button size="small" startIcon={<AssignmentIcon sx={{ fontSize: '0.85rem !important' }} />}
@@ -8338,8 +8338,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <Box key={st.id} sx={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 1.5, overflow: 'hidden', bgcolor: '#16161E' }}>
                         {/* Subtopic header */}
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 0.9,
-                                   bgcolor: isExpanded ? 'rgba(22,163,74,0.14)' : 'rgba(255,255,255,0.04)', cursor: 'pointer',
-                                   '&:hover': { bgcolor: isExpanded ? 'rgba(22,163,74,0.18)' : 'rgba(255,255,255,0.07)' } }}
+                                   bgcolor: isExpanded ? 'rgba(170,36,35,0.14)' : 'rgba(255,255,255,0.04)', cursor: 'pointer',
+                                   '&:hover': { bgcolor: isExpanded ? 'rgba(170,36,35,0.18)' : 'rgba(255,255,255,0.07)' } }}
                           onClick={() => setExpandedSubtopics(prev => {
                             const next = new Set(prev)
                             isExpanded ? next.delete(st.id) : next.add(st.id)
@@ -8352,7 +8352,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                             <span>
                               <IconButton size="small" disabled={isGen}
                                 onClick={e => { e.stopPropagation(); handleGenerateSubtopicContent(st.id, st.title) }}
-                                sx={{ color: '#86EFAC', '&:hover': { bgcolor: 'rgba(22,163,74,0.16)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' } }}>
+                                sx={{ color: '#E24B4A', '&:hover': { bgcolor: 'rgba(170,36,35,0.16)' }, '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' } }}>
                                 {isGen
                                   ? <CircularProgress size={14} sx={{ color: MAROON }} />
                                   : <AutoAwesomeIcon sx={{ fontSize: '1rem' }} />}
@@ -8463,7 +8463,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   <IconButton size="small" disabled={!chatInput.trim() || chatLoading}
                     onClick={handleChatSend}
                     sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, alignSelf: 'flex-end',
-                          '&:hover': { bgcolor: '#14532D' }, '&:disabled': { bgcolor: '#ddd' } }}>
+                          '&:hover': { bgcolor: '#6E1212' }, '&:disabled': { bgcolor: '#ddd' } }}>
                     <SendIcon sx={{ fontSize: '1rem' }} />
                   </IconButton>
                 </Box>
@@ -8510,13 +8510,13 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 {savedModules.length > 0 && (
                   <Chip size="small"
                     label={`${savedModules.length} module${savedModules.length === 1 ? '' : 's'}`}
-                    sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: 'rgba(46,125,50,0.12)', color: '#86EFAC',
+                    sx={{ height: 22, fontSize: '0.72rem', fontWeight: 700, bgcolor: 'rgba(46,125,50,0.12)', color: '#E24B4A',
                           border: '1px solid rgba(46,125,50,0.28)' }} />
                 )}
                 <Button size="small" disabled={consistencyChecking || lectureTopics.length === 0}
                   onClick={handleCheckAlignment}
                   sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
-                        fontSize: '0.75rem', px: 1.25, py: 0.3, '&:hover': { bgcolor: '#14532D' },
+                        fontSize: '0.75rem', px: 1.25, py: 0.3, '&:hover': { bgcolor: '#6E1212' },
                         '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                   {consistencyChecking ? 'Checking…' : 'Check alignment'}
                 </Button>
@@ -8598,7 +8598,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                         {topic.topic}
                       </Typography>
                       {topic.activity ? (
-                        <Typography variant="caption" sx={{ color: '#BBF7D0', display: 'block' }}>
+                        <Typography variant="caption" sx={{ color: '#F3B4B3', display: 'block' }}>
                           Activity: {topic.activity}
                         </Typography>
                       ) : null}
@@ -8622,7 +8622,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       <Tooltip title={`Generate AI module for Week ${topic.week}`}>
                         <IconButton size="small" disabled={isGenerating}
                           onClick={() => openGenerateDialog('single', topic)}
-                          sx={{ color: '#BBF7D0', bgcolor: 'rgba(134,239,172,0.12)', '&:hover': { bgcolor: 'rgba(134,239,172,0.24)' } }}>
+                          sx={{ color: '#F3B4B3', bgcolor: 'rgba(226,75,74,0.12)', '&:hover': { bgcolor: 'rgba(226,75,74,0.24)' } }}>
                           {isGenerating ? <CircularProgress size={14} /> : <Zap sx={{ fontSize: '1rem' }} />}
                         </IconButton>
                       </Tooltip>
@@ -8737,7 +8737,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     ? <CircularProgress size={16} sx={{ color: '#fff' }} />
                     : <LockIcon sx={{ fontSize: '1rem !important' }} />}
                   sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
-                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                        px: 2, '&:hover': { bgcolor: '#6E1212' } }}>
                   {topicSourceSaving ? 'Confirming…' : 'Confirm selection'}
                 </Button>
               </DialogActions>
@@ -8761,7 +8761,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <DialogActions sx={{ px: 3, pb: 2.5 }}>
               <Button variant="contained" onClick={() => setTopicSourceNoticeOpen(false)}
                 sx={{ bgcolor: MAROON, textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
-                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                      px: 2, '&:hover': { bgcolor: '#6E1212' } }}>
                 Got it
               </Button>
             </DialogActions>
@@ -8861,7 +8861,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   ? <CircularProgress size={16} sx={{ color: '#fff' }} />
                   : <Zap sx={{ fontSize: '1rem !important' }} />}
                 sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
-                      px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                      px: 2, '&:hover': { bgcolor: '#6E1212' } }}>
                 {actionLoading || moduleGeneratingAll ? 'Generating…' : 'Generate'}
               </Button>
             </DialogActions>
@@ -8886,7 +8886,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 Define assessment coverage here, then use the module matches to prepare assessments.
               </Typography>
             </Box>
-            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#15803D' }, display: syllabusLocked ? 'none' : undefined }}>
+            <Button size="small" variant="contained" startIcon={saveLoading ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <SaveIcon fontSize="small" />} disabled={saveLoading || !isDirty} onClick={handleSaveSyllabus} sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#8E1C1B' }, display: syllabusLocked ? 'none' : undefined }}>
               {saveLoading ? 'Saving…' : saveSuccess ? 'Saved' : 'Save TOS'}
             </Button>
           </Box>
@@ -8993,7 +8993,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Button size="small" disabled={qaRunning || !(assessmentDetail.items || []).length}
                 onClick={handleRunAssessmentQa}
                 sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
-                      fontSize: '0.75rem', px: 1.25, py: 0.35, '&:hover': { bgcolor: '#14532D' },
+                      fontSize: '0.75rem', px: 1.25, py: 0.35, '&:hover': { bgcolor: '#6E1212' },
                       '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                 {qaRunning ? 'Checking…' : 'Check items'}
               </Button>
@@ -9131,7 +9131,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </DialogContent>
               <DialogActions>
                 <Button onClick={() => setApproveOpen(false)} disabled={approving} sx={{ textTransform: 'none' }}>Cancel</Button>
-                <Button onClick={handleApproveAssessment} disabled={approving} sx={{ textTransform: 'none', bgcolor: MAROON, color: '#fff', '&:hover': { bgcolor: '#14532D' } }}>
+                <Button onClick={handleApproveAssessment} disabled={approving} sx={{ textTransform: 'none', bgcolor: MAROON, color: '#fff', '&:hover': { bgcolor: '#6E1212' } }}>
                   {approving ? 'Saving…' : 'Approve'}
                 </Button>
               </DialogActions>
@@ -9252,7 +9252,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                               startIcon={<SaveIcon sx={{ fontSize: '0.8rem !important' }} />}
                               disabled={itemSaving}
                               onClick={handleSaveItemEdit}
-                              sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, fontSize: '0.72rem', px: 1.2, minWidth: 0 }}
+                              sx={{ textTransform: 'none', bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, fontSize: '0.72rem', px: 1.2, minWidth: 0 }}
                             >
                               {itemSaving ? 'Saving…' : 'Save'}
                             </Button>
@@ -9361,15 +9361,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             <Box sx={{
               flexShrink: 0,
               bgcolor: '#15181A',
-              borderTop: '2px solid rgba(134,239,172,0.65)',
+              borderTop: '2px solid rgba(226,75,74,0.65)',
               px: 2,
               py: 1,
             }}>
               <Stack spacing={0.75}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CircularProgress size={16} sx={{ color: '#86EFAC' }} />
+                  <CircularProgress size={16} sx={{ color: '#E24B4A' }} />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                    <Typography variant="caption" sx={{ color: '#E24B4A', display: 'block', fontWeight: 800 }}>
                       Assessment generation
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
@@ -9378,7 +9378,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     </Typography>
                   </Box>
                   {Number(assessmentBatchProgress.requested) > 0 && (
-                    <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 700 }}>
+                    <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 700 }}>
                       {assessmentBatchProgress.generated}/{assessmentBatchProgress.requested}
                     </Typography>
                   )}
@@ -9392,7 +9392,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     height: 4,
                     borderRadius: 4,
                     bgcolor: 'rgba(255,255,255,0.12)',
-                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                    '& .MuiLinearProgress-bar': { bgcolor: '#E24B4A' },
                   }}
                 />
               </Stack>
@@ -9525,7 +9525,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     ? <CircularProgress size={16} sx={{ color: '#fff' }} />
                     : <Zap sx={{ fontSize: '1rem !important' }} />}
                   sx={{ bgcolor: MAROON, color: '#fff', textTransform: 'none', fontWeight: 700, borderRadius: 1.5,
-                        px: 2, '&:hover': { bgcolor: '#14532D' } }}>
+                        px: 2, '&:hover': { bgcolor: '#6E1212' } }}>
                   {actionLoading ? 'Generating…' : 'Generate'}
                 </Button>
               </DialogActions>
@@ -9564,7 +9564,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       border: '1px solid rgba(255,255,255,0.09)',
                       cursor: 'pointer',
                       userSelect: 'none',
-                      '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(22,163,74,0.20)' },
+                      '&:hover': { borderColor: MAROON + '88', bgcolor: 'rgba(170,36,35,0.20)' },
                     }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, pointerEvents: 'none' }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.6, flexShrink: 0 }}>
@@ -9614,7 +9614,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       }}
                       sx={{ bgcolor: MAROON, color: '#fff', borderRadius: 1.5, textTransform: 'none',
                             fontSize: '0.72rem', px: 1.1, py: 0.2, minWidth: 0,
-                            '&:hover': { bgcolor: '#14532D' },
+                            '&:hover': { bgcolor: '#6E1212' },
                             '&:disabled': { bgcolor: '#ccc', color: '#fff' } }}>
                       {qaRunning ? 'Checking…' : 'Check'}
                     </Button>
@@ -9650,15 +9650,15 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box sx={{
             flexShrink: 0,
             bgcolor: '#15181A',
-            borderTop: '2px solid rgba(134,239,172,0.65)',
+            borderTop: '2px solid rgba(226,75,74,0.65)',
             px: 2,
             py: 1,
           }}>
             <Stack spacing={0.75}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                <AutoAwesomeIcon sx={{ color: '#86EFAC', fontSize: '1.2rem', flexShrink: 0 }} />
+                <AutoAwesomeIcon sx={{ color: '#E24B4A', fontSize: '1.2rem', flexShrink: 0 }} />
                 <Box sx={{ flex: '1 1 180px', minWidth: 140 }}>
-                  <Typography variant="caption" sx={{ color: '#86EFAC', display: 'block', fontWeight: 800 }}>
+                  <Typography variant="caption" sx={{ color: '#E24B4A', display: 'block', fontWeight: 800 }}>
                     Assessment generation
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#E5E7EB', display: 'block' }}>
@@ -9677,12 +9677,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   startIcon={actionLoading ? <CircularProgress size={15} color="inherit" /> : <AutoAwesomeIcon />}
                   onClick={() => openAssessmentGenDialog('multi')}
                   sx={{
-                    bgcolor: '#16A34A',
+                    bgcolor: '#AA2423',
                     color: '#fff',
                     borderRadius: 1.5,
                     textTransform: 'none',
                     fontWeight: 700,
-                    '&:hover': { bgcolor: '#15803D' },
+                    '&:hover': { bgcolor: '#8E1C1B' },
                     '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.38)' },
                   }}
                 >
@@ -9699,7 +9699,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     height: 4,
                     borderRadius: 4,
                     bgcolor: 'rgba(255,255,255,0.12)',
-                    '& .MuiLinearProgress-bar': { bgcolor: '#86EFAC' },
+                    '& .MuiLinearProgress-bar': { bgcolor: '#E24B4A' },
                   }}
                 />
               )}
@@ -9951,7 +9951,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 gap: 1, minHeight: 148, px: 2, py: 2.5, cursor: uploading ? 'default' : 'pointer',
                 borderRadius: 2, textAlign: 'center',
-                border: `1.5px dashed ${sourceDropActive ? MAROON : 'rgba(22,163,74,0.55)'}`,
+                border: `1.5px dashed ${sourceDropActive ? MAROON : 'rgba(170,36,35,0.55)'}`,
                 bgcolor: sourceDropActive ? MAROON_LIGHT : 'rgba(255,255,255,0.03)',
                 transition: 'border-color 0.15s, background-color 0.15s',
               }}
@@ -9961,7 +9961,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <Box component="span" sx={{ fontWeight: 800, color: '#F9FAFB' }}>Choose a file</Box>
                 {' or drag it here.'}
               </Typography>
-              <Typography variant="caption" sx={{ color: uploadFile ? '#86EFAC' : '#9CA3AF' }}>
+              <Typography variant="caption" sx={{ color: uploadFile ? '#E24B4A' : '#9CA3AF' }}>
                 {uploadFile ? uploadFile.name : 'PDF or DOCX only'}
               </Typography>
               <input hidden type="file" disabled={uploading}
@@ -10121,7 +10121,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Button>
             {activeTab !== 'analytics' && activeTab !== 'grading' && (
               <Button size="small" startIcon={<CloudUploadIcon fontSize="small" />} onClick={() => setMobileUploadOpen(true)}
-                sx={{ textTransform: 'none', color: '#86EFAC', borderColor: 'rgba(22,163,74,0.4)' }} variant="outlined">
+                sx={{ textTransform: 'none', color: '#E24B4A', borderColor: 'rgba(170,36,35,0.4)' }} variant="outlined">
                 Sources
               </Button>
             )}
@@ -10134,7 +10134,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         PaperProps={{ sx: { width: 260, display: 'flex', flexDirection: 'column', bgcolor: '#101014' } }}>
         <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
           <Typography variant="caption"
-            sx={{ color: '#86EFAC', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
+            sx={{ color: '#E24B4A', textTransform: 'uppercase', letterSpacing: '0.1em', fontSize: '0.6rem', fontWeight: 700 }}>
             Course Workflow - {workspaceProgress.doneCount}/{workspaceProgress.totalSteps} done
           </Typography>
         </Box>
@@ -10149,9 +10149,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 sx={{
                   justifyContent: 'flex-start', px: 1.5, py: 0.9,
                   borderRadius: 1.5, textTransform: 'none', fontSize: '0.85rem',
-                  fontWeight: on ? 700 : 400, color: on ? '#86EFAC' : 'rgba(255,255,255,0.65)',
-                  bgcolor: on ? 'rgba(22,163,74,0.16)' : 'transparent',
-                  borderLeft: on ? '3px solid #16A34A' : '3px solid transparent',
+                  fontWeight: on ? 700 : 400, color: on ? '#E24B4A' : 'rgba(255,255,255,0.65)',
+                  bgcolor: on ? 'rgba(170,36,35,0.16)' : 'transparent',
+                  borderLeft: on ? '3px solid #AA2423' : '3px solid transparent',
                   minWidth: 0,
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: '#fff' },
                 }}>
@@ -10165,8 +10165,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           startIcon={<LogoutIcon sx={{ fontSize: '1.05rem !important' }} />}
           sx={{
             justifyContent: 'flex-start', px: 1.5, py: 0.9, borderRadius: 0,
-            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#16A34A',
-            '&:hover': { bgcolor: 'rgba(22,163,74,0.08)' },
+            textTransform: 'none', fontSize: '0.85rem', fontWeight: 600, color: '#AA2423',
+            '&:hover': { bgcolor: 'rgba(170,36,35,0.08)' },
           }}>
           Sign Out
         </Button>
@@ -10205,7 +10205,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           <Box onMouseDown={() => setDragging('right')}
             sx={{ width: 4, flexShrink: 0, cursor: 'col-resize',
                   bgcolor: dragging === 'right' ? MAROON + '44' : 'transparent',
-                  '&:hover': { bgcolor: 'rgba(21,128,61,0.14)' }, transition: 'background-color 0.15s' }} />
+                  '&:hover': { bgcolor: 'rgba(142,28,27,0.14)' }, transition: 'background-color 0.15s' }} />
         )}
 
         {/* RIGHT — sources panel (desktop) or compact rail when collapsed */}
@@ -10326,7 +10326,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             variant="contained"
             onClick={handleSaveAnswerSheet}
             disabled={answerSheetSaving}
-            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none' }}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none' }}
           >
             {answerSheetSaving ? 'Saving…' : 'Save Answer Sheet'}
           </Button>
@@ -10377,7 +10377,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               link.download = `bubble_sheet_${bubbleSheetPreviewTitle.replace(/\s+/g, '_')}.pdf`
               link.click()
             }}
-            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#14532D' }, textTransform: 'none', fontSize: '0.82rem' }}>
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontSize: '0.82rem' }}>
             Download PDF
           </Button>
         </DialogActions>

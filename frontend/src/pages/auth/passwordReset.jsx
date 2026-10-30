@@ -75,7 +75,7 @@ function StepDots({ current }) {
           width: i === current ? 20 : 7,
           height: 7,
           borderRadius: 4,
-          background: i <= current ? 'linear-gradient(90deg, #15803D, #16A34A)' : 'rgba(255,255,255,0.12)',
+          background: i <= current ? 'linear-gradient(90deg, #8E1C1B, #AA2423)' : 'rgba(255,255,255,0.12)',
           transition: 'all 0.4s ease',
         }} />
       ))}
@@ -224,14 +224,14 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           transition: border-color 0.2s, background 0.2s;
         }
         .dark-input:focus {
-          border-color: rgba(22,163,74,0.7);
+          border-color: rgba(170,36,35,0.7);
           background: rgba(255,255,255,0.09);
         }
         .dark-input::placeholder { color: rgba(255,255,255,0.28); }
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -248,12 +248,12 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
-          box-shadow: 0 8px 28px rgba(21,128,61,0.5);
+          box-shadow: 0 8px 28px rgba(142,28,27,0.5);
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-inline {
-          background: linear-gradient(135deg, #15803D, #16A34A);
+          background: linear-gradient(135deg, #8E1C1B, #AA2423);
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -270,7 +270,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           flex-shrink: 0;
         }
         .btn-inline:hover:not(:disabled) {
-          box-shadow: 0 6px 20px rgba(21,128,61,0.45);
+          box-shadow: 0 6px 20px rgba(142,28,27,0.45);
           transform: translateY(-1px);
         }
         .btn-inline:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -284,8 +284,8 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         }
 
         .error-box {
-          background: rgba(22,163,74,0.15);
-          border: 1px solid rgba(22,163,74,0.35);
+          background: rgba(170,36,35,0.15);
+          border: 1px solid rgba(170,36,35,0.35);
           border-radius: 10px;
           padding: 0.75rem 1rem;
           color: #FF8080;
@@ -318,13 +318,13 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.5) 12.5%,
-            rgba(21, 128, 61, 0.5) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.5) 62.5%,
-            rgba(21, 128, 61, 0.5) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.5) 12.5%,
+            rgba(142, 28, 27, 0.5) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.5) 62.5%,
+            rgba(142, 28, 27, 0.5) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -370,13 +370,13 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
           padding: 1px;
           background: linear-gradient(
             90deg,
-            rgba(134, 239, 172, 0) 0%,
-            rgba(134, 239, 172, 0.5) 12.5%,
-            rgba(21, 128, 61, 0.5) 25%,
-            rgba(134, 239, 172, 0) 50%,
-            rgba(134, 239, 172, 0.5) 62.5%,
-            rgba(21, 128, 61, 0.5) 75%,
-            rgba(134, 239, 172, 0) 100%
+            rgba(226, 75, 74, 0) 0%,
+            rgba(226, 75, 74, 0.5) 12.5%,
+            rgba(142, 28, 27, 0.5) 25%,
+            rgba(226, 75, 74, 0) 50%,
+            rgba(226, 75, 74, 0.5) 62.5%,
+            rgba(142, 28, 27, 0.5) 75%,
+            rgba(226, 75, 74, 0) 100%
           );
           background-size: 200% 100%;
           animation: neon-pan 4s linear infinite;
@@ -450,7 +450,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
       `}</style>
 
       {/* Background orbs */}
-      <Orb style={{ width: 500, height: 500, background: 'rgba(21,128,61,0.15)', top: -150, left: -100 }} />
+      <Orb style={{ width: 500, height: 500, background: 'rgba(142,28,27,0.15)', top: -150, left: -100 }} />
       <Orb style={{ width: 350, height: 350, background: 'rgba(100,0,0,0.12)', bottom: -80, right: -80 }} />
       <div style={{
         position: 'fixed', inset: 0,
@@ -523,7 +523,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
             className="mascot-col"
             style={{
               width: '42%',
-              background: 'linear-gradient(145deg, rgba(21,128,61,0.4), rgba(134, 239, 172, 0))',
+              background: 'linear-gradient(145deg, rgba(142,28,27,0.4), rgba(226, 75, 74, 0))',
               borderRight: '1px solid rgba(255,255,255,0.08)',
               display: 'flex',
               flexDirection: 'column',
@@ -534,8 +534,8 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
               overflow: 'hidden',
             }}
           >
-            <Orb style={{ width: 280, height: 280, background: 'rgba(21, 128, 61, 0.8)', top: -60, right: -60 }} />
-            <Orb style={{ width: 180, height: 180, background: 'rgba(134, 239, 172, 0)', bottom: -40, left: -40 }} />
+            <Orb style={{ width: 280, height: 280, background: 'rgba(142, 28, 27, 0.8)', top: -60, right: -60 }} />
+            <Orb style={{ width: 180, height: 180, background: 'rgba(226, 75, 74, 0)', bottom: -40, left: -40 }} />
 
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', width: '100%' }}>
               {/* Logo */}
@@ -558,7 +558,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     {['Email', 'Verify', 'Password'].map((label, i) => (
                       <span key={label} style={{
                         fontSize: '0.7rem',
-                        color: i <= step ? '#86EFAC' : 'rgba(255,255,255,0.25)',
+                        color: i <= step ? '#E24B4A' : 'rgba(255,255,255,0.25)',
                         fontWeight: 600,
                         transition: 'color 0.3s',
                       }}>
@@ -570,7 +570,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     <div style={{
                       height: '100%',
                       width: `${((step) / 2) * 100}%`,
-                      background: 'linear-gradient(90deg, #15803D, #16A34A)',
+                      background: 'linear-gradient(90deg, #8E1C1B, #AA2423)',
                       borderRadius: 4,
                       transition: 'width 0.5s ease',
                     }} />
@@ -616,11 +616,11 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
                     Remembered it?{' '}
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#86EFAC', fontWeight: 700 }}>
+                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
                         Sign In
                       </button>
                     ) : (
-                      <Link to={ROUTES.SIGN_IN} style={{ color: '#86EFAC', fontWeight: 700, textDecoration: 'none' }}>
+                      <Link to={ROUTES.SIGN_IN} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>
                         Sign In
                       </Link>
                     )}
@@ -667,7 +667,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                       style={{
                         background: 'none', border: 'none', padding: 0,
                         cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
-                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#86EFAC',
+                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#E24B4A',
                         fontWeight: 700, fontSize: '0.83rem',
                         fontFamily: 'inherit', transition: 'color 0.2s',
                       }}

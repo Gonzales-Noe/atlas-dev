@@ -146,7 +146,7 @@ function parseInline(input, keyPrefix = 'n') {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: '#86EFAC', textDecoration: 'underline' }}
+                style={{ color: '#E24B4A', textDecoration: 'underline' }}
               >
                 {parseInline(text.slice(index + 1, labelEnd), `${keyPrefix}-a${nodes.length}`)}
               </a>,
@@ -386,7 +386,7 @@ function renderBlock(block, index) {
         <Box
           key={key}
           sx={{
-            borderLeft: '3px solid rgba(134,239,172,0.55)',
+            borderLeft: '3px solid rgba(226,75,74,0.55)',
             pl: 1.5,
             my: 1,
             opacity: 0.92,

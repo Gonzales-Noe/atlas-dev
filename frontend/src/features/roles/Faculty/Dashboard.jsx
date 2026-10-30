@@ -24,7 +24,7 @@ import { PageHeader, PrimaryBtn } from '../../../components/ui'
 import FacultyLayout from './FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#15803D', '#166534', '#15803D', '#16A34A', '#22C55E']
+const CARD_COLORS = ['#8E1C1B', '#7C1616', '#6E1212', '#AA2423', '#E24B4A']
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
@@ -120,7 +120,7 @@ export default function FacultyDashboard() {
 
         {loading && !data ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 10 }}>
-            <CircularProgress sx={{ color: '#15803D' }} />
+            <CircularProgress sx={{ color: '#8E1C1B' }} />
           </Box>
         ) : (
           <Box
@@ -147,7 +147,7 @@ export default function FacultyDashboard() {
                     transition: 'transform 250ms, box-shadow 250ms, border-color 250ms',
                     '&:hover': {
                       transform: 'translateY(-3px)',
-                      borderColor: 'rgba(134,239,172,0.4)',
+                      borderColor: 'rgba(226,75,74,0.4)',
                       boxShadow: 'var(--shadow-lg)',
                     },
                   }}
@@ -157,7 +157,7 @@ export default function FacultyDashboard() {
                       <Box sx={{ mb: 2, width: 48, height: 48, borderRadius: 3, bgcolor: accentColor + '30', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <CourseIcon sx={{ fontSize: 28, color: accentColor }} />
                       </Box>
-                      <Typography variant="caption" sx={{ color: '#86EFAC', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+                      <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
                         {course.course_code}
                       </Typography>
                       <Typography variant="h6" sx={{ color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
@@ -190,7 +190,7 @@ export default function FacultyDashboard() {
             </Typography>
             {requestsLoading ? (
               <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                <CircularProgress size={24} sx={{ color: '#15803D' }} />
+                <CircularProgress size={24} sx={{ color: '#8E1C1B' }} />
               </Box>
             ) : requestsError ? (
               <Alert severity="error">{requestsError}</Alert>

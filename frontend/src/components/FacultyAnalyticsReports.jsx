@@ -32,7 +32,7 @@ const MUTED = 'rgba(255,255,255,0.55)'
 const CARD = 'rgba(255,255,255,0.04)'
 const CARD_MUTED = 'rgba(255,255,255,0.06)'
 const BORDER = 'rgba(255,255,255,0.09)'
-const PRIMARY = '#86EFAC'
+const PRIMARY = '#E24B4A'
 const DIALOG_BG = '#16161E'
 
 const MASTERED = '#2E9E5B'
@@ -787,7 +787,7 @@ export default function FacultyAnalyticsReports({ courseId }) {
             <Txt size={13.5} weight={800}>Item {n}</Txt>
             <Txt size={11} color={MUTED}>Key {item.correct_answer}</Txt>
             {item.bloom_level && (
-              <Box component="span" sx={{ px: 0.75, borderRadius: 1, bgcolor: 'rgba(134,239,172,0.12)', color: PRIMARY, fontSize: 10 }}>
+              <Box component="span" sx={{ px: 0.75, borderRadius: 1, bgcolor: 'rgba(226,75,74,0.12)', color: PRIMARY, fontSize: 10 }}>
                 {item.bloom_level}
               </Box>
             )}
@@ -1206,7 +1206,7 @@ export default function FacultyAnalyticsReports({ courseId }) {
           <Slider value={passingDialog ?? 50} min={0} max={100} step={1}
             onChange={(_, v) => setPassingDialog(v)} sx={{ color: PRIMARY, mt: 1 }} />
           <Button fullWidth variant="contained" disabled={savingPassing} onClick={() => savePassingScore(passingDialog ?? 50)}
-            sx={{ mt: 1.5, bgcolor: PRIMARY, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#14532D' } }}>
+            sx={{ mt: 1.5, bgcolor: PRIMARY, textTransform: 'none', fontWeight: 700, '&:hover': { bgcolor: '#6E1212' } }}>
             {savingPassing ? 'Saving…' : 'Save Passing Score'}
           </Button>
         </Box>
