@@ -716,6 +716,28 @@ body:has(.atlas-auth) #root {
   color-scheme: light;
 }
 
+/* Terms and privacy stay white in both themes, including past the first screen. */
+html:has(.atlas-legal),
+body:has(.atlas-legal),
+body:has(.atlas-legal) #root {
+  background: #ffffff !important;
+  height: auto !important;
+  min-height: 100%;
+  color-scheme: light;
+}
+.atlas-legal {
+  background: #ffffff !important;
+  color: #1A1A1A;
+  flex: 1 0 auto;
+  width: 100%;
+  min-height: 100vh;
+}
+body.atlas-light .atlas-legal h1,
+body.atlas-light .atlas-legal h2,
+body.atlas-light .atlas-legal p {
+  color: inherit;
+}
+
 /* Landing stays white in both themes. */
 body:has(.atlas-landing),
 body:has(.atlas-landing) #root {
