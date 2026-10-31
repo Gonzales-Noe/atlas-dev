@@ -536,7 +536,7 @@ def generate_syllabus(request):
         "course_name": "Data Structures and Algorithms",
         "course_code": "CS 201",          // optional
         "num_weeks": 18,                  // optional, default 16
-        "provider": "groq",               // optional: groq|openrouter
+        "provider": "nvidia",             // optional: auto|nvidia|groq|gemma|cloudflare|openrouter|ollama
         "top_k": 5,                       // optional, RAG chunks to retrieve
         "search_query": "...",            // optional override for semantic search
         "extra_instructions": "..."       // optional faculty notes

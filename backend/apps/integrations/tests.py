@@ -83,6 +83,33 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(seen['extra']['reasoning_effort'], 'none')
         self.assertEqual(seen['extra']['response_format'], {'type': 'json_object'})
 
+    def test_nvidia_generation_disables_thinking(self):
+        service = _service('nvidia')
+        service.api_keys['nvidia'] = ['test-key']
+        service.models['nvidia'] = 'nvidia/nemotron-3-ultra-550b-a55b'
+        captured = {}
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            captured['url'] = url
+            captured['body'] = json
+            response = MagicMock(ok=True, status_code=200, headers={})
+            response.json.return_value = {
+                'choices': [{'message': {'content': 'ATLAS_OK'}, 'finish_reason': 'stop'}],
+            }
+            return response
+
+        with patch('apps.integrations.llm_service.requests.post', side_effect=fake_post):
+            text = service.generate_response(
+                [{'role': 'user', 'content': 'Write one ILO.'}],
+                provider_choice='nvidia',
+                max_tokens=900,
+            )
+
+        self.assertEqual(text, 'ATLAS_OK')
+        self.assertIn('integrate.api.nvidia.com', captured['url'])
+        self.assertEqual(captured['body']['model'], 'nvidia/nemotron-3-ultra-550b-a55b')
+        self.assertEqual(captured['body']['chat_template_kwargs'], {'enable_thinking': False})
+
     def test_walks_the_chain_until_a_provider_succeeds(self):
         service = _service('openrouter', 'groq', 'gemma')
         service.default_provider = 'openrouter'
@@ -332,7 +359,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         big_prompt = 'x' * 4 * 9000
 
         def no_online_room(provider, prompt_tokens, max_tokens):
-            if provider in ('groq', 'gemma', 'cloudflare', 'openrouter'):
+            if provider in ('nvidia', 'groq', 'gemma', 'cloudflare', 'openrouter'):
                 return None
             return max_tokens
 

@@ -152,9 +152,10 @@ const ADMIN_FIXED_FIELDS = {
   'other-policies': 'other_policies',
 }
 
-const PROVIDERS = ['auto', 'groq', 'gemma', 'cloudflare', 'openrouter', 'ollama']
+const PROVIDERS = ['auto', 'nvidia', 'groq', 'gemma', 'cloudflare', 'openrouter', 'ollama']
 const PROVIDER_LABELS = {
-  auto: 'Auto (best available free model)',
+  auto: 'Auto (NVIDIA, then other free models)',
+  nvidia: 'NVIDIA — Nemotron 3 Ultra',
   groq: 'Groq — GPT-OSS 120B',
   gemma: 'Google AI Studio — Gemma 4 31B',
   cloudflare: 'Cloudflare — GPT-OSS 120B',
