@@ -7,6 +7,7 @@ import { useAuth } from '../../store/authStore';
 import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
+import { consumeAuthNotice } from '../../config/session';
 
 import atlasLogo from '../../assets/atlas-logo.webp';
 import atlasMascot from '../../assets/atlas.webp';
@@ -41,7 +42,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => consumeAuthNotice());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});

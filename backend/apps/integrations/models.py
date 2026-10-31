@@ -107,6 +107,9 @@ class UserProfile(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     picture_url = models.URLField(max_length=500, blank=True, null=True)
+    # Replaced on every sign-in so only one device stays signed in.
+    auth_session_id = models.CharField(max_length=64, blank=True, default='')
+    auth_session_seen_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = 'users'

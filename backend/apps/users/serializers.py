@@ -24,6 +24,7 @@ from apps.integrations.models import (
 )
 from apps.integrations.fixed_syllabus import attach_shared_syllabus_format, seed_course_syllabi
 from apps.users.otp import OTP_ALPHABET, OTP_LENGTH, normalize_otp
+from apps.users.sessions import reject_if_session_invalid, start_session
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
@@ -142,7 +143,9 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 def tokens_for_profile(profile):
+    session_id = start_session(profile)
     refresh = RefreshToken.for_user(profile)
+    refresh['sid'] = session_id
     refresh['role'] = normalize_role(profile.role)
     refresh['email'] = profile.email
     if profile.institution_id:
@@ -177,6 +180,8 @@ class UserProfileTokenRefreshSerializer(TokenRefreshSerializer):
                     'No active account found with the given credentials.',
                     'no_active_account',
                 )
+
+            reject_if_session_invalid(profile, refresh.payload.get('sid'))
 
         data = {'access': str(refresh.access_token)}
 

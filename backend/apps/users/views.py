@@ -27,7 +27,11 @@ from django.core.mail import send_mail
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from apps.users.sessions import end_session, touch_session
 
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.fixed_syllabus import canonical_syllabus_sections, publish_fixed_syllabus, seed_course_syllabi
@@ -189,6 +193,35 @@ class GoogleAuthView(APIView):
 class AuthTokenRefreshView(TokenRefreshView):
     permission_classes = [permissions.AllowAny]
     serializer_class = UserProfileTokenRefreshSerializer
+
+
+class LogoutView(APIView):
+    """End this sign-in. A newer sign-in on another device is left alone."""
+
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        raw = request.data.get('refresh')
+        if isinstance(raw, str) and raw.strip():
+            try:
+                token = RefreshToken(raw.strip())
+            except TokenError:
+                token = None
+            if token is not None:
+                end_session(
+                    token.payload.get('user_id'),
+                    token.payload.get('sid'),
+                )
+        return Response({'detail': 'Signed out.'})
+
+
+class AuthActivityView(APIView):
+    """Heartbeat from a page the person is actually using. Extends the 30-minute idle window."""
+
+    def post(self, request):
+        touch_session(request.user)
+        return Response({'ok': True})
 
 
 class MeView(APIView):

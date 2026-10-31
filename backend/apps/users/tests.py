@@ -1,7 +1,9 @@
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from django.contrib.auth.hashers import check_password, make_password
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.db.utils import OperationalError
 from django.http import HttpResponse
@@ -13,7 +15,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.users.middleware import DatabaseReconnectMiddleware
 
-from apps.integrations.models import UserProfile
+from apps.integrations.models import UserProfile, UserRole
 from apps.users.serializers import (
     ContactFormSerializer,
     FacultyCreateSerializer,
@@ -504,3 +506,99 @@ class ContactFormSecurityTests(SimpleTestCase):
     def test_contact_is_refused_when_the_limiter_is_down(self, _add):
         response = self._post()
         self.assertEqual(response.status_code, 429)
+
+
+@override_settings(ALLOWED_HOSTS=['testserver'], SECURE_SSL_REDIRECT=False)
+class AuthSessionTests(TestCase):
+    def setUp(self):
+        self.user = UserProfile.objects.create(
+            email='faculty.session@atlas.test',
+            password_hash=make_password('SessionPass9!'),
+            role=UserRole.FACULTY,
+            is_active=True,
+        )
+        self.client = APIClient()
+
+    def _login(self):
+        response = self.client.post(
+            '/api/auth/token/',
+            {'email': self.user.email, 'password': 'SessionPass9!'},
+            format='json',
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.data
+
+    def test_second_login_signs_out_the_first_device(self):
+        first = self._login()
+        second = self._login()
+
+        stale = self.client.post(
+            '/api/auth/token/refresh/',
+            {'refresh': first['refresh']},
+            format='json',
+        )
+        self.assertEqual(stale.status_code, 401)
+        self.assertEqual(stale.data['code'], 'session_superseded')
+
+        current = self.client.post(
+            '/api/auth/token/refresh/',
+            {'refresh': second['refresh']},
+            format='json',
+        )
+        self.assertEqual(current.status_code, 200)
+        me = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {second['access']}",
+        )
+        self.assertEqual(me.status_code, 200)
+
+    def test_idle_session_must_sign_in_again(self):
+        data = self._login()
+        self.user.refresh_from_db()
+        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=33)
+        self.user.save(update_fields=['auth_session_seen_at'])
+
+        response = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {data['access']}",
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data['code'], 'session_idle')
+
+        reused = self.client.post(
+            '/api/auth/token/refresh/',
+            {'refresh': data['refresh']},
+            format='json',
+        )
+        self.assertEqual(reused.status_code, 401)
+        self.assertEqual(reused.data['code'], 'session_ended')
+
+    def test_activity_extends_the_idle_window(self):
+        data = self._login()
+        self.user.refresh_from_db()
+        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=20)
+        self.user.save(update_fields=['auth_session_seen_at'])
+
+        touched = self.client.post(
+            '/api/auth/activity/',
+            HTTP_AUTHORIZATION=f"Bearer {data['access']}",
+        )
+        self.assertEqual(touched.status_code, 200, touched.content)
+        self.user.refresh_from_db()
+        self.assertLess(timezone.now() - self.user.auth_session_seen_at, timedelta(minutes=1))
+
+    def test_logout_ends_only_this_session(self):
+        data = self._login()
+        gone = self.client.post(
+            '/api/auth/logout/',
+            {'refresh': data['refresh']},
+            format='json',
+        )
+        self.assertEqual(gone.status_code, 200)
+
+        me = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {data['access']}",
+        )
+        self.assertEqual(me.status_code, 401)
+        self.assertEqual(me.data['code'], 'session_ended')

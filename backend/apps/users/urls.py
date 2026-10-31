@@ -2,8 +2,10 @@ from django.urls import path
 
 from .platform_views import PlatformAuditView, PlatformThemeView, SystemHealthView
 from .views import (
+    AuthActivityView,
     AuthTokenRefreshView,
     AuthTokenView,
+    LogoutView,
     AccountDetailView,
     AccountManagementView,
     ContactFormView,
@@ -31,6 +33,8 @@ from .views import (
 urlpatterns = [
     path('token/', AuthTokenView.as_view(), name='auth_token'),
     path('token/refresh/', AuthTokenRefreshView.as_view(), name='auth_token_refresh'),
+    path('logout/', LogoutView.as_view(), name='auth_logout'),
+    path('activity/', AuthActivityView.as_view(), name='auth_activity'),
     path('google/', GoogleAuthView.as_view(), name='auth_google'),
     path('me/', MeView.as_view(), name='auth_me'),
     path('register/', RegisterView.as_view(), name='auth_register'),

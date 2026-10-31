@@ -6,6 +6,14 @@
 
 import axios from 'axios'
 import { reportServerError } from '../components/AtlasErrorHost'
+import {
+  clearBrowserSession,
+  forceSignOut,
+  getAccessToken,
+  getRefreshToken,
+  sessionWasJustReplaced,
+  writeSession,
+} from './session'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api'
 
@@ -106,36 +114,57 @@ function isPublicAuthRequest(config) {
   return PUBLIC_AUTH_PATHS.some((path) => url.includes(path))
 }
 
-function isDemoToken(token) {
+export function isDemoToken(token) {
   return typeof token === 'string' && token.endsWith('-test-token')
 }
 
+const TERMINAL_SESSION_CODES = new Set([
+  'session_idle',
+  'session_superseded',
+  'session_ended',
+])
+
 export function beginCredentialLogin() {
   // Ignore refresh failures that started before this sign-in attempt.
+  // This tab only. Another open tab keeps its copy until sign-in succeeds.
   sessionGeneration += 1
-  localStorage.removeItem('atlas_access_token')
-  localStorage.removeItem('atlas_refresh_token')
-  localStorage.removeItem('atlas_user')
+  clearBrowserSession({ broadcast: false })
 }
 
-function clearSessionAndRedirect(generation) {
+function sessionCode(error) {
+  const data = error?.response?.data
+  if (!data || typeof data !== 'object') return ''
+  return typeof data.code === 'string' ? data.code : ''
+}
+
+function bearerToken(config) {
+  const headers = config?.headers
+  if (!headers) return ''
+  const value = typeof headers.get === 'function'
+    ? (headers.get('Authorization') || headers.get('authorization'))
+    : (headers.Authorization || headers.authorization)
+  return String(value || '').replace(/^Bearer\s+/i, '')
+}
+
+function clearSessionAndRedirect(generation, code = 'session_ended') {
   if (generation !== sessionGeneration) return
-  localStorage.removeItem('atlas_access_token')
-  localStorage.removeItem('atlas_refresh_token')
-  localStorage.removeItem('atlas_user')
-  if (window.location.pathname === '/signin') return
-  window.location.assign('/signin')
+  forceSignOut(code)
 }
 
 function refreshAccessToken() {
   if (!refreshPromise) {
-    const refreshToken = localStorage.getItem('atlas_refresh_token')
+    const refreshToken = getRefreshToken()
     refreshPromise = axios.post(`${API_BASE}/auth/token/refresh/`, {
       refresh: refreshToken,
     }, { timeout: 20000 })
       .then(({ data }) => {
-        localStorage.setItem('atlas_access_token', data.access)
-        if (data.refresh) localStorage.setItem('atlas_refresh_token', data.refresh)
+        // A silent refresh is not proof the person is still at the keyboard.
+        writeSession({
+          access: data.access,
+          refresh: data.refresh || refreshToken,
+          broadcast: false,
+          touchActivity: false,
+        })
         return data.access
       })
       .finally(() => {
@@ -152,7 +181,7 @@ api.interceptors.request.use(
       if (config.headers) delete config.headers.Authorization
       return config
     }
-    const token = localStorage.getItem('atlas_access_token')
+    const token = getAccessToken()
     if (token && !isDemoToken(token)) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -192,21 +221,40 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const refreshToken = localStorage.getItem('atlas_refresh_token')
+    const generation = sessionGeneration
+    const code = sessionCode(error)
+    if (TERMINAL_SESSION_CODES.has(code)) {
+      if (generation !== sessionGeneration) return Promise.reject(error)
+      const failed = bearerToken(originalRequest)
+      let current = getAccessToken()
+      if (code === 'session_superseded' && (!current || current === failed)) {
+        await new Promise((resolve) => setTimeout(resolve, 200))
+        current = getAccessToken()
+      }
+      if (current && current !== failed && (code === 'session_superseded' || sessionWasJustReplaced())) {
+        originalRequest._retry = true
+        originalRequest.headers = originalRequest.headers || {}
+        originalRequest.headers.Authorization = `Bearer ${current}`
+        return api(originalRequest)
+      }
+      clearSessionAndRedirect(generation, code)
+      return Promise.reject(error)
+    }
+
+    const refreshToken = getRefreshToken()
     if (!refreshToken || isDemoToken(refreshToken)) {
       return Promise.reject(error)
     }
 
     originalRequest._retry = true
-    const generation = sessionGeneration
     try {
       const access = await refreshAccessToken()
       if (generation !== sessionGeneration) return Promise.reject(error)
       originalRequest.headers = originalRequest.headers || {}
       originalRequest.headers.Authorization = `Bearer ${access}`
       return api(originalRequest)
-    } catch (_) {
-      clearSessionAndRedirect(generation)
+    } catch (refreshError) {
+      clearSessionAndRedirect(generation, sessionCode(refreshError) || 'session_ended')
       return Promise.reject(error)
     }
   }

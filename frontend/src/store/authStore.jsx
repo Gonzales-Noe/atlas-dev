@@ -2,8 +2,24 @@
 // Global auth state via React Context.
 // Wrap <App /> with <AuthProvider /> in main.jsx.
 
-import { createContext, useContext, useReducer, useEffect, useMemo, useRef } from 'react'
-import api, { beginCredentialLogin } from '../config/api'
+import { createContext, useContext, useReducer, useEffect, useMemo, useRef, useState } from 'react'
+import api, { beginCredentialLogin, isDemoToken } from '../config/api'
+import {
+  IDLE_MS,
+  IDLE_WARNING_MS,
+  clearBrowserSession,
+  getAccessToken,
+  idleForMs,
+  markSharedActivity,
+  readCachedUser,
+  requestSessionHandoff,
+  revokeServerSession,
+  sessionIsIdle,
+  SESSION_NOTICES,
+  writeCachedUser,
+  writeSession,
+  forceSignOut,
+} from '../config/session'
 
 const SUPERADMIN_CREDENTIALS = {
   email: 'superadmin@atlas.local',
@@ -131,45 +147,78 @@ const AuthContext = createContext(null)
 export function AuthProvider({ children }) {
   const [state, dispatch] = useReducer(authReducer, initialState)
 
-  // Check existing token on app load
+  // A closed tab has no session. An open tab on this browser can hand its session over.
   useEffect(() => {
-    const token = localStorage.getItem('atlas_access_token')
-    if (!token) {
-      dispatch({ type: 'AUTH_ERROR', payload: null })
-      return
-    }
+    let cancelled = false
 
-    if (token === 'superadmin-test-token' || token === 'faculty-test-token' || token === 'admin-test-token') {
-      const savedUser = localStorage.getItem('atlas_user')
-      if (savedUser) {
-        dispatch({ type: 'AUTH_SUCCESS', payload: JSON.parse(savedUser) })
+    async function restore() {
+      let token = getAccessToken()
+      if (!token) {
+        await requestSessionHandoff()
+        token = getAccessToken()
+      }
+      if (cancelled) return
+      if (!token) {
+        dispatch({ type: 'AUTH_ERROR', payload: null })
         return
+      }
+      if (sessionIsIdle()) {
+        forceSignOut('session_idle')
+        dispatch({ type: 'LOGOUT' })
+        return
+      }
+      if (isDemoToken(token)) {
+        const savedUser = readCachedUser()
+        if (savedUser) dispatch({ type: 'AUTH_SUCCESS', payload: savedUser })
+        else dispatch({ type: 'AUTH_ERROR', payload: null })
+        return
+      }
+      try {
+        const { data } = await api.get('/auth/me/')
+        if (cancelled) return
+        writeCachedUser(data)
+        dispatch({ type: 'AUTH_SUCCESS', payload: data })
+      } catch {
+        if (cancelled) return
+        clearBrowserSession()
+        dispatch({ type: 'AUTH_ERROR', payload: null })
       }
     }
 
-    api.get('/auth/me/')
-      .then(({ data }) => dispatch({ type: 'AUTH_SUCCESS', payload: data }))
-      .catch(() => {
-        localStorage.removeItem('atlas_access_token')
-        localStorage.removeItem('atlas_refresh_token')
-        localStorage.removeItem('atlas_user')
-        dispatch({ type: 'AUTH_ERROR', payload: null })
-      })
+    restore()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    function onSync() {
+      const user = readCachedUser()
+      if (user) dispatch({ type: 'AUTH_SUCCESS', payload: user })
+    }
+    function onRemoteLogout() {
+      dispatch({ type: 'LOGOUT' })
+    }
+    window.addEventListener('atlas-session-sync', onSync)
+    window.addEventListener('atlas-session-logout', onRemoteLogout)
+    return () => {
+      window.removeEventListener('atlas-session-sync', onSync)
+      window.removeEventListener('atlas-session-logout', onRemoteLogout)
+    }
   }, [])
 
   function finishLogin(data) {
-    localStorage.setItem('atlas_access_token', data.access)
-    localStorage.setItem('atlas_refresh_token', data.refresh)
-    const user = data.user
-    if (user) localStorage.setItem('atlas_user', JSON.stringify(user))
-    return user
+    writeSession({
+      access: data.access,
+      refresh: data.refresh,
+      user: data.user || undefined,
+    })
+    return data.user
   }
 
   async function profileFor(data) {
     const bundled = finishLogin(data)
     if (bundled?.role) return bundled
     const { data: user } = await api.get('/auth/me/')
-    localStorage.setItem('atlas_user', JSON.stringify(user))
+    writeCachedUser(user)
     return user
   }
 
@@ -189,9 +238,11 @@ export function AuthProvider({ children }) {
           return user
         } catch {
           // Keep the local demo account usable when the backend is offline.
-          localStorage.setItem('atlas_access_token', 'superadmin-test-token')
-          localStorage.setItem('atlas_refresh_token', 'superadmin-test-token')
-          localStorage.setItem('atlas_user', JSON.stringify(SUPERADMIN_USER))
+          writeSession({
+            access: 'superadmin-test-token',
+            refresh: 'superadmin-test-token',
+            user: SUPERADMIN_USER,
+          })
           dispatch({ type: 'AUTH_SUCCESS', payload: SUPERADMIN_USER })
           return SUPERADMIN_USER
         }
@@ -201,9 +252,11 @@ export function AuthProvider({ children }) {
         email === FACULTY_CREDENTIALS.email &&
         password === FACULTY_CREDENTIALS.password
       ) {
-        localStorage.setItem('atlas_access_token', 'faculty-test-token')
-        localStorage.setItem('atlas_refresh_token', 'faculty-test-token')
-        localStorage.setItem('atlas_user', JSON.stringify(FACULTY_USER))
+        writeSession({
+          access: 'faculty-test-token',
+          refresh: 'faculty-test-token',
+          user: FACULTY_USER,
+        })
         dispatch({ type: 'AUTH_SUCCESS', payload: FACULTY_USER })
         return FACULTY_USER
       }
@@ -212,9 +265,11 @@ export function AuthProvider({ children }) {
         email === ADMIN_CREDENTIALS.email &&
         password === ADMIN_CREDENTIALS.password
       ) {
-        localStorage.setItem('atlas_access_token', 'admin-test-token')
-        localStorage.setItem('atlas_refresh_token', 'admin-test-token')
-        localStorage.setItem('atlas_user', JSON.stringify(ADMIN_USER))
+        writeSession({
+          access: 'admin-test-token',
+          refresh: 'admin-test-token',
+          user: ADMIN_USER,
+        })
         dispatch({ type: 'AUTH_SUCCESS', payload: ADMIN_USER })
         return ADMIN_USER
       }
@@ -266,9 +321,11 @@ export function AuthProvider({ children }) {
         role: 'faculty',
       })
       if (data.access && data.refresh) {
-        localStorage.setItem('atlas_access_token', data.access)
-        localStorage.setItem('atlas_refresh_token', data.refresh)
-        localStorage.setItem('atlas_user', JSON.stringify(data.user))
+        writeSession({
+          access: data.access,
+          refresh: data.refresh,
+          user: data.user,
+        })
         dispatch({ type: 'AUTH_SUCCESS', payload: data.user })
       } else {
         dispatch({ type: 'AUTH_ERROR', payload: null })
@@ -306,16 +363,20 @@ export function AuthProvider({ children }) {
 
   async function updateProfile(payload) {
     const { data } = await api.patch('/auth/me/', payload)
-    localStorage.setItem('atlas_user', JSON.stringify(data))
+    writeCachedUser(data)
     dispatch({ type: 'AUTH_SUCCESS', payload: data })
     return data
   }
 
-  function logout() {
-    localStorage.removeItem('atlas_access_token')
-    localStorage.removeItem('atlas_refresh_token')
-    localStorage.removeItem('atlas_user')
+  function logout(reason) {
+    const code = typeof reason === 'string' ? reason : ''
+    revokeServerSession()
+    clearBrowserSession({
+      broadcast: true,
+      notice: code ? (SESSION_NOTICES[code] || '') : '',
+    })
     dispatch({ type: 'LOGOUT' })
+    if (code) window.location.assign('/signin')
   }
 
   const actionsRef = useRef(null)
@@ -338,7 +399,139 @@ export function AuthProvider({ children }) {
   return (
     <AuthContext.Provider value={value}>
       {children}
+      <SessionWatch enabled={state.isAuthenticated} onSignOut={actions.logout} />
     </AuthContext.Provider>
+  )
+}
+
+function formatRemaining(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000))
+  const minutes = Math.floor(total / 60)
+  const seconds = total % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
+}
+
+function SessionWatch({ enabled, onSignOut }) {
+  const [remainingMs, setRemainingMs] = useState(IDLE_MS)
+  const warning = enabled && remainingMs <= IDLE_WARNING_MS
+  const warningRef = useRef(warning)
+  warningRef.current = warning
+  const lastBeat = useRef(0)
+
+  useEffect(() => {
+    if (!enabled) return undefined
+    setRemainingMs(Math.max(0, IDLE_MS - idleForMs()))
+
+    const soft = new Set(['mousemove', 'scroll', 'touchmove', 'pointermove'])
+    const onActivity = (event) => {
+      if (warningRef.current && soft.has(event.type)) return
+      markSharedActivity()
+      const now = Date.now()
+      if (now - lastBeat.current < 60000) return
+      if (isDemoToken(getAccessToken())) return
+      lastBeat.current = now
+      api.post('/auth/activity/', {}).catch(() => {})
+    }
+
+    const events = ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'mousemove', 'scroll']
+    events.forEach((name) => window.addEventListener(name, onActivity, { passive: true, capture: true }))
+
+    const signedOut = { current: false }
+    const tick = window.setInterval(() => {
+      const remaining = IDLE_MS - idleForMs()
+      setRemainingMs(remaining)
+      if (remaining <= 0 && !signedOut.current) {
+        signedOut.current = true
+        onSignOut('session_idle')
+      }
+    }, 1000)
+
+    const probe = () => {
+      if (isDemoToken(getAccessToken())) return
+      api.get('/auth/me/', { atlasCache: false }).catch(() => {})
+    }
+    const firstProbe = window.setTimeout(probe, 3000)
+    const probeTimer = window.setInterval(probe, 60000)
+
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, onActivity, { capture: true }))
+      window.clearInterval(tick)
+      window.clearTimeout(firstProbe)
+      window.clearInterval(probeTimer)
+    }
+  }, [enabled, onSignOut])
+
+  if (!warning) return null
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="atlas-idle-title"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 20000,
+        display: 'grid',
+        placeItems: 'center',
+        padding: 24,
+        background: 'rgba(8, 8, 10, 0.62)',
+      }}
+    >
+      <div style={{
+        width: 'min(440px, 100%)',
+        background: 'var(--bg-elevated, #fff)',
+        color: 'var(--text-primary, #1A1A1A)',
+        borderRadius: 16,
+        padding: '1.5rem',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.28)',
+      }}>
+        <h2 id="atlas-idle-title" style={{ margin: '0 0 0.5rem', fontSize: '1.15rem' }}>
+          Still there?
+        </h2>
+        <p style={{ margin: '0 0 1.25rem', lineHeight: 1.5, color: 'var(--text-secondary, rgba(0,0,0,0.7))' }}>
+          This page has been idle. ATLAS will sign you out in {formatRemaining(remainingMs)} to protect grades and course records.
+        </p>
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={() => onSignOut('session_ended')}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--border-color, rgba(0,0,0,0.16))',
+              borderRadius: 10,
+              padding: '0.6rem 0.9rem',
+              cursor: 'pointer',
+              color: 'inherit',
+            }}
+          >
+            Sign out
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              markSharedActivity()
+              lastBeat.current = 0
+              setRemainingMs(IDLE_MS)
+              if (!isDemoToken(getAccessToken())) {
+                api.post('/auth/activity/', {}).catch(() => {})
+              }
+            }}
+            style={{
+              background: 'var(--brand-primary, #AA2423)',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 10,
+              padding: '0.6rem 0.9rem',
+              cursor: 'pointer',
+              fontWeight: 700,
+            }}
+          >
+            Stay signed in
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
