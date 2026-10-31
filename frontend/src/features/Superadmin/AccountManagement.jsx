@@ -60,7 +60,8 @@ export default function AccountManagement() {
   const filtered = accounts.filter(a => {
     const q = debouncedSearch.toLowerCase()
     const matchSearch = a.institution.toLowerCase().includes(q) || a.admin.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)
-    const matchFilter = !filterStatus || a.status === filterStatus
+    const matchFilter = !filterStatus
+      || (filterStatus === 'active' ? a.status === 'active' : a.status !== 'active')
     return matchSearch && matchFilter
   })
 
@@ -183,15 +184,27 @@ export default function AccountManagement() {
             sx={{ flex: 1, minWidth: 220, ...inputSx }}
             InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }}
           />
-          <TextField
-            select size="small" label="Status" value={filterStatus}
+          <select
+            aria-label="Status"
+            value={filterStatus}
             onChange={e => { setFilterStatus(e.target.value); setPage(0) }}
-            SelectProps={{ native: true }} sx={{ minWidth: 140, ...inputSx }}
+            style={{
+              minWidth: 160,
+              height: 40,
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--input-bg)',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              fontSize: '0.875rem',
+              padding: '0 12px',
+              cursor: 'pointer',
+            }}
           >
             <option value="">All</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
-          </TextField>
+          </select>
         </div>
       </GlassCard>
 
