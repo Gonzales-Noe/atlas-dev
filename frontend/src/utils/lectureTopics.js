@@ -82,6 +82,14 @@ export function parseTopicsCell(raw) {
   }
 }
 
+function chapterWeekSpan(weeks) {
+  const numbers = String(weeks || '').match(/\d+/g)?.map(Number) || []
+  if (numbers.length >= 2) {
+    return Math.max(1, Math.min(8, Math.max(...numbers) - Math.min(...numbers) + 1))
+  }
+  return 1
+}
+
 function iloKeysFromChapter(chapter) {
   const keys = []
   const add = (value) => {
@@ -107,6 +115,8 @@ export function collectLectureDiscussionTopics(chapters) {
     const existing = byWeek.get(week)
     const ilos = iloKeysFromChapter(chapter)
     const body = outlineLines(parsed)
+    const span = chapterWeekSpan(chapter?.weeks)
+    const outcomes = String(chapter?.outcomes || '')
     if (!existing) {
       byWeek.set(week, {
         id: `topic-week-${week}`,
@@ -117,10 +127,14 @@ export function collectLectureDiscussionTopics(chapters) {
         lines: [...body],
         topic: body.join('; '),
         ilos,
+        span,
+        outcomes,
         context: String(chapter?.topics || ''),
       })
       return
     }
+    existing.span = Math.max(existing.span || 1, span)
+    if (!existing.outcomes && outcomes) existing.outcomes = outcomes
     body.forEach((line) => {
       if (!existing.lines.some(item => item.toLowerCase() === line.toLowerCase())) {
         existing.lines.push(line)

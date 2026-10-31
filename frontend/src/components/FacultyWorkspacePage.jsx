@@ -78,6 +78,8 @@ import { useAuth } from '../store/authStore'
 import { extractApiError } from '../utils'
 import { materializeTosExam, materializeTosList, tosMaterializedEqual, displayedTopicMinutes } from '../utils/tosFormula'
 import { collectLectureDiscussionTopics } from '../utils/lectureTopics'
+import TosGeneratorDialog from './TosGeneratorDialog'
+import WorkspaceTour from './WorkspaceTour'
 import { notifyGenerationComplete } from '../utils/userPreferences'
 import WorkspacePipelineStepper from './WorkspacePipelineStepper'
 import WorkspacePageHeader from './WorkspacePageHeader'
@@ -106,6 +108,8 @@ const WORKSPACE_TABS = [
   { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
   { key: 'analytics',  label: 'Analytics',   Icon: AnalyticsIcon },
 ]
+
+const TOUR_SEEN_KEY = 'atlas_workspace_tour_seen_v1'
 
 const SYLLABUS_SECTIONS = [
   { key: 'university-information', label: 'University Information' },
@@ -2262,7 +2266,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }
 
   const [rightWidth, setRightWidth] = useState(380)
-  const [rightCollapsed, setRightCollapsed] = useState(false)
+  // Sources start closed; the compact rail is the default desktop state.
+  const [rightCollapsed, setRightCollapsed] = useState(true)
+  const [tourOpen, setTourOpen] = useState(false)
   const [dragging, setDragging]     = useState(null)
   const containerRef = useRef(null)
   // Tracks which course the syllabus form was seeded for — a workspace refresh
@@ -2314,6 +2320,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [adminFormatSections, setAdminFormatSections] = useState([])
   const [syllabusId, setSyllabusId]     = useState(null)
   const [activeTosId, setActiveTosId]   = useState(null)
+  const [tosGenOpen, setTosGenOpen]     = useState(false)
   const [tosListOpen, setTosListOpen]   = useState(true)
   const [tosDetailOpen, setTosDetailOpen] = useState(true)
   const [isDirty, setIsDirty]           = useState(false)
@@ -3619,6 +3626,21 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
 
+  // Run the walkthrough once per browser; the header keeps a restart button.
+  useEffect(() => {
+    if (!course?.course_id) return undefined
+    let seen = false
+    try { seen = window.localStorage.getItem(TOUR_SEEN_KEY) === '1' } catch { seen = false }
+    if (seen) return undefined
+    const timer = setTimeout(() => setTourOpen(true), 900)
+    return () => clearTimeout(timer)
+  }, [course?.course_id])
+
+  const closeTour = useCallback(() => {
+    setTourOpen(false)
+    try { window.localStorage.setItem(TOUR_SEEN_KEY, '1') } catch { /* session-only dismissal */ }
+  }, [])
+
   // The admin assigns one faculty member to author a course's syllabus. Every
   // other faculty handling the course sees it read-only and exports it as-is.
   const syllabusLocked = course ? course.can_edit_syllabus === false : false
@@ -3975,6 +3997,51 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   function showButtonNotice(message, severity = 'success') {
     if (!message) return
     setButtonNotice({ message, severity, key: Date.now() })
+  }
+
+  function applyGeneratedTos(payload) {
+    if (!payload) return
+    const exams = syllabusData.tos || []
+    const targetId = (activeTosId && exams.some(t => t.id === activeTosId)) ? activeTosId : (exams[0]?.id || null)
+    const stamp = Date.now()
+    if (!targetId) {
+      const id = `tos-${stamp}`
+      const created = {
+        id,
+        examCode: `EXAM${exams.length + 1}`,
+        examLabel: payload.examLabel,
+        semester: '',
+        preparedBy: '',
+        checkedBy: '',
+        approvedBy: '',
+        totalTestItems: payload.totalTestItems,
+        totalExamMinutes: payload.totalExamMinutes,
+        yearLevel: payload.yearLevel,
+        bloomPolicy: payload.bloomPolicy,
+        coveredChapters: payload.coveredChapters,
+        topics: payload.topics,
+      }
+      setSyllabusData(current => ({ ...current, tos: [...(current.tos || []), created] }))
+      setActiveTosId(id)
+    } else {
+      setSyllabusData(current => ({
+        ...current,
+        tos: (current.tos || []).map(exam => (exam.id !== targetId ? exam : {
+          ...exam,
+          examLabel: payload.examLabel,
+          totalTestItems: payload.totalTestItems,
+          totalExamMinutes: payload.totalExamMinutes,
+          yearLevel: payload.yearLevel,
+          bloomPolicy: payload.bloomPolicy,
+          coveredChapters: payload.coveredChapters,
+          topics: payload.topics,
+        })),
+      }))
+    }
+    setIsDirty(true)
+    setSaveSuccess(false)
+    setTosGenOpen(false)
+    showButtonNotice('TOS generated. Review the rows, then Save TOS.')
   }
 
   useEffect(() => { if (actionError) showButtonNotice(actionError, 'error') }, [actionError])
@@ -5150,30 +5217,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return best && best.score >= 0.12 ? best : null
   }
 
-  // TOS is the assessment authority. Generated modules are used to confirm and display
-  // which weekly module covers each TOS topic.
-  function assessmentGenAvailableTopics() {
-    const blueprint = getAssessmentBlueprint()
-    const topics = blueprint.selectedExam?.topics || []
-    return topics
-      .map(row => {
-        const topic = String(row?.topic || row?.label || '').trim()
-        const module = findMatchingModuleForTopic(topic)
-        return { topic, week: module?.week || null, moduleTitle: module?.topic || '' }
-      })
-      .filter(item => item.topic)
-  }
-
-  function toggleAssessmentGenTopic(topic) {
-    if (assessmentGenMode === 'single') {
-      setAssessmentGenSelectedTopics([topic])
-      return
-    }
-    setAssessmentGenSelectedTopics(prev =>
-      prev.includes(topic) ? prev.filter(t => t !== topic) : [...prev, topic]
-    )
-  }
-
+  // TOS is the assessment authority: every topic it covers is included.
   function examSelectValue(exam) {
     if (!exam) return ''
     return `${exam.examCode || ''}::${exam.examLabel || ''}`
@@ -5257,11 +5301,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   async function handleAssessmentGenSubmit() {
     if (!course) return
     const blueprint = getAssessmentBlueprint()
-    if (assessmentGenSelectedTopics.length === 0) {
-      setActionError('Select at least one TOS topic for the assessment.')
-      return
-    }
     const plannedHint = plannedAssessmentItemCount(assessmentGenSelectedTopics)
+    // Empty means every topic in the selected TOS exam.
     const selectedTopics = [...assessmentGenSelectedTopics]
     const selectedIds = selectedDocIds.size > 0 ? [...selectedDocIds] : []
     setAssessmentGenDialogOpen(false)
@@ -7027,7 +7068,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       })
 
       const addTosExam = () => {
-        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, totalExamMinutes: 0, topics: [newTopicRow()] }
+        const next = { id: `tos-${Date.now()}`, examCode: `EXAM${tosExams.length + 1}`, examLabel: `Examination ${tosExams.length + 1}`, semester: '', preparedBy: '', checkedBy: '', approvedBy: '', totalTestItems: 0, totalExamMinutes: 0, yearLevel: course?.year_level || syllabusData.year_level || '', coveredChapters: [], topics: [newTopicRow()] }
         setIsDirty(true); setSaveSuccess(false)
         setSyllabusData(s => ({ ...s, tos: [...s.tos, next] }))
         setActiveTosId(next.id)
@@ -7238,7 +7279,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <Box>
           {/* ── TOS List ─────────────────────────────────────────────── */}
-          <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
+          <Paper data-tour="tos-list" elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, mb: 2, overflow: 'hidden' }}>
             <Box
               sx={{ px: 2.5, py: 1.25, bgcolor: BG, borderBottom: tosListOpen ? '1px solid rgba(0,0,0,0.07)' : 'none', display: 'flex', alignItems: 'center', cursor: 'pointer', userSelect: 'none' }}
               onClick={() => setTosListOpen(o => !o)}>
@@ -7249,6 +7290,25 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               <Chip label={`${tosExams.length} exam${tosExams.length !== 1 ? 's' : ''}`} size="small"
                 sx={{ fontSize: '0.68rem', height: 18, bgcolor: 'rgba(142,28,27,0.08)', color: MAROON, mr: 1, fontWeight: 600 }} />
               <Box onClick={e => e.stopPropagation()} sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Tooltip title="Draft the TOS from the college year level and the TLA chapters">
+                  <span>
+                    <Button
+                      data-tour="tos-generate"
+                      onClick={() => setTosGenOpen(true)}
+                      disabled={syllabusLocked}
+                      startIcon={<AutoAwesomeIcon fontSize="small" />}
+                      size="small"
+                      sx={{
+                        textTransform: 'none', fontSize: '0.74rem', fontWeight: 600,
+                        color: '#fff', bgcolor: MAROON, border: `1px solid ${MAROON}`, borderRadius: 1.5,
+                        minWidth: 0, px: 1.25, py: 0.4,
+                        '&:hover': { bgcolor: 'var(--brand-primary-hover)' },
+                        '&.Mui-disabled': { color: 'var(--text-tertiary)', borderColor: 'var(--border-color)' },
+                      }}>
+                      Generate TOS
+                    </Button>
+                  </span>
+                </Tooltip>
                 <Tooltip title="Download every examination as a landscape DOCX">
                   <span>
                     <Button
@@ -7315,6 +7375,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   {/* Header fields */}
                   <Box sx={{ px: 2.5, py: 2, borderBottom: '1px solid rgba(0,0,0,0.07)', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 2 }}>
                     <LField label="Exam label" value={activeTos.examLabel} onChange={e => updTosExam(activeTos.id, 'examLabel', e.target.value)} />
+                    <LField label="College year level" value={activeTos.yearLevel || syllabusData.year_level || course?.year_level || ''} onChange={e => updTosExam(activeTos.id, 'yearLevel', e.target.value)} />
                     <LField label="Semester / year" value={activeTos.semester} onChange={e => updTosExam(activeTos.id, 'semester', e.target.value)} />
                     <LField label="Prepared by" value={activeTos.preparedBy} onChange={e => updTosExam(activeTos.id, 'preparedBy', e.target.value)} />
                     <LField label="Checked and verified by" value={activeTos.checkedBy} onChange={e => updTosExam(activeTos.id, 'checkedBy', e.target.value)} />
@@ -7322,6 +7383,17 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     <LField label="Total test items" type="number" value={activeTos.totalTestItems || ''} onChange={e => updTosExam(activeTos.id, 'totalTestItems', Number(e.target.value) || 0)} />
                     <LField label="Total exam minutes" type="number" value={activeTos.totalExamMinutes || ''} onChange={e => updTosExam(activeTos.id, 'totalExamMinutes', Number(e.target.value) || 0)} />
                   </Box>
+                  {Array.isArray(activeTos.coveredChapters) && activeTos.coveredChapters.length > 0 && (
+                    <Box sx={{ px: 2.5, py: 1.1, borderBottom: '1px solid rgba(0,0,0,0.07)', display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+                      <Typography sx={{ fontSize: '0.66rem', fontWeight: 700, color: 'var(--workspace-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', mr: 0.5 }}>
+                        Covered chapters
+                      </Typography>
+                      {activeTos.coveredChapters.map(title => (
+                        <Chip key={title} size="small" label={title}
+                          sx={{ height: 20, fontSize: '0.66rem', fontWeight: 600, bgcolor: MAROON_LIGHT, color: MAROON }} />
+                      ))}
+                    </Box>
+                  )}
                   {/* Table */}
                   <Box sx={{ p: 2.5 }}>
                     <Box sx={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 520 }}>
@@ -8978,7 +9050,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       const majorExams = getMajorTosExams()
       const blueprint = getAssessmentBlueprint()
       const assessments = workspaceApi.data?.assessments || []
-      const assessmentGenTopics = assessmentGenAvailableTopics()
       const canGenerateAssessment = majorExams.some(exam =>
         (exam.topics || []).some(row => String(row?.topic || row?.label || '').trim())
       )
@@ -9576,7 +9647,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                     border: '1px solid var(--workspace-hover)',
                   }}>
                     <Typography sx={{ fontSize: '0.8rem', color: 'var(--workspace-muted)', lineHeight: 1.5 }}>
-                      Choose an exam generated in TOS, then select the topics to cover. TOS supplies the assessment structure, Bloom distribution, and item count.
+                      Choose an exam generated in TOS. TOS supplies the covered topics, structure, Bloom distribution, and item count.
                     </Typography>
                   </Box>
                   {majorExams.length > 0 && (
@@ -9621,31 +9692,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       onChange={e => setAssessmentGenItemCount(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
                       inputProps={{ min: 1, max: 100 }} />
                   )}
-                  <Box>
-                    <Typography variant="caption" sx={{ color: 'var(--workspace-muted)', fontWeight: 600, display: 'block', mb: 0.5 }}>
-                      Topics to cover
-                    </Typography>
-                    {assessmentGenTopics.length === 0 ? (
-                      <Typography variant="caption" sx={{ color: 'var(--workspace-faint)' }}>No topics available for this exam.</Typography>
-                    ) : (
-                      <Stack spacing={0.25} sx={{ maxHeight: 260, overflowY: 'auto' }}>
-                        {assessmentGenTopics.map(({ topic, week, moduleTitle }) => (
-                          <Box key={topic} onClick={() => toggleAssessmentGenTopic(topic)}
-                            sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 0.5, borderRadius: 1,
-                                  cursor: 'pointer',
-                                  '&:hover': { bgcolor: 'var(--workspace-card)' } }}>
-                            <Checkbox size="small"
-                              checked={assessmentGenSelectedTopics.includes(topic)}
-                              sx={{ p: 0.5, color: 'var(--workspace-faint)', '&.Mui-checked': { color: MAROON } }} />
-                            <Typography variant="body2" sx={{ fontSize: '0.84rem' }}>
-                              {week ? `Wk ${week} — ` : ''}{topic}
-                              {moduleTitle ? `  ·  Module: ${moduleTitle}` : '  ·  No matching module'}
-                            </Typography>
-                          </Box>
-                        ))}
-                      </Stack>
-                    )}
-                  </Box>
                   {actionLoading && (
                     <Box sx={{ textAlign: 'center', py: 1 }}>
                       <CircularProgress size={22} sx={{ color: MAROON }} />
@@ -9662,7 +9708,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   Cancel
                 </Button>
                 <Button variant="contained" onClick={handleAssessmentGenSubmit}
-                  disabled={actionLoading || assessmentGenSelectedTopics.length === 0}
+                  disabled={actionLoading || !canGenerateAssessment}
                   startIcon={actionLoading
                     ? <CircularProgress size={16} sx={{ color: '#fff' }} />
                     : <Zap sx={{ fontSize: '1rem !important' }} />}
@@ -9678,7 +9724,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                 <AssignmentIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
                 <Typography variant="body2" sx={{ color: 'var(--workspace-muted)', mb: 0.5 }}>No assessments yet.</Typography>
                 <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Click Create Assessment to build items from your selected module topics.
+                  Click Create Assessment to build items from the selected TOS exam.
                 </Typography>
               </Box>
             ) : (
@@ -10245,6 +10291,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           actionLoading={actionLoading}
           onBack={() => navigate('/faculty/dashboard')}
           onToggleDone={() => markStepDone(activeTab, !isStepDone(activeTab))}
+          onStartTour={() => setTourOpen(true)}
         />
         <Box sx={{ mt: 1.25 }}>
           <WorkspacePipelineStepper
@@ -10332,7 +10379,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         {/* Main module content renders below the top pipeline stepper */}
 
         {/* MIDDLE */}
-        <Box sx={{
+        <Box data-tour={`tab-${activeTab}`} sx={{
           flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
           ...(activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
@@ -10352,7 +10399,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         {/* RIGHT — sources panel (desktop) or compact rail when collapsed */}
         {!isMobile && !rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
-          <Box sx={{ width: rightWidth, flexShrink: 0, bgcolor: 'var(--workspace-panel)', borderLeft: '1px solid var(--workspace-hover)', overflow: 'auto', p: 0 }}>
+          <Box data-tour="sources" sx={{ width: rightWidth, flexShrink: 0, bgcolor: 'var(--workspace-panel)', borderLeft: '1px solid var(--workspace-hover)', overflow: 'auto', p: 0 }}>
             <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid var(--workspace-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'var(--workspace-text)' }}>
                 {activeTab === 'assessment' && selectedAssessment && assessmentDetail ? 'Assessment Tools' : 'Sources'}
@@ -10372,7 +10419,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         )}
 
         {!isMobile && rightCollapsed && activeTab !== 'analytics' && activeTab !== 'grading' && (
-          <Box sx={{ width: 68, flexShrink: 0, bgcolor: 'var(--workspace-panel)', borderLeft: '1px solid var(--workspace-hover)', display: 'flex', justifyContent: 'center', py: 1 }}>
+          <Box data-tour="sources" sx={{ width: 68, flexShrink: 0, bgcolor: 'var(--workspace-panel)', borderLeft: '1px solid var(--workspace-hover)', display: 'flex', justifyContent: 'center', py: 1 }}>
             <Box sx={{ width: 44, borderRadius: 3, bgcolor: 'var(--workspace-card)', border: '1px solid var(--workspace-hover)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75, py: 1 }}>
               <Tooltip title="Expand sources">
                 <IconButton size="small" onClick={toggleRightPanel} sx={{ color: '#666' }}>
@@ -10399,6 +10446,23 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
             </Box>
           </Box>
         )}
+      <WorkspaceTour
+        open={tourOpen}
+        onClose={closeTour}
+        onNavigate={selectWorkspaceTab}
+      />
+      <TosGeneratorDialog
+        open={tosGenOpen}
+        onClose={() => setTosGenOpen(false)}
+        course={course}
+        syllabusData={syllabusData}
+        activeExam={
+          (syllabusData.tos || []).find(exam => exam.id === activeTosId) ||
+          (syllabusData.tos || [])[0] ||
+          null
+        }
+        onApply={applyGeneratedTos}
+      />
       <Dialog open={Boolean(confirmDeleteAssessmentId)} onClose={() => setConfirmDeleteAssessmentId(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Assessment?</DialogTitle>
         <DialogContent>
