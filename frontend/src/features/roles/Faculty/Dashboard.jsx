@@ -21,13 +21,16 @@ import { fetchMyCourseRequests } from './courseRequestApi'
 import CourseRequestDialog from './CourseRequestDialog'
 import { ROUTES } from '../../../config/route'
 import { PageHeader, PrimaryBtn } from '../../../components/ui'
+import AtlasCompanion from '../../../components/AtlasCompanion'
 import FacultyLayout from './FacultyLayout'
+import { useAuth } from '../../../store/authStore'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
 const CARD_COLORS = ['var(--brand-primary-hover)', 'var(--brand-red-core)', 'var(--brand-deep)', 'var(--brand-primary)', 'var(--brand-accent)']
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [errorDismissed, setErrorDismissed] = useState(false)
   const { data, loading, error, refetch } = useApi('/curriculum/faculty-courses/')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -97,6 +100,13 @@ export default function FacultyDashboard() {
             </PrimaryBtn>
           )}
         />
+
+        <Box sx={{ mb: 3 }}>
+          <AtlasCompanion
+            size={120}
+            message={`Welcome back, ${user?.name?.split(' ')[0] || 'there'}. Open a course, or request one and I'll wait with you for approval.`}
+          />
+        </Box>
 
         {pendingRequests.length > 0 && (
           <Box sx={{ mb: 4, border: '1px solid var(--border-color)', borderRadius: 3, p: 2.5, background: 'var(--bg-card)' }}>
@@ -173,8 +183,7 @@ export default function FacultyDashboard() {
             })}
 
             {courses.length === 0 && !loading && !error && (
-              <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 12 }}>
-                <SchoolIcon sx={{ fontSize: 56, color: 'var(--text-tertiary)', mb: 2 }} />
+              <Box sx={{ gridColumn: '1 / -1', textAlign: 'center', py: 6 }}>
                 <Typography variant="body1" sx={{ color: 'var(--text-secondary)' }}>No approved courses yet.</Typography>
                 <Typography variant="body2" sx={{ color: 'var(--text-tertiary)', mt: 0.5 }}>Request a course above — it appears here after admin approval.</Typography>
               </Box>

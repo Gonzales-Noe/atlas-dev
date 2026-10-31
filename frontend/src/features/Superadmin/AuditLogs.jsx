@@ -27,16 +27,138 @@ const tooltipStyle = {
 }
 const axisStyle = { fill: 'var(--text-tertiary)', fontSize: 11 }
 
-function actionLabel(action) {
-  return String(action || 'Unknown')
-    .split('_')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
+const ACTION_LABELS = {
+  platform_theme_updated: 'Brand color updated',
+  platform_settings_updated: 'Platform settings updated',
+  maintenance_mode_changed: 'Maintenance mode changed',
+  faculty_account_created: 'Faculty account created',
+  course_assigned: 'Course assigned',
+  syllabus_owner_assigned: 'Syllabus owner assigned',
+  account_deactivated: 'Account suspended',
+  account_reactivated: 'Account reactivated',
+  account_deleted: 'Account deleted',
+  institution_deactivated: 'Institution suspended',
+  institution_reactivated: 'Institution reactivated',
+  institution_deleted: 'Institution deleted',
+  assessment_approved: 'Assessment approved',
+  course_request_approved: 'Course request approved',
+  course_request_submitted: 'Course request submitted',
+  admin_document_upload: 'Document uploaded',
 }
 
-function detailEntries(details) {
-  if (!details || typeof details !== 'object' || Array.isArray(details)) return []
-  return Object.entries(details).filter(([, value]) => value !== null && value !== '')
+const RESOURCE_LABELS = {
+  userprofile: 'User profile',
+  courseload: 'Course load',
+  courserequest: 'Course request',
+  course_request: 'Course request',
+}
+
+function actionLabel(action) {
+  const key = String(action || '').toLowerCase()
+  if (ACTION_LABELS[key]) return ACTION_LABELS[key]
+  return key
+    .split('_')
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ') || 'Unknown'
+}
+
+function resourceLabel(type) {
+  const raw = String(type || '').trim()
+  if (!raw) return '—'
+  const compact = raw.replace(/[\s_]/g, '').toLowerCase()
+  if (RESOURCE_LABELS[compact] || RESOURCE_LABELS[raw.toLowerCase()]) {
+    return RESOURCE_LABELS[compact] || RESOURCE_LABELS[raw.toLowerCase()]
+  }
+  const spaced = raw
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function asDetails(details) {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return {}
+  return details
+}
+
+function isOn(value) {
+  return value === true || value === 'true' || value === 1 || value === '1'
+}
+
+function changedSet(log) {
+  const listed = asDetails(log.details).changes
+  if (Array.isArray(listed) && listed.length) return new Set(listed)
+  if (log.action === 'maintenance_mode_changed') return new Set(['maintenance'])
+  if (log.action === 'platform_theme_updated') return new Set(['brand'])
+  return null
+}
+
+function describeLog(log) {
+  const details = asDetails(log.details)
+  const scope = changedSet(log)
+  const lines = []
+  const show = kind => !scope || scope.has(kind)
+
+  if (show('brand') && details.brand_primary) {
+    lines.push(`The brand color is now ${details.brand_primary}.`)
+  }
+  if (show('maintenance') && 'maintenance_enabled' in details) {
+    lines.push(isOn(details.maintenance_enabled)
+      ? 'Maintenance is on. Faculty and admins are paused.'
+      : 'Maintenance is off. Faculty and admins can sign in.')
+  }
+  if (show('maintenance') && isOn(details.maintenance_notice_enabled) && details.maintenance_scheduled_for) {
+    const when = new Date(details.maintenance_scheduled_for)
+    const label = Number.isNaN(when.getTime()) ? details.maintenance_scheduled_for : when.toLocaleString()
+    lines.push(`A coming-soon banner is set for ${label}.`)
+  }
+
+  if (log.action === 'faculty_account_created') {
+    const who = details.faculty_name || details.faculty_email
+    lines.push(who ? `${who} was added as faculty.` : 'A faculty account was created.')
+  } else if (log.action === 'course_assigned') {
+    const course = [details.course_code, details.course_title].filter(Boolean).join(' — ')
+    const section = details.section ? ` in ${details.section}` : ''
+    const who = details.faculty_email ? ` to ${details.faculty_email}` : ''
+    lines.push(course ? `${course} was assigned${who}${section}.` : 'A course was assigned.')
+  } else if (log.action === 'syllabus_owner_assigned') {
+    lines.push(details.course_code
+      ? `${details.course_code} now has ${details.faculty_email || 'a faculty member'} as syllabus owner.`
+      : 'A syllabus owner was assigned.')
+  } else if (log.action === 'assessment_approved') {
+    const note = details.allocation_note ? ` Note: ${details.allocation_note}` : ''
+    lines.push(`The assessment was approved.${note}`)
+  } else if (log.action === 'course_request_submitted' || log.action === 'course_request_approved') {
+    const course = [details.course_code, details.course_title].filter(Boolean).join(' — ')
+    lines.push(course
+      ? `${course} ${log.action.endsWith('approved') ? 'was approved.' : 'was submitted for review.'}`
+      : actionLabel(log.action) + '.')
+  } else if (log.action === 'account_deleted') {
+    const who = details.deleted_name || details.deleted_email || 'The account'
+    lines.push(`${who} was deleted.`)
+  } else if (log.action === 'account_deactivated' || log.action === 'account_reactivated') {
+    const who = details.account_name || details.account_email || 'The account'
+    lines.push(`${who} was ${log.action.endsWith('reactivated') ? 'reactivated' : 'suspended'}.`)
+  } else if (log.action === 'institution_deleted') {
+    lines.push(details.deleted_institution_name
+      ? `${details.deleted_institution_name} and its data were deleted.`
+      : 'An institution was deleted.')
+  } else if (log.action === 'institution_deactivated' || log.action === 'institution_reactivated') {
+    const name = details.institution_name || 'The institution'
+    lines.push(`${name} was ${log.action.endsWith('reactivated') ? 'reactivated' : 'suspended'}.`)
+  }
+
+  if (!lines.length) {
+    const skip = new Set(['changes', 'faculty_id', 'course_id', 'section_id', 'institution_id', 'request_id', 'brand_primary', 'maintenance_enabled'])
+    Object.entries(details).forEach(([key, value]) => {
+      if (skip.has(key) || value === null || value === '' || key.endsWith('_id')) return
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
+      const text = typeof value === 'boolean' ? (value ? 'On' : 'Off') : String(value)
+      lines.push(`${label}: ${text}.`)
+    })
+  }
+  if (!lines.length) lines.push(`${actionLabel(log.action)}.`)
+  return lines
 }
 
 export default function AuditLogs() {
@@ -151,7 +273,7 @@ export default function AuditLogs() {
       <GlassCard style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
-            placeholder="Search user, action, institution…"
+            placeholder="Search name, email, or action…"
             size="small"
             value={searchTerm}
             onChange={event => { setSearchTerm(event.target.value); setPage(0) }}
@@ -178,7 +300,7 @@ export default function AuditLogs() {
           <Table>
             <TableHead>
               <TableRow>
-                {['Timestamp', 'User', 'Institution', 'Action', 'Resource', ''].map(header => (
+                {['Timestamp', 'User', 'Role', 'Action', 'Resource', ''].map(header => (
                   <TableCell key={header} sx={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.06em', color: 'var(--text-secondary) !important', textTransform: 'uppercase', py: 1.5 }}>
                     {header}
                   </TableCell>
@@ -202,9 +324,9 @@ export default function AuditLogs() {
                     {log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}
                   </TableCell>
                   <TableCell sx={{ fontWeight: '700 !important' }}>{log.user}</TableCell>
-                  <TableCell>{log.institution}</TableCell>
+                  <TableCell>{log.role || '—'}</TableCell>
                   <TableCell>{actionLabel(log.action)}</TableCell>
-                  <TableCell>{log.resource_type || '—'}</TableCell>
+                  <TableCell>{resourceLabel(log.resource_type)}</TableCell>
                   <TableCell>
                     <OutlineBtn small onClick={() => setSelectedLog(log)}>View</OutlineBtn>
                   </TableCell>
@@ -229,15 +351,20 @@ export default function AuditLogs() {
         <Divider />
         <DialogContent sx={{ pt: 2 }}>
           {selectedLog && (
-            <Stack spacing={1.5}>
-              <div><strong>When.</strong> {selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—'}</div>
-              <div><strong>Who.</strong> {selectedLog.user}{selectedLog.email ? ` (${selectedLog.email})` : ''}</div>
-              <div><strong>Institution.</strong> {selectedLog.institution}</div>
-              <div><strong>Action.</strong> {actionLabel(selectedLog.action)}</div>
-              <div><strong>Resource.</strong> {selectedLog.resource_type || '—'} {selectedLog.resource_id || ''}</div>
-              {detailEntries(selectedLog.details).map(([key, value]) => (
-                <div key={key}>
-                  <strong>{key.replace(/_/g, ' ')}.</strong> {typeof value === 'string' ? value : JSON.stringify(value)}
+            <Stack spacing={1.75}>
+              {describeLog(selectedLog).map((line, index) => (
+                <div key={`${index}-${line}`} style={{ fontSize: '0.95rem', color: 'var(--text-primary)', lineHeight: 1.45 }}>{line}</div>
+              ))}
+              <Divider />
+              {[
+                ['When', selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—'],
+                ['Who', selectedLog.email ? `${selectedLog.user} · ${selectedLog.email}` : selectedLog.user],
+                ['Role', selectedLog.role || '—'],
+                ['Record', `${actionLabel(selectedLog.action)} · ${resourceLabel(selectedLog.resource_type)}`],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</div>
+                  <div style={{ marginTop: 2, color: 'var(--text-primary)' }}>{value}</div>
                 </div>
               ))}
             </Stack>

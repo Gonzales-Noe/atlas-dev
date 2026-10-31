@@ -546,6 +546,8 @@ class PlatformSettings(models.Model):
         blank=True,
         default='ATLAS is briefly unavailable while the IT team performs maintenance.',
     )
+    maintenance_notice_enabled = models.BooleanField(default=False)
+    maintenance_scheduled_for = models.DateTimeField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -107,10 +107,15 @@ def theme_payload(row=None):
     primary = DEFAULT_BRAND
     maintenance_enabled = False
     maintenance_message = DEFAULT_MAINTENANCE_MESSAGE
+    notice_enabled = False
+    scheduled_for = None
     if row is not None:
         primary = row.brand_primary or DEFAULT_BRAND
         maintenance_enabled = bool(row.maintenance_enabled)
         maintenance_message = row.maintenance_message or DEFAULT_MAINTENANCE_MESSAGE
+        notice_enabled = bool(getattr(row, 'maintenance_notice_enabled', False))
+        scheduled = getattr(row, 'maintenance_scheduled_for', None)
+        scheduled_for = scheduled.isoformat() if scheduled else None
     try:
         colors = palette(primary)
     except ValueError:
@@ -119,6 +124,8 @@ def theme_payload(row=None):
         'palette': colors,
         'maintenance_enabled': maintenance_enabled,
         'maintenance_message': maintenance_message,
+        'maintenance_notice_enabled': notice_enabled,
+        'maintenance_scheduled_for': scheduled_for,
     }
 
 

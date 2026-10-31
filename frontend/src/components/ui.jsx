@@ -127,14 +127,14 @@ export function GlassCard({ children, style = {}, title, titleAction }) {
 // ── Status chip ───────────────────────────────────────────────────────────────
 export function StatusChip({ label, type = 'default' }) {
   const colors = {
-    active:   { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: '#5EDA7E' },
-    inactive: { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.4)' },
-    success:  { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: '#5EDA7E' },
+    active:   { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: 'var(--status-success)' },
+    inactive: { bg: 'var(--chip-muted-bg)', border: 'var(--chip-muted-border)', color: 'var(--status-muted)' },
+    success:  { bg: 'rgba(52,199,89,0.12)',  border: 'rgba(52,199,89,0.3)',  color: 'var(--status-success)' },
     error:    { bg: 'rgba(255,69,58,0.12)',  border: 'rgba(255,69,58,0.3)',  color: '#E24B4A' },
-    warning:  { bg: 'rgba(255,159,10,0.12)', border: 'rgba(255,159,10,0.3)', color: '#FFB74D' },
-    info:     { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: '#60AAFF' },
-    premium:  { bg: 'rgba(255,214,10,0.12)', border: 'rgba(255,214,10,0.3)', color: '#FFD60A' },
-    default:  { bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.6)' },
+    warning:  { bg: 'rgba(255,159,10,0.12)', border: 'rgba(255,159,10,0.3)', color: 'var(--status-warning)' },
+    info:     { bg: 'rgba(10,132,255,0.12)', border: 'rgba(10,132,255,0.3)', color: 'var(--status-info)' },
+    premium:  { bg: 'rgba(255,214,10,0.12)', border: 'rgba(255,214,10,0.3)', color: 'var(--status-premium)' },
+    default:  { bg: 'var(--chip-muted-bg)', border: 'var(--chip-muted-border)', color: 'var(--text-secondary)' },
   }
   const c = colors[type] || colors.default
   return (
@@ -160,7 +160,7 @@ export function PrimaryBtn({ children, onClick, disabled, small, style = {} }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: disabled ? 'var(--brand-soft)' : 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
+        background: 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
         color: '#fff',
         border: 'none',
         borderRadius: 10,
@@ -239,7 +239,7 @@ export function ProgressBar({ value, max = 100, color = 'var(--brand-primary)', 
       {label && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
         <span>{label}</span><span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{value}%</span>
       </div>}
-      <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
+      <div style={{ height: 6, background: 'var(--track-bg)', borderRadius: 99, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${pct}%`, background: fill, borderRadius: 99, transition: 'width 600ms var(--ease)' }} />
       </div>
     </div>
