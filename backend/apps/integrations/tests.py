@@ -747,7 +747,8 @@ class InstitutionScopedAdminDataTests(SimpleTestCase):
         select_related,
         _is_admin,
     ):
-        select_related.return_value.filter.return_value.order_by.return_value = []
+        filtered = select_related.return_value.filter.return_value
+        filtered.exclude.return_value.order_by.return_value = []
         request = self.factory.get('/api/integrations/audit-logs/')
         force_authenticate(request, user=self.admin)
 
@@ -758,6 +759,16 @@ class InstitutionScopedAdminDataTests(SimpleTestCase):
         select_related.assert_called_once_with('user')
         select_related.return_value.filter.assert_called_once_with(
             user__institution_id='institution-a',
+        )
+        from django.db.models import Q
+        from apps.integrations.models import UserRole
+        filtered.exclude.assert_called_once_with(
+            Q(user__role__in=[UserRole.SUPERADMIN, 'superadmin'])
+            | Q(action_type__in=[
+                'maintenance_mode_changed',
+                'platform_theme_updated',
+                'platform_settings_updated',
+            ])
         )
         self.assertTrue(_is_admin.called)
 

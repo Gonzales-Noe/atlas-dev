@@ -8,7 +8,10 @@ import CardActionArea from '@mui/material/CardActionArea'
 import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import ToggleButton from '@mui/material/ToggleButton'
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup'
 import Typography from '@mui/material/Typography'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import AddIcon from '@mui/icons-material/Add'
 import AutoStoriesIcon from '@mui/icons-material/AutoStories'
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects'
@@ -27,6 +30,26 @@ import { useAuth } from '../../../store/authStore'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
 const CARD_COLORS = ['var(--brand-primary-hover)', 'var(--brand-red-core)', 'var(--brand-deep)', 'var(--brand-primary)', 'var(--brand-accent)']
+const COURSE_LAYOUT_KEY = 'atlas_faculty_course_layout'
+const DESKTOP_LAYOUT_QUERY = '(min-width: 900px)'
+
+function readCourseLayout() {
+  try {
+    const value = localStorage.getItem(COURSE_LAYOUT_KEY)
+    if (value === 'list' || value === 'list-2') return value
+  } catch {
+    // Keep the card grid when this browser cannot store a preference.
+  }
+  return 'cards'
+}
+
+function storeCourseLayout(layout) {
+  try {
+    localStorage.setItem(COURSE_LAYOUT_KEY, layout)
+  } catch {
+    // The choice still applies for this visit.
+  }
+}
 
 export default function FacultyDashboard() {
   const navigate = useNavigate()
@@ -38,6 +61,9 @@ export default function FacultyDashboard() {
   const [requests, setRequests] = useState([])
   const [requestsLoading, setRequestsLoading] = useState(true)
   const [requestsError, setRequestsError] = useState('')
+  const [courseLayout, setCourseLayout] = useState(readCourseLayout)
+  const isDesktop = useMediaQuery(DESKTOP_LAYOUT_QUERY, { noSsr: true })
+  const layout = courseLayout === 'list-2' && !isDesktop ? 'list' : courseLayout
 
   useEffect(() => { setErrorDismissed(false) }, [error])
 
@@ -125,15 +151,59 @@ export default function FacultyDashboard() {
             <CircularProgress sx={{ color: '#8E1C1B' }} />
           </Box>
         ) : (
+          <>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={layout}
+              aria-label="Course layout"
+              onChange={(_, next) => {
+                if (!next) return
+                setCourseLayout(next)
+                storeCourseLayout(next)
+              }}
+              sx={{
+                bgcolor: 'var(--bg-card)',
+                border: '1px solid var(--border-color)',
+                borderRadius: 2,
+                overflow: 'hidden',
+                '& .MuiToggleButtonGroup-grouped': { border: 0, borderRadius: 0 },
+                '& .MuiToggleButton-root': {
+                  color: 'var(--text-secondary)',
+                  textTransform: 'none',
+                  fontWeight: 700,
+                  fontSize: '0.8rem',
+                  px: 1.5,
+                  py: 0.75,
+                  '&.Mui-selected': {
+                    bgcolor: 'var(--brand-primary)',
+                    color: '#fff',
+                    '&:hover': { bgcolor: 'var(--brand-primary-hover)' },
+                  },
+                },
+              }}
+            >
+              <ToggleButton value="cards">Cards</ToggleButton>
+              <ToggleButton value="list">List</ToggleButton>
+              {isDesktop && <ToggleButton value="list-2">2 columns</ToggleButton>}
+            </ToggleButtonGroup>
+          </Box>
           <Box
             sx={{
-              display: 'grid', gap: 2.5,
-              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
+              display: 'grid',
+              gap: layout === 'cards' ? 2.5 : 1.25,
+              gridTemplateColumns: layout === 'cards'
+                ? { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' }
+                : layout === 'list-2'
+                  ? 'repeat(2, minmax(0, 1fr))'
+                  : '1fr',
             }}
           >
             {courses.map((course, idx) => {
               const CourseIcon = CARD_ICONS[idx % CARD_ICONS.length]
               const accentColor = CARD_COLORS[idx % CARD_COLORS.length]
+              const isList = layout !== 'cards'
               return (
                 <Card
                   key={course.course_id}
@@ -148,26 +218,46 @@ export default function FacultyDashboard() {
                     boxShadow: 'var(--shadow-card)',
                     transition: 'transform 250ms, box-shadow 250ms, border-color 250ms',
                     '&:hover': {
-                      transform: 'translateY(-3px)',
+                      transform: isList ? 'none' : 'translateY(-3px)',
                       borderColor: 'rgba(226,75,74,0.4)',
                       boxShadow: 'var(--shadow-lg)',
                     },
                   }}
                 >
                   <CardActionArea onClick={() => navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', course.course_id))} sx={{ height: '100%', borderRadius: 3, color: 'inherit' }}>
-                    <CardContent sx={{ p: 3, display: 'flex', flexDirection: 'column', height: '100%', '&:last-child': { pb: 3 } }}>
-                      <Box sx={{ mb: 2, width: 48, height: 48, borderRadius: 3, bgcolor: accentColor + '30', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <CourseIcon sx={{ fontSize: 28, color: accentColor }} />
+                    <CardContent sx={{
+                      p: isList ? 2 : 3,
+                      display: 'flex',
+                      flexDirection: isList ? 'row' : 'column',
+                      alignItems: isList ? 'center' : 'stretch',
+                      gap: isList ? 1.5 : 0,
+                      height: '100%',
+                      '&:last-child': { pb: isList ? 2 : 3 },
+                    }}>
+                      <Box sx={{
+                        mb: isList ? 0 : 2,
+                        width: isList ? 40 : 48,
+                        height: isList ? 40 : 48,
+                        flexShrink: 0,
+                        borderRadius: isList ? 2 : 3,
+                        bgcolor: accentColor + '30',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <CourseIcon sx={{ fontSize: isList ? 22 : 28, color: accentColor }} />
                       </Box>
-                      <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
-                        {course.course_code}
-                      </Typography>
-                      <Typography variant="h6" sx={{ color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.3, mt: 0.5, mb: 'auto', pb: 2 }}>
-                        {course.course_title}
-                      </Typography>
-                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
-                        {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
-                      </Typography>
+                      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+                          {course.course_code}
+                        </Typography>
+                        <Typography variant={isList ? 'body1' : 'h6'} sx={{ color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.3, mt: 0.25, mb: isList ? 0 : 'auto', pb: isList ? 0 : 2 }}>
+                          {course.course_title}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 500, display: isList ? 'block' : 'inline' }}>
+                          {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
+                        </Typography>
+                      </Box>
                     </CardContent>
                   </CardActionArea>
                 </Card>
@@ -181,6 +271,7 @@ export default function FacultyDashboard() {
               </Box>
             )}
           </Box>
+          </>
         )}
 
         {(requestsLoading || requestsError || decidedRequests.length > 0) && (

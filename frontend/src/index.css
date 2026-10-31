@@ -306,6 +306,18 @@ p {
 .MuiSwitch-thumb { background: #fff !important; }
 .MuiSwitch-track { background: rgba(255,255,255,0.2) !important; }
 .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track { background: var(--brand-red-core) !important; opacity: 1 !important; }
+body.atlas-light .MuiSwitch-thumb {
+  background: #fff !important;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.28) !important;
+}
+body.atlas-light .MuiSwitch-track {
+  background: #b7bcc4 !important;
+  opacity: 1 !important;
+}
+body.atlas-light .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track {
+  background: var(--brand-red-core) !important;
+  opacity: 1 !important;
+}
 
 /* Tabs */
 .MuiTabs-root .MuiTab-root {

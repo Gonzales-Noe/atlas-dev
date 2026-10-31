@@ -4,7 +4,7 @@ import { AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tool
 import { StatusNotice } from '../../components/StatusNotice'
 import { Link } from 'react-router-dom'
 import SuperAdminLayout from './SuperAdminLayout'
-import { Shield, UserCog, GraduationCap, Users, BookOpen, ClipboardList } from 'lucide-react'
+import { Shield, UserCog, GraduationCap, BookOpen, ClipboardList } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader } from '../../components/ui'
 import api from '../../config/api'
 import { cssColor } from '../../utils/brandTheme'
@@ -19,6 +19,14 @@ const tooltipStyle = {
   fontSize: '0.82rem',
 }
 const axisStyle = { fill: 'var(--text-tertiary)', fontSize: 11, fontFamily: 'var(--font-sans)' }
+
+function titleCaseWords(value) {
+  return String(value || '')
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+}
 
 const EMPTY_SUMMARY = {
   cards: [],
@@ -50,13 +58,11 @@ export default function SuperAdminDashboard() {
   const primary = cssColor('--brand-primary', '#AA2423')
   const accent = cssColor('--brand-accent', '#E24B4A')
   const info = cssColor('--status-info', '#0B5CAD')
-  const success = cssColor('--status-success', '#157A32')
-  const colors = [primary, accent, info, success]
+  const colors = [primary, accent, info, cssColor('--status-success', '#157A32')]
   const stats = [
     { title: 'Super Admins', label: 'Super Admins', icon: <Shield size={18} color={primary} />, accent: primary },
     { title: 'Admins', label: 'Admins', icon: <UserCog size={18} color={accent} />, accent },
     { title: 'Faculty', label: 'Faculty', icon: <GraduationCap size={18} color={info} />, accent: info },
-    { title: 'Students', label: 'Students', icon: <Users size={18} color={success} />, accent: success },
     { title: 'Courses', label: 'Courses', icon: <BookOpen size={18} color={primary} />, accent: primary },
     { title: 'Assessments', label: 'Assessments', icon: <ClipboardList size={18} color={accent} />, accent },
   ]
@@ -130,7 +136,7 @@ export default function SuperAdminDashboard() {
           {(summary.recent_activity || []).slice(0, 6).map(item => (
             <div key={`${item.timestamp}-${item.label}-${item.value}`} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-color)', fontSize: '0.88rem' }}>
               <span>
-                <strong>{String(item.label || '').split('_').join(' ')}</strong>
+                <strong>{titleCaseWords(item.label)}</strong>
                 <span style={{ color: 'var(--text-secondary)' }}> · {item.value}</span>
               </span>
               <span style={{ color: 'var(--text-secondary)' }}>{item.detail}</span>
@@ -140,7 +146,7 @@ export default function SuperAdminDashboard() {
       <style>{`
         .atlas-super-stats {
           display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
+          grid-template-columns: repeat(5, minmax(0, 1fr));
           gap: 16px;
           margin-bottom: 24px;
         }

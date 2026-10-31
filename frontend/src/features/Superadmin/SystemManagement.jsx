@@ -406,7 +406,7 @@ export default function SystemManagement() {
           </div>
         </GlassCard>
 
-        <GlassCard title="Maintenance mode">
+        <GlassCard title="Maintenance Mode">
           <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             <img
               src={atlasMaintenance}
