@@ -15,9 +15,12 @@ import useMediaQuery from '@mui/material/useMediaQuery'
 import AddIcon from '@mui/icons-material/Add'
 import AutoStoriesIcon from '@mui/icons-material/AutoStories'
 import EmojiObjectsIcon from '@mui/icons-material/EmojiObjects'
+import GridViewIcon from '@mui/icons-material/GridView'
 import LayersIcon from '@mui/icons-material/Layers'
 import SchoolIcon from '@mui/icons-material/School'
 import ScienceIcon from '@mui/icons-material/Science'
+import ViewColumnIcon from '@mui/icons-material/ViewColumn'
+import ViewListIcon from '@mui/icons-material/ViewList'
 import { useNavigate } from 'react-router-dom'
 import useApi from '../../../hooks/useApi'
 import { fetchMyCourseRequests } from './courseRequestApi'
@@ -119,11 +122,52 @@ export default function FacultyDashboard() {
           )}
         />
 
-        <Box sx={{ mb: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2 }}>
           <AtlasCompanion
             size={56}
             message={`Welcome back, ${user?.name?.split(' ')[0] || 'there'}. Open a course, or request one and I'll wait with you for approval.`}
           />
+          <ToggleButtonGroup
+            exclusive
+            size="small"
+            value={layout}
+            aria-label="Course layout"
+            onChange={(_, next) => {
+              if (!next) return
+              setCourseLayout(next)
+              storeCourseLayout(next)
+            }}
+            sx={{
+              flexShrink: 0,
+              bgcolor: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 2,
+              overflow: 'hidden',
+              '& .MuiToggleButtonGroup-grouped': { border: 0, borderRadius: 0 },
+              '& .MuiToggleButton-root': {
+                color: 'var(--text-secondary)',
+                px: 1.1,
+                py: 0.85,
+                '&.Mui-selected': {
+                  bgcolor: 'var(--brand-primary)',
+                  color: '#fff',
+                  '&:hover': { bgcolor: 'var(--brand-primary-hover)' },
+                },
+              },
+            }}
+          >
+            <ToggleButton value="cards" aria-label="Cards" title="Cards">
+              <GridViewIcon sx={{ fontSize: 18 }} />
+            </ToggleButton>
+            <ToggleButton value="list" aria-label="List" title="List">
+              <ViewListIcon sx={{ fontSize: 18 }} />
+            </ToggleButton>
+            {isDesktop && (
+              <ToggleButton value="list-2" aria-label="Two columns" title="Two columns">
+                <ViewColumnIcon sx={{ fontSize: 18 }} />
+              </ToggleButton>
+            )}
+          </ToggleButtonGroup>
         </Box>
 
         {pendingRequests.length > 0 && (
@@ -152,43 +196,6 @@ export default function FacultyDashboard() {
           </Box>
         ) : (
           <>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={layout}
-              aria-label="Course layout"
-              onChange={(_, next) => {
-                if (!next) return
-                setCourseLayout(next)
-                storeCourseLayout(next)
-              }}
-              sx={{
-                bgcolor: 'var(--bg-card)',
-                border: '1px solid var(--border-color)',
-                borderRadius: 2,
-                overflow: 'hidden',
-                '& .MuiToggleButtonGroup-grouped': { border: 0, borderRadius: 0 },
-                '& .MuiToggleButton-root': {
-                  color: 'var(--text-secondary)',
-                  textTransform: 'none',
-                  fontWeight: 700,
-                  fontSize: '0.8rem',
-                  px: 1.5,
-                  py: 0.75,
-                  '&.Mui-selected': {
-                    bgcolor: 'var(--brand-primary)',
-                    color: '#fff',
-                    '&:hover': { bgcolor: 'var(--brand-primary-hover)' },
-                  },
-                },
-              }}
-            >
-              <ToggleButton value="cards">Cards</ToggleButton>
-              <ToggleButton value="list">List</ToggleButton>
-              {isDesktop && <ToggleButton value="list-2">2 columns</ToggleButton>}
-            </ToggleButtonGroup>
-          </Box>
           <Box
             sx={{
               display: 'grid',
