@@ -6,8 +6,13 @@
 // workspace renders it identically. Do not restyle one copy — change this file
 // and both sidebars follow.
 
-import { useEffect, useRef, useState } from 'react'
-import { Eye, EyeOff, KeyRound, LogOut, Settings, Sun, UserRound } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Eye, EyeOff, KeyRound } from 'lucide-react'
+import PersonIcon from '@mui/icons-material/Person'
+import SettingsIcon from '@mui/icons-material/Settings'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import LogoutIcon from '@mui/icons-material/Logout'
 import InstallAppButton from './InstallAppButton'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
 import { StatusNotice } from './StatusNotice'
@@ -62,8 +67,6 @@ export default function SidebarUserMenu({
   onUpdateProfile,
   onSignOut,
 }) {
-  const [open, setOpen] = useState(false)
-  const menuRootRef = useRef(null)
   const [activeModal, setActiveModal] = useState(null)
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || user?.name || '',
@@ -87,15 +90,6 @@ export default function SidebarUserMenu({
   const [appInstalled, setAppInstalled] = useState(() => isStandaloneDisplay())
   // Collapsed sidebars show only the avatar, so it centres and tightens up.
   const tight = collapsed && !isMobile
-
-  useEffect(() => {
-    if (!open) return undefined
-    function closeOnOutside(event) {
-      if (menuRootRef.current && !menuRootRef.current.contains(event.target)) setOpen(false)
-    }
-    document.addEventListener('mousedown', closeOnOutside)
-    return () => document.removeEventListener('mousedown', closeOnOutside)
-  }, [open])
 
   useEffect(() => {
     const syncTheme = () => setThemePreferenceState(getThemePreference())
@@ -207,40 +201,103 @@ export default function SidebarUserMenu({
     }
   }
 
-  const itemStyle = {
-    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
-    background: 'none', border: 'none', cursor: 'pointer',
-    padding: '10px 14px', color: 'var(--text-primary)',
-    fontSize: '0.85rem', fontFamily: 'var(--font-sans)', fontWeight: 500,
-    transition: 'background 150ms',
+  function openProfile() {
+    setProfileForm({
+      full_name: user?.full_name || user?.name || '',
+      picture_url: user?.picture_url || '',
+      current_password: '',
+      new_password: '',
+      confirm_password: '',
+    })
+    setProfileError('')
+    setProfileNotice('')
+    setChangePasswordOpen(false)
+    setShowCurrentPassword(false)
+    setShowNewPassword(false)
+    setShowConfirmPassword(false)
+    setActiveModal('profile')
   }
+
+  function openPreferences() {
+    setThemePreferenceState(getThemePreference())
+    setGenerationNotificationsEnabledState(getGenerationNotificationsEnabled())
+    setNotificationPreferenceMessage('')
+    setActiveModal('preferences')
+  }
+
+  const emboss = {
+    background: 'var(--shell-chip-bg)',
+    border: '1px solid var(--shell-border)',
+    boxShadow: 'inset 0 1px 0 var(--shell-emboss-highlight), inset 0 -1px 2px var(--shell-emboss-shade)',
+  }
+  const ThemeIcon = themePreference === 'light' ? LightModeIcon : DarkModeIcon
+
   const enter = e => { e.currentTarget.style.background = 'var(--shell-hover-bg)' }
   const leave = e => { e.currentTarget.style.background = 'none' }
 
   return (
-    <div ref={menuRootRef} style={{
+    <div style={{
       borderTop: '1px solid var(--shell-divider)',
-      padding: tight ? '12px 8px' : '12px 16px',
+      padding: tight ? '8px 8px 12px' : '8px 8px 12px',
       flexShrink: 0,
-      position: 'relative',
     }}>
+      {[
+        { label: 'Profile Settings', Icon: PersonIcon, onClick: openProfile },
+        { label: 'Preferences', Icon: SettingsIcon, onClick: openPreferences },
+      ].map(({ label, Icon, onClick }) => (
+        <button
+          key={label}
+          type="button"
+          title={tight ? label : undefined}
+          onClick={onClick}
+          style={{
+            display: 'flex', alignItems: 'center', gap: tight ? 0 : 12,
+            width: '100%', justifyContent: tight ? 'center' : 'flex-start',
+            padding: tight ? '10px 0' : '10px 8px',
+            margin: '2px 0', border: 'none', borderRadius: 12,
+            background: 'transparent', cursor: 'pointer',
+            color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)',
+            fontSize: '0.875rem', fontWeight: 500,
+          }}
+          onMouseEnter={enter}
+          onMouseLeave={leave}
+        >
+          <Icon sx={{ fontSize: 20, color: 'var(--shell-icon)' }} />
+          {!tight && label}
+        </button>
+      ))}
       <button
-        onClick={() => setOpen(!open)}
-        aria-haspopup="menu"
-        aria-expanded={open}
+        type="button"
+        title={tight ? (themePreference === 'light' ? 'Light mode' : 'Dark mode') : undefined}
+        onClick={() => setThemePreferenceState(setThemePreference(themePreference === 'light' ? 'dark' : 'light'))}
         style={{
-          position: 'relative',
-          zIndex: 2,
-          display: 'flex', alignItems: 'center', gap: 10,
-          width: '100%', background: 'var(--shell-chip-bg)',
-          border: '1px solid var(--shell-border)', borderRadius: tight ? 12 : 10,
-          padding: tight ? '8px' : '8px 12px',
-          cursor: 'pointer', transition: 'all 200ms', justifyContent: tight ? 'center' : 'flex-start',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), 0 1px 1px rgba(0,0,0,0.04)',
+          display: 'flex', alignItems: 'center', justifyContent: tight ? 'center' : 'space-between',
+          gap: tight ? 0 : 12, width: '100%',
+          padding: tight ? '10px 0' : '10px 8px',
+          margin: '2px 0', border: 'none', borderRadius: 12,
+          background: 'transparent', cursor: 'pointer',
+          color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)',
+          fontSize: '0.875rem', fontWeight: 500,
         }}
-        onMouseEnter={e => e.currentTarget.style.background = 'var(--shell-chip-hover-bg)'}
-        onMouseLeave={e => e.currentTarget.style.background = 'var(--shell-chip-bg)'}
+        onMouseEnter={enter}
+        onMouseLeave={leave}
       >
+        <span style={{ display: 'flex', alignItems: 'center', gap: tight ? 0 : 12 }}>
+          <ThemeIcon sx={{ fontSize: 20, color: 'var(--shell-icon)' }} />
+          {!tight && (themePreference === 'light' ? 'Light mode' : 'Dark mode')}
+        </span>
+        {!tight && (
+          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? 'var(--brand-primary)' : 'var(--text-tertiary)' }}>
+            {themePreference === 'light' ? 'On' : 'Off'}
+          </span>
+        )}
+      </button>
+      <div style={{ display: 'flex', flexDirection: tight ? 'column' : 'row', alignItems: 'stretch', gap: 8, marginTop: 8 }}>
+        <div style={{
+          ...emboss,
+          display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
+          borderRadius: 10, padding: tight ? 6 : '8px 10px', justifyContent: tight ? 'center' : 'flex-start',
+        }}>
         {/* Avatar */}
         <div style={{
           width: 32, height: 32, borderRadius: '50%',
@@ -262,130 +319,25 @@ export default function SidebarUserMenu({
             </div>
           </div>
         )}
-      </button>
-
-      {/* Profile menu */}
-      {open && (
-        <div
-          className={tight ? 'atlas-account-menu is-rail' : 'atlas-account-menu is-docked'}
+        </div>
+        <button
+          type="button"
+          onClick={onSignOut}
+          aria-label="Click to Logout"
+          title="Click to Logout"
           style={{
-            position: tight ? 'fixed' : 'absolute',
-            ...(tight
-              ? { left: 70, bottom: 0, width: 248, borderRadius: 10 }
-              : { left: 0, right: 0, bottom: 'calc(100% - 10px)', borderRadius: 0 }),
-            background: 'var(--shell-menu-bg)',
-            border: '1px solid var(--shell-menu-border)',
-            borderBottom: tight ? '1px solid var(--shell-menu-border)' : 'none',
-            overflow: 'hidden',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 24px rgba(0,0,0,0.12)',
-            zIndex: 1,
+            ...emboss,
+            width: tight ? '100%' : 42,
+            height: tight ? 42 : 42,
+            marginTop: tight ? 8 : 0,
+            borderRadius: 10,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--brand-primary)', cursor: 'pointer', flexShrink: 0,
           }}
         >
-          {[
-            { label: 'Profile Settings', modal: 'profile', Icon: UserRound },
-            { label: 'Preferences', modal: 'preferences', Icon: Settings },
-          ].map(({ label, modal, Icon }) => (
-            <button
-              type="button"
-              key={label}
-              style={itemStyle}
-              onClick={() => {
-                if (modal === 'profile') {
-                  setProfileForm({
-                    full_name: user?.full_name || user?.name || '',
-                    picture_url: user?.picture_url || '',
-                    current_password: '',
-                    new_password: '',
-                    confirm_password: '',
-                  })
-                  setProfileError('')
-                  setProfileNotice('')
-                  setChangePasswordOpen(false)
-                  setShowCurrentPassword(false)
-                  setShowNewPassword(false)
-                  setShowConfirmPassword(false)
-                } else if (modal === 'preferences') {
-                  setThemePreferenceState(getThemePreference())
-                  setGenerationNotificationsEnabledState(getGenerationNotificationsEnabled())
-                  setNotificationPreferenceMessage('')
-                }
-                setOpen(false)
-                setActiveModal(modal)
-              }}
-              onMouseEnter={enter}
-              onMouseLeave={leave}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
-                <Icon size={18} strokeWidth={2.25} aria-hidden="true" />
-              </span>
-              {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            style={{ ...itemStyle, justifyContent: 'space-between' }}
-            onClick={() => {
-              const nextTheme = themePreference === 'light' ? 'dark' : 'light'
-              setThemePreferenceState(setThemePreference(nextTheme))
-            }}
-            onMouseEnter={enter}
-            onMouseLeave={leave}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
-                <Sun size={18} strokeWidth={2.25} aria-hidden="true" />
-              </span>
-              Light mode
-            </span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? 'var(--brand-primary)' : 'var(--text-tertiary)' }}>
-              {themePreference === 'light' ? 'On' : 'Off'}
-            </span>
-          </button>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            margin: tight ? 8 : 0,
-            padding: tight ? '8px 8px 8px 10px' : '10px 12px',
-            borderTop: '1px solid var(--shell-divider)',
-            borderRadius: tight ? 8 : 0,
-            background: 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(0,0,0,0.03))',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 2px rgba(0,0,0,0.06)',
-          }}>
-            <div style={{
-              width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-              background: 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 800, fontSize: '0.78rem',
-            }}>
-              {user?.picture_url
-                ? <img src={user.picture_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : (user?.name || user?.email || 'U')[0].toUpperCase()}
-            </div>
-            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user?.name || user?.email?.split('@')[0] || 'User'}
-              </div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {user?.email || metaLabel}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onSignOut}
-              aria-label="Sign out"
-              title="Sign out"
-              style={{
-                width: 36, height: 36, flexShrink: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: 'none', borderLeft: '1px solid var(--shell-divider)',
-                borderRadius: 0, background: 'transparent',
-                color: 'var(--brand-primary)', cursor: 'pointer',
-              }}
-            >
-              <LogOut size={18} strokeWidth={2.25} aria-hidden="true" />
-            </button>
-          </div>
-        </div>
-      )}
+          <LogoutIcon sx={{ fontSize: 20 }} />
+        </button>
+      </div>
 
       <Dialog
         open={Boolean(activeModal)}
@@ -398,7 +350,7 @@ export default function SidebarUserMenu({
           <>
             <form id="profile-settings-form" onSubmit={handleProfileSave} style={{ display: 'contents' }}>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', fontWeight: 700 }}>
-              <UserRound size={18} color="var(--brand-primary)" />
+              <PersonIcon sx={{ fontSize: 18, color: 'var(--brand-primary)' }} />
               Profile Settings
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
@@ -574,7 +526,7 @@ export default function SidebarUserMenu({
         ) : (
           <>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', fontWeight: 700 }}>
-              <Settings size={18} color="var(--brand-primary)" />
+              <SettingsIcon sx={{ fontSize: 18, color: 'var(--brand-primary)' }} />
               Preferences
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
