@@ -20,6 +20,7 @@ from apps.integrations.cot_prompt_builder import (
 )
 from apps.integrations.fixed_syllabus import apply_fixed_content, sections_for_course, seed_course_syllabi
 from apps.integrations.llm_service import LLMService
+from apps.integrations import tos_generation
 from apps.integrations.models import (
     Assessment,
     AssessmentItem,
@@ -67,6 +68,7 @@ from .consistency_checker import (
     apply_topic_judgments,
     check_consistency,
     checked_now,
+    ilo_numbers,
     is_orientation_or_exam,
     lecture_weeks,
     lock_module_outline,
@@ -4722,6 +4724,228 @@ def create_course(request):
             "request": _serialize_course_request(course_request),
         },
         status=status.HTTP_201_CREATED,
+    )
+
+
+def _chapter_week_span(weeks):
+    """How many teaching weeks a TLA row covers ('1-2' -> 2, '3' -> 1)."""
+    numbers = [int(value) for value in re.findall(r'\d+', str(weeks or ''))]
+    if len(numbers) >= 2:
+        first, last = min(numbers), max(numbers)
+        return max(1, min(8, last - first + 1))
+    return 1
+
+
+def _tos_chapters_from_payload(raw):
+    chapters = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get('title') or item.get('topic') or item.get('chapter_title') or '').strip()
+        if not title:
+            continue
+        try:
+            span = float(item.get('span') or item.get('weeks_covered') or 1)
+        except (TypeError, ValueError):
+            span = 1.0
+        chapters.append({
+            'title': title[:180],
+            'week': _to_int(item.get('week'), 0),
+            'span': max(1.0, min(8.0, span)),
+            'ilos': [f'ILO{number}' for number in ilo_numbers(item.get('ilos'))],
+            'outcomes': str(item.get('outcomes') or item.get('topic_outcomes') or '')[:400],
+        })
+        if len(chapters) >= 40:
+            break
+    return chapters
+
+
+def _tos_chapters_from_syllabus(syllabus_content):
+    """Selected chapters fall back to every teaching row in the saved TLA table."""
+    chapters = []
+    for index, chapter in enumerate(syllabus_content.get('tla_chapters') or []):
+        if not isinstance(chapter, dict):
+            continue
+        parsed = parse_topics_cell(chapter.get('topics'))
+        if not parsed['lines']:
+            continue
+        title = str(parsed.get('title') or '').strip()
+        if not title or is_orientation_or_exam(title):
+            continue
+        numbers = ilo_numbers(chapter.get('ilo'))
+        for number in ilo_numbers(chapter.get('ilo_refs')):
+            if number not in numbers:
+                numbers.append(number)
+        chapters.append({
+            'title': title[:180],
+            'week': _to_int(chapter.get('chapter'), 0) or index + 1,
+            'span': float(_chapter_week_span(chapter.get('weeks'))),
+            'ilos': [f'ILO{number}' for number in numbers],
+            'outcomes': str(chapter.get('outcomes') or '')[:400],
+        })
+        if len(chapters) >= 40:
+            break
+    return chapters
+
+
+def _course_year_level(course, syllabus_content):
+    """The year level assigned to the course, in display form."""
+    if getattr(course, 'year_level_id', None):
+        label = getattr(getattr(course, 'year_level', None), 'display_name', '')
+        if label:
+            return str(label)
+    section = getattr(course, 'section', None) if getattr(course, 'section_id', None) else None
+    if section is not None:
+        label = getattr(section, 'year_label', '')
+        if label:
+            return str(label)
+    return str((syllabus_content or {}).get('year_level') or '').strip()
+
+
+def _weekly_class_hours(payload, syllabus_content):
+    raw = payload.get('weekly_hours')
+    try:
+        value = float(raw)
+        if value > 0:
+            return min(12.0, max(0.5, value))
+    except (TypeError, ValueError):
+        pass
+    contact = str((syllabus_content or {}).get('contact_hours') or '')
+    match = re.search(r'\d+(?:\.\d+)?', contact)
+    if match:
+        try:
+            value = float(match.group(0))
+            if value > 0:
+                return min(12.0, max(0.5, value))
+        except ValueError:
+            pass
+    return 3.0
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def generate_tos(request):
+    """Draft TOS topic rows from selected TLA chapters and the course year level.
+
+    Endpoint: POST /api/curriculum/generate-tos/
+
+    Body (JSON):
+    {
+        "course_id": "<uuid>",
+        "exam_label": "Preliminary Examination",
+        "total_test_items": 60,
+        "total_exam_minutes": 120,
+        "year_level": "2nd Year",            // optional; read from the course
+        "bloom_weights": {"apply": 100},     // optional; overrides the year split
+        "weekly_hours": 3,                   // optional; read from contact hours
+        "chapters": [                        // optional; saved TLA rows otherwise
+            {"title": "...", "week": 2, "span": 2, "ilos": ["ILO1"], "outcomes": "..."}
+        ],
+        "provider": "auto"                   // optional LLM provider
+    }
+    """
+    if not _is_faculty_user(request):
+        return _faculty_only_response()
+    trial_response = trial_generation_gate(request.user, syllabus_generation=False)
+    if trial_response:
+        return trial_response
+
+    course_id = request.data.get('course_id')
+    if not course_id:
+        return Response(
+            {'success': False, 'detail': 'course_id is required.'},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    course, error_response = _get_assigned_course_or_403(request, course_id)
+    if error_response:
+        return error_response
+
+    latest_syllabus = (
+        Syllabus.objects.filter(course=course)
+        .order_by('-generated_at', '-syllabus_id')
+        .first()
+    )
+    syllabus_content = (
+        latest_syllabus.syllabus_content
+        if latest_syllabus and isinstance(latest_syllabus.syllabus_content, dict)
+        else {}
+    )
+
+    chapters = _tos_chapters_from_payload(request.data.get('chapters'))
+    supplied_chapters = bool(chapters)
+    if not chapters:
+        chapters = _tos_chapters_from_syllabus(syllabus_content)
+    if not chapters:
+        return Response(
+            {
+                'success': False,
+                'detail': (
+                    'No chapters to cover. Add Topics / Reading List rows in the '
+                    'Teaching, Learning, and Assessment (TLA) Activities section first.'
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    year_level = (
+        str(request.data.get('year_level') or '').strip()
+        or _course_year_level(course, syllabus_content)
+    )
+    policy = tos_generation.bloom_policy_for_year(year_level, request.data.get('bloom_weights'))
+
+    total_items = max(1, min(500, _to_int(request.data.get('total_test_items'), 60) or 60))
+    total_minutes = max(1, min(1200, _to_int(request.data.get('total_exam_minutes'), 120) or 120))
+    weekly_hours = _weekly_class_hours(request.data, syllabus_content)
+    exam_label = (
+        str(request.data.get('exam_label') or '').strip()
+        or 'Examination'
+    )
+    extra_instructions = str(request.data.get('extra_instructions') or '').strip()[:800]
+    provider = request.data.get('provider') or None
+
+    used_ai = False
+    provider_used = None
+    try:
+        topics, provider_used = tos_generation.generate_topics(
+            LLMService(),
+            {
+                'course_title': course.course_title,
+                'course_code': course.course_code,
+                'exam_label': exam_label,
+            },
+            chapters,
+            policy,
+            total_items,
+            total_minutes,
+            weekly_hours=weekly_hours,
+            extra_instructions=extra_instructions,
+            preferred_provider=provider,
+        )
+        used_ai = True
+    except Exception as exc:
+        logger.warning('generate_tos: LLM draft unavailable, using the formula fallback: %s', exc)
+        topics = tos_generation.fallback_topics(chapters, policy, weekly_hours)
+
+    return Response(
+        {
+            'success': True,
+            'year_level': year_level,
+            'bloom_policy': {
+                'label': policy['label'],
+                'summary': policy['summary'],
+                'levels': policy['levels'],
+                'weights': policy['weights'],
+            },
+            'used_ai': used_ai,
+            'provider_used': provider_used,
+            'chapters_supplied': supplied_chapters,
+            'total_test_items': total_items,
+            'total_exam_minutes': total_minutes,
+            'weekly_hours': weekly_hours,
+            'topics': topics,
+        },
+        status=status.HTTP_200_OK,
     )
 
 
