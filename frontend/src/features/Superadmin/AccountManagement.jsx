@@ -133,7 +133,12 @@ export default function AccountManagement() {
     }
   }
 
-  const inputSx = { '& .MuiOutlinedInput-root': { background: 'rgba(255,255,255,0.05)', borderRadius: 2, fontSize: '0.875rem' }, '& .MuiInputLabel-root': { fontSize: '0.875rem' }, input: { color: '#F0F0F2' } }
+  const inputSx = {
+    '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
+    '& .MuiInputLabel-root': { fontSize: '0.875rem', color: 'var(--text-secondary)' },
+    input: { color: 'var(--text-primary)' },
+    '& .MuiSelect-select': { color: 'var(--text-primary)' },
+  }
 
   return (
     <SuperAdminLayout>
@@ -147,7 +152,7 @@ export default function AccountManagement() {
         <GlassCard key={application.id} style={{ marginBottom: 20, border: '1px solid rgba(255,183,77,0.45)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ color: '#FFB74D', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Pending application</div>
+              <div style={{ color: 'var(--status-warning)', fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Pending application</div>
               <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 6 }}>{application.institution}</div>
               <div style={{ color: 'var(--text-tertiary)', fontSize: '0.82rem', marginTop: 3 }}>{application.email} · {application.subscription_plan || 'Plan not selected'}</div>
             </div>
@@ -167,7 +172,7 @@ export default function AccountManagement() {
       {/* Filters */}
       <GlassCard style={{ marginBottom: 16 }}>
         {notice && (
-          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(94,218,126,0.12)', border: '1px solid rgba(94,218,126,0.4)', color: '#5EDA7E', fontSize: '0.85rem' }}>
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(21,122,50,0.1)', border: '1px solid rgba(21,122,50,0.35)', color: 'var(--status-success)', fontSize: '0.85rem' }}>
             {notice}
           </div>
         )}
@@ -183,7 +188,7 @@ export default function AccountManagement() {
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setPage(0) }}
             sx={{ flex: 1, minWidth: 220, ...inputSx }}
-            InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'rgba(255,255,255,0.3)', fontSize: 18 }} /> }}
+            InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }}
           />
           <TextField
             select size="small" label="Status" value={filterStatus}
@@ -204,7 +209,7 @@ export default function AccountManagement() {
             <TableHead>
               <TableRow>
                 {['Institution', 'Admin', 'Status', 'Plan', 'Users', 'Last Login', ''].map(h => (
-                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.06em', color: 'rgba(255,255,255,0.4) !important', textTransform: 'uppercase', py: 1.5 }}>{h}</TableCell>
+                  <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.75rem', letterSpacing: '0.06em', color: 'var(--text-secondary) !important', textTransform: 'uppercase', py: 1.5 }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
@@ -221,21 +226,21 @@ export default function AccountManagement() {
                   <TableCell><StatusChip label={acc.status} type={acc.status === 'active' ? 'active' : 'inactive'} /></TableCell>
                   <TableCell><StatusChip label={acc.subscription_plan || 'Not selected'} type={planType(acc.subscription_plan)} /></TableCell>
                   <TableCell sx={{ fontWeight: 700 }}>{acc.users.toLocaleString()}</TableCell>
-                  <TableCell sx={{ color: 'rgba(255,255,255,0.45) !important', fontSize: '0.82rem !important', fontFamily: 'var(--font-mono) !important' }}>{acc.created_at ? new Date(acc.created_at).toLocaleDateString() : '—'}</TableCell>
+                  <TableCell sx={{ color: 'var(--text-secondary) !important', fontSize: '0.82rem !important', fontFamily: 'var(--font-mono) !important' }}>{acc.created_at ? new Date(acc.created_at).toLocaleDateString() : '—'}</TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={e => handleMenuOpen(e, acc)} sx={{ color: 'rgba(255,255,255,0.35)', '&:hover': { color: '#fff', background: 'rgba(255,255,255,0.08)' } }}>
+                    <IconButton size="small" onClick={e => handleMenuOpen(e, acc)} sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--bg-header)' } }}>
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
                     <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAccount?.id === acc.id} onClose={handleMenuClose}
-                      PaperProps={{ sx: { background: '#16161E !important', border: '1px solid rgba(255,255,255,0.1) !important', borderRadius: '14px !important', minWidth: 180 } }}>
+                      PaperProps={{ sx: { background: 'var(--shell-menu-bg) !important', border: '1px solid var(--shell-menu-border) !important', borderRadius: '14px !important', minWidth: 180, color: 'var(--text-primary)' } }}>
                       <MenuItem onClick={() => { setSelectedAccount(acc); setDetailsOpen(true); handleMenuClose() }}>View Details</MenuItem>
                       <MenuItem onClick={() => { openEdit(acc); handleMenuClose() }}>Edit Account</MenuItem>
                       <MenuItem onClick={() => { setSelectedAccount(acc); setSubscriptionForm({ subscription_plan: normalizePlan(acc.subscription_plan), payment_status: acc.payment_status || 'paid' }); setSubscriptionOpen(true); handleMenuClose() }}>Manage Subscription</MenuItem>
                       <MenuItem onClick={() => { setSelectedAccount(acc); setUsageOpen(true); handleMenuClose() }}>View Usage</MenuItem>
-                      <Divider sx={{ borderColor: 'rgba(255,255,255,0.08) !important', my: '4px !important' }} />
+                      <Divider sx={{ borderColor: 'var(--border-color) !important', my: '4px !important' }} />
                       {acc.status === 'active'
                         ? <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => setAccountActive(acc, false)}>Suspend Account</MenuItem>
-                        : <MenuItem sx={{ color: '#5EDA7E !important' }} onClick={() => setAccountActive(acc, true)}>Reactivate Account</MenuItem>}
+                        : <MenuItem sx={{ color: 'var(--status-success) !important' }} onClick={() => setAccountActive(acc, true)}>Reactivate Account</MenuItem>}
                       <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => { setConfirmDeleteInstitution(acc); handleMenuClose() }}>Delete Institution</MenuItem>
                     </Menu>
                   </TableCell>
@@ -249,7 +254,7 @@ export default function AccountManagement() {
           count={filtered.length} rowsPerPage={rowsPerPage} page={page}
           onPageChange={(_, p) => setPage(p)}
           onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value,10)); setPage(0) }}
-          sx={{ borderTop: '1px solid rgba(255,255,255,0.07) !important' }}
+          sx={{ borderTop: '1px solid var(--border-color) !important', color: 'var(--text-secondary)' }}
         />
       </GlassCard>
 

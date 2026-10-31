@@ -8,8 +8,9 @@ import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
 import { fetchSetupStatus } from './academicApi'
 import FacultyProductivity from './FacultyProductivity'
-import { BookOpen, Hand, Users } from 'lucide-react'
+import { BookOpen, Users } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
+import AtlasCompanion from '../../../components/AtlasCompanion'
 
 const secondaryActionSx = {
   color: 'var(--text-primary)',
@@ -38,9 +39,16 @@ export default function AdminDashboard() {
   return (
     <AdminLayout>
       <PageHeader
-        title={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>Welcome, {user?.name || 'Admin'} <Hand size={22} strokeWidth={2.25} aria-hidden="true" /></span>}
+        title={`Welcome, ${user?.name || 'Admin'}`}
         subtitle="Institutional overview — manage your faculty and academic structure"
       />
+
+      <GlassCard style={{ marginBottom: 20 }}>
+        <AtlasCompanion
+          size={128}
+          message={`I'm here with you, ${user?.name?.split(' ')[0] || 'Admin'}. Faculty, courses, and your academic structure are one step away.`}
+        />
+      </GlassCard>
 
       {setupError && <Alert severity="error" sx={{ mb: 2 }}>{setupError}</Alert>}
 

@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 from django.contrib.auth.hashers import make_password
+from django.utils import timezone
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -98,7 +101,7 @@ class PlatformOpsTests(TestCase):
         )
         self.assertEqual(audit.status_code, 200)
         self.assertGreaterEqual(audit.data['count'], 1)
-        self.assertEqual(audit.data['logs'][0]['institution'], 'North Campus')
+        self.assertEqual(audit.data['logs'][0]['role'], 'Faculty')
         self.assertTrue(audit.data['daily'])
 
         faculty_audit = self.client.get(
@@ -134,3 +137,34 @@ class PlatformOpsTests(TestCase):
         self.assertEqual(theme.status_code, 200)
         self.assertTrue(theme.data['maintenance_enabled'])
         self.assertEqual(theme.data['maintenance_message'], 'Back at 4.')
+
+    def test_maintenance_notice_cannot_be_scheduled_for_today(self):
+        today = timezone.localtime().replace(hour=18, minute=0, second=0, microsecond=0)
+        denied = self.client.patch(
+            '/api/auth/platform-theme/',
+            {
+                'maintenance_notice_enabled': True,
+                'maintenance_scheduled_for': today.isoformat(),
+            },
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(denied.status_code, 400)
+        self.assertIn('later day', denied.data['detail'])
+
+        later = timezone.now() + timedelta(days=2)
+        saved = self.client.patch(
+            '/api/auth/platform-theme/',
+            {
+                'maintenance_notice_enabled': True,
+                'maintenance_scheduled_for': later.isoformat(),
+            },
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(saved.status_code, 200)
+        self.assertTrue(saved.data['maintenance_notice_enabled'])
+        self.assertTrue(saved.data['maintenance_scheduled_for'])
+
+        public = self.client.get('/api/auth/platform-theme/')
+        self.assertTrue(public.data['maintenance_notice_enabled'])

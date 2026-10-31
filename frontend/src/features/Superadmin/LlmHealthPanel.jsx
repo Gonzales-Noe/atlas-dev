@@ -208,11 +208,11 @@ export default function LlmHealthPanel() {
           overflow-y: auto;
           overscroll-behavior: contain;
           scrollbar-width: thin;
-          scrollbar-color: rgba(255,255,255,0.28) transparent;
+          scrollbar-color: var(--text-tertiary) transparent;
         }
         .llm-account-scroll::-webkit-scrollbar { width: 6px; }
         .llm-account-scroll::-webkit-scrollbar-thumb {
-          background: rgba(255,255,255,0.28);
+          background: var(--text-tertiary);
           border-radius: 99px;
         }
         .llm-account-row {
@@ -221,10 +221,10 @@ export default function LlmHealthPanel() {
           gap: 12px;
           align-items: start;
           padding: 12px 0;
-          border-top: 1px solid rgba(255,255,255,0.06);
+          border-top: 1px solid var(--border-color);
         }
         .llm-account-head {
-          color: rgba(255,255,255,0.4);
+          color: var(--text-secondary);
           font-size: 0.68rem;
           font-weight: 700;
           letter-spacing: 0.06em;
@@ -234,7 +234,7 @@ export default function LlmHealthPanel() {
         }
         .llm-account-note {
           grid-column: 1 / -1;
-          color: rgba(255,255,255,0.5);
+          color: var(--text-secondary);
           font-size: 0.75rem;
           line-height: 1.4;
           margin-top: -4px;
@@ -249,15 +249,15 @@ export default function LlmHealthPanel() {
       `}</style>
       <div className="llm-health-split">
         <GlassCard title="Concurrent users" style={{ marginBottom: 0, height: '100%' }}>
-          <div style={{ color: '#F0F0F2', fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>
+          <div style={{ color: 'var(--text-primary)', fontSize: '2rem', fontWeight: 800, lineHeight: 1 }}>
             {traffic.concurrent_users}
           </div>
-          <div style={{ marginTop: 12, color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', lineHeight: 1.45 }}>
+          <div style={{ marginTop: 12, color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.45 }}>
             {traffic.by_role.length
               ? traffic.by_role.map(item => `${item.label} ${item.count}`).join(' · ')
               : 'No one is active right now'}
           </div>
-          <div style={{ marginTop: 8, color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', lineHeight: 1.4 }}>
+          <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: '0.75rem', lineHeight: 1.4 }}>
             Counted from signed-in requests in the last {minutes} {minutes === 1 ? 'minute' : 'minutes'}.
           </div>
         </GlassCard>
@@ -271,14 +271,14 @@ export default function LlmHealthPanel() {
           )}
           style={{ marginBottom: 0, minWidth: 0, height: '100%' }}
         >
-          <p style={{ margin: '0 0 14px', color: 'rgba(255,255,255,0.55)', fontSize: '0.82rem' }}>
+          <p style={{ margin: '0 0 14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             Groq and OpenRouter list the original key, then key 1 and key 2. Cloudflare and Ollama follow.
           </p>
           {error && (
-            <p style={{ margin: 0, color: '#FFB74D', fontSize: '0.85rem' }}>{error}</p>
+            <p style={{ margin: 0, color: 'var(--status-warning)', fontSize: '0.85rem' }}>{error}</p>
           )}
           {!error && !loading && accounts.length === 0 && (
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem' }}>No accounts are configured.</p>
+            <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No accounts are configured.</p>
           )}
           {accounts.length > 0 && (
             <div>
@@ -302,21 +302,21 @@ export default function LlmHealthPanel() {
                   return (
                     <div key={row.id} className="llm-account-row">
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#F0F0F2', fontWeight: 700, fontSize: '0.9rem' }}>{accountName(row)}</div>
-                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{accountMeta(row) || '—'}</div>
+                        <div style={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.9rem' }}>{accountName(row)}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: 2 }}>{accountMeta(row) || '—'}</div>
                       </div>
                       <div>
                         <StatusChip label={STATUS_LABELS[row.status] || row.status} type={STATUS_TYPES[row.status] || 'default'} />
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{unused.primary}</div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{unused.primary}</div>
                         {unused.secondary && (
-                          <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', marginTop: 2 }}>{unused.secondary}</div>
                         )}
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>Returns</div>
-                        <div style={{ color: '#F0F0F2', fontSize: '0.85rem' }}>{returnText(row)}</div>
+                        <div style={{ color: 'var(--text-secondary)', fontSize: '0.72rem' }}>Returns</div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>{returnText(row)}</div>
                       </div>
                       {note && <div className="llm-account-note">{note}</div>}
                     </div>

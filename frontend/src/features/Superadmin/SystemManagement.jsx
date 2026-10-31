@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Switch, FormControlLabel, TextField } from '@mui/material'
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import atlasMaintenance from '../../assets/atlas-maintenance.png'
 import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn } from '../../components/ui'
@@ -25,6 +26,35 @@ const STATUS_TYPE = {
   unknown: 'inactive',
 }
 
+function pad(value) {
+  return String(value).padStart(2, '0')
+}
+
+function toLocalInput(iso) {
+  if (!iso) return ''
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function tomorrowStartValue() {
+  const date = new Date()
+  date.setDate(date.getDate() + 1)
+  date.setHours(0, 0, 0, 0)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:00`
+}
+
+function isLaterDay(value) {
+  if (!value) return false
+  const chosen = new Date(value)
+  if (Number.isNaN(chosen.getTime())) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const day = new Date(chosen)
+  day.setHours(0, 0, 0, 0)
+  return day.getTime() > today.getTime()
+}
+
 function clockLabel(iso) {
   if (!iso) return ''
   const date = new Date(iso)
@@ -38,6 +68,8 @@ export default function SystemManagement() {
   const [loading, setLoading] = useState(true)
   const [maintenance, setMaintenance] = useState(false)
   const [message, setMessage] = useState('')
+  const [noticeEnabled, setNoticeEnabled] = useState(false)
+  const [scheduledFor, setScheduledFor] = useState('')
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -48,6 +80,8 @@ export default function SystemManagement() {
         setError('')
         setMaintenance(Boolean(data.maintenance_enabled))
         setMessage(data.maintenance_message || '')
+        setNoticeEnabled(Boolean(data.maintenance_notice_enabled))
+        setScheduledFor(toLocalInput(data.maintenance_scheduled_for))
       })
       .catch(err => {
         setError(err.response?.data?.detail || 'System health could not be loaded.')
@@ -61,18 +95,32 @@ export default function SystemManagement() {
     return () => clearInterval(timer)
   }, [load])
 
-  async function saveMaintenance(enabled) {
+  async function saveMaintenance(patch = {}) {
+    const nextEnabled = patch.maintenance_enabled ?? maintenance
+    const nextNotice = patch.maintenance_notice_enabled ?? noticeEnabled
+    const nextWhen = patch.scheduledFor ?? scheduledFor
+    if (nextNotice && !isLaterDay(nextWhen)) {
+      setError('Choose a start time on a later day. The banner cannot be set for today.')
+      return
+    }
     setSaving(true)
     setNotice('')
     setError('')
     try {
       await api.patch('/auth/platform-theme/', {
-        maintenance_enabled: enabled,
+        maintenance_enabled: nextEnabled,
         maintenance_message: message,
+        maintenance_notice_enabled: nextNotice,
+        maintenance_scheduled_for: nextWhen ? new Date(nextWhen).toISOString() : null,
       })
-      setMaintenance(enabled)
+      setMaintenance(nextEnabled)
+      setNoticeEnabled(nextNotice)
       await loadBrandTheme()
-      setNotice(enabled ? 'Maintenance mode is on. Other roles are paused.' : 'Maintenance mode is off.')
+      setNotice(nextEnabled
+        ? 'Maintenance mode is on. Other roles are paused.'
+        : nextNotice
+          ? 'The coming-soon banner is on.'
+          : 'Maintenance settings saved.')
       load()
     } catch (err) {
       setError(err.response?.data?.detail || 'Maintenance mode could not be updated.')
@@ -140,11 +188,6 @@ export default function SystemManagement() {
             {health?.database?.vendor || '—'}{health?.database?.latency_ms != null ? ` · ${health.database.latency_ms} ms` : ''}
           </div>
         </GlassCard>
-        <GlassCard>
-          <div style={{ fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>AUDIT EVENTS</div>
-          <div style={{ fontSize: '1.35rem', fontWeight: 800, marginTop: 6 }}>{health?.application?.audit_events_24h ?? '—'}</div>
-          <div style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginTop: 4 }}>Last 24 hours</div>
-        </GlassCard>
       </div>
 
       {(slowest || down.length > 0) && (
@@ -154,7 +197,7 @@ export default function SystemManagement() {
             {slowest ? `${slowest.name} is the slowest · ${slowest.latency_ms} ms` : 'A service is not answering'}
           </div>
           {down.length > 0 && (
-            <div style={{ color: '#FFB74D', fontSize: '0.85rem', marginTop: 6 }}>
+            <div style={{ color: 'var(--status-warning)', fontSize: '0.85rem', marginTop: 6 }}>
               Not answering: {down.join(', ')}
             </div>
           )}
@@ -178,7 +221,7 @@ export default function SystemManagement() {
                 <span>{table.name}</span>
                 <span style={{ color: 'var(--text-secondary)' }}>{table.size_label} · {table.share}%</span>
               </div>
-              <div style={{ marginTop: 4, height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99 }}>
+              <div style={{ marginTop: 4, height: 6, background: 'var(--track-bg)', borderRadius: 99 }}>
                 <div style={{ width: `${Math.min(table.share, 100)}%`, height: '100%', background: primary, borderRadius: 99 }} />
               </div>
             </div>
@@ -226,7 +269,7 @@ export default function SystemManagement() {
                   <StatusChip label={row.status} type={STATUS_TYPE[row.status] || 'default'} />
                 </span>
               </div>
-              <div style={{ marginTop: 6, height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99 }}>
+              <div style={{ marginTop: 6, height: 6, background: 'var(--track-bg)', borderRadius: 99 }}>
                 {row.latency_ms != null && <div style={{ width: `${width}%`, height: '100%', background: bar, borderRadius: 99 }} />}
               </div>
               <div style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem', marginTop: 4 }}>{row.detail}</div>
@@ -262,13 +305,7 @@ export default function SystemManagement() {
         </div>
       </GlassCard>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 }}>
-        <GlassCard><ProgressBar label="CPU" value={cpu || 0} color={primary} /></GlassCard>
-        <GlassCard><ProgressBar label="Memory" value={memory || 0} color="#60AAFF" /></GlassCard>
-        <GlassCard><ProgressBar label="Disk" value={disk || 0} color="#FFB74D" /></GlassCard>
-      </div>
-
-      <div className="atlas-health-split" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.1fr) minmax(280px, 0.9fr)', gap: 16, marginBottom: 16 }}>
+      <div style={{ marginBottom: 16 }}>
         <GlassCard title="Services" style={{ padding: 0 }}>
           <div style={{ padding: '4px 8px 8px' }}>
             {(health?.services || []).map(service => (
@@ -285,32 +322,15 @@ export default function SystemManagement() {
             )}
           </div>
         </GlassCard>
-
-        <GlassCard title="Recorded activity">
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={health?.activity || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
-              <XAxis dataKey="name" tick={axisStyle} axisLine={false} tickLine={false} minTickGap={16} />
-              <YAxis allowDecimals={false} tick={axisStyle} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Bar dataKey="events" name="Audit events" fill={primary} radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </GlassCard>
       </div>
 
       <div className="atlas-health-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <GlassCard title="This deployment">
           <div style={{ display: 'grid', gap: 10, fontSize: '0.9rem' }}>
             {[
-              ['Institutions', health?.application?.institutions],
-              ['Active institutions', health?.application?.active_institutions],
-              ['Users', health?.application?.users],
               ['Active users', health?.application?.active_users],
               ['Faculty', health?.application?.faculty],
               ['Admins', health?.application?.admins],
-              ['Courses', health?.application?.courses],
-              ['Assessments', health?.application?.assessments],
               ['Task broker', health?.worker?.detail],
               ['Cache', health?.cache?.detail],
               ['Mode', health?.application?.debug ? 'Development' : 'Production'],
@@ -324,28 +344,57 @@ export default function SystemManagement() {
         </GlassCard>
 
         <GlassCard title="Maintenance mode">
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 0 }}>
-            When this is on, faculty and institution admins see a maintenance screen and their API calls pause.
-            Superadmin access stays open.
-          </p>
-          <TextField
-            label="Message"
-            value={message}
-            onChange={event => setMessage(event.target.value)}
-            fullWidth
-            multiline
-            minRows={3}
-            inputProps={{ maxLength: 500 }}
-            sx={{ mb: 1.5 }}
-          />
-          <FormControlLabel
-            control={<Switch checked={maintenance} disabled={saving} onChange={event => saveMaintenance(event.target.checked)} />}
-            label={maintenance ? 'Maintenance is on' : 'Maintenance is off'}
-          />
-          <div style={{ marginTop: 8 }}>
-            <PrimaryBtn disabled={saving} onClick={() => saveMaintenance(maintenance)}>
-              {saving ? 'Saving' : 'Save message'}
-            </PrimaryBtn>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <img
+              src={atlasMaintenance}
+              alt="ATLAS with a wrench and toolbox"
+              style={{ width: 120, height: 160, objectFit: 'contain', imageRendering: 'pixelated', flexShrink: 0 }}
+            />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 0 }}>
+                When maintenance is on, faculty and institution admins see this screen and their API calls pause.
+                Superadmin access stays open.
+              </p>
+              <TextField
+                label="Message shown during maintenance"
+                value={message}
+                onChange={event => setMessage(event.target.value)}
+                fullWidth
+                multiline
+                minRows={3}
+                inputProps={{ maxLength: 500 }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mt: 1, mb: 1.5 }}
+              />
+              <FormControlLabel
+                control={<Switch checked={maintenance} disabled={saving} onChange={event => saveMaintenance({ maintenance_enabled: event.target.checked })} />}
+                label={maintenance ? 'Maintenance is on' : 'Maintenance is off'}
+              />
+              <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-color)' }}>
+                <FormControlLabel
+                  control={<Switch checked={noticeEnabled} disabled={saving} onChange={event => setNoticeEnabled(event.target.checked)} />}
+                  label="Show a banner that maintenance is coming"
+                />
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 12px' }}>
+                  Faculty and admins see the banner before the pause. Pick a time on a later day — it cannot be today.
+                </p>
+                <TextField
+                  label="Starts"
+                  type="datetime-local"
+                  value={scheduledFor}
+                  onChange={event => setScheduledFor(event.target.value)}
+                  fullWidth
+                  size="small"
+                  inputProps={{ min: tomorrowStartValue() }}
+                  InputLabelProps={{ shrink: true }}
+                />
+              </div>
+              <div style={{ marginTop: 14 }}>
+                <PrimaryBtn disabled={saving} onClick={() => saveMaintenance()}>
+                  {saving ? 'Saving' : 'Save maintenance'}
+                </PrimaryBtn>
+              </div>
+            </div>
           </div>
         </GlassCard>
       </div>

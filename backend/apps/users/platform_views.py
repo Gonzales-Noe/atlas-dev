@@ -6,6 +6,7 @@ from datetime import timedelta
 from django.core.cache import cache
 from django.db.models import Count, Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -29,6 +30,23 @@ def _is_superadmin(request):
     if not user or not getattr(user, 'is_authenticated', False):
         return False
     return normalize_role(getattr(user, 'role', '')) == 'superadmin'
+
+
+def parse_scheduled_start(value):
+    """A coming-soon notice has to start on a later calendar day, never today."""
+    if value in (None, ''):
+        return None
+    if hasattr(value, 'tzinfo'):
+        parsed = value
+    else:
+        parsed = parse_datetime(str(value).replace('Z', '+00:00'))
+        if parsed is None:
+            raise ValueError('Enter a valid date and time.')
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    if timezone.localtime(parsed).date() <= timezone.localdate():
+        raise ValueError('Schedule the notice for a later day. It cannot start today.')
+    return parsed
 
 
 def _settings_row():
@@ -80,6 +98,32 @@ class PlatformThemeView(APIView):
             row.maintenance_message = message or DEFAULT_MAINTENANCE_MESSAGE
             changed.append('maintenance')
 
+        if 'maintenance_notice_enabled' in request.data or 'maintenance_scheduled_for' in request.data:
+            notice_on = bool(request.data.get(
+                'maintenance_notice_enabled',
+                getattr(row, 'maintenance_notice_enabled', False),
+            ))
+            if 'maintenance_scheduled_for' in request.data:
+                try:
+                    scheduled = parse_scheduled_start(request.data.get('maintenance_scheduled_for'))
+                except ValueError as exc:
+                    return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                scheduled = getattr(row, 'maintenance_scheduled_for', None)
+            if notice_on:
+                try:
+                    scheduled = parse_scheduled_start(scheduled)
+                except ValueError as exc:
+                    return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+                if scheduled is None:
+                    return Response(
+                        {'detail': 'Choose a start time on a later day before showing the banner.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            row.maintenance_notice_enabled = notice_on
+            row.maintenance_scheduled_for = scheduled
+            changed.append('maintenance')
+
         if not changed:
             return Response(
                 {'detail': 'Send a brand color or a maintenance change.'},
@@ -97,15 +141,26 @@ class PlatformThemeView(APIView):
 
         payload = theme_payload(row)
         remember_maintenance(payload)
-        action = 'platform_theme_updated' if 'brand' in changed else 'maintenance_mode_changed'
+        kinds = list(dict.fromkeys(changed))
+        details = {'changes': kinds}
+        if 'brand' in kinds:
+            details['brand_primary'] = row.brand_primary
+        if 'maintenance' in kinds:
+            details['maintenance_enabled'] = row.maintenance_enabled
+            details['maintenance_notice_enabled'] = row.maintenance_notice_enabled
+            if row.maintenance_scheduled_for:
+                details['maintenance_scheduled_for'] = row.maintenance_scheduled_for.isoformat()
+        if kinds == ['brand']:
+            action = 'platform_theme_updated'
+        elif 'brand' not in kinds:
+            action = 'maintenance_mode_changed'
+        else:
+            action = 'platform_settings_updated'
         AuditLog.objects.create(
             user=request.user,
             action_type=action,
             resource_type='Platform',
-            details={
-                'brand_primary': row.brand_primary,
-                'maintenance_enabled': row.maintenance_enabled,
-            },
+            details=details,
         )
         return Response(payload)
 
@@ -118,6 +173,8 @@ class SystemHealthView(APIView):
         theme = theme_payload(_settings_row())
         payload['maintenance_enabled'] = theme['maintenance_enabled']
         payload['maintenance_message'] = theme['maintenance_message']
+        payload['maintenance_notice_enabled'] = theme['maintenance_notice_enabled']
+        payload['maintenance_scheduled_for'] = theme['maintenance_scheduled_for']
         payload['activity'] = activity_by_day(14)
         return Response(payload)
 
@@ -180,6 +237,18 @@ class PlatformAuditView(APIView):
         })
 
 
+def _role_label(user):
+    if user is None:
+        return 'Unknown'
+    role = normalize_role(getattr(user, 'role', ''))
+    return {
+        'superadmin': 'Superadmin',
+        'admin': 'Admin',
+        'faculty': 'Faculty',
+        'student': 'Student',
+    }.get(role, 'Faculty')
+
+
 def _audit_row(log):
     user = log.user if log.user_id else None
     institution = ''
@@ -190,6 +259,7 @@ def _audit_row(log):
         'timestamp': log.timestamp.isoformat() if log.timestamp else None,
         'user': (user.full_name or user.email) if user else 'Unknown user',
         'email': user.email if user else '',
+        'role': _role_label(user),
         'institution': institution or 'Platform',
         'action': log.action_type,
         'resource_type': log.resource_type or '',
