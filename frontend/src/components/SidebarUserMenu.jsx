@@ -6,7 +6,7 @@
 // workspace renders it identically. Do not restyle one copy — change this file
 // and both sidebars follow.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Eye, EyeOff, KeyRound, LogOut, Settings, Sun, UserRound } from 'lucide-react'
 import InstallAppButton from './InstallAppButton'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
@@ -63,6 +63,7 @@ export default function SidebarUserMenu({
   onSignOut,
 }) {
   const [open, setOpen] = useState(false)
+  const menuRootRef = useRef(null)
   const [activeModal, setActiveModal] = useState(null)
   const [profileForm, setProfileForm] = useState({
     full_name: user?.full_name || user?.name || '',
@@ -86,6 +87,15 @@ export default function SidebarUserMenu({
   const [appInstalled, setAppInstalled] = useState(() => isStandaloneDisplay())
   // Collapsed sidebars show only the avatar, so it centres and tightens up.
   const tight = collapsed && !isMobile
+
+  useEffect(() => {
+    if (!open) return undefined
+    function closeOnOutside(event) {
+      if (menuRootRef.current && !menuRootRef.current.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', closeOnOutside)
+    return () => document.removeEventListener('mousedown', closeOnOutside)
+  }, [open])
 
   useEffect(() => {
     const syncTheme = () => setThemePreferenceState(getThemePreference())
@@ -208,7 +218,7 @@ export default function SidebarUserMenu({
   const leave = e => { e.currentTarget.style.background = 'none' }
 
   return (
-    <div style={{
+    <div ref={menuRootRef} style={{
       borderTop: '1px solid var(--shell-divider)',
       padding: tight ? '12px 8px' : '12px 16px',
       flexShrink: 0,

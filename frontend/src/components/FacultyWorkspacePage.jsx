@@ -7,7 +7,6 @@ import Alert from '@mui/material/Alert'
 import Autocomplete from '@mui/material/Autocomplete'
 import AutoAlert from './AutoAlert'
 import { StatusNotice } from './StatusNotice'
-import { MaintenanceBanner, MaintenanceBell } from './MaintenanceNotice'
 import MarkdownText, { MarkdownInline } from './MarkdownText'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -86,7 +85,7 @@ import useWorkspaceProgress from '../hooks/useWorkspaceProgress'
 import OmrGradingPanel from './OmrGradingPanel'
 import BubbleSheetPanel from './BubbleSheetPanel'
 import FacultyAnalyticsReports from './FacultyAnalyticsReports'
-import { ChevronDown, Plus, Trash2, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
+import { AlertTriangle, ArrowUp, Ban, Check, ChevronDown, Circle, Plus, Trash2, X, Zap, BookOpen, ClipboardList, ClipboardCheck } from 'lucide-react'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import { applyFixedSyllabusContent, applyTableOverride, SYLLABUS_SECTION_BLUEPRINTS } from '../config/syllabusStructure'
 
@@ -1955,7 +1954,7 @@ function PEAAssessmentCard({ ilos, ats, setAts }) {
                                   <input type="text" inputMode="numeric" value={String(rowTotal)} onChange={e => updIloTotal(at.code, si, iloId, e.target.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '') || '0')}
                                     style={{ width: 52, minWidth: 48, padding: '3px 4px', fontSize: '0.75rem', border: `1px solid ${rowOk ? '#22c55e' : '#ef4444'}`, borderRadius: 4, background: 'var(--c-card)', color: rowOk ? '#22c55e' : '#ef4444', textAlign: 'center', boxSizing: 'border-box', fontWeight: 600 }}
                                   />
-                                  <span style={{ fontSize: '0.72rem', color: rowOk ? '#22c55e' : '#ef4444' }}>{rowOk ? '✓' : '⚠'}</span>
+                                  <span style={{ display: 'inline-flex', color: rowOk ? '#22c55e' : '#F59E0B' }}>{rowOk ? <Check size={12} strokeWidth={2.5} /> : <AlertTriangle size={12} strokeWidth={2.5} />}</span>
                                 </div>
                               )
                             })}
@@ -7289,8 +7288,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                           {t.examLabel}
                         </Box>
                         <Box component="button" type="button" onClick={() => delTosExam(t.id)}
-                          sx={{ px: 1, py: 0.5, fontSize: '0.72rem', cursor: 'pointer', border: 'none', bgcolor: 'transparent', color: '#bbb', borderLeft: '1px solid #eee', '&:hover': { color: MAROON } }}>
-                          ✕
+                          sx={{ px: 1, py: 0.5, cursor: 'pointer', border: 'none', bgcolor: 'transparent', color: '#9ca3af', borderLeft: '1px solid #eee', display: 'inline-flex', alignItems: 'center', '&:hover': { color: 'var(--brand-primary)' } }}>
+                          <X size={12} strokeWidth={2.5} />
                         </Box>
                       </Box>
                     ))}
@@ -7414,7 +7413,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                           border: `1.5px solid ${checked ? MAROON : 'var(--workspace-muted)'}`,
                                           background: checked ? MAROON : '#fff',
                                           color: '#fff', fontSize: '0.62rem', lineHeight: '12px', textAlign: 'center',
-                                        }}>{checked ? '✓' : ''}</span>
+                                        }}>{checked ? <Check size={10} strokeWidth={3} color="#fff" /> : ''}</span>
                                         ILO{j + 1}
                                         {iloLevel && <span style={{ fontSize: '0.6rem', color: MAROON, fontWeight: 700 }}>{iloLevel.slice(0, 3)}</span>}
                                       </button>
@@ -7431,9 +7430,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                       <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: 99, background: 'rgba(34,197,94,0.12)', color: '#16a34a', fontWeight: 700, whiteSpace: 'nowrap' }}>
                                         <GpsFixedIcon sx={{ fontSize: 12, verticalAlign: 'text-bottom', mr: 0.25 }} />{ceilKey.charAt(0).toUpperCase() + ceilKey.slice(1)}
                                       </span>
-                                      {align === 'aligned'  && <span style={{ fontSize: '0.62rem', color: '#16a34a', fontWeight: 700 }}>✓ Aligned</span>}
-                                      {align === 'mismatch' && <span style={{ fontSize: '0.62rem', color: '#dc2626', fontWeight: 700 }}>⚠ Mismatch</span>}
-                                      {align === 'over'     && <span style={{ fontSize: '0.62rem', color: '#d97706', fontWeight: 700 }}>↑ Over</span>}
+                                      {align === 'aligned'  && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: '0.62rem', color: 'var(--brand-primary)', fontWeight: 700 }}><Check size={11} strokeWidth={2.5} /> Aligned</span>}
+                                      {align === 'mismatch' && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: '0.62rem', color: '#AA2423', fontWeight: 700 }}><AlertTriangle size={11} strokeWidth={2.5} /> Mismatch</span>}
+                                      {align === 'over'     && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: '0.62rem', color: '#F59E0B', fontWeight: 700 }}><ArrowUp size={11} strokeWidth={2.5} /> Over</span>}
                                       <button type="button"
                                         onClick={() => applyBloomSuggestion(activeTos.id, row.id, row)}
                                         style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: 99, border: `1px solid ${MAROON}`, background: MAROON_LIGHT, color: MAROON, cursor: 'pointer', fontWeight: 700, lineHeight: 1.5 }}
@@ -7453,11 +7452,12 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                   const status   = keywordAlignStatus(row)
                                   const domBloom = dominantBloom(row)
                                   const statusCfg = {
-                                    confirmed:  { color: 'var(--brand-primary)', icon: '✓', label: 'Confirmed' },
-                                    mismatch:   { color: '#dc2626', icon: '⚠', label: 'Mismatch'  },
-                                    unlinked:   { color: '#d97706', icon: '⊘', label: 'Unlinked'  },
-                                    unverified: { color: '#9ca3af', icon: '○', label: 'Unverified'},
+                                    confirmed:  { color: 'var(--brand-primary)', Icon: Check, label: 'Confirmed' },
+                                    mismatch:   { color: '#AA2423', Icon: AlertTriangle, label: 'Mismatch'  },
+                                    unlinked:   { color: '#F59E0B', Icon: Ban, label: 'Unlinked'  },
+                                    unverified: { color: '#9ca3af', Icon: Circle, label: 'Unverified'},
                                   }[status]
+                                  const StatusIcon = statusCfg.Icon
                                   return (
                                     <div style={{ marginTop: 5, paddingTop: 4, borderTop: '1px dashed #e0e0e0' }}>
                                       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center' }}>
@@ -7470,8 +7470,8 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                                         }
                                       </div>
                                       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', marginTop: 3 }}>
-                                        <span style={{ fontSize: '0.62rem', fontWeight: 700, color: statusCfg.color, whiteSpace: 'nowrap' }}>
-                                          {statusCfg.icon} {statusCfg.label}
+                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: '0.62rem', fontWeight: 700, color: statusCfg.color, whiteSpace: 'nowrap' }}>
+                                          <StatusIcon size={11} strokeWidth={2.5} /> {statusCfg.label}
                                         </span>
                                         {domBloom && (
                                           <span style={{ fontSize: '0.6rem', padding: '1px 4px', borderRadius: 99, background: 'rgba(142,28,27,0.07)', color: MAROON, fontWeight: 700 }}>
@@ -10236,10 +10236,6 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           borderBottom: '1px solid var(--workspace-border)',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <MaintenanceBell />
-        </div>
-        <MaintenanceBanner />
         <WorkspacePageHeader
           course={course}
           activeLabel={(WORKSPACE_TABS.find((t) => t.key === activeTab) || {}).label || activeTab}
