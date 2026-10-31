@@ -19,6 +19,7 @@ urlpatterns = [
         name="check_syllabus_module_consistency",
     ),
     path("generate-assessment/", views.generate_assessment, name="generate_assessment"),
+    path("generate-tos/", views.generate_tos, name="generate_tos"),
     path("assessment/<uuid:assessment_id>/", views.get_assessment_detail, name="get_assessment_detail"),
     path(
         "assessment/<uuid:assessment_id>/qa/",

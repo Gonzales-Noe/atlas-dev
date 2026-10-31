@@ -33,7 +33,7 @@ function StepNode({ step, index, active, done, locked, onSelect, compact }) {
   const tip = step.key + ' module'
   return (
     <Tooltip title={tip} arrow>
-      <Box role="button" tabIndex={0} onClick={onSelect}
+      <Box role="button" tabIndex={0} onClick={onSelect} data-tour={`pipeline-step-${step.key}`}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
         sx={{ display: 'flex', alignItems: 'center', gap: 1.1, cursor: 'pointer', px: 1.5, py: 0.9, borderRadius: 2, bgcolor: active ? 'rgba(170,36,35,0.16)' : 'transparent' }}>
         <Box sx={{ position: 'relative', display: 'flex' }}>
@@ -61,7 +61,7 @@ export default function WorkspacePipelineStepper({ activeTab, isStepDone, onSele
   const total = totalSteps || PIPELINE_STEPS.length
   const pct = total ? Math.round((done / total) * 100) : 0
   return (
-    <Box sx={{ width: '100%' }}>
+    <Box sx={{ width: '100%' }} data-tour="pipeline">
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
         {PIPELINE_STEPS.map((step, i) => {
           const stepDone = Boolean(isStepDone && isStepDone(step.key))

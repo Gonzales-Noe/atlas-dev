@@ -8,8 +8,9 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked'
 import SchoolIcon from '@mui/icons-material/School'
+import TourIcon from '@mui/icons-material/Tour'
 
-export default function WorkspacePageHeader({ course, activeLabel, done, onBack, onToggleDone, actionLoading }) {
+export default function WorkspacePageHeader({ course, activeLabel, done, onBack, onToggleDone, actionLoading, onStartTour }) {
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, width: '100%', minWidth: 0 }}>
       <Tooltip title="Back to courses">
@@ -32,6 +33,14 @@ export default function WorkspacePageHeader({ course, activeLabel, done, onBack,
           <Typography sx={{ fontSize: '0.72rem', color: 'var(--workspace-muted)' }}>Now working on: {activeLabel}</Typography>
         </Box>
       </Box>
+      {onStartTour && (
+        <Tooltip title="Replay the workspace tour">
+          <IconButton onClick={onStartTour} size="small"
+            sx={{ width: 38, height: 38, borderRadius: 2, flexShrink: 0, color: 'var(--workspace-muted)', bgcolor: 'var(--workspace-card)', border: '1px solid var(--workspace-border)', '&:hover': { bgcolor: 'var(--workspace-hover)', color: 'var(--brand-primary)' } }}>
+            <TourIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+      )}
       <Tooltip title={done ? 'Mark this module as not yet approved' : 'Approve this generation (Step 11: Faculty Review and Approval)'}>
         <span>
           <Button onClick={onToggleDone} disabled={Boolean(actionLoading)} size="small"

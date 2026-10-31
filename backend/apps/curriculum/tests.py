@@ -23,6 +23,7 @@ from apps.curriculum.views import (
     _normalize_slot_item,
     create_course,
 )
+from apps.integrations import tos_generation
 from apps.integrations.syllabus_json_import import syllabus_content_from_markdown
 from apps.integrations.syllabus_tab_split import (
     faithful_parsed_data,
@@ -815,3 +816,99 @@ class ModuleTeachingTextTests(SimpleTestCase):
         self.assertEqual([len(batch) for batch in batches], [6, 1, 2])
         self.assertTrue(all(item['bloom_level'] == 'Remember' for item in batches[0] + batches[1]))
         self.assertTrue(all(item['bloom_level'] == 'Understand' for item in batches[2]))
+
+
+class TosGenerationTests(SimpleTestCase):
+    chapters = [
+        {
+            'title': 'Computing Foundations and Binary Numbers',
+            'week': 2,
+            'span': 2,
+            'ilos': ['ILO1', 'ILO2'],
+            'outcomes': 'Convert numbers between bases.',
+        },
+        {
+            'title': 'Data Representation',
+            'week': 4,
+            'span': 1,
+            'ilos': ['ILO3'],
+            'outcomes': 'Represent text and images in binary.',
+        },
+    ]
+
+    def test_year_level_drives_the_bloom_policy(self):
+        self.assertEqual(
+            tos_generation.bloom_policy_for_year('1st Year')['levels'],
+            ['remember', 'understand'],
+        )
+        self.assertEqual(tos_generation.bloom_policy_for_year('Second Year')['levels'], ['apply'])
+        self.assertEqual(tos_generation.bloom_policy_for_year('3rd Year')['levels'], ['analyze'])
+        self.assertEqual(
+            tos_generation.bloom_policy_for_year('4th Year')['levels'],
+            ['evaluate', 'create'],
+        )
+        self.assertEqual(
+            tos_generation.bloom_policy_for_year('5th Year')['levels'],
+            ['evaluate', 'create'],
+        )
+        # Unknown levels still produce a valid target.
+        self.assertEqual(
+            tos_generation.bloom_policy_for_year('')['levels'],
+            ['remember', 'understand'],
+        )
+
+    def test_fallback_rows_use_only_the_year_levels_and_total_100(self):
+        policy = tos_generation.bloom_policy_for_year('2nd Year')
+        rows = tos_generation.fallback_topics(self.chapters, policy, weekly_hours=3)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['hours_class'], 6)
+        self.assertEqual(rows[1]['hours_class'], 3)
+        for row in rows:
+            self.assertEqual(row['bloom_pct']['apply'], 100)
+            self.assertEqual(sum(row['bloom_pct'].values()), 100)
+            self.assertEqual(row['bloom_pct']['remember'], 0)
+
+    def test_parser_keeps_allowed_levels_and_fills_missing_rows(self):
+        raw = """
+        Here is the draft:
+        {"topics": [
+          {"topic": "Binary Basics", "ilos": ["ILO1"],
+           "hours_class": 5,
+           "bloom_pct": {"Remember": 30, "Understanding": 70, "Create": 40}}
+        ]}
+        """
+        policy = tos_generation.bloom_policy_for_year('1st Year')
+        rows = tos_generation.parse_topics(raw, self.chapters, policy, weekly_hours=3)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['topic'], 'Binary Basics')
+        self.assertEqual(rows[0]['ilos'], ['ILO1'])
+        self.assertEqual(rows[0]['bloom_pct']['remember'], 30)
+        self.assertEqual(rows[0]['bloom_pct']['understand'], 70)
+        self.assertEqual(rows[0]['bloom_pct']['create'], 0)
+        self.assertEqual(sum(rows[0]['bloom_pct'].values()), 100)
+        # The second chapter is filled from its own title and the policy split.
+        self.assertEqual(rows[1]['topic'], 'Data Representation')
+        self.assertEqual(rows[1]['bloom_pct']['remember'], 50)
+        self.assertEqual(rows[1]['bloom_pct']['understand'], 50)
+
+    def test_faculty_can_override_the_year_split(self):
+        policy = tos_generation.bloom_policy_for_year(
+            '1st Year', {'remember': 30, 'understand': 70},
+        )
+        self.assertEqual(policy['weights'], [30, 70])
+        rows = tos_generation.fallback_topics(self.chapters, policy, weekly_hours=3)
+        for row in rows:
+            self.assertEqual(row['bloom_pct']['remember'], 30)
+            self.assertEqual(row['bloom_pct']['understand'], 70)
+
+        # Weights outside the year's levels are ignored and totals renormalize.
+        policy = tos_generation.bloom_policy_for_year(
+            '2nd Year', {'apply': 40, 'create': 60},
+        )
+        self.assertEqual(policy['levels'], ['apply'])
+        self.assertEqual(policy['weights'], [100])
+
+    def test_parser_rejects_a_reply_without_topics(self):
+        policy = tos_generation.bloom_policy_for_year('3rd Year')
+        with self.assertRaises(ValueError):
+            tos_generation.parse_topics('not json at all', self.chapters, policy)
