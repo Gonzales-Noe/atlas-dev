@@ -71,9 +71,20 @@ PROVIDER_SPECS = {
             'google/gemma-4-26b-a4b-it:free',
         ),
     ),
+    'nvidia': ProviderSpec(
+        label='NVIDIA',
+        base_url='https://integrate.api.nvidia.com/v1',
+        key_envs=('NVIDIA_API_KEY',),
+        model_env='NVIDIA_MODEL',
+        default_model='nvidia/nemotron-3-ultra-550b-a55b',
+        fallback_models_env='NVIDIA_FALLBACK_MODELS',
+        default_fallback_models=(
+            'nvidia/nemotron-3.5-lightning-30b-a3b',
+        ),
+    ),
 }
 
-DEFAULT_CHAIN = ['groq', 'gemma', 'cloudflare', 'openrouter']
+DEFAULT_CHAIN = ['nvidia', 'groq', 'gemma', 'cloudflare', 'openrouter']
 DEFAULT_GROQ_MODEL = PROVIDER_SPECS['groq'].default_model
 DEFAULT_OPENROUTER_MODEL = PROVIDER_SPECS['openrouter'].default_model
 
@@ -791,6 +802,10 @@ class LLMService:
         body = {'model': model, 'messages': payload_messages, 'max_tokens': max_tokens}
         if extra_body:
             body.update(extra_body)
+        elif provider == 'nvidia':
+            # Nemotron spends max_tokens on reasoning and then stops before the
+            # syllabus, module, or assessment JSON is written.
+            body['chat_template_kwargs'] = {'enable_thinking': False}
         elif 'gpt-oss' in model:
             # Reasoning tokens count toward max_tokens; keep them small.
             body['reasoning_effort'] = 'low'

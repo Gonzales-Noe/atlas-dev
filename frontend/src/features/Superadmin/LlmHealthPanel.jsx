@@ -48,9 +48,10 @@ function unusedText(row) {
   return { primary: 'Not published', secondary: '' }
 }
 
-const MONITOR_ORDER = ['groq', 'openrouter', 'cloudflare', 'ollama']
+const MONITOR_ORDER = ['nvidia', 'groq', 'openrouter', 'cloudflare', 'ollama']
 
 const ACCOUNT_TITLES = {
+  nvidia: 'NVIDIA API key',
   groq: 'Groq API key',
   openrouter: 'OpenRouter key',
   cloudflare: 'Cloudflare',
