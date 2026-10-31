@@ -2,6 +2,7 @@ import logging
 
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Q
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -532,6 +533,106 @@ def delete_global_rag_document(request, document_id):
         )
 
 
+_ADMIN_RESOURCE_LABELS = {
+    "userprofile": "Account",
+    "courseload": "Course",
+    "courserequest": "Course request",
+    "course_request": "Course request",
+    "course": "Course",
+    "assessment": "Assessment",
+    "syllabus": "Syllabus",
+    "institution": "Institution",
+    "section": "Section",
+}
+
+_HIDDEN_DETAIL_MARKERS = (
+    "token", "password", "secret", "host", "database", "schema", "query",
+    "sql", "endpoint", "path", "stack", "traceback", "model", "table", "redis",
+    "celery", "docker", "migration", "embedding", "vector", "chunk", "api",
+)
+
+
+def _admin_resource_label(resource_type):
+    raw = str(resource_type or "").strip()
+    if not raw:
+        return "Record"
+    compact = raw.replace(" ", "").replace("_", "").lower()
+    if compact in _ADMIN_RESOURCE_LABELS:
+        return _ADMIN_RESOURCE_LABELS[compact]
+    lowered = raw.lower()
+    if any(marker in lowered for marker in _HIDDEN_DETAIL_MARKERS):
+        return "Record"
+    spaced = raw.replace("_", " ")
+    return spaced[:1].upper() + spaced[1:]
+
+
+def _admin_detail_value(value):
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    text = str(value).strip()
+    if not text or len(text) > 180:
+        return ""
+    lowered = text.lower()
+    if any(marker in lowered for marker in ("http://", "https://", "traceback", "select ", "insert ")):
+        return ""
+    return text
+
+
+def _admin_audit_summary(log):
+    details = log.details if isinstance(log.details, dict) else {}
+    action = log.action_type or ""
+    course = " — ".join(part for part in [details.get("course_code"), details.get("course_title")] if part)
+    if action == "faculty_account_created":
+        who = details.get("faculty_name") or details.get("faculty_email")
+        return f"{who} was added as faculty." if who else "A faculty account was created."
+    if action == "course_assigned":
+        who = f" to {details['faculty_email']}" if details.get("faculty_email") else ""
+        section = f" in {details['section']}" if details.get("section") else ""
+        return f"{course} was assigned{who}{section}." if course else "A course was assigned."
+    if action == "course_request_submitted":
+        return f"{course} was submitted for review." if course else "A course request was submitted."
+    if action == "course_request_approved":
+        return f"{course} was approved." if course else "A course request was approved."
+    if action == "assessment_approved":
+        return "An assessment was approved."
+    if action in {"account_deactivated", "account_reactivated"}:
+        who = details.get("account_name") or details.get("account_email") or "An account"
+        verb = "reactivated" if action.endswith("reactivated") else "suspended"
+        return f"{who} was {verb}."
+    if action == "account_deleted":
+        who = details.get("deleted_name") or details.get("deleted_email") or "An account"
+        return f"{who} was deleted."
+    if action in {"institution_deactivated", "institution_reactivated"}:
+        name = details.get("institution_name") or "The institution"
+        verb = "reactivated" if action.endswith("reactivated") else "suspended"
+        return f"{name} was {verb}."
+    if action == "institution_deleted":
+        name = details.get("deleted_institution_name") or "An institution"
+        return f"{name} was deleted."
+    if action == "admin_document_upload":
+        return "A document was uploaded."
+
+    phrases = []
+    for key, value in details.items():
+        lowered = str(key).lower()
+        if lowered.endswith("_id") or any(marker in lowered for marker in _HIDDEN_DETAIL_MARKERS):
+            continue
+        if lowered in {"changes", "faculty_email", "faculty_name", "course_code", "course_title"}:
+            continue
+        shown = _admin_detail_value(value)
+        if not shown or isinstance(value, (dict, list)):
+            continue
+        label = lowered.replace("_", " ")
+        phrases.append(f"{label[:1].upper() + label[1:]}: {shown}.")
+        if len(phrases) == 2:
+            break
+    if phrases:
+        return " ".join(phrases)
+    label = action.replace("_", " ").strip()
+    pretty = label[:1].upper() + label[1:] if label else "An activity"
+    return f"{pretty}."
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_audit_logs(request):
@@ -564,6 +665,14 @@ def list_audit_logs(request):
         AuditLog.objects
         .select_related("user")
         .filter(user__institution_id=request.user.institution_id)
+        .exclude(
+            Q(user__role__in=[UserRole.SUPERADMIN, "superadmin"])
+            | Q(action_type__in=[
+                "maintenance_mode_changed",
+                "platform_theme_updated",
+                "platform_settings_updated",
+            ])
+        )
         .order_by("-timestamp")[:500]
     )
     if query:
@@ -597,9 +706,9 @@ def list_audit_logs(request):
                     if log.user_id else "Unknown user"
                 ),
                 "action": log.action_type,
-                "resource_type": log.resource_type,
-                "resource_id": str(log.resource_id) if log.resource_id else None,
-                "details": log.details or {},
+                "resource_type": _admin_resource_label(log.resource_type),
+                "summary_resource": _admin_resource_label(log.resource_type),
+                "summary": _admin_audit_summary(log),
             }
             for log in page_logs
         ],

@@ -65,28 +65,6 @@ const actionLabel = a => {
     .join(' ')
 }
 
-const detailText = details => (
-  typeof details === 'string' ? details : JSON.stringify(details || {})
-)
-
-function detailEntries(details) {
-  if (!details) return []
-  let parsed = details
-  if (typeof details === 'string') {
-    try {
-      parsed = JSON.parse(details)
-    } catch {
-      return []
-    }
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return []
-  return Object.entries(parsed).filter(([, value]) => value !== null && value !== '')
-}
-
-function detailLabel(key) {
-  return String(key).replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
-}
-
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
   '& .MuiInputLabel-root': { fontSize: '0.875rem' },
@@ -184,7 +162,7 @@ export default function AdminAuditLogs() {
                     <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)' }}>{actionLabel(log.action) || '—'}</span>
                   </TableCell>
                   <TableCell sx={{ color: 'var(--text-secondary) !important', fontSize: '0.82rem !important', borderBottom: '1px solid var(--border-color)' }}>
-                    {log.resource_type || '—'}
+                    {log.summary_resource || actionLabel(log.resource_type) || '—'}
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <button
@@ -222,62 +200,31 @@ export default function AdminAuditLogs() {
         <DialogTitle sx={{ bgcolor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Log Details</DialogTitle>
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
-          {selectedLog && (() => {
-            const entries = detailEntries(selectedLog.details)
-            return (
-              <Stack spacing={2}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-                  {[
-                    { label: 'TIMESTAMP', value: selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—' },
-                    { label: 'USER',      value: selectedLog.user || 'Unknown user' },
-                    { label: 'ACTION',    value: (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        <ActionIcon action={selectedLog.action} />
-                        {actionLabel(selectedLog.action) || '—'}
-                      </span>
-                    ) },
-                    { label: 'RESOURCE',  value: selectedLog.resource_type ? detailLabel(selectedLog.resource_type) : '—' },
-                  ].map(({ label, value }) => (
-                    <div key={label}>
-                      <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
-                      <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', wordBreak: 'break-word' }}>{value}</div>
-                    </div>
-                  ))}
-                </div>
-                {selectedLog.resource_id && (
-                  <div>
-                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>RESOURCE ID</div>
-                    <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: '0.76rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                      {selectedLog.resource_id}
-                    </div>
+          {selectedLog && (
+            <Stack spacing={2}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+                {[
+                  { label: 'TIMESTAMP', value: selectedLog.timestamp ? new Date(selectedLog.timestamp).toLocaleString() : '—' },
+                  { label: 'USER', value: selectedLog.user || 'Unknown user' },
+                  { label: 'ACTION', value: (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <ActionIcon action={selectedLog.action} />
+                      {actionLabel(selectedLog.action) || '—'}
+                    </span>
+                  ) },
+                  { label: 'ABOUT', value: selectedLog.summary_resource || actionLabel(selectedLog.resource_type) || '—' },
+                ].map(({ label, value }) => (
+                  <div key={label}>
+                    <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 4 }}>{label}</div>
+                    <div style={{ fontSize: '0.88rem', color: 'var(--text-primary)', wordBreak: 'break-word' }}>{value}</div>
                   </div>
-                )}
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 6 }}>DETAILS</div>
-                  {entries.length ? (
-                    <div style={{ border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
-                      {entries.map(([key, value], index) => (
-                        <div key={key} style={{
-                          display: 'grid', gridTemplateColumns: 'minmax(110px, 0.8fr) 1.6fr', gap: 12,
-                          padding: '8px 12px', fontSize: '0.82rem',
-                          borderTop: index ? '1px solid var(--border-color)' : 'none',
-                        }}>
-                          <span style={{ color: 'var(--text-tertiary)' }}>{detailLabel(key)}</span>
-                          <span style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}>
-                            {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                      {detailText(selectedLog.details) || '—'}
-                    </div>
-                  )}
-                </div>
-              </Stack>
-            )
-          })()}
+                ))}
+              </div>
+              <div style={{ fontSize: '0.92rem', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                {selectedLog.summary || `${actionLabel(selectedLog.action)}.`}
+              </div>
+            </Stack>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 2, bgcolor: 'var(--bg-card)' }}>
           <OutlineBtn onClick={() => setDetailOpen(false)}>Close</OutlineBtn>

@@ -31,7 +31,7 @@ const axisStyle = { fill: 'var(--text-tertiary)', fontSize: 11 }
 const ACTION_LABELS = {
   platform_theme_updated: 'Brand color updated',
   platform_settings_updated: 'Platform settings updated',
-  maintenance_mode_changed: 'Maintenance mode changed',
+  maintenance_mode_changed: 'Maintenance Mode Changed',
   faculty_account_created: 'Faculty account created',
   course_assigned: 'Course assigned',
   syllabus_owner_assigned: 'Syllabus owner assigned',
@@ -75,6 +75,15 @@ function resourceLabel(type) {
     .replace(/_/g, ' ')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+function detailEntries(details) {
+  const parsed = asDetails(details)
+  return Object.entries(parsed).filter(([, value]) => value !== null && value !== '')
+}
+
+function detailLabel(key) {
+  return String(key).replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 }
 
 function asDetails(details) {
@@ -285,18 +294,28 @@ export default function AuditLogs() {
             sx={{ flex: 1, minWidth: 220, ...inputSx }}
             InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }}
           />
-          <TextField
-            select
-            size="small"
-            label="Action"
+          <select
+            aria-label="Action"
             value={action}
             onChange={event => { setAction(event.target.value); setPage(0) }}
-            SelectProps={{ native: true }}
-            sx={{ minWidth: 220, ...inputSx }}
+            style={{
+              minWidth: 220,
+              height: 40,
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--input-bg)',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              fontSize: '0.875rem',
+              padding: '0 12px',
+              cursor: 'pointer',
+            }}
           >
             <option value="">All actions</option>
-            {actions.map(item => <option key={item.action} value={item.action}>{actionLabel(item.action)}</option>)}
-          </TextField>
+            {actions.map(item => (
+              <option key={item.action} value={item.action}>{actionLabel(item.action)}</option>
+            ))}
+          </select>
         </div>
       </GlassCard>
 
@@ -366,12 +385,34 @@ export default function AuditLogs() {
                 ['Who', selectedLog.email ? `${selectedLog.user} · ${selectedLog.email}` : selectedLog.user],
                 ['Role', selectedLog.role || '—'],
                 ['Record', `${actionLabel(selectedLog.action)} · ${resourceLabel(selectedLog.resource_type)}`],
+                ['Resource id', selectedLog.resource_id || '—'],
               ].map(([label, value]) => (
                 <div key={label}>
                   <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</div>
-                  <div style={{ marginTop: 2, color: 'var(--text-primary)' }}>{value}</div>
+                  <div style={{ marginTop: 2, color: 'var(--text-primary)', wordBreak: 'break-word' }}>{value}</div>
                 </div>
               ))}
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', color: 'var(--text-secondary)', textTransform: 'uppercase' }}>Details</div>
+                {detailEntries(selectedLog.details).length ? (
+                  <div style={{ marginTop: 8, border: '1px solid var(--border-color)', borderRadius: 10, overflow: 'hidden' }}>
+                    {detailEntries(selectedLog.details).map(([key, value], index) => (
+                      <div key={key} style={{
+                        display: 'grid', gridTemplateColumns: 'minmax(110px, 0.8fr) 1.6fr', gap: 12,
+                        padding: '8px 12px', fontSize: '0.82rem',
+                        borderTop: index ? '1px solid var(--border-color)' : 'none',
+                      }}>
+                        <span style={{ color: 'var(--text-secondary)' }}>{detailLabel(key)}</span>
+                        <span style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}>
+                          {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 4, color: 'var(--text-secondary)' }}>No extra detail was stored.</div>
+                )}
+              </div>
             </Stack>
           )}
         </DialogContent>
