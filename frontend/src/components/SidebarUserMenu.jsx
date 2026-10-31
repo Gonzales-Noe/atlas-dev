@@ -1,13 +1,11 @@
 // src/components/SidebarUserMenu.jsx
 // Bottom account area for the dashboard sidebars.
-// Open: theme row, then the name card (opens account settings) and logout.
-// Closed: theme icon, profile photo, logout icon. No menu beside the rail.
-// The name card opens one centered dialog that combines profile and preferences.
+// Open: the name card (opens account settings) and logout.
+// Closed: profile photo and logout icon. No menu beside the rail.
+// The name card opens one centered dialog for profile, appearance, and preferences.
 
 import { useEffect, useState } from 'react'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
-import LightModeIcon from '@mui/icons-material/LightMode'
-import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LogoutIcon from '@mui/icons-material/Logout'
 import InstallAppButton from './InstallAppButton'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
@@ -108,7 +106,7 @@ export default function SidebarUserMenu({
   const [notificationPreferenceBusy, setNotificationPreferenceBusy] = useState(false)
   const [canInstallApp, setCanInstallApp] = useState(false)
   const [appInstalled, setAppInstalled] = useState(() => isStandaloneDisplay())
-  // Closed rail: theme icon, profile photo, logout. Open bar keeps the labels.
+  // Closed rail: profile photo and logout. Open bar keeps the name card.
   const tight = collapsed && !isMobile
 
   useEffect(() => {
@@ -240,9 +238,11 @@ export default function SidebarUserMenu({
     border: '1px solid var(--shell-border)',
     boxShadow: 'inset 0 1px 0 var(--shell-emboss-highlight), inset 0 -1px 2px var(--shell-emboss-shade)',
   }
-  const ThemeIcon = themePreference === 'light' ? LightModeIcon : DarkModeIcon
+  function toggleAppearance() {
+    const next = themePreference === 'light' ? 'dark' : 'light'
+    setThemePreferenceState(setThemePreference(next))
+  }
 
-  const themeLabel = themePreference === 'light' ? 'Light mode' : 'Dark mode'
   const displayName = user?.name || user?.email?.split('@')[0] || 'User'
   const displayEmail = user?.email || ''
   const avatarInitial = (user?.name || user?.email || 'U')[0].toUpperCase()
@@ -271,7 +271,8 @@ export default function SidebarUserMenu({
       style={{
         ...emboss,
         width: tight ? '100%' : 42,
-        height: 42,
+        height: tight ? 42 : 'auto',
+        alignSelf: tight ? undefined : 'stretch',
         marginTop: tight ? 4 : 0,
         borderRadius: 10,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -288,36 +289,6 @@ export default function SidebarUserMenu({
       padding: '8px 8px 12px',
       flexShrink: 0,
     }}>
-      <button
-        type="button"
-        title={tight ? themeLabel : undefined}
-        aria-label={themeLabel}
-        aria-pressed={themePreference === 'light'}
-        onClick={() => setThemePreferenceState(setThemePreference(themePreference === 'light' ? 'dark' : 'light'))}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: tight ? 'center' : 'space-between',
-          gap: tight ? 0 : 12, width: '100%',
-          height: tight ? 42 : undefined,
-          padding: tight ? 0 : '10px 8px',
-          margin: '2px 0', border: 'none', borderRadius: 12,
-          background: 'transparent', cursor: 'pointer',
-          color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)',
-          fontSize: '0.875rem', fontWeight: 500,
-        }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'var(--shell-hover-bg)' }}
-        onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
-      >
-        <span style={{ display: 'flex', alignItems: 'center', gap: tight ? 0 : 12 }}>
-          <ThemeIcon sx={{ fontSize: 20, color: 'var(--shell-icon)' }} />
-          {!tight && themeLabel}
-        </span>
-        {!tight && (
-          <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? 'var(--brand-primary)' : 'var(--text-tertiary)' }}>
-            {themePreference === 'light' ? 'On' : 'Off'}
-          </span>
-        )}
-      </button>
-
       {tight ? (
         <button
           type="button"
@@ -337,7 +308,7 @@ export default function SidebarUserMenu({
           {avatar(28)}
         </button>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
           <button
             type="button"
             onClick={openAccount}
@@ -554,6 +525,22 @@ export default function SidebarUserMenu({
                 <Typography component="h2" sx={SECTION_HEADING_SX}>Preferences</Typography>
                 <FormControlLabel
                   sx={PREFERENCE_LABEL_SX}
+                  label={themePreference === 'light' ? 'Light mode' : 'Dark mode'}
+                  labelPlacement="start"
+                  control={(
+                    <Switch
+                      checked={themePreference === 'light'}
+                      onChange={toggleAppearance}
+                      sx={SWITCH_SX}
+                    />
+                  )}
+                />
+                <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
+                  Choose a light or dark appearance for this browser.
+                </Typography>
+                <Divider sx={{ borderColor: 'var(--shell-divider)', mt: 1.5 }} />
+                <FormControlLabel
+                  sx={{ ...PREFERENCE_LABEL_SX, mt: 1 }}
                   label="Notifications"
                   labelPlacement="start"
                   control={(
@@ -672,12 +659,12 @@ export default function SidebarUserMenu({
         </DialogTitle>
         <DialogContent>
           <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-            You will leave ATLAS and need to sign in again.
+            Are you sure you want to sign out of ATLAS?
           </Typography>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
           <Button onClick={() => setConfirmLogout(false)} sx={{ color: 'var(--text-secondary)', textTransform: 'none' }}>
-            Stay signed in
+            Cancel
           </Button>
           <Button
             variant="contained"
