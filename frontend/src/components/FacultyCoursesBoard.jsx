@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import Alert from '@mui/material/Alert'
+import { StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
@@ -24,7 +25,7 @@ import ScienceIcon from '@mui/icons-material/Science'
 import { useNavigate } from 'react-router-dom'
 import api from '../config/api'
 import useApi from '../hooks/useApi'
-import AutoAlert from './AutoAlert'
+import { StatusNotice } from './StatusNotice'
 import FacultyLayout from '../features/roles/Faculty/FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
@@ -99,12 +100,10 @@ export default function FacultyCoursesBoard() {
   return (
     <FacultyLayout>
       <Box sx={{ width: '100%', maxWidth: 1400, mx: 'auto' }}>
-        {error && !errorDismissed && (
-          <AutoAlert message={error} onClose={() => setErrorDismissed(true)} sx={{ mb: 3 }} />
-        )}
+        <StatusNotice message={!errorDismissed ? error : ''} severity="error" />
 
         {notice && (
-          <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 3 }}>{notice}</Alert>
+          <StatusNotice message={notice} severity="success" />
         )}
 
         <Typography variant="h5" sx={{ fontWeight: 800, color: 'var(--text-primary)', mb: 0.5 }}>
@@ -212,7 +211,7 @@ export default function FacultyCoursesBoard() {
         <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: '8px !important' }}>
           <Alert severity="info" sx={{ mb: 0 }}>Your admin reviews every request before the course appears in your workspace.</Alert>
           {sendError && (
-            <Alert severity="error" sx={{ mb: 0 }}>{sendError}</Alert>
+            <StatusNotice message={sendError} severity="error" />
           )}
           <TextField
             label="Course Title"

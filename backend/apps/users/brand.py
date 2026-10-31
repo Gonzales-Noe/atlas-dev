@@ -109,6 +109,7 @@ def theme_payload(row=None):
     maintenance_message = DEFAULT_MAINTENANCE_MESSAGE
     notice_enabled = False
     scheduled_for = None
+    scheduled_until = None
     if row is not None:
         primary = row.brand_primary or DEFAULT_BRAND
         maintenance_enabled = bool(row.maintenance_enabled)
@@ -116,6 +117,8 @@ def theme_payload(row=None):
         notice_enabled = bool(getattr(row, 'maintenance_notice_enabled', False))
         scheduled = getattr(row, 'maintenance_scheduled_for', None)
         scheduled_for = scheduled.isoformat() if scheduled else None
+        until = getattr(row, 'maintenance_scheduled_until', None)
+        scheduled_until = until.isoformat() if until else None
     try:
         colors = palette(primary)
     except ValueError:
@@ -126,6 +129,7 @@ def theme_payload(row=None):
         'maintenance_message': maintenance_message,
         'maintenance_notice_enabled': notice_enabled,
         'maintenance_scheduled_for': scheduled_for,
+        'maintenance_scheduled_until': scheduled_until,
     }
 
 
@@ -135,6 +139,8 @@ def remember_maintenance(payload):
         {
             'enabled': bool(payload.get('maintenance_enabled')),
             'message': payload.get('maintenance_message') or DEFAULT_MAINTENANCE_MESSAGE,
+            'scheduled_for': payload.get('maintenance_scheduled_for'),
+            'scheduled_until': payload.get('maintenance_scheduled_until'),
         },
         timeout=30,
     )

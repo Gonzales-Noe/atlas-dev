@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react'
 import useDebouncedValue from '../../../hooks/useDebouncedValue'
 import RouteSkeleton from '../../../components/RouteSkeleton'
+import { StatusNotice } from '../../../components/StatusNotice'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Stack, Alert,
+  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Stack,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import {
@@ -139,7 +140,7 @@ export default function AdminAuditLogs() {
         subtitle="Review recorded activity for your institution"
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <StatusNotice message={error} severity="error" />
 
       {/* Filters */}
       <GlassCard style={{ marginBottom: 14 }}>

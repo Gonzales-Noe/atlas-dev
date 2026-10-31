@@ -6,7 +6,7 @@
 //   assessments – array from workspaceApi.data?.assessments
 //
 import { useCallback, useEffect, useRef, useState } from 'react'
-import Alert from '@mui/material/Alert'
+import { StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -368,8 +368,8 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                     onChange={setEvalFile} disabled={tplSaving} />
                 </Box>
               </Box>
-              {tplError   && <Alert severity="error"   onClose={() => setTplError('')}   sx={{ py: 0.25, fontSize: '0.78rem' }}>{tplError}</Alert>}
-              {tplSuccess  && <Alert severity="success" onClose={() => setTplSuccess('')} sx={{ py: 0.25, fontSize: '0.78rem' }}>{tplSuccess}</Alert>}
+              <StatusNotice message={tplError} severity="error" />
+              <StatusNotice message={tplSuccess} severity="success" />
               <Button type="submit" variant="contained" disabled={tplSaving}
                 startIcon={tplSaving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AddIcon />}
                 sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
@@ -469,8 +469,8 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
                   accept=".zip,.pdf,.jpg,.jpeg,.png"
                   onChange={setScanBundle} disabled={jobSaving} />
               </Box>
-              {jobError   && <Alert severity="error"   onClose={() => setJobError('')}   sx={{ py: 0.25, fontSize: '0.78rem' }}>{jobError}</Alert>}
-              {jobSuccess  && <Alert severity="success" onClose={() => setJobSuccess('')} sx={{ py: 0.25, fontSize: '0.78rem' }}>{jobSuccess}</Alert>}
+              <StatusNotice message={jobError} severity="error" />
+              <StatusNotice message={jobSuccess} severity="success" />
               <Button type="submit" variant="contained" disabled={jobSaving}
                 startIcon={jobSaving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AddIcon />}
                 sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
@@ -516,11 +516,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
               <LinearProgress variant="determinate" value={selectedJob.progress_pct || 0}
                 sx={{ mt: 1.5, height: 4, borderRadius: 2, bgcolor: 'var(--workspace-border)', '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
             )}
-            {selectedJob.error_message && (
-              <Alert severity="error" sx={{ mt: 1.25, py: 0.25, fontSize: '0.78rem' }}>
-                {selectedJob.error_message}
-              </Alert>
-            )}
+            <StatusNotice message={selectedJob.error_message} severity="error" />
           </SCard>
 
           {/* Actions toolbar */}

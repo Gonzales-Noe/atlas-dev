@@ -37,7 +37,7 @@ from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.fixed_syllabus import canonical_syllabus_sections, publish_fixed_syllabus, seed_course_syllabi
 from apps.integrations.syllabus_defaults import default_syllabus_sections
 from apps.integrations.document_processor import DocumentProcessor
-from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, Section, StudentData, UserProfile, UserRole
+from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, MaintenanceUpdate, Section, StudentData, UserProfile, UserRole
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -775,19 +775,15 @@ class DashboardSummaryView(APIView):
         return payload
 
     def _superadmin_summary(self, request):
-        institution_count = Institution.objects.count()
-        active_institutions = Institution.objects.filter(is_active=True).count()
-        user_count = UserProfile.objects.count()
-        pending_applications = Institution.objects.filter(application_status='pending_review').count()
-        unpaid_institutions = Institution.objects.filter(payment_status__in=['unpaid', 'pending']).count()
         role_rows = {
             row['role']: row['total']
             for row in UserProfile.objects.values('role').annotate(total=Count('user_id'))
         }
         user_distribution = [
+            {'name': 'Super Admins', 'value': role_rows.get(UserRole.SUPERADMIN, 0)},
             {'name': 'Admins', 'value': role_rows.get(UserRole.ADMIN, 0)},
             {'name': 'Faculty', 'value': role_rows.get(UserRole.FACULTY, 0)},
-            {'name': 'Super Admins', 'value': role_rows.get(UserRole.SUPERADMIN, 0)},
+            {'name': 'Students', 'value': role_rows.get(UserRole.STUDENT, 0)},
         ]
         institution_trend = []
         cursor = timezone.localtime().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -802,28 +798,31 @@ class DashboardSummaryView(APIView):
                 'institutions': Institution.objects.filter(created_at__gte=month, created_at__lt=nxt).count(),
                 'users': UserProfile.objects.filter(created_at__gte=month, created_at__lt=nxt).count(),
             })
+        role_names = {
+            'superadmin': 'Superadmin',
+            'admin': 'Admin',
+            'faculty': 'Faculty',
+            'student': 'Student',
+        }
         recent_activity = []
-        for log in AuditLog.objects.select_related('user', 'user__institution').order_by('-timestamp')[:6]:
+        for log in AuditLog.objects.select_related('user').order_by('-timestamp')[:6]:
             user = log.user if log.user_id else None
-            institution_name = 'Platform'
-            if user is not None and user.institution_id and getattr(user, 'institution', None):
-                institution_name = user.institution.name
+            role_name = role_names.get(normalize_role(user.role), 'Unknown') if user else 'Unknown'
             recent_activity.append({
                 'label': log.action_type,
                 'value': (user.full_name or user.email) if user else 'Unknown user',
-                'detail': institution_name,
+                'detail': role_name,
                 'timestamp': log.timestamp.isoformat() if log.timestamp else '',
             })
         payload = {
             'role': 'superadmin',
             'title': 'Super Admin Dashboard',
-            'subtitle': 'Monitor the platform, institutions, and access policy.',
+            'subtitle': 'Role totals and the latest activity.',
             'cards': [
-                {'label': 'Institutions', 'value': institution_count, 'tone': 'superadmin'},
-                {'label': 'Active institutions', 'value': active_institutions, 'tone': 'superadmin'},
-                {'label': 'Users', 'value': user_count, 'tone': 'superadmin'},
-                {'label': 'Pending applications', 'value': pending_applications, 'tone': 'superadmin'},
-                {'label': 'Unpaid institutions', 'value': unpaid_institutions, 'tone': 'superadmin'},
+                {'label': 'Super Admins', 'value': role_rows.get(UserRole.SUPERADMIN, 0), 'tone': 'superadmin'},
+                {'label': 'Admins', 'value': role_rows.get(UserRole.ADMIN, 0), 'tone': 'superadmin'},
+                {'label': 'Faculty', 'value': role_rows.get(UserRole.FACULTY, 0), 'tone': 'superadmin'},
+                {'label': 'Students', 'value': role_rows.get(UserRole.STUDENT, 0), 'tone': 'superadmin'},
                 {'label': 'Courses', 'value': Course.objects.count(), 'tone': 'superadmin'},
                 {'label': 'Assessments', 'value': Assessment.objects.count(), 'tone': 'superadmin'},
             ],
@@ -834,14 +833,20 @@ class DashboardSummaryView(APIView):
                 {'label': 'Audit Logs', 'to': '/superadmin/audit-logs'},
                 {'label': 'Appearance', 'to': '/superadmin/appearance'},
             ],
-            'recent': [
-                {'label': institution.name, 'value': institution.plan_tier, 'detail': institution.application_status}
-                for institution in Institution.objects.order_by('-created_at')[:5]
-            ],
+            'recent': [],
             'user_distribution': user_distribution,
             'institution_trend': institution_trend,
             'activity_trend': activity_by_day(14),
             'recent_activity': recent_activity,
+            'maintenance_update_count': MaintenanceUpdate.objects.count(),
+            'maintenance_updates': [
+                {
+                    'summary': item.summary,
+                    'started_at': item.started_at.isoformat() if item.started_at else None,
+                    'ended_at': item.ended_at.isoformat() if item.ended_at else None,
+                }
+                for item in MaintenanceUpdate.objects.order_by('-recorded_at')[:8]
+            ],
         }
         DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
         return payload

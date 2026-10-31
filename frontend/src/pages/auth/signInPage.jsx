@@ -8,6 +8,7 @@ import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
 import { consumeAuthNotice } from '../../config/session';
+import { StatusNotice } from '../../components/StatusNotice';
 
 import atlasLogo from '../../assets/atlas-logo.webp';
 import atlasMascot from '../../assets/atlas.webp';
@@ -565,7 +566,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                 </p>
               </div>
 
-              {error && <div className="error-box">{error}</div>}
+              <StatusNotice message={error} severity="error" />
 
               {/* Form */}
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>

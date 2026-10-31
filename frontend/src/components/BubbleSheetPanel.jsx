@@ -7,6 +7,7 @@
 //
 import { useCallback, useEffect, useState } from 'react'
 import Alert from '@mui/material/Alert'
+import { StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -197,8 +198,8 @@ function SectionsTab({ courseId }) {
         </Tooltip>
       }
     >
-      {error && <Alert severity="error" sx={{ mb: 1.5, fontSize: '0.8rem' }}>{error}</Alert>}
-      {notice && <Alert severity={noticeSeverity} sx={{ mb: 1.5, fontSize: '0.8rem' }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity={noticeSeverity || 'success'} />
       {loading ? (
         <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
       ) : sections.length === 0 ? (
@@ -361,7 +362,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
         <Tab label="Sections" />
       </Tabs>
 
-      {error && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{error}</Alert>}
+      <StatusNotice message={error} severity="error" />
 
       {tab === 0 && (
         <TemplatesTab
@@ -738,7 +739,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>New Bubble Sheet Template</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
-          {errors._ && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{errors._}</Alert>}
+          <StatusNotice message={errors._} severity="error" />
 
           <LF label="Template name" value={form.name} onChange={e => setField('name', e.target.value)}
             error={!!errors.name} helperText={errors.name} />
@@ -785,7 +786,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
               </Button>
             </Stack>
             {errors.non_field_errors && (
-              <Alert severity="error" sx={{ mb: 1, fontSize: '0.78rem' }}>{errors.non_field_errors}</Alert>
+              <StatusNotice message={errors.non_field_errors} severity="error" />
             )}
             <Stack spacing={1}>
               {form.parts.map((p, idx) => (
@@ -877,7 +878,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         Answer Key — {template.name}
       </DialogTitle>
       <DialogContent dividers>
-        {err && <Alert severity="error" sx={{ mb: 2, fontSize: '0.8rem' }}>{err}</Alert>}
+        <StatusNotice message={err} severity="error" />
         <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
           Click the correct answer for each item. Items with no selection will be excluded from grading.
           The star marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
@@ -1014,7 +1015,7 @@ function ResultsTab({ courseId, templates, onNotice }) {
         </Stack>
       </SCard>
 
-      {err && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{err}</Alert>}
+      <StatusNotice message={err} severity="error" />
 
       {loading
         ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
@@ -1140,7 +1141,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
       <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Edit Scan Result</DialogTitle>
       <DialogContent dividers>
         <Stack spacing={2} sx={{ pt: 1 }}>
-          {err && <Alert severity="error" sx={{ fontSize: '0.8rem' }}>{err}</Alert>}
+          <StatusNotice message={err} severity="error" />
           <LF label="Student ID number" value={studentId} onChange={e => setStudentId(e.target.value)} />
 
           <Typography variant="caption" sx={{ fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>

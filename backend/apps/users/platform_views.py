@@ -11,7 +11,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.integrations.models import AuditLog, PlatformSettings
+from apps.integrations.models import AuditLog, MaintenanceUpdate, PlatformSettings
 from apps.users.brand import (
     DEFAULT_MAINTENANCE_MESSAGE,
     cached_maintenance,
@@ -32,8 +32,7 @@ def _is_superadmin(request):
     return normalize_role(getattr(user, 'role', '')) == 'superadmin'
 
 
-def parse_scheduled_start(value):
-    """A coming-soon notice has to start on a later calendar day, never today."""
+def _parse_moment(value):
     if value in (None, ''):
         return None
     if hasattr(value, 'tzinfo'):
@@ -44,9 +43,80 @@ def parse_scheduled_start(value):
             raise ValueError('Enter a valid date and time.')
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed, timezone.get_current_timezone())
+    return parsed
+
+
+def parse_scheduled_start(value):
+    """A coming-soon notice has to start on a later calendar day, never today."""
+    parsed = _parse_moment(value)
+    if parsed is None:
+        return None
     if timezone.localtime(parsed).date() <= timezone.localdate():
         raise ValueError('Schedule the notice for a later day. It cannot start today.')
     return parsed
+
+
+def parse_scheduled_until(value, start):
+    """The window needs an end that is later than the start."""
+    parsed = _parse_moment(value)
+    if parsed is None:
+        return None
+    if timezone.localtime(parsed).date() <= timezone.localdate():
+        raise ValueError('The end has to be on a later day. It cannot be today.')
+    if start is not None and parsed <= start:
+        raise ValueError('The end time has to be after the start.')
+    return parsed
+
+
+def record_maintenance_update(summary, started_at=None, ended_at=None):
+    MaintenanceUpdate.objects.create(
+        summary=summary[:300],
+        started_at=started_at,
+        ended_at=ended_at,
+    )
+
+
+def apply_scheduled_maintenance(row):
+    """Turn maintenance on at the saved start, and off when that window ends."""
+    if row is None:
+        return False
+    start = getattr(row, 'maintenance_scheduled_for', None)
+    end = getattr(row, 'maintenance_scheduled_until', None)
+    if not start or not end:
+        return False
+    now = timezone.now()
+    changed = False
+    if start <= now < end and not getattr(row, 'maintenance_schedule_started', False):
+        row.maintenance_enabled = True
+        row.maintenance_schedule_started = True
+        row.maintenance_opened_by_schedule = True
+        changed = True
+        record_maintenance_update('Maintenance started automatically.', start, end)
+    elif now >= end and getattr(row, 'maintenance_opened_by_schedule', False):
+        row.maintenance_enabled = False
+        row.maintenance_opened_by_schedule = False
+        row.maintenance_notice_enabled = False
+        changed = True
+        record_maintenance_update('Maintenance ended automatically.', start, now)
+    if changed:
+        row.save()
+        cache.delete('platform:maintenance')
+    return changed
+
+
+def _cached_window_is_due(cached):
+    if not isinstance(cached, dict):
+        return False
+    start = _parse_moment(cached.get('scheduled_for'))
+    end = _parse_moment(cached.get('scheduled_until'))
+    if not start or not end:
+        return False
+    now = timezone.now()
+    if start <= now < end and not cached.get('enabled'):
+        return True
+    if now >= end and cached.get('enabled'):
+        return True
+    return False
 
 
 def _settings_row():
@@ -66,7 +136,9 @@ class PlatformThemeView(APIView):
         return [permissions.IsAuthenticated()]
 
     def get(self, request):
-        return Response(theme_payload(_settings_row()))
+        row = _settings_row()
+        apply_scheduled_maintenance(row)
+        return Response(theme_payload(row))
 
     def patch(self, request):
         if not _is_superadmin(request):
@@ -86,6 +158,7 @@ class PlatformThemeView(APIView):
 
         if 'maintenance_enabled' in request.data:
             row.maintenance_enabled = bool(request.data.get('maintenance_enabled'))
+            row.maintenance_opened_by_schedule = False
             changed.append('maintenance')
 
         if 'maintenance_message' in request.data:
@@ -98,7 +171,8 @@ class PlatformThemeView(APIView):
             row.maintenance_message = message or DEFAULT_MAINTENANCE_MESSAGE
             changed.append('maintenance')
 
-        if 'maintenance_notice_enabled' in request.data or 'maintenance_scheduled_for' in request.data:
+        notice_fields = ('maintenance_notice_enabled', 'maintenance_scheduled_for', 'maintenance_scheduled_until')
+        if any(key in request.data for key in notice_fields):
             notice_on = bool(request.data.get(
                 'maintenance_notice_enabled',
                 getattr(row, 'maintenance_notice_enabled', False),
@@ -110,6 +184,14 @@ class PlatformThemeView(APIView):
                     return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             else:
                 scheduled = getattr(row, 'maintenance_scheduled_for', None)
+            if 'maintenance_scheduled_until' in request.data:
+                until_raw = request.data.get('maintenance_scheduled_until')
+            else:
+                until_raw = getattr(row, 'maintenance_scheduled_until', None)
+            try:
+                until = parse_scheduled_until(until_raw, scheduled)
+            except ValueError as exc:
+                return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
             if notice_on:
                 try:
                     scheduled = parse_scheduled_start(scheduled)
@@ -120,8 +202,21 @@ class PlatformThemeView(APIView):
                         {'detail': 'Choose a start time on a later day before showing the banner.'},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+                if until is None:
+                    return Response(
+                        {'detail': 'Choose the time maintenance ends.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            times_changed = (
+                scheduled != getattr(row, 'maintenance_scheduled_for', None)
+                or until != getattr(row, 'maintenance_scheduled_until', None)
+            )
             row.maintenance_notice_enabled = notice_on
             row.maintenance_scheduled_for = scheduled
+            row.maintenance_scheduled_until = until
+            if times_changed:
+                row.maintenance_schedule_started = False
+                row.maintenance_opened_by_schedule = False
             changed.append('maintenance')
 
         if not changed:
@@ -150,6 +245,8 @@ class PlatformThemeView(APIView):
             details['maintenance_notice_enabled'] = row.maintenance_notice_enabled
             if row.maintenance_scheduled_for:
                 details['maintenance_scheduled_for'] = row.maintenance_scheduled_for.isoformat()
+            if row.maintenance_scheduled_until:
+                details['maintenance_scheduled_until'] = row.maintenance_scheduled_until.isoformat()
         if kinds == ['brand']:
             action = 'platform_theme_updated'
         elif 'brand' not in kinds:
@@ -162,6 +259,16 @@ class PlatformThemeView(APIView):
             resource_type='Platform',
             details=details,
         )
+        if 'maintenance' in kinds:
+            if row.maintenance_scheduled_for and row.maintenance_notice_enabled:
+                summary = 'Scheduled a maintenance window.'
+                if row.maintenance_message:
+                    summary = f'Scheduled a maintenance window. {row.maintenance_message}'
+                record_maintenance_update(summary, row.maintenance_scheduled_for, row.maintenance_scheduled_until)
+            elif row.maintenance_enabled:
+                record_maintenance_update('Maintenance was turned on.', timezone.now(), None)
+            else:
+                record_maintenance_update('Maintenance was turned off.', None, timezone.now())
         return Response(payload)
 
 
@@ -175,6 +282,7 @@ class SystemHealthView(APIView):
         payload['maintenance_message'] = theme['maintenance_message']
         payload['maintenance_notice_enabled'] = theme['maintenance_notice_enabled']
         payload['maintenance_scheduled_for'] = theme['maintenance_scheduled_for']
+        payload['maintenance_scheduled_until'] = theme['maintenance_scheduled_until']
         payload['activity'] = activity_by_day(14)
         return Response(payload)
 
@@ -270,9 +378,10 @@ def _audit_row(log):
 
 def maintenance_state():
     cached = cached_maintenance()
-    if cached is not None:
+    if cached is not None and not _cached_window_is_due(cached):
         return cached
     row = _settings_row()
+    apply_scheduled_maintenance(row)
     payload = theme_payload(row)
     state = {
         'enabled': payload['maintenance_enabled'],

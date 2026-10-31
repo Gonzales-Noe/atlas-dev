@@ -751,7 +751,7 @@ export default function LandingPage() {
       {/* ── NAVBAR ──────────────────────────────────────────────────────────── */}
       <nav style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0,
+        top: 'var(--atlas-titlebar-h, 0px)', left: 0, right: 0,
         zIndex: 1000,
         background: 'rgba(255,255,255,0.72)',
         borderBottom: '1px solid rgba(0,0,0,0.08)',

@@ -4,6 +4,7 @@ import {
   Box, Button, Card, CardContent, CardHeader, Grid, Stack, TextField, Typography, Alert, List, ListItem, ListItemText,
 } from '@mui/material'
 import QuizIcon from '@mui/icons-material/Quiz'
+import { StatusNotice } from '../../../components/StatusNotice'
 import FacultyLayout from './FacultyLayout'
 
 function loadCourse() { try { return JSON.parse(localStorage.getItem('atlas_faculty_course')) || null } catch { return null } }
@@ -56,7 +57,7 @@ export default function FacultyAssessment() {
         {!course?.courseName && <Alert severity="warning" sx={{ mb: 3, borderRadius: 2 }}>Add a course from the dashboard before generating assessments.</Alert>}
         {!syllabusReady && course?.courseName && <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>Create a syllabus first to unlock assessment generation.</Alert>}
         {course?.courseName && syllabusReady && moduleList.length === 0 && <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>Add at least one module first before generating assessment items.</Alert>}
-        {successMessage && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{successMessage}</Alert>}
+        <StatusNotice message={successMessage} severity="success" />
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>

@@ -4,6 +4,8 @@ import { ROUTES } from './config/route'
 import ProtectedRoute from './components/protectedRoute.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import AtlasErrorHost from './components/AtlasErrorHost.jsx'
+import StatusNoticeHost from './components/StatusNotice.jsx'
+import PwaReloadButton from './components/PwaReloadButton.jsx'
 import MaintenanceGate from './components/MaintenanceGate.jsx'
 import RouteSkeleton from './components/RouteSkeleton.jsx'
 
@@ -73,6 +75,8 @@ function App() {
     <BrowserRouter>
       <MaintenanceGate>
       <AtlasErrorHost />
+      <StatusNoticeHost />
+      <PwaReloadButton />
       <Suspense fallback={<RouteSkeleton />}>
       <Routes>
         {/* 2. Set the Landing Page as the root route */}

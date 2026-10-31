@@ -6,6 +6,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import Alert from '@mui/material/Alert'
 import Autocomplete from '@mui/material/Autocomplete'
 import AutoAlert from './AutoAlert'
+import { StatusNotice } from './StatusNotice'
+import { MaintenanceBanner, MaintenanceBell } from './MaintenanceNotice'
 import MarkdownText, { MarkdownInline } from './MarkdownText'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -9167,7 +9169,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                       ? 'Every item matches its TOS cell and the keyed answer is supported by the source passages.'
                       : 'Select the items, write one note, then approve. Uncheck an item if it needs its own note.'}
                   </DialogContentText>
-                  {approveError ? <Alert severity="error">{approveError}</Alert> : null}
+                  <StatusNotice message={approveError} severity="error" />
                   {assessmentDetail.qa_report && !assessmentDetail.qa_report.allocation_ok && (
                     <ApprovalNoteField
                       label="Why the TOS counts still stand"
@@ -10234,6 +10236,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           borderBottom: '1px solid var(--workspace-border)',
           backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <MaintenanceBell />
+        </div>
+        <MaintenanceBanner />
         <WorkspacePageHeader
           course={course}
           activeLabel={(WORKSPACE_TABS.find((t) => t.key === activeTab) || {}).label || activeTab}

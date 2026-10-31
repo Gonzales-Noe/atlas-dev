@@ -146,6 +146,7 @@ export function clearBrowserSession({ broadcast = false, notice = '' } = {}) {
   sessionStorage.removeItem(ACCESS)
   sessionStorage.removeItem(REFRESH)
   sessionStorage.removeItem(USER)
+  sessionStorage.removeItem('atlas_maintenance_banner_closed')
   purgeLegacyPersistentTokens()
   try {
     localStorage.removeItem(ACTIVITY)

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  Alert, Box, Button, CircularProgress, Dialog, DialogContent, Divider,
+  Box, Button, CircularProgress, Dialog, DialogContent, Divider,
   FormControlLabel, IconButton, LinearProgress, Stack, Step,
   StepLabel, Stepper, Switch, TextField, Typography,
 } from '@mui/material'
+import { StatusNotice } from '../../../components/StatusNotice'
 import AddIcon from '@mui/icons-material/Add'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
@@ -512,8 +513,8 @@ export default function AdminSetupWizard({ open, onFinished }) {
           <LoadingState label="Loading your institution setup..." />
         ) : (
           <Stack spacing={2}>
-            {error && <Alert severity="error" onClose={() => setError('')}>{error}</Alert>}
-            {notice && <Alert severity="success" onClose={() => setNotice('')}>{notice}</Alert>}
+            <StatusNotice message={error} severity="error" />
+            <StatusNotice message={notice} severity="success" />
 
             {activeStep === 0 && (
               <>
@@ -647,7 +648,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                   Add the faculty member and all their sections and courses in one submission. You can add more than one course to a section.
                 </Typography>
                 {hasAssignedFaculty && (
-                  <Alert severity="success">{facultyCount} faculty account(s) already have a course and section assignment.</Alert>
+                  <StatusNotice message={`${facultyCount} faculty account(s) already have a course and section assignment.`} severity="success" />
                 )}
                 <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
                   <TextField label="Faculty name" value={facultyForm.full_name} onChange={event => setFacultyForm({ ...facultyForm, full_name: event.target.value })} size="small" sx={inputSx} />
@@ -733,7 +734,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                     {knowledgeUploaded ? 'Uploaded' : 'Upload knowledge base'}
                   </Button>
                 )}
-                {knowledgeUploaded && <Alert severity="success">Knowledge base uploaded successfully.</Alert>}
+                <StatusNotice message={knowledgeUploaded ? 'Knowledge base uploaded successfully.' : ''} severity="success" />
               </>
             )}
           </Stack>

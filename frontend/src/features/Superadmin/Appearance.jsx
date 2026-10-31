@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Alert } from '@mui/material'
+import { StatusNotice } from '../../components/StatusNotice'
 import SuperAdminLayout from './SuperAdminLayout'
 import { GlassCard, PageHeader, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api from '../../config/api'
@@ -72,8 +72,8 @@ export default function Appearance() {
         subtitle="Replace the default red with the color this institution wants on the public site and the signed-in app"
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity="success" />
 
       <div className="atlas-appearance-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(280px, 0.8fr)', gap: 16 }}>
         <GlassCard title="Institution color">

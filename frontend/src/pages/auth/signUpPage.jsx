@@ -6,6 +6,7 @@ import { Check, Circle, Eye, EyeOff, PartyPopper, School } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
+import { StatusNotice } from '../../components/StatusNotice';
 
 import atlasLogo from '../../assets/atlas-logo.webp';
 import atlasMascot from '../../assets/atlas.webp';
@@ -687,7 +688,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   </p>
                 </div>
 
-                {error && <div className="error-box">{error}</div>}
+                <StatusNotice message={error} severity="error" />
 
                 {/* Google — rectangular GIS button, centered */}
                 <div

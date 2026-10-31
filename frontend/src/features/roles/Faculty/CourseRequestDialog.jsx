@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Alert from '@mui/material/Alert'
+import { StatusNotice } from '../../../components/StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
@@ -105,7 +106,7 @@ export default function CourseRequestDialog({ open, onClose, onSubmitted }) {
         }}>
           {STEPS.map((label) => <Step key={label}><StepLabel>{label}</StepLabel></Step>)}
         </Stepper>
-        {submitError && <Alert severity="error">{submitError}</Alert>}
+        <StatusNotice message={submitError} severity="error" />
         {step === 0 && (
           <>
             <Alert severity="info" sx={{ fontSize: '0.82rem' }}>Requests usually take 1-2 working days. You can keep working on approved courses meanwhile.</Alert>

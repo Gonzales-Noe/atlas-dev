@@ -13,6 +13,7 @@ import SuperAdminLayout from './SuperAdminLayout'
 import { CircleCheck, Landmark, Users } from 'lucide-react'
 import { StatCard, PageHeader, StatusChip, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api from '../../config/api'
+import { StatusNotice } from '../../components/StatusNotice'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
 
 const planType = p => ({ Premium: 'premium', Professional: 'info', Starter: 'default', Enterprise: 'premium', pro: 'info', enterprise: 'premium' }[p] || 'default')
@@ -171,16 +172,8 @@ export default function AccountManagement() {
 
       {/* Filters */}
       <GlassCard style={{ marginBottom: 16 }}>
-        {notice && (
-          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(21,122,50,0.1)', border: '1px solid rgba(21,122,50,0.35)', color: 'var(--status-success)', fontSize: '0.85rem' }}>
-            {notice}
-          </div>
-        )}
-        {error && (
-          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 10, background: 'rgba(226,75,74,0.12)', border: '1px solid rgba(226,75,74,0.4)', color: '#E24B4A', fontSize: '0.85rem' }}>
-            {error}
-          </div>
-        )}
+        <StatusNotice message={notice} severity="success" />
+        <StatusNotice message={error} severity="error" />
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
             placeholder="Search institution, admin, or email…"

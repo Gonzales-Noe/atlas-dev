@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import Alert from '@mui/material/Alert'
+import { StatusNotice } from '../../../components/StatusNotice'
 import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
 import { fetchSetupStatus } from './academicApi'
@@ -50,7 +50,7 @@ export default function AdminDashboard() {
         />
       </GlassCard>
 
-      {setupError && <Alert severity="error" sx={{ mb: 2 }}>{setupError}</Alert>}
+      <StatusNotice message={setupError} severity="error" />
 
       <GlassCard style={{ marginBottom: 24, border: '1px solid rgba(96,170,255,0.35)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
