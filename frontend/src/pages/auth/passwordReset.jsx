@@ -75,7 +75,7 @@ function StepDots({ current }) {
           width: i === current ? 20 : 7,
           height: 7,
           borderRadius: 4,
-          background: i <= current ? 'linear-gradient(90deg, #8E1C1B, #AA2423)' : 'rgba(255,255,255,0.12)',
+          background: i <= current ? 'linear-gradient(90deg, var(--brand-primary-hover), var(--brand-primary))' : 'rgba(255,255,255,0.12)',
           transition: 'all 0.4s ease',
         }} />
       ))}
@@ -231,7 +231,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -253,7 +253,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-inline {
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: #fff;
           border: none;
           border-radius: 10px;
@@ -546,7 +546,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                 {STEP_CONFIG[step]?.bubble}
               </div>
 
-              <div style={{ lineHeight: 1, filter: 'drop-shadow(0 8px 24px rgba(170,36,35,0.25))', transition: 'all 0.4s ease', color: '#AA2423' }}>
+              <div style={{ lineHeight: 1, filter: 'drop-shadow(0 8px 24px rgba(170,36,35,0.25))', transition: 'all 0.4s ease', color: 'var(--brand-primary)' }}>
                 {(() => {
                   const StepIcon = STEP_CONFIG[step]?.Icon
                   return StepIcon ? <StepIcon size={72} strokeWidth={1.5} aria-hidden="true" /> : null
@@ -560,7 +560,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     {['Email', 'Verify', 'Password'].map((label, i) => (
                       <span key={label} style={{
                         fontSize: '0.7rem',
-                        color: i <= step ? '#E24B4A' : 'rgba(255,255,255,0.25)',
+                        color: i <= step ? 'var(--brand-accent)' : 'rgba(255,255,255,0.25)',
                         fontWeight: 600,
                         transition: 'color 0.3s',
                       }}>
@@ -572,7 +572,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     <div style={{
                       height: '100%',
                       width: `${((step) / 2) * 100}%`,
-                      background: 'linear-gradient(90deg, #8E1C1B, #AA2423)',
+                      background: 'linear-gradient(90deg, var(--brand-primary-hover), var(--brand-primary))',
                       borderRadius: 4,
                       transition: 'width 0.5s ease',
                     }} />
@@ -618,11 +618,11 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.35)', margin: 0 }}>
                     Remembered it?{' '}
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
+                      <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--brand-accent)', fontWeight: 700 }}>
                         Sign In
                       </button>
                     ) : (
-                      <Link to={ROUTES.SIGN_IN} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>
+                      <Link to={ROUTES.SIGN_IN} style={{ color: 'var(--brand-accent)', fontWeight: 700, textDecoration: 'none' }}>
                         Sign In
                       </Link>
                     )}
@@ -669,7 +669,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                       style={{
                         background: 'none', border: 'none', padding: 0,
                         cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer',
-                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : '#E24B4A',
+                        color: resendCooldown > 0 ? 'rgba(255,255,255,0.25)' : 'var(--brand-accent)',
                         fontWeight: 700, fontSize: '0.83rem',
                         fontFamily: 'inherit', transition: 'color 0.2s',
                       }}

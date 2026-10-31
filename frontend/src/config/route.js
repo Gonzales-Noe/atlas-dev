@@ -41,5 +41,6 @@ export const ROUTES = {
     ACCOUNT_MANAGEMENT: '/superadmin/account-management',
     AUDIT_LOGS:         '/superadmin/audit-logs',
     SYSTEM_MANAGEMENT:  '/superadmin/system-management',
+    APPEARANCE:         '/superadmin/appearance',
   },
 }

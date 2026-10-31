@@ -39,6 +39,9 @@ const GET_CACHE_SKIP = [
   '/grading/jobs',
   '/integrations/traffic',
   '/integrations/llm-health',
+  '/auth/system-health',
+  '/auth/platform-theme',
+  '/auth/platform-audit',
   '/integrations/rag-documents',
   '/integrations/course-rag-documents',
 ]

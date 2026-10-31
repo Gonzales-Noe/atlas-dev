@@ -4,6 +4,7 @@ import { ROUTES } from './config/route'
 import ProtectedRoute from './components/protectedRoute.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import AtlasErrorHost from './components/AtlasErrorHost.jsx'
+import MaintenanceGate from './components/MaintenanceGate.jsx'
 import RouteSkeleton from './components/RouteSkeleton.jsx'
 
 const SignInPage = lazy(() => import('./pages/auth/signInPage.jsx'))
@@ -13,6 +14,7 @@ const SuperAdminDashboard = lazy(() => import('./features/Superadmin/Dashboard.j
 const SuperAdminAuditLogs = lazy(() => import('./features/Superadmin/AuditLogs.jsx'))
 const SuperAdminSystemManagement = lazy(() => import('./features/Superadmin/SystemManagement.jsx'))
 const SuperAdminAccountManagement = lazy(() => import('./features/Superadmin/AccountManagement.jsx'))
+const SuperAdminAppearance = lazy(() => import('./features/Superadmin/Appearance.jsx'))
 const FacultyWorkspacePage = lazy(() => import('./components/FacultyWorkspacePage.jsx'))
 const FacultyDashboardPage = lazy(() => import('./features/roles/Faculty/Dashboard.jsx'))
 const AdminDashboard = lazy(() => import('./features/roles/Admin/Dashboard.jsx'))
@@ -69,6 +71,7 @@ class FacultyWorkspaceErrorBoundary extends Component {
 function App() {
   return (
     <BrowserRouter>
+      <MaintenanceGate>
       <AtlasErrorHost />
       <Suspense fallback={<RouteSkeleton />}>
       <Routes>
@@ -115,6 +118,14 @@ function App() {
           element={
             <ProtectedRoute role="superadmin">
               <SuperAdminAccountManagement />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.SUPERADMIN.APPEARANCE}
+          element={
+            <ProtectedRoute role="superadmin">
+              <SuperAdminAppearance />
             </ProtectedRoute>
           }
         />
@@ -233,6 +244,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
+      </MaintenanceGate>
     </BrowserRouter>
   )
 }

@@ -27,7 +27,7 @@ function CheckIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
       <circle cx="7" cy="7" r="7" fill="rgba(170,36,35,0.25)" stroke="rgba(170,36,35,0.5)" strokeWidth="1" />
-      <path d="M4 7l2 2 4-4" stroke="#E24B4A" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 7l2 2 4-4" stroke="var(--brand-accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -214,7 +214,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           transition: color 0.2s;
         }
         .auth-nav-link:hover { color: #fff; }
-        .auth-nav-link.highlighted { color: #E24B4A !important; }
+        .auth-nav-link.highlighted { color: var(--brand-accent) !important; }
 
         .dark-input {
           width: 100%;
@@ -291,7 +291,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -310,7 +310,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 8px 28px rgba(142,28,27,0.5);
-          background: linear-gradient(135deg, #6E1212, #AA2423);
+          background: linear-gradient(135deg, var(--brand-red-core), var(--brand-primary));
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -397,7 +397,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
+          background: linear-gradient(135deg, var(--brand-accent), var(--brand-pale), var(--brand-primary));
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -472,8 +472,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
           margin: 0;
         }
         .custom-checkbox:checked {
-          background: #AA2423;
-          border-color: #AA2423;
+          background: var(--brand-primary);
+          border-color: var(--brand-primary);
         }
         .custom-checkbox:checked::after {
           content: '✓';
@@ -655,7 +655,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             {success ? (
               <div className="form-enter" style={{ textAlign: 'center' }}>
                 <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.5rem' }} />
-                <div style={{ marginBottom: '1rem', color: '#AA2423' }}><PartyPopper size={48} strokeWidth={1.5} aria-hidden="true" /></div>
+                <div style={{ marginBottom: '1rem', color: 'var(--brand-primary)' }}><PartyPopper size={48} strokeWidth={1.5} aria-hidden="true" /></div>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 1rem' }}>
                   Application <span className="glow-text">Submitted!</span>
                 </h1>
@@ -794,11 +794,11 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 <p style={{ textAlign: 'center', fontSize: '0.83rem', color: 'rgba(255,255,255,0.38)', margin: '1.25rem 0 0.75rem' }}>
                   Already have an account?{' '}
                   {isModal ? (
-                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
+                    <button type="button" onClick={() => onSwitch('signin')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--brand-accent)', fontWeight: 700 }}>
                       Sign In
                     </button>
                   ) : (
-                    <Link to={ROUTES.SIGN_IN} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
+                    <Link to={ROUTES.SIGN_IN} style={{ color: 'var(--brand-accent)', fontWeight: 700, textDecoration: 'none' }}>Sign In</Link>
                   )}
                 </p>
 
@@ -812,9 +812,9 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   />
                   <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.38)', lineHeight: 1.5, textAlign: 'center' }}>
                     I agree to the{' '}
-                    <Link to={ROUTES.LEGAL_TERMS} style={{ color: '#E24B4A', fontWeight: 600 }}>Terms and Conditions of Use</Link>
+                    <Link to={ROUTES.LEGAL_TERMS} style={{ color: 'var(--brand-accent)', fontWeight: 600 }}>Terms and Conditions of Use</Link>
                     {' '}and{' '}
-                    <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: '#E24B4A', fontWeight: 600 }}>Privacy Policy</Link>
+                    <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: 'var(--brand-accent)', fontWeight: 600 }}>Privacy Policy</Link>
                   </span>
                 </label>
               </div>
@@ -841,7 +841,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             <Orb style={{ width: 200, height: 200, background: 'rgba(142, 28, 27, 0.5), rgba(226, 75, 74, 0)', bottom: -40, left: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-              <School size={22} color="#AA2423" aria-hidden="true" />
+              <School size={22} color="var(--brand-primary)" aria-hidden="true" />
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
                 <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Let's get your institution set up!</span>
                 <span className="typing-text">Let's get your institution set up!</span>

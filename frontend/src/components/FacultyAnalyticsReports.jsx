@@ -32,7 +32,7 @@ const MUTED = 'var(--workspace-muted)'
 const CARD = 'var(--workspace-card)'
 const CARD_MUTED = 'var(--workspace-card)'
 const BORDER = 'var(--workspace-border)'
-const PRIMARY = '#E24B4A'
+const PRIMARY = 'var(--brand-accent)'
 const DIALOG_BG = 'var(--workspace-panel)'
 
 const MASTERED = '#2E9E5B'

@@ -30,8 +30,8 @@ import api from '../config/api'
 import { extractApiError } from '../utils'
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const MAROON       = '#AA2423'
-const MAROON_LIGHT = 'rgba(170,36,35,0.16)'
+const MAROON       = 'var(--brand-primary)'
+const MAROON_LIGHT = 'var(--brand-soft)'
 const BG           = 'var(--workspace-bg)'
 
 const STATUS_CFG = {
@@ -40,7 +40,7 @@ const STATUS_CFG = {
   review_required: { label: 'Review Required',   color: '#E65100' },
   ready_to_import: { label: 'Ready to Import',   color: '#2E7D32' },
   imported:        { label: 'Imported',          color: '#4CAF50' },
-  failed:          { label: 'Failed',            color: '#AA2423' },
+  failed:          { label: 'Failed',            color: '#B42318' },
   cancelled:       { label: 'Cancelled',         color: '#9E9E9E' },
 }
 
@@ -98,7 +98,7 @@ function FilePickerBtn({ label, file, accept, onChange, disabled }) {
         startIcon={<CloudUploadIcon sx={{ fontSize: '0.9rem !important' }} />}
         sx={{
           textTransform: 'none', fontSize: '0.75rem', borderRadius: 1.5,
-          borderColor: file ? MAROON : 'var(--workspace-hover)', color: file ? '#E24B4A' : 'var(--workspace-muted)',
+          borderColor: file ? MAROON : 'var(--workspace-hover)', color: file ? 'var(--brand-accent)' : 'var(--workspace-muted)',
           '&:hover': { borderColor: MAROON, bgcolor: MAROON_LIGHT },
         }}>
         {file ? file.name : label}
@@ -372,7 +372,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
               {tplSuccess  && <Alert severity="success" onClose={() => setTplSuccess('')} sx={{ py: 0.25, fontSize: '0.78rem' }}>{tplSuccess}</Alert>}
               <Button type="submit" variant="contained" disabled={tplSaving}
                 startIcon={tplSaving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AddIcon />}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
                 {tplSaving ? 'Creating…' : 'Create Template'}
               </Button>
             </Stack>
@@ -473,7 +473,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
               {jobSuccess  && <Alert severity="success" onClose={() => setJobSuccess('')} sx={{ py: 0.25, fontSize: '0.78rem' }}>{jobSuccess}</Alert>}
               <Button type="submit" variant="contained" disabled={jobSaving}
                 startIcon={jobSaving ? <CircularProgress size={14} sx={{ color: '#fff' }} /> : <AddIcon />}
-                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700, borderRadius: 1.5 }}>
                 {jobSaving ? 'Submitting…' : 'Submit Job'}
               </Button>
             </Stack>

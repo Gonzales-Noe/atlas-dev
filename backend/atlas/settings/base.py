@@ -44,6 +44,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'apps.users.middleware.DatabaseReconnectMiddleware',
     'apps.users.middleware.SensitiveEndpointThrottleMiddleware',
+    'apps.users.middleware.MaintenanceModeMiddleware',
 ]
 
 ROOT_URLCONF = 'atlas.urls'

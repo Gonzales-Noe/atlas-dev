@@ -12,8 +12,8 @@ import AtlasLogo from './AtlasLogo'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
-  superadmin: { label: 'Super Admin', accent: '#E24B4A' },
-  admin:      { label: 'Admin', accent: '#AA2423' },
+  superadmin: { label: 'Super Admin', accent: 'var(--brand-accent)' },
+  admin:      { label: 'Admin', accent: 'var(--brand-primary)' },
   faculty:    { label: 'Faculty', accent: '#30D158' },
 }
 
@@ -68,7 +68,7 @@ function NavItem({ item, collapsed }) {
             position: 'absolute',
             left: 0, top: '20%', bottom: '20%',
             width: 3,
-            background: 'linear-gradient(180deg, #E24B4A, #8E1C1B)',
+            background: 'linear-gradient(180deg, var(--brand-accent), var(--brand-primary))',
             borderRadius: '0 3px 3px 0',
           }} />
         )}
@@ -250,8 +250,12 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
           <div style={{ padding: '12px 16px 8px' }}>
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              background: `${meta.accent}18`,
-              border: `1px solid ${meta.accent}40`,
+              background: meta.accent.startsWith('var(')
+                ? `color-mix(in srgb, ${meta.accent} 12%, transparent)`
+                : `${meta.accent}18`,
+              border: meta.accent.startsWith('var(')
+                ? `1px solid color-mix(in srgb, ${meta.accent} 32%, transparent)`
+                : `1px solid ${meta.accent}40`,
               borderRadius: 8, padding: '4px 10px',
             }}>
               <span style={{ width: 6, height: 6, borderRadius: '50%', background: meta.accent, boxShadow: `0 0 6px ${meta.accent}`, flexShrink: 0 }} />

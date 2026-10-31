@@ -531,6 +531,44 @@ class AuditLog(models.Model):
             models.Index(fields=['user', '-timestamp'], name='audit_logs_user_ts_idx'),
         ]
 
+
+class PlatformSettings(models.Model):
+    """One row for this deployment: brand color and maintenance mode."""
+
+    settings_id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    brand_primary = models.CharField(max_length=7, default='#AA2423')
+    maintenance_enabled = models.BooleanField(default=False)
+    maintenance_message = models.CharField(
+        max_length=500,
+        blank=True,
+        default='ATLAS is briefly unavailable while the IT team performs maintenance.',
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'platform_settings'
+
+    def save(self, *args, **kwargs):
+        self.settings_id = 1
+        super().save(*args, **kwargs)
+
+
+class SystemMetricSample(models.Model):
+    """A short history of host load for the superadmin health chart."""
+
+    sampled_at = models.DateTimeField(auto_now_add=True)
+    cpu_percent = models.FloatField(default=0)
+    memory_percent = models.FloatField(default=0)
+    disk_percent = models.FloatField(default=0)
+    load_1 = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'system_metric_sample'
+        indexes = [
+            models.Index(fields=['-sampled_at'], name='sysmetric_sampled_desc_idx'),
+        ]
+
+
 class CourseFile(models.Model):
     records_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     uploader = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)

@@ -45,7 +45,7 @@ const PROFILE_FIELD_SX = {
     bgcolor: 'var(--input-bg)',
     '& fieldset': { borderColor: 'var(--shell-btn-border)' },
     '&:hover fieldset': { borderColor: 'var(--text-tertiary)' },
-    '&.Mui-focused fieldset': { borderColor: '#AA2423' },
+    '&.Mui-focused fieldset': { borderColor: 'var(--brand-primary)' },
   },
   '& .MuiInputLabel-root': { color: 'var(--text-secondary)' },
   '& .MuiInputLabel-root.Mui-focused': { color: 'var(--brand-accent)' },
@@ -231,7 +231,7 @@ export default function SidebarUserMenu({
         {/* Avatar */}
         <div style={{
           width: 32, height: 32, borderRadius: '50%',
-          background: 'linear-gradient(135deg, #8E1C1B, #AA2423)',
+          background: 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
           display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
           fontSize: '0.78rem', fontWeight: 800, color: '#fff', flexShrink: 0,
         }}>
@@ -319,7 +319,7 @@ export default function SidebarUserMenu({
               </span>
               Light mode
             </span>
-            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? '#AA2423' : 'var(--text-tertiary)' }}>
+            <span style={{ fontSize: '0.72rem', fontWeight: 700, color: themePreference === 'light' ? 'var(--brand-primary)' : 'var(--text-tertiary)' }}>
               {themePreference === 'light' ? 'On' : 'Off'}
             </span>
           </button>
@@ -357,7 +357,7 @@ export default function SidebarUserMenu({
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
                 <div style={{
                   width: 56, height: 56, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
-                  background: 'linear-gradient(135deg, #8E1C1B, #AA2423)',
+                  background: 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#fff', fontWeight: 800, fontSize: '1.1rem',
                 }}>
@@ -372,7 +372,7 @@ export default function SidebarUserMenu({
                   <Typography variant="body2" sx={{ color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>
                     {user?.email || 'No email available'}
                   </Typography>
-                  <Typography variant="caption" sx={{ color: '#E24B4A' }}>{metaLabel}</Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--brand-accent)' }}>{metaLabel}</Typography>
                 </div>
               </div>
 
@@ -516,7 +516,7 @@ export default function SidebarUserMenu({
                 variant="contained"
                 disabled={profileSaving}
                 startIcon={profileSaving ? <CircularProgress size={14} color="inherit" /> : null}
-                sx={{ bgcolor: '#8E1C1B', '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontWeight: 700 }}
+                sx={{ bgcolor: 'var(--brand-primary)', '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700 }}
               >
                 {profileSaving ? 'Saving…' : 'Save Profile'}
               </Button>
@@ -543,8 +543,8 @@ export default function SidebarUserMenu({
                       checked={themePreference === 'light'}
                       onChange={handleThemePreferenceChange}
                       sx={{
-                        '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
-                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
+                        '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--brand-accent)' },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: 'var(--brand-primary)' },
                       }}
                     />
                   )}
@@ -561,8 +561,8 @@ export default function SidebarUserMenu({
                     onChange={handleNotificationPreferenceChange}
                     disabled={notificationPreferenceBusy || typeof window === 'undefined' || !('Notification' in window)}
                     sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
+                      '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--brand-accent)' },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: 'var(--brand-primary)' },
                     }}
                   />
                 )}
@@ -586,8 +586,8 @@ export default function SidebarUserMenu({
                     onChange={event => onSidebarCollapsedChange?.(event.target.checked)}
                     disabled={isMobile || !onSidebarCollapsedChange}
                     sx={{
-                      '& .MuiSwitch-switchBase.Mui-checked': { color: '#E24B4A' },
-                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: '#8E1C1B' },
+                      '& .MuiSwitch-switchBase.Mui-checked': { color: 'var(--brand-accent)' },
+                      '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: 'var(--brand-primary)' },
                     }}
                   />
                 )}

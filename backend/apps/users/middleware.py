@@ -1,5 +1,6 @@
 import ipaddress
 import logging
+import time
 
 from django.core.cache import cache
 from django.db import connections
@@ -136,6 +137,101 @@ class SensitiveEndpointThrottleMiddleware:
                     status=429,
                 )
         return self.get_response(request)
+
+
+_MAINTENANCE_ALLOW_PREFIXES = (
+    '/api/auth/token/',
+    '/api/users/token/',
+    '/api/token/',
+    '/api/auth/google/',
+    '/api/users/google/',
+    '/api/auth/password-reset/',
+    '/api/users/password-reset/',
+    '/api/auth/register/',
+    '/api/users/register/',
+    '/api/auth/contact/',
+    '/api/users/contact/',
+    '/api/auth/me/',
+    '/api/users/me/',
+    '/api/auth/platform-theme/',
+    '/api/users/platform-theme/',
+)
+
+
+def _bearer_is_superadmin(request):
+    header = request.META.get('HTTP_AUTHORIZATION') or ''
+    if not header.startswith('Bearer '):
+        return False
+    raw = header.split(' ', 1)[1].strip()
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        token = AccessToken(raw)
+    except Exception:
+        return False
+    role = str(token.get('role') or '')
+    if role in {'superadmin', 'super_admin'}:
+        return True
+    if role:
+        return False
+    user_id = token.get('user_id')
+    if not user_id:
+        return False
+    try:
+        from apps.integrations.models import UserProfile
+        stored = UserProfile.objects.filter(user_id=user_id, is_active=True).values_list('role', flat=True).first()
+    except Exception:
+        return False
+    return stored in {'super_admin', 'superadmin'}
+
+
+class MaintenanceModeMiddleware:
+    """Pause the API for everyone except the IT superadmin while maintenance is on."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        started = time.perf_counter()
+        if request.path.startswith('/api/'):
+            try:
+                from apps.users.system_health import maybe_record_sample
+                maybe_record_sample()
+            except Exception:
+                logger.debug('System sample skipped', exc_info=True)
+
+        def finish(response):
+            if request.path.startswith('/api/'):
+                try:
+                    from apps.users.system_health import note_backend_latency
+                    note_backend_latency(request.path, (time.perf_counter() - started) * 1000)
+                except Exception:
+                    logger.debug('Backend latency was not recorded', exc_info=True)
+            return response
+
+        if request.method == 'OPTIONS' or not request.path.startswith('/api/'):
+            return finish(self.get_response(request))
+        if any(request.path.startswith(prefix) for prefix in _MAINTENANCE_ALLOW_PREFIXES):
+            return finish(self.get_response(request))
+
+        try:
+            from apps.users.platform_views import maintenance_state
+            state = maintenance_state()
+        except Exception:
+            logger.debug('Maintenance state could not be read', exc_info=True)
+            return finish(self.get_response(request))
+
+        if not state.get('enabled'):
+            return finish(self.get_response(request))
+        if _bearer_is_superadmin(request):
+            return finish(self.get_response(request))
+        return JsonResponse(
+            {
+                'detail': state.get('message') or 'ATLAS is temporarily unavailable for maintenance.',
+                'maintenance': True,
+            },
+            status=503,
+        )
+
 
 # Messages Postgres and Supavisor return after an idle connection is dropped.
 _DISCONNECT_MARKERS = (

@@ -162,7 +162,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           padding: 4px 0;
         }
         .auth-nav-link:hover { color: #1A1A1A; }
-        .auth-nav-link.active { color: #AA2423; }
+        .auth-nav-link.active { color: var(--brand-primary); }
 
         .dark-input {
           width: 100%;
@@ -204,7 +204,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
         .btn-primary {
           width: 100%;
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -223,7 +223,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         .btn-primary:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 8px 28px rgba(142,28,27,0.5);
-          background: linear-gradient(135deg, #6E1212, #AA2423);
+          background: linear-gradient(135deg, var(--brand-red-core), var(--brand-primary));
         }
         .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
@@ -272,7 +272,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           border: 1px solid rgba(170,36,35,0.28);
           border-radius: 10px;
           padding: 0.75rem 1rem;
-          color: #8E1C1B;
+          color: var(--brand-primary-hover);
           font-size: 0.85rem;
           margin-bottom: 1rem;
         }
@@ -296,7 +296,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
         }
 
         .glow-text {
-          background-image: linear-gradient(135deg, #8E1C1B, #AA2423, #E24B4A);
+          background-image: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary), var(--brand-accent));
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -533,7 +533,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
             <Orb style={{ width: 200, height: 200, background: 'rgba(226, 75, 74, 0)', bottom: -40, right: -40 }} />
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-              <BookOpen size={22} color="#AA2423" aria-hidden="true" />
+              <BookOpen size={22} color="var(--brand-primary)" aria-hidden="true" />
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
                 <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Welcome back! Ready to teach smarter?</span>
                 <span className="typing-text">Welcome back! Ready to teach smarter?</span>
@@ -590,11 +590,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                       PASSWORD
                     </label>
                     {isModal ? (
-                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: '#E24B4A', fontWeight: 600 }}>
+                      <button type="button" onClick={() => onSwitch('reset')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '0.78rem', color: 'var(--brand-accent)', fontWeight: 600 }}>
                         Forgot password?
                       </button>
                     ) : (
-                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: '#E24B4A', fontWeight: 600, textDecoration: 'none' }}>
+                      <Link to={ROUTES.RESET_PASSWORD} style={{ fontSize: '0.78rem', color: 'var(--brand-accent)', fontWeight: 600, textDecoration: 'none' }}>
                         Forgot password?
                       </Link>
                     )}
@@ -649,11 +649,11 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               <p style={{ textAlign: 'center', fontSize: '0.85rem', color: 'rgba(0,0,0,0.55)', marginTop: '1.5rem', margin: '1.5rem 0 0' }}>
                 Don't have an account?{' '}
                 {isModal ? (
-                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: '#E24B4A', fontWeight: 700 }}>
+                  <button type="button" onClick={() => onSwitch('signup')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--brand-accent)', fontWeight: 700 }}>
                     Sign Up
                   </button>
                 ) : (
-                  <Link to={ROUTES.SIGN_UP} style={{ color: '#E24B4A', fontWeight: 700, textDecoration: 'none' }}>
+                  <Link to={ROUTES.SIGN_UP} style={{ color: 'var(--brand-accent)', fontWeight: 700, textDecoration: 'none' }}>
                     Sign Up
                   </Link>
                 )}

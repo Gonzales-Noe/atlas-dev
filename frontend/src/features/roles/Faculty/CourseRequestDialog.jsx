@@ -22,7 +22,7 @@ const FIELD_SX = {
     color: 'var(--text-primary)',
     '& fieldset': { borderColor: 'var(--border-color)' },
     '&:hover fieldset': { borderColor: 'var(--text-tertiary)' },
-    '&.Mui-focused fieldset': { borderColor: '#AA2423' },
+    '&.Mui-focused fieldset': { borderColor: 'var(--brand-primary)' },
     '&.Mui-error fieldset': { borderColor: 'var(--red-status)' },
   },
   '& .MuiSelect-select': { color: 'var(--text-primary)' },

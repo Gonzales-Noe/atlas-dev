@@ -28,7 +28,7 @@ import AutoAlert from './AutoAlert'
 import FacultyLayout from '../features/roles/Faculty/FacultyLayout'
 
 const CARD_ICONS = [SchoolIcon, AutoStoriesIcon, LayersIcon, EmojiObjectsIcon, ScienceIcon]
-const CARD_COLORS = ['#8E1C1B', '#7C1616', '#6E1212', '#AA2423', '#E24B4A']
+const CARD_COLORS = ['var(--brand-primary-hover)', 'var(--brand-red-core)', 'var(--brand-deep)', 'var(--brand-primary)', 'var(--brand-accent)']
 
 export default function FacultyCoursesBoard() {
   const navigate = useNavigate()

@@ -131,7 +131,7 @@ export default function FacultyWorkspace() {
                   <Button
                     variant="contained"
                     startIcon={<BarChartIcon />}
-                    sx={{ background: '#AA2423', color: '#fff', '&:hover': { background: '#6E1212' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
+                    sx={{ background: 'var(--brand-primary)', color: '#fff', '&:hover': { background: 'var(--brand-primary-hover)' }, textTransform: 'none', borderRadius: 2, boxShadow: 'none' }}
                     onClick={() => navigate(ROUTES.FACULTY.ANALYTICS)}
                   >
                     Open analytics

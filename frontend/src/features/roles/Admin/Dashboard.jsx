@@ -7,6 +7,7 @@ import Alert from '@mui/material/Alert'
 import { useAuth } from '../../../store/authStore'
 import AdminLayout from './AdminLayout'
 import { fetchSetupStatus } from './academicApi'
+import FacultyProductivity from './FacultyProductivity'
 import { BookOpen, Hand, Users } from 'lucide-react'
 import { StatCard, GlassCard, PageHeader } from '../../../components/ui'
 
@@ -69,9 +70,11 @@ export default function AdminDashboard() {
       </GlassCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon={<Users size={18} color="#E24B4A" />} accent="#E24B4A" />
+        <StatCard title="Faculty Members" value={setup ? setup.faculty_count : '—'} icon={<Users size={18} color="var(--brand-accent)" />} accent="var(--brand-accent)" />
         <StatCard title="Active Courses" value={setup ? setup.course_count : '—'} icon={<BookOpen size={18} color="#60AAFF" />} accent="#60AAFF" />
       </div>
+
+      <FacultyProductivity />
     </AdminLayout>
   )
 }

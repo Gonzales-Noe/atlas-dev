@@ -45,8 +45,8 @@ import api from '../config/api'
 import { extractApiError } from '../utils'
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const MAROON       = '#8E1C1B'
-const MAROON_LIGHT = 'rgba(170,36,35,0.16)'
+const MAROON       = 'var(--brand-primary)'
+const MAROON_LIGHT = 'var(--brand-soft)'
 const BG           = 'var(--workspace-bg)'
 const SURFACE      = 'var(--workspace-panel)'
 const TEXT          = 'var(--workspace-text)'
@@ -89,7 +89,7 @@ function LF({ label, ...props }) {
           '&.Mui-focused fieldset': { borderColor: MAROON },
         },
         '& .MuiInputLabel-root': { color: MUTED },
-        '& .MuiInputLabel-root.Mui-focused': { color: '#E24B4A' },
+        '& .MuiInputLabel-root.Mui-focused': { color: 'var(--brand-accent)' },
         '& .MuiFormHelperText-root': { color: MUTED },
         '& .MuiSelect-icon': { color: MUTED },
         ...props.sx,
@@ -222,7 +222,7 @@ function SectionsTab({ courseId }) {
                     bgcolor: on ? MAROON : 'transparent',
                     color: on ? '#fff' : TEXT,
                     borderColor: on ? MAROON : BORDER,
-                    '&:hover': { bgcolor: on ? '#6E1212' : 'rgba(170,36,35,0.08)', borderColor: MAROON },
+                    '&:hover': { bgcolor: on ? 'var(--brand-primary-hover)' : 'rgba(170,36,35,0.08)', borderColor: MAROON },
                   }}
                 >
                   {section.section_name} ({section.student_count})
@@ -273,7 +273,7 @@ function SectionsTab({ courseId }) {
               variant="contained"
               disabled={saving || !oneId.trim()}
               onClick={() => addIds([oneId])}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', mt: { sm: 0.25 } }}
+              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', mt: { sm: 0.25 } }}
             >
               Add
             </Button>
@@ -307,7 +307,7 @@ function SectionsTab({ courseId }) {
               variant="outlined"
               disabled={saving || !pasted.trim()}
               onClick={() => addIds(parseStudentIds(pasted))}
-              sx={{ mt: 1, color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: '#6E1212', bgcolor: 'rgba(170,36,35,0.08)' } }}
+              sx={{ mt: 1, color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
             >
               {saving ? 'Adding…' : 'Add pasted IDs'}
             </Button>
@@ -352,7 +352,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
           mb: 2,
           borderBottom: `1px solid ${BORDER}`,
           '& .MuiTab-root': { color: MUTED, fontSize: '0.78rem', fontWeight: 600, textTransform: 'none', minHeight: 38 },
-          '& .Mui-selected': { color: '#E24B4A !important' },
+          '& .Mui-selected': { color: 'var(--brand-accent) !important' },
           '& .MuiTabs-indicator': { bgcolor: MAROON },
         }}
       >
@@ -403,7 +403,7 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
           <Stack direction="row" spacing={1}>
             <Tooltip title="Refresh"><IconButton size="small" onClick={onRefresh}><RefreshIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
             <Button size="small" variant="contained" startIcon={<AddIcon />}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, fontSize: '0.72rem', textTransform: 'none' }}
+              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, fontSize: '0.72rem', textTransform: 'none' }}
               onClick={() => setCreating(true)}>
               New Template
             </Button>
@@ -529,7 +529,7 @@ function TemplateRow({ template: t, onRefresh, onSetKey, onModifyTemplate }) {
               sx={{
                 height: 18, fontSize: '0.65rem',
                 bgcolor: t.has_answer_key ? 'rgba(170,36,35,0.18)' : 'var(--workspace-hover)',
-                color: t.has_answer_key ? '#E24B4A' : MUTED,
+                color: t.has_answer_key ? 'var(--brand-accent)' : MUTED,
                 border: `1px solid ${t.has_answer_key ? 'rgba(226,75,74,0.28)' : BORDER}`,
               }}
             />
@@ -630,7 +630,7 @@ function PdfPreviewDialog({ title, url, onClose, onDownload }) {
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
         <Button variant="contained" startIcon={<DownloadIcon />} onClick={onDownload}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Download PDF
         </Button>
       </DialogActions>
@@ -818,7 +818,7 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Create Template
         </Button>
       </DialogActions>
@@ -903,7 +903,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
                         transition: 'all 0.12s',
-                        '&:hover': { borderColor: '#E24B4A', bgcolor: key[String(itemNo)] === ch ? '#6E1212' : MAROON_LIGHT },
+                        '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === ch ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
                       }}
                     >
                       {ch}
@@ -920,7 +920,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
                       transition: 'all 0.12s',
-                      '&:hover': { borderColor: '#E24B4A', bgcolor: key[String(itemNo)] === BONUS_KEY ? '#6E1212' : MAROON_LIGHT },
+                      '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === BONUS_KEY ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
                     }}
                   >
                     <StarIcon sx={{ fontSize: 14 }} />
@@ -935,7 +935,7 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Answer Key
         </Button>
       </DialogActions>
@@ -1088,7 +1088,7 @@ function StatCard({ label, value, warn = false }) {
   return (
     <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, px: 2, py: 1 }}>
       <Typography sx={{ fontSize: '0.68rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</Typography>
-      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: warn ? '#FCA5A5' : '#E24B4A' }}>{value}</Typography>
+      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: warn ? '#FCA5A5' : 'var(--brand-accent)' }}>{value}</Typography>
     </Paper>
   )
 }
@@ -1195,7 +1195,7 @@ function EditScanDialog({ scan, templates, onClose, onSaved }) {
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
         <Button variant="contained" onClick={handleSave} disabled={saving}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: '#6E1212' }, textTransform: 'none', fontSize: '0.82rem' }}>
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Changes
         </Button>
       </DialogActions>
