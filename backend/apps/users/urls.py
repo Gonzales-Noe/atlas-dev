@@ -1,6 +1,11 @@
 from django.urls import path
 
-from .platform_views import PlatformAuditView, PlatformThemeView, SystemHealthView
+from .platform_views import (
+    MaintenanceScheduleView,
+    PlatformAuditView,
+    PlatformThemeView,
+    SystemHealthView,
+)
 from .views import (
     AuthActivityView,
     AuthTokenRefreshView,
@@ -42,6 +47,8 @@ urlpatterns = [
     path('faculty/', FacultyCreateView.as_view(), name='faculty_create'),
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
     path('platform-theme/', PlatformThemeView.as_view(), name='platform_theme'),
+    path('maintenance-schedules/', MaintenanceScheduleView.as_view(), name='maintenance_schedules'),
+    path('maintenance-schedules/<uuid:schedule_id>/', MaintenanceScheduleView.as_view(), name='maintenance_schedule_detail'),
     path('system-health/', SystemHealthView.as_view(), name='system_health'),
     path('platform-audit/', PlatformAuditView.as_view(), name='platform_audit'),
     path('accounts/', AccountManagementView.as_view(), name='account_management'),
