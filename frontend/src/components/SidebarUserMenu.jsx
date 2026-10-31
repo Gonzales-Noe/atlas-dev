@@ -229,11 +229,14 @@ export default function SidebarUserMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         style={{
+          position: 'relative',
+          zIndex: 2,
           display: 'flex', alignItems: 'center', gap: 10,
           width: '100%', background: 'var(--shell-chip-bg)',
-          border: '1px solid var(--shell-border)', borderRadius: 12,
+          border: '1px solid var(--shell-border)', borderRadius: tight ? 12 : 10,
           padding: tight ? '8px' : '8px 12px',
           cursor: 'pointer', transition: 'all 200ms', justifyContent: tight ? 'center' : 'flex-start',
+          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.75), 0 1px 1px rgba(0,0,0,0.04)',
         }}
         onMouseEnter={e => e.currentTarget.style.background = 'var(--shell-chip-hover-bg)'}
         onMouseLeave={e => e.currentTarget.style.background = 'var(--shell-chip-bg)'}
@@ -263,16 +266,21 @@ export default function SidebarUserMenu({
 
       {/* Profile menu */}
       {open && (
-        <div style={{
-          position: 'absolute',
-          ...(tight
-            ? { left: 'calc(100% + 6px)', bottom: 0, width: 240 }
-            : { bottom: 'calc(100% + 8px)', left: 8, right: 8 }),
-          background: 'var(--shell-menu-bg)', border: '1px solid var(--shell-menu-border)',
-          borderRadius: 14, overflow: 'hidden',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-          zIndex: 20,
-        }}>
+        <div
+          className={tight ? 'atlas-account-menu is-rail' : 'atlas-account-menu is-docked'}
+          style={{
+            position: tight ? 'fixed' : 'absolute',
+            ...(tight
+              ? { left: 70, bottom: 0, width: 248, borderRadius: 10 }
+              : { left: 0, right: 0, bottom: 'calc(100% - 10px)', borderRadius: 0 }),
+            background: 'var(--shell-menu-bg)',
+            border: '1px solid var(--shell-menu-border)',
+            borderBottom: tight ? '1px solid var(--shell-menu-border)' : 'none',
+            overflow: 'hidden',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 10px 24px rgba(0,0,0,0.12)',
+            zIndex: 1,
+          }}
+        >
           {[
             { label: 'Profile Settings', modal: 'profile', Icon: UserRound },
             { label: 'Preferences', modal: 'preferences', Icon: Settings },
@@ -333,19 +341,49 @@ export default function SidebarUserMenu({
               {themePreference === 'light' ? 'On' : 'Off'}
             </span>
           </button>
-          <div style={{ height: 1, background: 'var(--shell-divider)', margin: '4px 0' }} />
-          <button
-            type="button"
-            onClick={onSignOut}
-            style={{ ...itemStyle, color: 'var(--brand-accent)', fontWeight: 600 }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.08)' }}
-            onMouseLeave={leave}
-          >
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            margin: tight ? 8 : 0,
+            padding: tight ? '8px 8px 8px 10px' : '10px 12px',
+            borderTop: '1px solid var(--shell-divider)',
+            borderRadius: tight ? 8 : 0,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.72), rgba(0,0,0,0.03))',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.95), inset 0 -1px 2px rgba(0,0,0,0.06)',
+          }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
+              background: 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: '#fff', fontWeight: 800, fontSize: '0.78rem',
+            }}>
+              {user?.picture_url
+                ? <img src={user.picture_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : (user?.name || user?.email || 'U')[0].toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+              <div style={{ fontSize: '0.84rem', fontWeight: 800, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.name || user?.email?.split('@')[0] || 'User'}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {user?.email || metaLabel}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onSignOut}
+              aria-label="Sign out"
+              title="Sign out"
+              style={{
+                width: 36, height: 36, flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: 'none', borderLeft: '1px solid var(--shell-divider)',
+                borderRadius: 0, background: 'transparent',
+                color: 'var(--brand-primary)', cursor: 'pointer',
+              }}
+            >
               <LogOut size={18} strokeWidth={2.25} aria-hidden="true" />
-            </span>
-            Sign Out
-          </button>
+            </button>
+          </div>
         </div>
       )}
 
