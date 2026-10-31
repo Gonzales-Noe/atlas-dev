@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Box } from '@mui/material'
 
 import { useAuth } from '../store/authStore'
+import { readCachedUser, writeCachedUser } from '../config/session'
 import AdminSetupWizard from '../features/roles/Admin/AdminSetupWizard'
 import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
 import LoadingState from './LoadingState'
@@ -56,11 +57,8 @@ export default function AdminSetupGate({ children }) {
     setStatusKnown(true)
     // Keep the cached user payload in sync so a page refresh skips the wizard.
     try {
-      const cached = localStorage.getItem('atlas_user')
-      if (cached) {
-        const parsed = JSON.parse(cached)
-        localStorage.setItem('atlas_user', JSON.stringify({ ...parsed, setup_completed: true }))
-      }
+      const cached = readCachedUser()
+      if (cached) writeCachedUser({ ...cached, setup_completed: true })
     } catch {
       // Ignore malformed cache.
     }

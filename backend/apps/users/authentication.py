@@ -6,6 +6,7 @@ from rest_framework_simplejwt.settings import api_settings
 
 from apps.integrations.models import UserProfile
 from apps.integrations.traffic import record_presence
+from apps.users.sessions import reject_if_session_invalid
 
 
 class UserProfileJWTAuthentication(JWTAuthentication):
@@ -22,5 +23,6 @@ class UserProfileJWTAuthentication(JWTAuthentication):
             # API exception, so leaving it uncaught becomes an HTTP 500 page
             # and the sign-in screen reports that auth is unavailable.
             raise AuthenticationFailed('User not found or inactive.') from exc
+        reject_if_session_invalid(user, validated_token.get('sid'))
         record_presence(user)
         return user

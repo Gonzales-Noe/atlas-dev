@@ -1,6 +1,7 @@
 # Django base settings - shared configuration for all environments
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -188,6 +189,11 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'USER_ID_FIELD': 'user_id',
     'USER_ID_CLAIM': 'user_id',
+    # Access tokens are short. The refresh token is an absolute 12-hour cap
+    # from sign-in. Idle time is enforced separately in apps.users.sessions.
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(hours=12),
+    'ROTATE_REFRESH_TOKENS': False,
 }
 
 # Google Sign-In: comma-separated OAuth client IDs allowed as ID-token audience.

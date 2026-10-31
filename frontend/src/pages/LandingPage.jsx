@@ -199,7 +199,7 @@ const NAV_LINKS = [
 export default function LandingPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, isLoading, user } = useAuth()
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
@@ -789,11 +789,11 @@ export default function LandingPage() {
           {/* Auth Buttons */}
           <div className="desktop-nav" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
             <InstallAppButton style={{ padding: '0.55rem 1.1rem', fontSize: '0.85rem' }} />
-            {isAuthenticated ? (
+            {!isLoading && isAuthenticated ? (
               <button className="atlas-btn-primary" onClick={handleGetStarted} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
                 Dashboard
               </button>
-            ) : (
+            ) : !isLoading ? (
               <>
                 <button className="atlas-btn-outline" onClick={() => setAuthModal('signin')} style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
                   SIGN IN
@@ -802,7 +802,7 @@ export default function LandingPage() {
                   REQUEST A DEMO
                 </button>
               </>
-            )}
+            ) : null}
           </div>
 
           {/* Hamburger */}
@@ -836,14 +836,20 @@ export default function LandingPage() {
         ))}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '0.5rem' }}>
           <InstallAppButton fullWidth style={{ padding: '0.7rem', fontSize: '0.9rem' }} />
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-              SIGN IN
+          {!isLoading && isAuthenticated ? (
+            <button className="atlas-btn-primary" onClick={() => { handleGetStarted(); setMobileOpen(false) }} style={{ padding: '0.7rem', fontSize: '0.9rem' }}>
+              Dashboard
             </button>
-            <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-              REQUEST A DEMO
-            </button>
-          </div>
+          ) : !isLoading ? (
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button className="atlas-btn-outline" onClick={() => { setAuthModal('signin'); setMobileOpen(false) }} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+                SIGN IN
+              </button>
+              <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
+                REQUEST A DEMO
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
