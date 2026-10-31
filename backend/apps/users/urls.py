@@ -1,5 +1,11 @@
 from django.urls import path
 
+from .notification_views import (
+    NotificationListView,
+    NotificationReadView,
+    PushKeyView,
+    PushSubscribeView,
+)
 from .platform_views import (
     MaintenanceScheduleView,
     PlatformAuditView,
@@ -40,6 +46,10 @@ urlpatterns = [
     path('token/refresh/', AuthTokenRefreshView.as_view(), name='auth_token_refresh'),
     path('logout/', LogoutView.as_view(), name='auth_logout'),
     path('activity/', AuthActivityView.as_view(), name='auth_activity'),
+    path('notifications/', NotificationListView.as_view(), name='notifications'),
+    path('notifications/read/', NotificationReadView.as_view(), name='notifications_read'),
+    path('notifications/push-key/', PushKeyView.as_view(), name='notifications_push_key'),
+    path('notifications/push-subscribe/', PushSubscribeView.as_view(), name='notifications_push_subscribe'),
     path('google/', GoogleAuthView.as_view(), name='auth_google'),
     path('me/', MeView.as_view(), name='auth_me'),
     path('register/', RegisterView.as_view(), name='auth_register'),

@@ -494,6 +494,8 @@ class BillingWebhookView(APIView):
             'subscription_ends_at',
             'paymongo_last_event_id',
         ])
+        from apps.users.notify import notify_subscription_paid
+        notify_subscription_paid(institution, event_id or '')
         logger.info('Activated institution %s after PayMongo checkout payment.', institution.institution_id)
         return Response({'received': True, 'status': 'paid'})
 
@@ -524,6 +526,8 @@ class FacultyCreateView(APIView):
                 "institution_id": str(profile.institution_id) if profile.institution_id else None,
             },
         )
+        from apps.users.notify import notify_account_ready
+        notify_account_ready(profile)
         return Response(
             {
                 'detail': 'Faculty account created.',
@@ -902,6 +906,7 @@ class InstitutionManagementView(APIView):
         if not institution:
             return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        was_active = institution.is_active
         decision = request.data.get('decision')
         if decision == 'approve':
             institution.application_status = 'active'
@@ -939,6 +944,9 @@ class InstitutionManagementView(APIView):
                 institution.subscription_status = 'canceled'
 
         institution.save(update_fields=['application_status', 'subscription_status', 'payment_status', 'is_active', 'reviewed_at', 'selected_plan', 'name', 'subscription_ends_at'])
+        if institution.is_active != was_active:
+            from apps.users.notify import notify_institution_status
+            notify_institution_status(institution, active=institution.is_active)
         if 'is_active' in request.data:
             AuditLog.objects.create(
                 user=request.user,
@@ -1014,6 +1022,8 @@ class AccountDetailView(APIView):
         if denied:
             return denied
         role = normalize_role(request.user.role)
+        was_active = target.is_active
+        old_role = target.role
 
         if 'role' in request.data:
             role_value = _to_database_role(request.data['role'])
@@ -1038,6 +1048,12 @@ class AccountDetailView(APIView):
             target.email = request.data['email'].strip().lower()
 
         target.save()
+        if target.is_active and not was_active:
+            from apps.users.notify import notify_account_reactivated
+            notify_account_reactivated(target)
+        if target.role != old_role:
+            from apps.users.notify import notify_role_changed
+            notify_role_changed(target)
         if 'is_active' in request.data:
             AuditLog.objects.create(
                 user=request.user,
@@ -1291,6 +1307,8 @@ class FacultyAssignmentsView(APIView):
         if as_syllabus_owner and course.syllabus_owner_id != faculty.user_id:
             course.syllabus_owner = faculty
             course.save(update_fields=['syllabus_owner'])
+            from apps.users.notify import notify_syllabus_owner
+            notify_syllabus_owner(faculty, course)
             AuditLog.objects.create(
                 user=request.user,
                 action_type="syllabus_owner_assigned",
@@ -1317,6 +1335,9 @@ class FacultyAssignmentsView(APIView):
                 "section": section.section_name,
             },
         )
+        if created:
+            from apps.users.notify import notify_course_assigned
+            notify_course_assigned(faculty, course, section.section_name)
         return Response({
             'assignment_id': str(assignment.assignment_id),
             'faculty_id': str(faculty.user_id),
@@ -1341,9 +1362,13 @@ class FacultyAssignmentsView(APIView):
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
         faculty_id = str(request.data.get('faculty_id') or '').strip()
+        previous_owner = course.syllabus_owner if course.syllabus_owner_id else None
         if not faculty_id:
             course.syllabus_owner = None
             course.save(update_fields=['syllabus_owner'])
+            if previous_owner is not None:
+                from apps.users.notify import notify_syllabus_owner_cleared
+                notify_syllabus_owner_cleared(previous_owner, course)
             return Response({'success': True, 'course_id': str(course.course_id), 'syllabus_owner_id': None})
 
         faculty = UserProfile.objects.filter(user_id=faculty_id, role=UserRole.FACULTY).first()
@@ -1371,6 +1396,8 @@ class FacultyAssignmentsView(APIView):
 
         course.syllabus_owner = faculty
         course.save(update_fields=['syllabus_owner'])
+        from apps.users.notify import notify_syllabus_owner
+        notify_syllabus_owner(faculty, course)
         AuditLog.objects.create(
             user=request.user,
             action_type="syllabus_owner_assigned",
@@ -1403,7 +1430,7 @@ class FacultyAssignmentsView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        assignment = CourseLoad.objects.select_related('faculty').filter(
+        assignment = CourseLoad.objects.select_related('faculty', 'course', 'section').filter(
             assignment_id=assignment_id,
         ).first()
         if not assignment:
@@ -1414,7 +1441,13 @@ class FacultyAssignmentsView(APIView):
         ):
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
 
+        faculty = assignment.faculty
+        course_code = assignment.course.course_code
+        course_title = assignment.course.course_title
+        section_name = assignment.section_name
         assignment.delete()
+        from apps.users.notify import notify_course_unassigned
+        notify_course_unassigned(faculty, course_code, course_title, section_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1883,6 +1916,9 @@ class ContactFormView(APIView):
             send_contact_confirmation(name=data['name'], email=data['email'])
         except Exception:
             logger.exception('Failed to send contact confirmation to %s', data['email'])
+
+        from apps.users.notify import notify_contact_message
+        notify_contact_message(data['name'], data['institution'])
 
         return Response(
             {

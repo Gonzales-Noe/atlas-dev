@@ -31,6 +31,7 @@ import {
   setGenerationNotificationsEnabled,
   setThemePreference,
 } from '../utils/userPreferences'
+import { setServerAlertsEnabled } from '../utils/pushNotifications'
 
 const DIALOG_PAPER_SX = {
   bgcolor: 'var(--shell-menu-bg)',
@@ -200,6 +201,9 @@ export default function SidebarUserMenu({
     try {
       const result = await setGenerationNotificationsEnabled(event.target.checked)
       setGenerationNotificationsEnabledState(result.enabled)
+      if (!event.target.checked) {
+        await setServerAlertsEnabled(false)
+      }
       if (result.reason === 'denied' || result.reason === 'default') {
         setNotificationPreferenceMessage('Notifications are blocked. Allow them in your browser site settings to enable alerts.')
       } else if (result.reason === 'unsupported') {
@@ -207,7 +211,10 @@ export default function SidebarUserMenu({
       } else if (result.reason === 'storage') {
         setNotificationPreferenceMessage('Could not save this preference in browser storage.')
       } else if (result.enabled) {
-        setNotificationPreferenceMessage('Completion notifications are enabled.')
+        const push = await setServerAlertsEnabled(true)
+        setNotificationPreferenceMessage(push.enabled
+          ? 'Alerts are on for maintenance, course updates, and finished generation.'
+          : 'In-app alerts are on. Desktop delivery is not available in this browser.')
       }
     } finally {
       setNotificationPreferenceBusy(false)
@@ -553,7 +560,7 @@ export default function SidebarUserMenu({
                   )}
                 />
                 <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
-                  Notify when syllabus, module, or assessment generation finishes.
+                  Alerts for maintenance, course requests, assignments, and finished generation.
                 </Typography>
                 <StatusNotice
                   message={notificationPreferenceMessage}

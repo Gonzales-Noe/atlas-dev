@@ -20,6 +20,12 @@ from apps.users.brand import (
     theme_payload,
 )
 from apps.users.serializers import normalize_role
+from apps.users.notify import (
+    notify_maintenance_cancelled,
+    notify_maintenance_ended,
+    notify_maintenance_scheduled,
+    notify_maintenance_started,
+)
 from apps.users.system_health import activity_by_day, collect_snapshot
 
 logger = logging.getLogger(__name__)
@@ -127,12 +133,14 @@ def apply_scheduled_maintenance(row):
             row.maintenance_opened_by_schedule = True
             changed = True
             record_maintenance_update('Maintenance started automatically.', active.starts_at, active.ends_at)
+            notify_maintenance_started(getattr(row, 'maintenance_message', ''), active.starts_at, active.ends_at)
         elif active is None and getattr(row, 'maintenance_opened_by_schedule', False):
             row.maintenance_enabled = False
             row.maintenance_opened_by_schedule = False
             row.maintenance_schedule_started = False
             changed = True
             record_maintenance_update('Maintenance ended automatically.', None, now)
+            notify_maintenance_ended()
         elif active is None and getattr(row, 'maintenance_schedule_started', False):
             row.maintenance_schedule_started = False
             changed = True
@@ -145,6 +153,7 @@ def apply_scheduled_maintenance(row):
             row.maintenance_opened_by_schedule = True
             changed = True
             record_maintenance_update('Maintenance started automatically.', start, end)
+            notify_maintenance_started(getattr(row, 'maintenance_message', ''), start, end)
         elif start and end and now >= end and getattr(row, 'maintenance_opened_by_schedule', False):
             row.maintenance_enabled = False
             row.maintenance_opened_by_schedule = False
@@ -152,6 +161,7 @@ def apply_scheduled_maintenance(row):
             row.maintenance_schedule_started = False
             changed = True
             record_maintenance_update('Maintenance ended automatically.', start, now)
+            notify_maintenance_ended()
     if changed:
         row.save()
         cache.delete('platform:maintenance')
@@ -201,6 +211,10 @@ class PlatformThemeView(APIView):
         row = _settings_row()
         if row is None:
             row = PlatformSettings(settings_id=1)
+        previous_enabled = bool(getattr(row, 'maintenance_enabled', False))
+        previous_notice = bool(getattr(row, 'maintenance_notice_enabled', False))
+        previous_start = getattr(row, 'maintenance_scheduled_for', None)
+        previous_end = getattr(row, 'maintenance_scheduled_until', None)
         changed = []
 
         if 'brand_primary' in request.data:
@@ -323,6 +337,28 @@ class PlatformThemeView(APIView):
                 record_maintenance_update('Maintenance was turned on.', timezone.now(), None)
             else:
                 record_maintenance_update('Maintenance was turned off.', None, timezone.now())
+            window_changed = (
+                row.maintenance_scheduled_for != previous_start
+                or row.maintenance_scheduled_until != previous_end
+            )
+            notice_now = bool(
+                row.maintenance_notice_enabled
+                and row.maintenance_scheduled_for
+                and row.maintenance_scheduled_until
+            )
+            notice_before = bool(previous_notice and previous_start and previous_end)
+            if notice_now and (not notice_before or window_changed):
+                notify_maintenance_scheduled(
+                    row.maintenance_scheduled_for,
+                    row.maintenance_scheduled_until,
+                    row.maintenance_message,
+                )
+            if row.maintenance_enabled and not previous_enabled:
+                notify_maintenance_started(row.maintenance_message)
+            elif previous_enabled and not row.maintenance_enabled:
+                notify_maintenance_ended()
+            elif notice_before and not notice_now:
+                notify_maintenance_cancelled(previous_start, previous_end)
         return Response(payload)
 
 
@@ -367,7 +403,7 @@ class MaintenanceScheduleView(APIView):
                 {'detail': 'Choose a future date and time.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        MaintenanceSchedule.objects.create(starts_at=start, ends_at=end)
+        window = MaintenanceSchedule.objects.create(starts_at=start, ends_at=end)
         row = _settings_row() or PlatformSettings(settings_id=1)
         _mirror_next_window(row, timezone.now())
         try:
@@ -390,6 +426,7 @@ class MaintenanceScheduleView(APIView):
                 'maintenance_scheduled_until': end.isoformat(),
             },
         )
+        notify_maintenance_scheduled(start, end, dedupe_suffix=str(window.schedule_id))
         return Response({'schedules': schedules_payload()}, status=status.HTTP_201_CREATED)
 
     def delete(self, request, schedule_id=None):
@@ -402,6 +439,7 @@ class MaintenanceScheduleView(APIView):
         end = row_schedule.ends_at
         row_schedule.delete()
         row = _settings_row() or PlatformSettings(settings_id=1)
+        was_enabled = bool(getattr(row, 'maintenance_enabled', False))
         now = timezone.now()
         _mirror_next_window(row, now)
         still_active = _schedule_rows().filter(starts_at__lte=now, ends_at__gt=now).exists()
@@ -431,6 +469,10 @@ class MaintenanceScheduleView(APIView):
                 'maintenance_scheduled_until': end.isoformat(),
             },
         )
+        if was_enabled and not row.maintenance_enabled:
+            notify_maintenance_ended()
+        else:
+            notify_maintenance_cancelled(start, end)
         return Response({'schedules': schedules_payload()})
 
 
