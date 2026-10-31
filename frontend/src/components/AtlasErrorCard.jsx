@@ -53,7 +53,7 @@ export default function AtlasErrorCard({
       />
       <Box sx={{ flex: '1 1 220px', display: 'flex', flexDirection: 'column', position: 'relative', textAlign: 'left' }}>
         <Box sx={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)' }}>
-          <Typography sx={{ color: '#8E1C1B', fontWeight: 800, fontSize: '1.4rem', mb: 0.75 }}>
+          <Typography sx={{ color: 'var(--brand-primary)', fontWeight: 800, fontSize: '1.4rem', mb: 0.75 }}>
             {title}
           </Typography>
           <Typography sx={{ color: '#1A1A1A', fontSize: '1.2rem', lineHeight: 1.5 }}>
@@ -65,7 +65,7 @@ export default function AtlasErrorCard({
             <Button
               variant="contained"
               onClick={onRetry}
-              sx={{ bgcolor: '#8E1C1B', '&:hover': { bgcolor: '#7C1616' }, textTransform: 'none', fontWeight: 700 }}
+              sx={{ bgcolor: 'var(--brand-primary)', '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700 }}
             >
               {retryLabel}
             </Button>

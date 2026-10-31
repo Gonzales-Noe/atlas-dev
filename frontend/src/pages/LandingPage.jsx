@@ -351,7 +351,7 @@ export default function LandingPage() {
         html { scroll-behavior: smooth; }
 
         .atlas-btn-primary {
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: #fff;
           border: none;
           border-radius: 12px;
@@ -364,7 +364,7 @@ export default function LandingPage() {
         .atlas-btn-primary:hover {
           transform: translateY(-2px);
           box-shadow: 0 8px 32px rgba(142,28,27,0.5);
-          background: linear-gradient(135deg, #6E1212, #AA2423);
+          background: linear-gradient(135deg, var(--brand-red-core), var(--brand-primary));
         }
         .atlas-btn-outline {
           background: transparent;
@@ -398,7 +398,7 @@ export default function LandingPage() {
           color: #1A1A1A;
         }
         .nav-link.active {
-          border-bottom: 2px solid #AA2423;
+          border-bottom: 2px solid var(--brand-primary);
         }
 
         .feature-card {
@@ -486,7 +486,7 @@ export default function LandingPage() {
         .fade-up:nth-child(6) { transition-delay: 0.5s; }
 
         .glow-text {
-          background: linear-gradient(135deg, #E24B4A, #F3B4B3, #AA2423);
+          background: linear-gradient(135deg, var(--brand-accent), var(--brand-pale), var(--brand-primary));
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -593,7 +593,7 @@ export default function LandingPage() {
           padding: 6px 16px;
           font-size: 0.78rem;
           font-weight: 600;
-          color: #E24B4A;
+          color: var(--brand-accent);
           letter-spacing: 0.05em;
           margin-bottom: 1.5rem;
           animation: badge-pulse 2.5s ease-in-out infinite;
@@ -633,7 +633,7 @@ export default function LandingPage() {
           top: -12px;
           left: 50%;
           transform: translateX(-50%);
-          background: linear-gradient(135deg, #8E1C1B, #AA2423);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
           color: white;
           font-size: 0.72rem;
           font-weight: 700;
@@ -678,7 +678,7 @@ export default function LandingPage() {
         .divider {
           width: 60px;
           height: 3px;
-          background: linear-gradient(90deg, #8E1C1B, #AA2423);
+          background: linear-gradient(90deg, var(--brand-primary-hover), var(--brand-primary));
           border-radius: 3px;
           margin: 1rem auto 0;
         }
@@ -919,7 +919,7 @@ export default function LandingPage() {
                   alignItems: 'center',
                   gap: 6,
                 }}>
-                  <Check size={14} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
+                  <Check size={14} color="var(--brand-accent)" strokeWidth={2.5} aria-hidden="true" />
                   {label}
                 </div>
               ))}
@@ -962,7 +962,7 @@ export default function LandingPage() {
               { title: 'Sized to you', label: 'More faculty or another campus expands your deployment' },
             ].map(({ title, label }, i) => (
               <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#E24B4A', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand-accent)', lineHeight: 1.3 }}>
                   {title}
                 </div>
                 <div style={{ color: 'rgba(17,17,17,0.58)', fontSize: '0.85rem', marginTop: '0.55rem', lineHeight: 1.5 }}>{label}</div>
@@ -978,7 +978,7 @@ export default function LandingPage() {
 
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
+            <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>CAPABILITIES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0, lineHeight: 1.2 }}>
               Everything Your Course Needs <br />
               <span className="glow-text">to Teach Smarter</span>
@@ -1001,7 +1001,7 @@ export default function LandingPage() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   marginBottom: '1.2rem',
                 }}>
-                  <f.icon size={22} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
+                  <f.icon size={22} color="var(--brand-accent)" strokeWidth={1.75} aria-hidden="true" />
                 </div>
                 <h3 style={{ fontSize: '1.05rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#1A1A1A' }}>{f.title}</h3>
                 <p style={{ color: 'rgba(17,17,17,0.63)', fontSize: '0.9rem', lineHeight: 1.7, margin: 0 }}>{f.desc}</p>
@@ -1015,7 +1015,7 @@ export default function LandingPage() {
       <section id="testimonials" style={{ padding: '7rem 2rem', background: 'rgba(0,0,0,0.045)', borderTop: '1px solid rgba(0,0,0,0.072)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
+            <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>SOCIAL PROOF</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               What Educators Are Saying
             </h2>
@@ -1031,7 +1031,7 @@ export default function LandingPage() {
               <div key={i} className={`testimonial-card fade-up neon-border-glow ${testimonialsInView ? 'visible' : ''}`}>
                 <div style={{ display: 'flex', gap: 4, marginBottom: '1rem' }} aria-label={`${t.stars} stars`}>
                   {Array.from({ length: t.stars }, (_, star) => (
-                    <Star key={star} size={16} color="#E24B4A" fill="#E24B4A" aria-hidden="true" />
+                    <Star key={star} size={16} color="var(--brand-accent)" fill="var(--brand-accent)" aria-hidden="true" />
                   ))}
                 </div>
                 <p style={{ color: 'rgba(17,17,17,0.78)', lineHeight: 1.75, fontSize: '0.92rem', fontStyle: 'italic', margin: '0 0 1.5rem' }}>
@@ -1043,7 +1043,7 @@ export default function LandingPage() {
                     background: 'rgba(170,36,35,0.25)',
                     border: '1px solid rgba(170,36,35,0.4)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: '0.9rem', color: '#E24B4A', fontWeight: 700,
+                    fontSize: '0.9rem', color: 'var(--brand-accent)', fontWeight: 700,
                   }}>
                     {t.author[0]}
                   </div>
@@ -1064,7 +1064,7 @@ export default function LandingPage() {
 
         <div style={{ maxWidth: 1180, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PACKAGES</p>
+            <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>PACKAGES</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               A Private Deployment for Your Institution
             </h2>
@@ -1094,7 +1094,7 @@ export default function LandingPage() {
                 {plan.badge && <div className="popular-badge">{plan.badge}</div>}
 
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#E24B4A', margin: '0 0 0.4rem' }}>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-accent)', margin: '0 0 0.4rem' }}>
                     {plan.name}
                   </h3>
                   <p style={{ color: 'rgba(17,17,17,0.63)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
@@ -1110,7 +1110,7 @@ export default function LandingPage() {
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             marginRight: 10, flexShrink: 0, marginTop: 1,
                           }}>
-                            <Check size={12} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
+                            <Check size={12} color="var(--brand-accent)" strokeWidth={2.5} aria-hidden="true" />
                           </span>
                           <span style={{ color: 'rgba(17,17,17,0.83)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
                         </div>
@@ -1138,7 +1138,7 @@ export default function LandingPage() {
       <section id="team" style={{ padding: '7rem 2rem', borderTop: '1px solid rgba(0,0,0,0.072)' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
-            <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
+            <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>THE TEAM</p>
             <h2 className="section-title" style={{ fontSize: '2.6rem', fontWeight: 800, margin: 0 }}>
               Built by Students.<br />Made for Teachers.
             </h2>
@@ -1164,7 +1164,7 @@ export default function LandingPage() {
                   <img src={member.image} alt={member.name} width={800} height={1000} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center' }} />
                 </div>
                 <h3 style={{ fontWeight: 700, fontSize: '1.2rem', margin: '0 0 0.4rem', color: '#1A1A1A' }}>{member.name}</h3>
-                <p style={{ color: '#E24B4A', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
+                <p style={{ color: 'var(--brand-accent)', fontSize: '0.9rem', margin: 0, fontWeight: 600, letterSpacing: '0.04em' }}>{member.title}</p>
               </div>
             ))}
           </div>
@@ -1178,7 +1178,7 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: '0 auto', position: 'relative', zIndex: 1 }}>
           <div className="contact-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5rem', alignItems: 'center' }}>
             <div>
-              <p style={{ color: '#E24B4A', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
+              <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
               <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
                 Request an<br />
                 <span className="glow-text">Institutional Demo</span>
@@ -1202,7 +1202,7 @@ export default function LandingPage() {
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       flexShrink: 0,
                     }}>
-                      <Icon size={18} color="#E24B4A" strokeWidth={1.75} aria-hidden="true" />
+                      <Icon size={18} color="var(--brand-accent)" strokeWidth={1.75} aria-hidden="true" />
                     </div>
                     <div>
                       <div style={{ fontSize: '0.75rem', color: 'rgba(17,17,17,0.43)', marginBottom: 2 }}>{label}</div>
@@ -1247,7 +1247,7 @@ export default function LandingPage() {
                     gap: 8,
                   }}>
                     {contactStatus.type === 'success'
-                      ? <Check size={16} color="#E24B4A" strokeWidth={2.5} aria-hidden="true" />
+                      ? <Check size={16} color="var(--brand-accent)" strokeWidth={2.5} aria-hidden="true" />
                       : <span style={{ fontSize: '1rem' }}>!</span>}
                     <span>{contactStatus.message}</span>
                   </div>

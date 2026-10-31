@@ -59,8 +59,8 @@ export function StatCard({ title, value, sub, icon, trend, trendUp, accent = '#E
         {icon && (
           <div style={{
             width: 34, height: 34, borderRadius: 10,
-            background: `${accent}18`,
-            border: `1px solid ${accent}30`,
+            background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${accent} 28%, transparent)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: '1rem', flexShrink: 0,
           }}>
@@ -160,7 +160,7 @@ export function PrimaryBtn({ children, onClick, disabled, small, style = {} }) {
       onClick={onClick}
       disabled={disabled}
       style={{
-        background: disabled ? 'rgba(142,28,27,0.3)' : 'linear-gradient(135deg, #8E1C1B, #AA2423)',
+        background: disabled ? 'var(--brand-soft)' : 'linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary))',
         color: '#fff',
         border: 'none',
         borderRadius: 10,
@@ -175,7 +175,7 @@ export function PrimaryBtn({ children, onClick, disabled, small, style = {} }) {
         whiteSpace: 'nowrap',
         ...style,
       }}
-      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(142,28,27,0.45)' } }}
+      onMouseEnter={e => { if (!disabled) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px var(--brand-glow)' } }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none' }}
     >
       {children}
@@ -229,15 +229,18 @@ export function MetricRow({ label, value, status, statusType, divider = true }) 
 }
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
-export function ProgressBar({ value, max = 100, color = '#8E1C1B', label }) {
+export function ProgressBar({ value, max = 100, color = 'var(--brand-primary)', label }) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100))
+  const fill = String(color).includes('var(') || String(color).startsWith('rgb')
+    ? color
+    : `linear-gradient(90deg, ${color}88, ${color})`
   return (
     <div>
       {label && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
         <span>{label}</span><span style={{ color: 'var(--text-primary)', fontWeight: 700 }}>{value}%</span>
       </div>}
       <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 99, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: `linear-gradient(90deg, ${color}88, ${color})`, borderRadius: 99, transition: 'width 600ms var(--ease)' }} />
+        <div style={{ height: '100%', width: `${pct}%`, background: fill, borderRadius: 99, transition: 'width 600ms var(--ease)' }} />
       </div>
     </div>
   )

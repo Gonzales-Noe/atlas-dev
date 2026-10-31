@@ -11,7 +11,7 @@ export default function LegalPage() {
   return (
     <div className="atlas-legal" style={{ background: '#FFFFFF', color: '#1A1A1A', padding: '2.5rem 1.25rem' }}>
       <div style={{ maxWidth: 860, margin: '0 auto' }}>
-        <Link to="/" style={{ color: '#AA2423', textDecoration: 'none', fontSize: '0.85rem' }}>&larr; Back to ATLAS</Link>
+        <Link to="/" style={{ color: 'var(--brand-primary)', textDecoration: 'none', fontSize: '0.85rem' }}>&larr; Back to ATLAS</Link>
         <h1 style={{ fontSize: '1.6rem', margin: '1rem 0 0.25rem', color: '#1A1A1A' }}>{meta.title}</h1>
         <p style={{ color: 'rgba(17,17,17,0.55)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>{meta.subtitle}</p>
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>

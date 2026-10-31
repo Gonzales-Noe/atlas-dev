@@ -24,7 +24,7 @@ export const PIPELINE_STEPS = [
 function Connector({ filled }) {
   return (
     <Box sx={{ flex: 1, minWidth: 10, height: 3, borderRadius: 99, mx: 0.25, bgcolor: 'var(--workspace-border)', overflow: 'hidden', position: 'relative' }}>
-      <Box sx={{ position: 'absolute', inset: 0, background: filled ? '#AA2423' : 'transparent' }} />
+      <Box sx={{ position: 'absolute', inset: 0, background: filled ? 'var(--brand-primary)' : 'transparent' }} />
     </Box>
   )
 }
@@ -37,7 +37,7 @@ function StepNode({ step, index, active, done, locked, onSelect, compact }) {
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect() } }}
         sx={{ display: 'flex', alignItems: 'center', gap: 1.1, cursor: 'pointer', px: 1.5, py: 0.9, borderRadius: 2, bgcolor: active ? 'rgba(170,36,35,0.16)' : 'transparent' }}>
         <Box sx={{ position: 'relative', display: 'flex' }}>
-          <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: done ? '#AA2423' : 'var(--workspace-border)', color: done ? '#fff' : 'var(--workspace-muted)' }}>
+          <Box sx={{ width: 38, height: 38, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: done ? 'var(--brand-primary)' : 'var(--workspace-border)', color: done ? '#fff' : 'var(--workspace-muted)' }}>
             <StepIcon sx={{ fontSize: 19 }} />
           </Box>
           <Box sx={{ position: 'absolute', right: -5, bottom: -4, bgcolor: 'var(--workspace-bg)', borderRadius: '50%', display: 'flex' }}>
@@ -76,7 +76,7 @@ export default function WorkspacePipelineStepper({ activeTab, isStepDone, onSele
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, mt: 1 }}>
         <Box sx={{ flex: 1, height: 6, borderRadius: 99, bgcolor: 'var(--workspace-hover)', overflow: 'hidden' }}>
-          <Box sx={{ height: '100%', width: pct + '%', background: '#AA2423' }} />
+          <Box sx={{ height: '100%', width: pct + '%', background: 'var(--brand-primary)' }} />
         </Box>
         <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--workspace-muted)' }}>{done}/{total} complete</Typography>
       </Box>

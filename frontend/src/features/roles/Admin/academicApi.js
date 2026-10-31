@@ -6,6 +6,13 @@ import api from '../../../config/api'
 
 const BASE = '/academics'
 
+export async function fetchFacultyProductivity() {
+  const { data } = await api.get(`${BASE}/faculty-productivity/`, {
+    skipAtlasErrorCard: true,
+  })
+  return data
+}
+
 export async function fetchSetupStatus(includeCounts = true) {
   const { data } = await api.get(`${BASE}/setup/status/`, {
     params: { include_counts: includeCounts },

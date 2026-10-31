@@ -20,6 +20,8 @@ from django.http import HttpResponse
 
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
+
+from apps.users.system_health import activity_by_day
 from django.utils import timezone
 from django.core.mail import send_mail
 from rest_framework import permissions, status
@@ -745,15 +747,40 @@ class DashboardSummaryView(APIView):
         user_count = UserProfile.objects.count()
         pending_applications = Institution.objects.filter(application_status='pending_review').count()
         unpaid_institutions = Institution.objects.filter(payment_status__in=['unpaid', 'pending']).count()
+        role_rows = {
+            row['role']: row['total']
+            for row in UserProfile.objects.values('role').annotate(total=Count('user_id'))
+        }
         user_distribution = [
-            {'name': 'Admins', 'value': UserProfile.objects.filter(role=UserRole.ADMIN).count()},
-            {'name': 'Faculty', 'value': UserProfile.objects.filter(role=UserRole.FACULTY).count()},
-            {'name': 'Super Admins', 'value': UserProfile.objects.filter(role=UserRole.SUPERADMIN).count()},
+            {'name': 'Admins', 'value': role_rows.get(UserRole.ADMIN, 0)},
+            {'name': 'Faculty', 'value': role_rows.get(UserRole.FACULTY, 0)},
+            {'name': 'Super Admins', 'value': role_rows.get(UserRole.SUPERADMIN, 0)},
         ]
-        institution_trend = [
-            {'name': institution.created_at.strftime('%b'), 'institutions': index + 1, 'users': UserProfile.objects.filter(institution=institution).count()}
-            for index, institution in enumerate(Institution.objects.order_by('created_at')[:12])
-        ]
+        institution_trend = []
+        cursor = timezone.localtime().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        month_starts = []
+        for _ in range(6):
+            month_starts.append(cursor)
+            cursor = (cursor - timedelta(days=1)).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        for month in reversed(month_starts):
+            nxt = (month.replace(day=28) + timedelta(days=4)).replace(day=1)
+            institution_trend.append({
+                'name': month.strftime('%b'),
+                'institutions': Institution.objects.filter(created_at__gte=month, created_at__lt=nxt).count(),
+                'users': UserProfile.objects.filter(created_at__gte=month, created_at__lt=nxt).count(),
+            })
+        recent_activity = []
+        for log in AuditLog.objects.select_related('user', 'user__institution').order_by('-timestamp')[:6]:
+            user = log.user if log.user_id else None
+            institution_name = 'Platform'
+            if user is not None and user.institution_id and getattr(user, 'institution', None):
+                institution_name = user.institution.name
+            recent_activity.append({
+                'label': log.action_type,
+                'value': (user.full_name or user.email) if user else 'Unknown user',
+                'detail': institution_name,
+                'timestamp': log.timestamp.isoformat() if log.timestamp else '',
+            })
         payload = {
             'role': 'superadmin',
             'title': 'Super Admin Dashboard',
@@ -764,18 +791,24 @@ class DashboardSummaryView(APIView):
                 {'label': 'Users', 'value': user_count, 'tone': 'superadmin'},
                 {'label': 'Pending applications', 'value': pending_applications, 'tone': 'superadmin'},
                 {'label': 'Unpaid institutions', 'value': unpaid_institutions, 'tone': 'superadmin'},
+                {'label': 'Courses', 'value': Course.objects.count(), 'tone': 'superadmin'},
+                {'label': 'Assessments', 'value': Assessment.objects.count(), 'tone': 'superadmin'},
             ],
             'nav_items': [
                 {'label': 'Dashboard', 'to': '/superadmin/dashboard'},
                 {'label': 'Accounts', 'to': '/superadmin/account-management'},
+                {'label': 'System Health', 'to': '/superadmin/system-management'},
                 {'label': 'Audit Logs', 'to': '/superadmin/audit-logs'},
+                {'label': 'Appearance', 'to': '/superadmin/appearance'},
             ],
             'recent': [
-                {'label': institution.name, 'value': institution.plan_tier, 'detail': 'Institution'}
+                {'label': institution.name, 'value': institution.plan_tier, 'detail': institution.application_status}
                 for institution in Institution.objects.order_by('-created_at')[:5]
             ],
             'user_distribution': user_distribution,
             'institution_trend': institution_trend,
+            'activity_trend': activity_by_day(14),
+            'recent_activity': recent_activity,
         }
         DashboardSummarySerializer(data=payload).is_valid(raise_exception=True)
         return payload

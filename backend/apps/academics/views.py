@@ -20,6 +20,7 @@ from apps.integrations.models import (
     UserRole,
 )
 
+from .productivity import faculty_productivity_for_institution
 from .serializers import (
     CompleteSetupSerializer,
     CourseSerializer,
@@ -88,6 +89,16 @@ class SetupStatusView(APIView):
             'knowledge_base_count': documents.count(),
         })
         return Response(SetupStatusSerializer(payload).data)
+
+
+class FacultyProductivityView(AcademicBaseView):
+    """Charts of faculty teaching output for this institution. No student data."""
+
+    def get(self, request):
+        denied = _require_admin(request)
+        if denied:
+            return denied
+        return Response(faculty_productivity_for_institution(self.institution(request)))
 
 
 class AcademicStructureView(AcademicBaseView):

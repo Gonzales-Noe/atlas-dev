@@ -52,6 +52,7 @@ numpy>=1.26.0                   # Numerical ops for image processing
 
 # ── Utilities ───────────────────────────────────────────────
 python-dotenv>=1.0.0            # .env loading for manage.py
+psutil==6.1.1                   # Host CPU, memory, and uptime for the superadmin console
 Pillow==10.4.0                  # image handling
 whitenoise==6.7.0               # static file serving
 django-cors-headers==4.9.0      # CORS headers for frontend

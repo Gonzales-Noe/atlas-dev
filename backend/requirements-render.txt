@@ -50,6 +50,7 @@ numpy>=1.26.0
 
 # ── Utilities ───────────────────────────────────────────────
 python-dotenv>=1.0.0
+psutil==6.1.1                   # Host CPU, memory, and uptime for the superadmin console
 Pillow==10.4.0
 whitenoise==6.7.0
 django-cors-headers==4.9.0

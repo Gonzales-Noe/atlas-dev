@@ -256,7 +256,7 @@ export default function FacultySyllabus() {
               variant="contained"
               disabled={!actionEnabled}
               onClick={handleDownloadSyllabus}
-              sx={{ mt: 2, background: '#AA2423', color: '#fff', '&:hover': { background: '#6E1212' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
+              sx={{ mt: 2, background: 'var(--brand-primary)', color: '#fff', '&:hover': { background: 'var(--brand-primary-hover)' }, borderRadius: 2, textTransform: 'none', boxShadow: 'none' }}
             >
               Download Syllabus
             </Button>
