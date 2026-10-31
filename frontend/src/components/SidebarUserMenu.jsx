@@ -264,19 +264,19 @@ export default function SidebarUserMenu({
       {/* Profile menu */}
       {open && (
         <div style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: 8, right: 8,
-          // A collapsed rail is far narrower than this menu needs, so let it
-          // overhang instead of crushing the labels.
-          minWidth: tight ? 200 : undefined,
+          position: 'absolute',
+          ...(tight
+            ? { left: 'calc(100% + 6px)', bottom: 0, width: 240 }
+            : { bottom: 'calc(100% + 8px)', left: 8, right: 8 }),
           background: 'var(--shell-menu-bg)', border: '1px solid var(--shell-menu-border)',
           borderRadius: 14, overflow: 'hidden',
           boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-          zIndex: 10,
+          zIndex: 20,
         }}>
           {[
-            { label: 'Profile Settings', modal: 'profile', Icon: UserRound, iconColor: '#A78BFA' },
-            { label: 'Preferences', modal: 'preferences', Icon: Settings, iconColor: 'var(--shell-icon-strong)' },
-          ].map(({ label, modal, Icon, iconColor }) => (
+            { label: 'Profile Settings', modal: 'profile', Icon: UserRound },
+            { label: 'Preferences', modal: 'preferences', Icon: Settings },
+          ].map(({ label, modal, Icon }) => (
             <button
               type="button"
               key={label}
@@ -307,7 +307,7 @@ export default function SidebarUserMenu({
               onMouseEnter={enter}
               onMouseLeave={leave}
             >
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: iconColor, flexShrink: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
                 <Icon size={18} strokeWidth={2.25} aria-hidden="true" />
               </span>
               {label}
@@ -324,7 +324,7 @@ export default function SidebarUserMenu({
             onMouseLeave={leave}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--shell-icon-strong)', flexShrink: 0 }}>
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
                 <Sun size={18} strokeWidth={2.25} aria-hidden="true" />
               </span>
               Light mode
@@ -341,7 +341,7 @@ export default function SidebarUserMenu({
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,80,80,0.08)' }}
             onMouseLeave={leave}
           >
-            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: '#F59E0B', flexShrink: 0 }}>
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, color: 'var(--brand-primary)', flexShrink: 0 }}>
               <LogOut size={18} strokeWidth={2.25} aria-hidden="true" />
             </span>
             Sign Out
@@ -360,7 +360,7 @@ export default function SidebarUserMenu({
           <>
             <form id="profile-settings-form" onSubmit={handleProfileSave} style={{ display: 'contents' }}>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', fontWeight: 700 }}>
-              <UserRound size={18} color="#A78BFA" />
+              <UserRound size={18} color="var(--brand-primary)" />
               Profile Settings
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>
@@ -536,7 +536,7 @@ export default function SidebarUserMenu({
         ) : (
           <>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem', fontWeight: 700 }}>
-              <Settings size={18} />
+              <Settings size={18} color="var(--brand-primary)" />
               Preferences
             </DialogTitle>
             <DialogContent dividers sx={{ borderColor: 'var(--border-color)' }}>

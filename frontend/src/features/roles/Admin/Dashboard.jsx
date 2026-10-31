@@ -43,12 +43,12 @@ export default function AdminDashboard() {
         subtitle="Institutional overview — manage your faculty and academic structure"
       />
 
-      <GlassCard style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 12 }}>
         <AtlasCompanion
-          size={128}
+          size={56}
           message={`I'm here with you, ${user?.name?.split(' ')[0] || 'Admin'}. Faculty, courses, and your academic structure are one step away.`}
         />
-      </GlassCard>
+      </div>
 
       <StatusNotice message={setupError} severity="error" />
 

@@ -93,9 +93,9 @@ export default function FacultyDashboard() {
           )}
         />
 
-        <Box sx={{ mb: 3 }}>
+        <Box sx={{ mb: 1.5 }}>
           <AtlasCompanion
-            size={120}
+            size={56}
             message={`Welcome back, ${user?.name?.split(' ')[0] || 'there'}. Open a course, or request one and I'll wait with you for approval.`}
           />
         </Box>
