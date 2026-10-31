@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import api from '../../config/api'
 import { GlassCard, PrimaryBtn, StatusChip } from '../../components/ui'
+import { StatusNotice } from '../../components/StatusNotice'
 
 const STATUS_LABELS = {
   healthy: 'Healthy',
@@ -274,9 +275,7 @@ export default function LlmHealthPanel() {
           <p style={{ margin: '0 0 14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
             Groq and OpenRouter list the original key, then key 1 and key 2. Cloudflare and Ollama follow.
           </p>
-          {error && (
-            <p style={{ margin: 0, color: 'var(--status-warning)', fontSize: '0.85rem' }}>{error}</p>
-          )}
+          <StatusNotice message={error} severity="error" />
           {!error && !loading && accounts.length === 0 && (
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No accounts are configured.</p>
           )}

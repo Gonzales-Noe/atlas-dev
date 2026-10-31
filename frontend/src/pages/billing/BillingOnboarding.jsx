@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../config/api'
+import { StatusNotice } from '../../components/StatusNotice'
 
 const PLANS = [
   { name: 'Starter', price: '₱2,499', detail: '30 days · Up to 10 faculty accounts', accent: '#E24B4A' },
@@ -157,7 +158,7 @@ export default function BillingOnboarding() {
           <h2>{trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left in your trial</h2>
           <p className="billing-muted">The trial includes up to {status.faculty_limit || 2} faculty accounts and {status.generation_limit || 5} syllabus generations per faculty. AI generation outside the Syllabus module is unavailable during the trial. No automatic charge will be made when it ends.</p>
           {status.role === 'faculty' && <p className="billing-muted">Used syllabus generations: {status.generation_used || 0} of {status.generation_limit || 5}. Contact your institution admin if you need to upgrade after the trial.</p>}
-          {error && <div className="error-banner">{error}</div>}
+          <StatusNotice message={error} severity="error" />
           <div className="billing-actions">
             {isAdmin && <button type="button" className="billing-button secondary" onClick={() => setStage('plan')}>Choose a paid plan</button>}
             <button type="button" className="billing-button" onClick={() => navigate(dashboardPath, { replace: true })}>Continue to workspace</button>
@@ -176,7 +177,7 @@ export default function BillingOnboarding() {
           <div className="plan-grid">{PLANS.map(item => <button type="button" className={`plan-card ${plan === item.name ? 'selected' : ''}`} key={item.name} onClick={() => setPlan(item.name)}>
             <strong style={{ color: item.accent }}>{item.name}</strong><span className="plan-price">{item.price}</span><div className="plan-detail">{item.detail}</div>
           </button>)}</div>
-          {error && <div className="error-banner">{error}</div>}
+          <StatusNotice message={error} severity="error" />
           <div className="billing-actions">
             <button type="button" className="billing-button" disabled={!plan || loading} onClick={choosePlan}>{loading ? 'Preparing checkout…' : 'Continue to PayMongo'}</button>
           </div>

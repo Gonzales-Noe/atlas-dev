@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import Alert from '@mui/material/Alert'
+import { StatusNotice } from '../../../components/StatusNotice'
 import {
   Area,
   AreaChart,
@@ -122,7 +122,7 @@ export default function FacultyProductivity() {
         </div>
       </div>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <StatusNotice message={error} severity="error" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16, marginBottom: 16 }}>
         <StatCard title="Syllabi" value={data ? totals.syllabi : '—'} icon={<BookOpen size={18} color="var(--brand-primary)" />} accent="var(--brand-primary)" />

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-  TextField, Dialog, DialogTitle, DialogContent, Divider, Stack, Alert,
+  TextField, Dialog, DialogTitle, DialogContent, Divider, Stack,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -11,6 +11,7 @@ import api from '../../config/api'
 import { PageHeader, GlassCard, OutlineBtn } from '../../components/ui'
 import { cssColor } from '../../utils/brandTheme'
 import RouteSkeleton from '../../components/RouteSkeleton'
+import { StatusNotice } from '../../components/StatusNotice'
 
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
@@ -109,8 +110,12 @@ function describeLog(log) {
   }
   if (show('maintenance') && isOn(details.maintenance_notice_enabled) && details.maintenance_scheduled_for) {
     const when = new Date(details.maintenance_scheduled_for)
-    const label = Number.isNaN(when.getTime()) ? details.maintenance_scheduled_for : when.toLocaleString()
-    lines.push(`A coming-soon banner is set for ${label}.`)
+    const until = details.maintenance_scheduled_until ? new Date(details.maintenance_scheduled_until) : null
+    const startLabel = Number.isNaN(when.getTime()) ? details.maintenance_scheduled_for : when.toLocaleString()
+    const endLabel = until && !Number.isNaN(until.getTime()) ? until.toLocaleString() : ''
+    lines.push(endLabel
+      ? `A coming-soon banner is set from ${startLabel} until ${endLabel}.`
+      : `A coming-soon banner is set for ${startLabel}.`)
   }
 
   if (log.action === 'faculty_account_created') {
@@ -214,7 +219,7 @@ export default function AuditLogs() {
         subtitle="Recorded actions across every institution on this deployment"
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+      <StatusNotice message={error} severity="error" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
         {[

@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 import { Eye, EyeOff, KeyRound, LogOut, Settings, Sun, UserRound } from 'lucide-react'
 import InstallAppButton from './InstallAppButton'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
-import Alert from '@mui/material/Alert'
+import { StatusNotice } from './StatusNotice'
 import Button from '@mui/material/Button'
 import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
@@ -376,8 +376,8 @@ export default function SidebarUserMenu({
                 </div>
               </div>
 
-              {profileError && <Alert severity="error" sx={{ mb: 2 }}>{profileError}</Alert>}
-              {profileNotice && <Alert severity="success" sx={{ mb: 2 }}>{profileNotice}</Alert>}
+              <StatusNotice message={profileError} severity="error" />
+              <StatusNotice message={profileNotice} severity="success" />
 
               <TextField
                 label="Display name"
@@ -570,11 +570,10 @@ export default function SidebarUserMenu({
               <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
                 Notify when syllabus, module, or assessment generation finishes.
               </Typography>
-              {notificationPreferenceMessage && (
-                <Alert severity={generationNotificationsEnabled ? 'success' : 'info'} sx={{ mt: 1.25, fontSize: '0.76rem' }}>
-                  {notificationPreferenceMessage}
-                </Alert>
-              )}
+              <StatusNotice
+                message={notificationPreferenceMessage}
+                severity={generationNotificationsEnabled ? 'success' : 'info'}
+              />
               <Divider sx={{ borderColor: 'var(--shell-divider)', mt: 1.5 }} />
               <FormControlLabel
                 sx={{ mt: 1, ml: 0, mr: 0, width: '100%', justifyContent: 'space-between', '& .MuiFormControlLabel-label': { color: 'var(--text-primary)', fontSize: '0.85rem' } }}

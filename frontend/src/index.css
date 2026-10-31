@@ -4,6 +4,7 @@
 
 /* ── CSS Tokens ─────── ──────────────────────────────────── */
 :root {
+  --atlas-titlebar-h: 0px;
   /* Background layers */
   --bg-base:       #08080A;
   --bg-surface:    #0F0F12;
@@ -340,6 +341,47 @@ body.atlas-light .MuiAlert-standardInfo    { color: #0B5CAD !important; }
   color: var(--text-primary) !important;
 }
 .MuiAlert-icon { display: none !important; }
+
+@media (display-mode: window-controls-overlay) {
+  .atlas-pwa-drag {
+    position: fixed;
+    z-index: 11000;
+    top: env(titlebar-area-y, 0);
+    left: env(titlebar-area-x, 0);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, var(--atlas-titlebar-h));
+    app-region: drag;
+    -webkit-app-region: drag;
+  }
+
+  .atlas-pwa-reload {
+    position: fixed;
+    z-index: 11001;
+    top: env(titlebar-area-y, 0);
+    left: calc(env(titlebar-area-x, 0px) + env(titlebar-area-width, 100%) - env(titlebar-area-height, 40px));
+    width: env(titlebar-area-height, 40px);
+    height: env(titlebar-area-height, 40px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    cursor: pointer;
+    app-region: no-drag;
+    -webkit-app-region: no-drag;
+  }
+
+  .atlas-pwa-reload:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  .faculty-workspace {
+    padding-top: var(--atlas-titlebar-h);
+    box-sizing: border-box;
+  }
+}
 
 /* CircularProgress */
 .MuiCircularProgress-root { color: var(--brand-red-bright); }

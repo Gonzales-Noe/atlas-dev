@@ -1,6 +1,6 @@
 // src/features/Faculty/Dashboard.jsx
 import { useState, useEffect } from 'react'
-import Alert from '@mui/material/Alert'
+import { StatusNotice } from '../../../components/StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
@@ -79,16 +79,8 @@ export default function FacultyDashboard() {
   return (
     <FacultyLayout>
       <Box sx={{ maxWidth: 1400, mx: 'auto', width: '100%' }}>
-        {error && !errorDismissed && (
-          <Alert severity="error" onClose={() => setErrorDismissed(true)} sx={{ mb: 3 }}>
-            {error}
-          </Alert>
-        )}
-        {notice && (
-          <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 3 }}>
-            {notice}
-          </Alert>
-        )}
+        <StatusNotice message={!errorDismissed ? error : ''} severity="error" />
+        <StatusNotice message={notice} severity="success" />
 
         <PageHeader
           title="My Courses"
@@ -202,7 +194,7 @@ export default function FacultyDashboard() {
                 <CircularProgress size={24} sx={{ color: '#8E1C1B' }} />
               </Box>
             ) : requestsError ? (
-              <Alert severity="error">{requestsError}</Alert>
+              <StatusNotice message={requestsError} severity="error" />
             ) : decidedRequests.length === 0 ? (
               <Typography variant="body2" sx={{ color: 'var(--text-tertiary)' }}>
                 No decided requests yet — approved or rejected requests will show here.

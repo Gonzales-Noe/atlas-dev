@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import Alert from '@mui/material/Alert'
+import { StatusNotice } from '../../../components/StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
@@ -42,7 +43,7 @@ export default function FacultyWorkspace() {
             <CircularProgress sx={{ color: '#8E1C1B' }} />
           </Box>
         ) : error ? (
-          <Alert severity="error">{error}</Alert>
+          <StatusNotice message={error} severity="error" />
         ) : !course ? (
           <Alert severity="warning">Course workspace not found.</Alert>
         ) : (

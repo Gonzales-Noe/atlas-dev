@@ -5,6 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress'
 import { CircleCheck, Eye, EyeOff, KeyRound, Lock, Mail, PartyPopper } from 'lucide-react'
 import { useAuth }      from '../../store/authStore'
 import { ROUTES }       from '../../config/route'
+import { StatusNotice } from '../../components/StatusNotice'
 import atlasLogo        from '../../assets/atlas-logo.webp'
 
 // ── Shared design primitives ─────────────────────────────────────────────────
@@ -595,7 +596,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   Enter your institutional email and we'll send you a one-time code.
                 </p>
 
-                {error && <div className="error-box">{error}</div>}
+                <StatusNotice message={error} severity="error" />
 
                 <form onSubmit={handleSendOtp}>
                   <span className="label-text">INSTITUTIONAL EMAIL</span>
@@ -642,7 +643,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   <span style={{ color: '#FF8080', fontWeight: 600 }}>{email}</span>
                 </p>
 
-                {error && <div className="error-box">{error}</div>}
+                <StatusNotice message={error} severity="error" />
 
                 <form onSubmit={handleVerifyOtp}>
                   <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.05em', textAlign: 'center', marginBottom: 8 }}>
@@ -691,7 +692,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   Choose a strong password for your account. Minimum 8 characters.
                 </p>
 
-                {error && <div className="error-box">{error}</div>}
+                <StatusNotice message={error} severity="error" />
 
                 <form onSubmit={handleReset} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
                   <div>

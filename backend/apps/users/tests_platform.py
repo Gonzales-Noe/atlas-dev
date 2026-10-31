@@ -153,11 +153,26 @@ class PlatformOpsTests(TestCase):
         self.assertIn('later day', denied.data['detail'])
 
         later = timezone.now() + timedelta(days=2)
+        until = later + timedelta(hours=2)
+        missing_end = self.client.patch(
+            '/api/auth/platform-theme/',
+            {
+                'maintenance_notice_enabled': True,
+                'maintenance_scheduled_for': later.isoformat(),
+                'maintenance_scheduled_until': later.isoformat(),
+            },
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(missing_end.status_code, 400)
+        self.assertIn('after the start', missing_end.data['detail'])
+
         saved = self.client.patch(
             '/api/auth/platform-theme/',
             {
                 'maintenance_notice_enabled': True,
                 'maintenance_scheduled_for': later.isoformat(),
+                'maintenance_scheduled_until': until.isoformat(),
             },
             format='json',
             HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
@@ -165,6 +180,23 @@ class PlatformOpsTests(TestCase):
         self.assertEqual(saved.status_code, 200)
         self.assertTrue(saved.data['maintenance_notice_enabled'])
         self.assertTrue(saved.data['maintenance_scheduled_for'])
+        self.assertTrue(saved.data['maintenance_scheduled_until'])
 
         public = self.client.get('/api/auth/platform-theme/')
         self.assertTrue(public.data['maintenance_notice_enabled'])
+        self.assertTrue(public.data['maintenance_scheduled_until'])
+
+    def test_scheduled_window_turns_maintenance_on_by_itself(self):
+        start = timezone.now() - timedelta(minutes=1)
+        end = timezone.now() + timedelta(hours=1)
+        PlatformSettings.objects.create(
+            settings_id=1,
+            maintenance_notice_enabled=True,
+            maintenance_scheduled_for=start,
+            maintenance_scheduled_until=end,
+        )
+        theme = self.client.get('/api/auth/platform-theme/')
+        self.assertEqual(theme.status_code, 200)
+        self.assertTrue(theme.data['maintenance_enabled'])
+        from apps.integrations.models import MaintenanceUpdate
+        self.assertTrue(MaintenanceUpdate.objects.filter(summary__startswith='Maintenance started').exists())

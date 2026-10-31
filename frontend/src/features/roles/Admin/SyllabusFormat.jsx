@@ -3,6 +3,7 @@ import {
   Alert, Box, Chip, Dialog, DialogActions, DialogContent, DialogTitle, Divider,
   FormControlLabel, IconButton, Stack, Switch, TextField, Tooltip, Typography,
 } from '@mui/material'
+import { StatusNotice } from '../../../components/StatusNotice'
 import AddIcon from '@mui/icons-material/Add'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
@@ -735,7 +736,7 @@ export default function SyllabusFormat() {
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
             Define the table shape. Fixed rows are supplied by the Admin; other rows remain editable for Faculty.
           </Typography>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          <StatusNotice message={error} severity="error" />
           <Stack spacing={1.5}>
             {tableDraft.columns.map((column, index) => (
               <Stack key={index} direction="row" spacing={1} alignItems="center">
@@ -796,7 +797,7 @@ export default function SyllabusFormat() {
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
             {fieldEditor.label} — Faculty see this content and cannot edit the field. Saving applies it to every Faculty syllabus in your institution.
           </Typography>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          <StatusNotice message={error} severity="error" />
           <TextField
             autoFocus
             fullWidth
@@ -1570,8 +1571,8 @@ export default function SyllabusFormat() {
         subtitle="The Admin view of the Faculty Syllabus workspace. Choose the sections Faculty see and lock the content that must stay the same. Changes apply to every admin account in your institution."
         action={<PrimaryBtn onClick={() => save()} disabled={loading || saving}>{saving ? 'Saving…' : 'Save Format'}</PrimaryBtn>}
       />
-      {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity="success" />
 
       {loading ? (
         <LoadingState label="Loading the syllabus format…" />
@@ -1683,7 +1684,7 @@ export default function SyllabusFormat() {
                     Template: {customization.syllabus_template_name}
                   </Typography>
                 )}
-                {templateImport.message && <Alert severity={templateImport.severity}>{templateImport.message}</Alert>}
+                <StatusNotice message={templateImport.message} severity={templateImport.severity || 'info'} />
 
                 <Divider />
                 <Stack spacing={1}>

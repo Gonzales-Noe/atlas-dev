@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Switch, FormControlLabel, TextField } from '@mui/material'
+import { Switch, FormControlLabel, TextField } from '@mui/material'
+import { StatusNotice } from '../../components/StatusNotice'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import atlasMaintenance from '../../assets/atlas-maintenance.png'
 import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
@@ -70,6 +71,7 @@ export default function SystemManagement() {
   const [message, setMessage] = useState('')
   const [noticeEnabled, setNoticeEnabled] = useState(false)
   const [scheduledFor, setScheduledFor] = useState('')
+  const [scheduledUntil, setScheduledUntil] = useState('')
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -82,6 +84,7 @@ export default function SystemManagement() {
         setMessage(data.maintenance_message || '')
         setNoticeEnabled(Boolean(data.maintenance_notice_enabled))
         setScheduledFor(toLocalInput(data.maintenance_scheduled_for))
+        setScheduledUntil(toLocalInput(data.maintenance_scheduled_until))
       })
       .catch(err => {
         setError(err.response?.data?.detail || 'System health could not be loaded.')
@@ -99,8 +102,17 @@ export default function SystemManagement() {
     const nextEnabled = patch.maintenance_enabled ?? maintenance
     const nextNotice = patch.maintenance_notice_enabled ?? noticeEnabled
     const nextWhen = patch.scheduledFor ?? scheduledFor
+    const nextUntil = patch.scheduledUntil ?? scheduledUntil
     if (nextNotice && !isLaterDay(nextWhen)) {
-      setError('Choose a start time on a later day. The banner cannot be set for today.')
+      setError('Choose a start on a later day, and include the time. It cannot be today.')
+      return
+    }
+    if (nextNotice && !nextUntil) {
+      setError('Choose the time maintenance ends.')
+      return
+    }
+    if (nextNotice && new Date(nextUntil) <= new Date(nextWhen)) {
+      setError('The end time has to be after the start.')
       return
     }
     setSaving(true)
@@ -112,14 +124,18 @@ export default function SystemManagement() {
         maintenance_message: message,
         maintenance_notice_enabled: nextNotice,
         maintenance_scheduled_for: nextWhen ? new Date(nextWhen).toISOString() : null,
+        maintenance_scheduled_until: nextUntil ? new Date(nextUntil).toISOString() : null,
       })
       setMaintenance(nextEnabled)
       setNoticeEnabled(nextNotice)
       await loadBrandTheme()
+      const windowLabel = nextWhen && nextUntil
+        ? `from ${new Date(nextWhen).toLocaleString()} until ${new Date(nextUntil).toLocaleString()}`
+        : ''
       setNotice(nextEnabled
         ? 'Maintenance mode is on. Other roles are paused.'
         : nextNotice
-          ? 'The coming-soon banner is on.'
+          ? `The banner is on. Maintenance runs ${windowLabel}.`
           : 'Maintenance settings saved.')
       load()
     } catch (err) {
@@ -151,8 +167,8 @@ export default function SystemManagement() {
         subtitle="Database storage, server disk, and which part of the stack is slow"
       />
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && <Alert severity="success" sx={{ mb: 2 }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity="success" />
 
       <LlmHealthPanel />
 
@@ -376,18 +392,48 @@ export default function SystemManagement() {
                   label="Show a banner that maintenance is coming"
                 />
                 <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 12px' }}>
-                  Faculty and admins see the banner before the pause. Pick a time on a later day — it cannot be today.
+                  Faculty and admins see the banner before the pause. Set the day and time it starts, and the time it ends. The start cannot be today.
                 </p>
-                <TextField
-                  label="Starts"
-                  type="datetime-local"
-                  value={scheduledFor}
-                  onChange={event => setScheduledFor(event.target.value)}
-                  fullWidth
-                  size="small"
-                  inputProps={{ min: tomorrowStartValue() }}
-                  InputLabelProps={{ shrink: true }}
-                />
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Starts</div>
+                    <TextField
+                      type="datetime-local"
+                      value={scheduledFor}
+                      onChange={event => {
+                        const next = event.target.value
+                        if (next && !isLaterDay(next)) {
+                          setError('Choose a later day. Today and earlier dates are not available.')
+                          return
+                        }
+                        setScheduledFor(next)
+                      }}
+                      fullWidth
+                      size="small"
+                      hiddenLabel
+                      inputProps={{ min: tomorrowStartValue(), 'aria-label': 'Maintenance starts' }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Until</div>
+                    <TextField
+                      type="datetime-local"
+                      value={scheduledUntil}
+                      onChange={event => {
+                        const next = event.target.value
+                        if (next && !isLaterDay(next)) {
+                          setError('Choose a later day. Today and earlier dates are not available.')
+                          return
+                        }
+                        setScheduledUntil(next)
+                      }}
+                      fullWidth
+                      size="small"
+                      hiddenLabel
+                      inputProps={{ min: (scheduledFor && isLaterDay(scheduledFor) ? scheduledFor : tomorrowStartValue()), 'aria-label': 'Maintenance ends' }}
+                    />
+                  </div>
+                </div>
               </div>
               <div style={{ marginTop: 14 }}>
                 <PrimaryBtn disabled={saving} onClick={() => saveMaintenance()}>

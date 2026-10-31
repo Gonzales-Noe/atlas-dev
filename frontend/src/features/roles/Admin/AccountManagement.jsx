@@ -7,9 +7,10 @@ import { useEffect, useState } from 'react'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
-  TextField, Divider, Stack, IconButton, Menu, MenuItem, Alert, FormControlLabel, Switch,
+  TextField, Divider, Stack, IconButton, Menu, MenuItem, FormControlLabel, Switch,
   InputLabel, Select, FormControl, CircularProgress, Button, Box, Tooltip,
 } from '@mui/material'
+import { StatusNotice } from '../../../components/StatusNotice'
 import EditIcon from '@mui/icons-material/Edit'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
@@ -779,10 +780,10 @@ export default function AdminAccountManagement() {
       </div>
 
       {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>
+        <StatusNotice message={error} severity="error" />
       )}
       {notice && (
-        <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>
+        <StatusNotice message={notice} severity="success" />
       )}
 
       {/* Stats */}
@@ -1029,7 +1030,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
-            {modalError && editDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
+            {editDialog && <StatusNotice message={modalError} severity="error" />}
             <TextField label="Full Name" value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })} fullWidth size="small" sx={inputSx} />
             <TextField label="Email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} fullWidth size="small" type="email" sx={inputSx} />
             <TextField select label="Status" value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
@@ -1043,7 +1044,7 @@ export default function AdminAccountManagement() {
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-tertiary)', letterSpacing: '0.08em', marginBottom: 10 }}>
                 ASSIGNED COURSES ({facultyAssignments.length})
               </div>
-              {modalSuccess && <Alert severity="success" onClose={() => setModalSuccess('')} sx={{ mb: 1.5 }}>{modalSuccess}</Alert>}
+              <StatusNotice message={modalSuccess} severity="success" />
               {facultyAssignments.length === 0 ? (
                 <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
                   No courses assigned yet. Use “Assign Course” from the account menu to add one.
@@ -1194,7 +1195,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ py: 2, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={1.75}>
-            {modalError && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
+            <StatusNotice message={modalError} severity="error" />
             {createForms.map((form, formIndex) => (
               <Box key={formIndex} sx={{ border: '1px solid var(--border-color)', borderRadius: '14px', p: 2, bgcolor: 'var(--bg-header)' }}>
                 <Stack direction="row" alignItems="center" sx={{ mb: 1.5, justifyContent: 'space-between' }}>
@@ -1392,7 +1393,7 @@ export default function AdminAccountManagement() {
         <Divider sx={{ borderColor: 'var(--border-color)' }} />
         <DialogContent sx={{ pt: 3, bgcolor: 'var(--bg-card)' }}>
           <Stack spacing={2.2}>
-            {modalError && assignmentDialog && <Alert severity="error" onClose={() => setModalError('')}>{modalError}</Alert>}
+            {assignmentDialog && <StatusNotice message={modalError} severity="error" />}
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
               Assigning access for <strong style={{ color: 'var(--text-primary)' }}>{selectedFaculty?.email}</strong>
             </div>
@@ -1553,11 +1554,7 @@ export default function AdminAccountManagement() {
                 accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 onChange={e => { importSyllabusTemplate(e.target.files?.[0]); e.target.value = '' }} />
             </div>
-            {templateImport.message && (
-              <Alert severity={templateImport.severity} onClose={templateImport.busy ? undefined : () => setTemplateImport(current => ({ ...current, message: '' }))}>
-                {templateImport.message}
-              </Alert>
-            )}
+            <StatusNotice message={templateImport.message} severity={templateImport.severity || 'info'} />
             {(customization.syllabus_sections || []).map((section, index) => (
               <Stack key={`${section.key}-${index}`} spacing={1}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr auto', gap: 8 }}>

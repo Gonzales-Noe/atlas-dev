@@ -4,6 +4,7 @@ import {
   Box, Button, Card, CardContent, CardHeader, Grid, Stack, TextField, Typography, Alert, Divider, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from '@mui/material'
 import ViewModuleIcon from '@mui/icons-material/ViewModule'
+import { StatusNotice } from '../../../components/StatusNotice'
 import FacultyLayout from './FacultyLayout'
 
 function loadCourse() { try { return JSON.parse(localStorage.getItem('atlas_faculty_course')) || null } catch { return null } }
@@ -57,7 +58,7 @@ export default function FacultyModule() {
           </Alert>
         )}
 
-        {success && <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>{success}</Alert>}
+        <StatusNotice message={success} severity="success" />
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>

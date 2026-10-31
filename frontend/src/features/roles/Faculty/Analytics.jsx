@@ -4,12 +4,13 @@ import {
   Box, Typography, Card, CardContent, CardHeader, Grid,
   Select, MenuItem, FormControl, InputLabel, Table,
   TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip, CircularProgress, Alert, LinearProgress,
+  Paper, Chip, CircularProgress, LinearProgress,
 } from '@mui/material'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   CartesianGrid, Cell,
 } from 'recharts'
+import { StatusNotice } from '../../../components/StatusNotice'
 import FacultyLayout from './FacultyLayout'
 import api from '../../../config/api'
 
@@ -175,7 +176,7 @@ export default function FacultyAnalytics() {
           </Grid>
         </Grid>
 
-        {error && <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>{error}</Alert>}
+        <StatusNotice message={error} severity="error" />
 
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

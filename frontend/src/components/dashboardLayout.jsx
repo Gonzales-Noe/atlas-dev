@@ -9,6 +9,7 @@ import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
 import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
+import { MaintenanceBanner, MaintenanceBell } from './MaintenanceNotice'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
@@ -197,7 +198,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
       <aside style={{
         position: 'fixed',
         left: isMobile ? (mobileOpen ? 0 : -280) : 0,
-        top: 0,
+        top: 'var(--atlas-titlebar-h, 0px)',
         bottom: 0,
         width: isMobile ? 260 : sidebarW,
         zIndex: 999,
@@ -289,7 +290,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
       {/* ── TOPBAR ───────────────────────────────────────────────────────── */}
       <header style={{
         position: 'fixed',
-        top: 0,
+        top: 'var(--atlas-titlebar-h, 0px)',
         left: isMobile ? 0 : sidebarW,
         right: 0,
         height: 60,
@@ -321,14 +322,15 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         )}
 
         <div style={{ flex: 1 }} />
+        <MaintenanceBell />
 
       </header>
 
       {/* ── MAIN CONTENT ─────────────────────────────────────────────────── */}
       <main style={{
         marginLeft: isMobile ? 0 : sidebarW,
-        marginTop: 60,
-        minHeight: 'calc(100vh - 60px)',
+        marginTop: 'calc(60px + var(--atlas-titlebar-h, 0px))',
+        minHeight: 'calc(100vh - 60px - var(--atlas-titlebar-h, 0px))',
         width: isMobile ? '100%' : `calc(100% - ${sidebarW}px)`,
         padding: '28px 28px',
         transition: 'margin-left 280ms cubic-bezier(0.4,0,0.2,1), width 280ms cubic-bezier(0.4,0,0.2,1)',
@@ -338,6 +340,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         overflowX: 'hidden',
       }}>
         <div className="page-enter" style={{ minHeight: '100%' }}>
+          <MaintenanceBanner />
           {children}
         </div>
       </main>

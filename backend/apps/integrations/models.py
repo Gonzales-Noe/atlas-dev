@@ -548,6 +548,9 @@ class PlatformSettings(models.Model):
     )
     maintenance_notice_enabled = models.BooleanField(default=False)
     maintenance_scheduled_for = models.DateTimeField(null=True, blank=True)
+    maintenance_scheduled_until = models.DateTimeField(null=True, blank=True)
+    maintenance_schedule_started = models.BooleanField(default=False)
+    maintenance_opened_by_schedule = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -556,6 +559,20 @@ class PlatformSettings(models.Model):
     def save(self, *args, **kwargs):
         self.settings_id = 1
         super().save(*args, **kwargs)
+
+
+class MaintenanceUpdate(models.Model):
+    """A recorded maintenance change: what happened, and when it starts and ends."""
+
+    update_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    summary = models.CharField(max_length=300)
+    started_at = models.DateTimeField(null=True, blank=True)
+    ended_at = models.DateTimeField(null=True, blank=True)
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'maintenance_updates'
+        ordering = ['-recorded_at']
 
 
 class SystemMetricSample(models.Model):

@@ -5,6 +5,7 @@ import {
 } from '@mui/material'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import { StatusNotice } from '../../../components/StatusNotice'
 import FacultyLayout from './FacultyLayout'
 import api from '../../../config/api'
 
@@ -155,9 +156,7 @@ export default function FacultySyllabus() {
         )}
 
         {successMessage && (
-          <Alert severity="success" sx={{ mb: 3, borderRadius: 2 }}>
-            {successMessage}
-          </Alert>
+          <StatusNotice message={successMessage} severity="success" />
         )}
 
         <Grid container spacing={3}>

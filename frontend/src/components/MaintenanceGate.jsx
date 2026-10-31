@@ -1,24 +1,15 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../store/authStore'
 import { loadBrandTheme } from '../utils/brandTheme'
+import { MaintenanceNoticeProvider } from './MaintenanceNotice'
 import atlasMaintenance from '../assets/atlas-maintenance.png'
 
-function whenLabel(iso) {
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString([], {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
 function noticeIsUpcoming(theme) {
-  if (!theme?.maintenance_notice_enabled || !theme?.maintenance_scheduled_for) return false
-  const when = new Date(theme.maintenance_scheduled_for)
-  return !Number.isNaN(when.getTime()) && when.getTime() > Date.now()
+  if (!theme?.maintenance_notice_enabled || !theme?.maintenance_scheduled_for || !theme?.maintenance_scheduled_until) return false
+  const start = new Date(theme.maintenance_scheduled_for)
+  const end = new Date(theme.maintenance_scheduled_until)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
+  return end.getTime() > Date.now() && end.getTime() > start.getTime()
 }
 
 function MaintenanceScreen({ message, onSignOut }) {
@@ -66,33 +57,6 @@ function MaintenanceScreen({ message, onSignOut }) {
   )
 }
 
-function UpcomingBanner({ when }) {
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 14,
-      padding: '10px 18px',
-      background: '#fff',
-      color: '#1A1A1A',
-      borderBottom: '1px solid rgba(170, 36, 35, 0.25)',
-    }}>
-      <img
-        src={atlasMaintenance}
-        alt=""
-        style={{ width: 56, height: 72, objectFit: 'contain', imageRendering: 'pixelated', flexShrink: 0 }}
-      />
-      <div style={{ textAlign: 'left' }}>
-        <div style={{ fontWeight: 800, fontSize: '0.84rem' }}>Maintenance is scheduled</div>
-        <div style={{ fontSize: '0.8rem', color: 'rgba(0,0,0,0.62)', lineHeight: 1.4 }}>
-          ATLAS will pause for faculty and admins on {whenLabel(when)}. Save your work before then.
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function MaintenanceGate({ children }) {
   const { user, isLoading, logout } = useAuth()
   const [theme, setTheme] = useState(null)
@@ -119,9 +83,13 @@ export default function MaintenanceGate({ children }) {
     return <MaintenanceScreen message={theme.maintenance_message} onSignOut={logout} />
   }
 
+  const notice = upcoming
+    ? { start: theme.maintenance_scheduled_for, end: theme.maintenance_scheduled_until }
+    : null
+
   return (
-    <>
-      {maintenance && (
+    <MaintenanceNoticeProvider notice={notice}>
+      {maintenance && user?.role === 'superadmin' && (
         <div style={{
           background: 'var(--brand-primary, #AA2423)',
           color: '#fff',
@@ -130,14 +98,10 @@ export default function MaintenanceGate({ children }) {
           fontWeight: 700,
           padding: '8px 16px',
         }}>
-          Maintenance mode is on.
-          {user?.role === 'superadmin'
-            ? ' Other roles are paused until you turn it off in System Health.'
-            : ' The IT team can still sign in.'}
+          Maintenance mode is on. Other roles are paused until you turn it off in System Health.
         </div>
       )}
-      {upcoming && <UpcomingBanner when={theme.maintenance_scheduled_for} />}
       {children}
-    </>
+    </MaintenanceNoticeProvider>
   )
 }

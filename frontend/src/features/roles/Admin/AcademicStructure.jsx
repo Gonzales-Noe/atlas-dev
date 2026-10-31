@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
-  Alert, IconButton, MenuItem, Tab, Tabs,
+  IconButton, MenuItem, Tab, Tabs,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -8,6 +8,7 @@ import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
 import EditIcon from '@mui/icons-material/Edit'
 import RefreshIcon from '@mui/icons-material/Refresh'
 
+import { StatusNotice } from '../../../components/StatusNotice'
 import AdminLayout from './AdminLayout'
 import {
   COURSE_CATEGORIES, SECTION_YEARS, createCourse, createSection, deleteCourse, deleteSection,
@@ -225,8 +226,8 @@ export default function AdminAcademicStructure() {
         action={<OutlineBtn onClick={load} disabled={loading}><RefreshIcon fontSize="small" /> Refresh</OutlineBtn>}
       />
 
-      {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity="success" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard title="Sections" value={loading ? '—' : structure.sections.length} icon={<Puzzle size={18} color="#C4A000" />} accent="#FFD60A" />

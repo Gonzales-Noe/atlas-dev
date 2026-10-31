@@ -9,8 +9,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, Divider, Stack, LinearProgress, Alert, IconButton, TablePagination,
+  TextField, Divider, Stack, LinearProgress, IconButton, TablePagination,
 } from '@mui/material'
+import { StatusNotice } from '../../../components/StatusNotice'
 import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
@@ -276,8 +277,8 @@ export default function AdminKnowledgeBase() {
         action={<PrimaryBtn onClick={() => setCreateOpen(true)}><AddIcon fontSize="small" /> Upload File</PrimaryBtn>}
       />
 
-      {error && <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>{error}</Alert>}
-      {notice && <Alert severity="success" onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice}</Alert>}
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={notice} severity="success" />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px)', gap: 14, marginBottom: 20 }}>
         <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon={<BookOpen size={18} color="#E24B4A" />} accent="#E24B4A" />
@@ -362,7 +363,7 @@ export default function AdminKnowledgeBase() {
                 )}
               </div>
               {selected.status === 'FAILED' ? (
-                <Alert severity="error">{selected.error_message || 'Indexing failed.'} Upload the file again to retry.</Alert>
+                <StatusNotice message={`${selected.error_message || 'Indexing failed.'} Upload the file again to retry.`} severity="error" />
               ) : (
                 <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
                   {selected.description || (selected.status === 'PROCESSING'
