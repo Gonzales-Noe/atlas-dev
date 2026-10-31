@@ -200,3 +200,51 @@ class PlatformOpsTests(TestCase):
         self.assertTrue(theme.data['maintenance_enabled'])
         from apps.integrations.models import MaintenanceUpdate
         self.assertTrue(MaintenanceUpdate.objects.filter(summary__startswith='Maintenance started').exists())
+
+    def test_maintenance_schedules_can_be_added_and_removed(self):
+        today = timezone.localtime().replace(hour=18, minute=0, second=0, microsecond=0)
+        denied = self.client.post(
+            '/api/auth/maintenance-schedules/',
+            {'starts_at': today.isoformat(), 'ends_at': (today + timedelta(hours=1)).isoformat()},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(denied.status_code, 400)
+
+        later = timezone.now() + timedelta(days=2)
+        first = self.client.post(
+            '/api/auth/maintenance-schedules/',
+            {
+                'starts_at': later.isoformat(),
+                'ends_at': (later + timedelta(hours=2)).isoformat(),
+            },
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(len(first.data['schedules']), 1)
+
+        second_start = later + timedelta(days=1)
+        second = self.client.post(
+            '/api/auth/maintenance-schedules/',
+            {
+                'starts_at': second_start.isoformat(),
+                'ends_at': (second_start + timedelta(hours=1)).isoformat(),
+            },
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(len(second.data['schedules']), 2)
+
+        public = self.client.get('/api/auth/platform-theme/')
+        self.assertTrue(public.data['maintenance_notice_enabled'])
+        self.assertTrue(public.data['maintenance_scheduled_for'])
+
+        schedule_id = first.data['schedules'][0]['id']
+        removed = self.client.delete(
+            f'/api/auth/maintenance-schedules/{schedule_id}/',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(removed.status_code, 200)
+        self.assertEqual(len(removed.data['schedules']), 1)

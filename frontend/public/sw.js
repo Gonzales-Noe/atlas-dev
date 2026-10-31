@@ -1,5 +1,5 @@
 /* ATLAS web service worker — enables installability + light offline shell. */
-const CACHE_NAME = 'atlas-web-v6'
+const CACHE_NAME = 'atlas-web-v7'
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',

@@ -561,6 +561,19 @@ class PlatformSettings(models.Model):
         super().save(*args, **kwargs)
 
 
+class MaintenanceSchedule(models.Model):
+    """A future maintenance window. Several can be saved at once."""
+
+    schedule_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    starts_at = models.DateTimeField()
+    ends_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'maintenance_schedules'
+        ordering = ['starts_at']
+
+
 class MaintenanceUpdate(models.Model):
     """A recorded maintenance change: what happened, and when it starts and ends."""
 

@@ -11,7 +11,7 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.integrations.models import AuditLog, MaintenanceUpdate, PlatformSettings
+from apps.integrations.models import AuditLog, MaintenanceSchedule, MaintenanceUpdate, PlatformSettings
 from apps.users.brand import (
     DEFAULT_MAINTENANCE_MESSAGE,
     cached_maintenance,
@@ -76,28 +76,82 @@ def record_maintenance_update(summary, started_at=None, ended_at=None):
     )
 
 
-def apply_scheduled_maintenance(row):
-    """Turn maintenance on at the saved start, and off when that window ends."""
-    if row is None:
+def _schedule_rows():
+    return MaintenanceSchedule.objects.order_by('starts_at', 'created_at')
+
+
+def schedules_payload(now=None):
+    now = now or timezone.now()
+    rows = _schedule_rows().filter(ends_at__gt=now)
+    return [
+        {
+            'id': str(row.schedule_id),
+            'starts_at': row.starts_at.isoformat(),
+            'ends_at': row.ends_at.isoformat(),
+        }
+        for row in rows
+    ]
+
+
+def _mirror_next_window(row, now):
+    """Point the public banner at the soonest window that has not ended."""
+    if not MaintenanceSchedule.objects.exists():
         return False
-    start = getattr(row, 'maintenance_scheduled_for', None)
-    end = getattr(row, 'maintenance_scheduled_until', None)
-    if not start or not end:
+    upcoming = _schedule_rows().filter(ends_at__gt=now).first()
+    notice = upcoming is not None
+    start = upcoming.starts_at if upcoming else None
+    end = upcoming.ends_at if upcoming else None
+    changed = (
+        bool(getattr(row, 'maintenance_notice_enabled', False)) != notice
+        or getattr(row, 'maintenance_scheduled_for', None) != start
+        or getattr(row, 'maintenance_scheduled_until', None) != end
+    )
+    row.maintenance_notice_enabled = notice
+    row.maintenance_scheduled_for = start
+    row.maintenance_scheduled_until = end
+    return changed
+
+
+def apply_scheduled_maintenance(row):
+    """Turn maintenance on when a saved window starts, and off when none are still open."""
+    if row is None:
         return False
     now = timezone.now()
     changed = False
-    if start <= now < end and not getattr(row, 'maintenance_schedule_started', False):
-        row.maintenance_enabled = True
-        row.maintenance_schedule_started = True
-        row.maintenance_opened_by_schedule = True
-        changed = True
-        record_maintenance_update('Maintenance started automatically.', start, end)
-    elif now >= end and getattr(row, 'maintenance_opened_by_schedule', False):
-        row.maintenance_enabled = False
-        row.maintenance_opened_by_schedule = False
-        row.maintenance_notice_enabled = False
-        changed = True
-        record_maintenance_update('Maintenance ended automatically.', start, now)
+    if MaintenanceSchedule.objects.exists():
+        changed = _mirror_next_window(row, now)
+        active = _schedule_rows().filter(starts_at__lte=now, ends_at__gt=now).first()
+        if active is not None and not getattr(row, 'maintenance_schedule_started', False):
+            row.maintenance_enabled = True
+            row.maintenance_schedule_started = True
+            row.maintenance_opened_by_schedule = True
+            changed = True
+            record_maintenance_update('Maintenance started automatically.', active.starts_at, active.ends_at)
+        elif active is None and getattr(row, 'maintenance_opened_by_schedule', False):
+            row.maintenance_enabled = False
+            row.maintenance_opened_by_schedule = False
+            row.maintenance_schedule_started = False
+            changed = True
+            record_maintenance_update('Maintenance ended automatically.', None, now)
+        elif active is None and getattr(row, 'maintenance_schedule_started', False):
+            row.maintenance_schedule_started = False
+            changed = True
+    else:
+        start = getattr(row, 'maintenance_scheduled_for', None)
+        end = getattr(row, 'maintenance_scheduled_until', None)
+        if start and end and start <= now < end and not getattr(row, 'maintenance_schedule_started', False):
+            row.maintenance_enabled = True
+            row.maintenance_schedule_started = True
+            row.maintenance_opened_by_schedule = True
+            changed = True
+            record_maintenance_update('Maintenance started automatically.', start, end)
+        elif start and end and now >= end and getattr(row, 'maintenance_opened_by_schedule', False):
+            row.maintenance_enabled = False
+            row.maintenance_opened_by_schedule = False
+            row.maintenance_notice_enabled = False
+            row.maintenance_schedule_started = False
+            changed = True
+            record_maintenance_update('Maintenance ended automatically.', start, now)
     if changed:
         row.save()
         cache.delete('platform:maintenance')
@@ -277,14 +331,107 @@ class SystemHealthView(APIView):
         if not _is_superadmin(request):
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         payload = collect_snapshot(measure_cpu=True)
-        theme = theme_payload(_settings_row())
+        settings_row = _settings_row()
+        apply_scheduled_maintenance(settings_row)
+        theme = theme_payload(settings_row)
         payload['maintenance_enabled'] = theme['maintenance_enabled']
         payload['maintenance_message'] = theme['maintenance_message']
         payload['maintenance_notice_enabled'] = theme['maintenance_notice_enabled']
         payload['maintenance_scheduled_for'] = theme['maintenance_scheduled_for']
         payload['maintenance_scheduled_until'] = theme['maintenance_scheduled_until']
+        payload['maintenance_schedules'] = schedules_payload()
         payload['activity'] = activity_by_day(14)
         return Response(payload)
+
+
+class MaintenanceScheduleView(APIView):
+    """Save more than one future maintenance window, or remove one."""
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        if not _is_superadmin(request):
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            start = parse_scheduled_start(request.data.get('starts_at'))
+            end = parse_scheduled_until(request.data.get('ends_at'), start)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        if start is None or end is None:
+            return Response(
+                {'detail': 'Choose a start and an end on a later day.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if start <= timezone.now() or end <= timezone.now():
+            return Response(
+                {'detail': 'Choose a future date and time.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        MaintenanceSchedule.objects.create(starts_at=start, ends_at=end)
+        row = _settings_row() or PlatformSettings(settings_id=1)
+        _mirror_next_window(row, timezone.now())
+        try:
+            row.save()
+        except Exception:
+            logger.exception('Maintenance schedule could not be saved')
+            return Response(
+                {'detail': 'The schedule could not be saved. Apply the latest database migration and try again.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        cache.delete('platform:maintenance')
+        remember_maintenance(theme_payload(row))
+        record_maintenance_update('Scheduled a maintenance window.', start, end)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type='maintenance_scheduled',
+            resource_type='Platform',
+            details={
+                'maintenance_scheduled_for': start.isoformat(),
+                'maintenance_scheduled_until': end.isoformat(),
+            },
+        )
+        return Response({'schedules': schedules_payload()}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, schedule_id=None):
+        if not _is_superadmin(request):
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+        row_schedule = MaintenanceSchedule.objects.filter(schedule_id=schedule_id).first()
+        if row_schedule is None:
+            return Response({'detail': 'That schedule was not found.'}, status=status.HTTP_404_NOT_FOUND)
+        start = row_schedule.starts_at
+        end = row_schedule.ends_at
+        row_schedule.delete()
+        row = _settings_row() or PlatformSettings(settings_id=1)
+        now = timezone.now()
+        _mirror_next_window(row, now)
+        still_active = _schedule_rows().filter(starts_at__lte=now, ends_at__gt=now).exists()
+        if not still_active and getattr(row, 'maintenance_opened_by_schedule', False):
+            row.maintenance_enabled = False
+            row.maintenance_opened_by_schedule = False
+            row.maintenance_schedule_started = False
+        elif not still_active:
+            row.maintenance_schedule_started = False
+        try:
+            row.save()
+        except Exception:
+            logger.exception('Maintenance schedule could not be removed')
+            return Response(
+                {'detail': 'The schedule could not be removed.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        cache.delete('platform:maintenance')
+        remember_maintenance(theme_payload(row))
+        record_maintenance_update('Removed a scheduled maintenance window.', start, end)
+        AuditLog.objects.create(
+            user=request.user,
+            action_type='maintenance_schedule_removed',
+            resource_type='Platform',
+            details={
+                'maintenance_scheduled_for': start.isoformat(),
+                'maintenance_scheduled_until': end.isoformat(),
+            },
+        )
+        return Response({'schedules': schedules_payload()})
 
 
 class PlatformAuditView(APIView):

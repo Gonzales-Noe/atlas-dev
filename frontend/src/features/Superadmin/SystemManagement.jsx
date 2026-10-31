@@ -1,14 +1,19 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Switch, FormControlLabel, TextField } from '@mui/material'
+import { Switch, FormControlLabel, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material'
 import { StatusNotice } from '../../components/StatusNotice'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import atlasMaintenance from '../../assets/atlas-maintenance.png'
 import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
 import SuperAdminLayout from './SuperAdminLayout'
-import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn } from '../../components/ui'
+import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api from '../../config/api'
 import { cssColor, loadBrandTheme } from '../../utils/brandTheme'
 import LlmHealthPanel from './LlmHealthPanel'
+
+const scheduleFieldSx = {
+  '& .MuiInputBase-root.Mui-disabled': { background: '#F3F4F6' },
+  '& .MuiInputBase-input.Mui-disabled': { WebkitTextFillColor: '#9CA3AF' },
+}
 
 const tooltipStyle = {
   background: 'var(--shell-menu-bg, #16161E)',
@@ -31,13 +36,6 @@ function pad(value) {
   return String(value).padStart(2, '0')
 }
 
-function toLocalInput(iso) {
-  if (!iso) return ''
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
 function tomorrowStartValue() {
   const date = new Date()
   date.setDate(date.getDate() + 1)
@@ -45,15 +43,29 @@ function tomorrowStartValue() {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T00:00`
 }
 
-function isLaterDay(value) {
-  if (!value) return false
-  const chosen = new Date(value)
-  if (Number.isNaN(chosen.getTime())) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const day = new Date(chosen)
-  day.setHours(0, 0, 0, 0)
-  return day.getTime() > today.getTime()
+function fromDate(date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function oneMinuteAfter(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return tomorrowStartValue()
+  date.setMinutes(date.getMinutes() + 1)
+  const next = fromDate(date)
+  const floor = tomorrowStartValue()
+  return next > floor ? next : floor
+}
+
+function formatWhen(iso) {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ''
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
 }
 
 function clockLabel(iso) {
@@ -69,9 +81,11 @@ export default function SystemManagement() {
   const [loading, setLoading] = useState(true)
   const [maintenance, setMaintenance] = useState(false)
   const [message, setMessage] = useState('')
-  const [noticeEnabled, setNoticeEnabled] = useState(false)
-  const [scheduledFor, setScheduledFor] = useState('')
-  const [scheduledUntil, setScheduledUntil] = useState('')
+  const [scheduling, setScheduling] = useState(false)
+  const [starts, setStarts] = useState('')
+  const [until, setUntil] = useState('')
+  const [schedules, setSchedules] = useState([])
+  const [pendingDelete, setPendingDelete] = useState(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
 
@@ -82,9 +96,7 @@ export default function SystemManagement() {
         setError('')
         setMaintenance(Boolean(data.maintenance_enabled))
         setMessage(data.maintenance_message || '')
-        setNoticeEnabled(Boolean(data.maintenance_notice_enabled))
-        setScheduledFor(toLocalInput(data.maintenance_scheduled_for))
-        setScheduledUntil(toLocalInput(data.maintenance_scheduled_until))
+        setSchedules(Array.isArray(data.maintenance_schedules) ? data.maintenance_schedules : [])
       })
       .catch(err => {
         setError(err.response?.data?.detail || 'System health could not be loaded.')
@@ -100,21 +112,7 @@ export default function SystemManagement() {
 
   async function saveMaintenance(patch = {}) {
     const nextEnabled = patch.maintenance_enabled ?? maintenance
-    const nextNotice = patch.maintenance_notice_enabled ?? noticeEnabled
-    const nextWhen = patch.scheduledFor ?? scheduledFor
-    const nextUntil = patch.scheduledUntil ?? scheduledUntil
-    if (nextNotice && !isLaterDay(nextWhen)) {
-      setError('Choose a start on a later day, and include the time. It cannot be today.')
-      return
-    }
-    if (nextNotice && !nextUntil) {
-      setError('Choose the time maintenance ends.')
-      return
-    }
-    if (nextNotice && new Date(nextUntil) <= new Date(nextWhen)) {
-      setError('The end time has to be after the start.')
-      return
-    }
+    const announce = Object.prototype.hasOwnProperty.call(patch, 'maintenance_enabled')
     setSaving(true)
     setNotice('')
     setError('')
@@ -122,24 +120,73 @@ export default function SystemManagement() {
       await api.patch('/auth/platform-theme/', {
         maintenance_enabled: nextEnabled,
         maintenance_message: message,
-        maintenance_notice_enabled: nextNotice,
-        maintenance_scheduled_for: nextWhen ? new Date(nextWhen).toISOString() : null,
-        maintenance_scheduled_until: nextUntil ? new Date(nextUntil).toISOString() : null,
       })
       setMaintenance(nextEnabled)
-      setNoticeEnabled(nextNotice)
       await loadBrandTheme()
-      const windowLabel = nextWhen && nextUntil
-        ? `from ${new Date(nextWhen).toLocaleString()} until ${new Date(nextUntil).toLocaleString()}`
-        : ''
-      setNotice(nextEnabled
-        ? 'Maintenance mode is on. Other roles are paused.'
-        : nextNotice
-          ? `The banner is on. Maintenance runs ${windowLabel}.`
-          : 'Maintenance settings saved.')
+      if (announce) {
+        setNotice(nextEnabled
+          ? 'Maintenance mode is on. Other roles are paused.'
+          : 'Maintenance mode is off.')
+      }
       load()
     } catch (err) {
       setError(err.response?.data?.detail || 'Maintenance mode could not be updated.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function acceptStart(value) {
+    if (value && value < tomorrowStartValue()) return
+    setStarts(value)
+    if (until && value && until <= value) setUntil('')
+  }
+
+  function acceptUntil(value) {
+    const floor = starts ? oneMinuteAfter(starts) : tomorrowStartValue()
+    if (value && value < floor) return
+    setUntil(value)
+  }
+
+  async function saveSchedule() {
+    const floor = tomorrowStartValue()
+    if (!scheduling || !starts || !until || starts < floor || until <= starts) return
+    setSaving(true)
+    setNotice('')
+    setError('')
+    try {
+      const { data } = await api.post('/auth/maintenance-schedules/', {
+        starts_at: new Date(starts).toISOString(),
+        ends_at: new Date(until).toISOString(),
+      })
+      setSchedules(Array.isArray(data.schedules) ? data.schedules : [])
+      setStarts('')
+      setUntil('')
+      setScheduling(false)
+      await loadBrandTheme()
+      setNotice('The maintenance window was saved.')
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'The schedule could not be saved.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function deleteSchedule() {
+    if (!pendingDelete?.id) return
+    setSaving(true)
+    setNotice('')
+    setError('')
+    try {
+      const { data } = await api.delete(`/auth/maintenance-schedules/${pendingDelete.id}/`)
+      setSchedules(Array.isArray(data.schedules) ? data.schedules : [])
+      setPendingDelete(null)
+      await loadBrandTheme()
+      setNotice('The maintenance schedule was deleted.')
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'The schedule could not be deleted.')
     } finally {
       setSaving(false)
     }
@@ -375,6 +422,9 @@ export default function SystemManagement() {
                 label="Message shown during maintenance"
                 value={message}
                 onChange={event => setMessage(event.target.value)}
+                onBlur={() => {
+                  if ((health?.maintenance_message || '') !== message) saveMaintenance()
+                }}
                 fullWidth
                 multiline
                 minRows={3}
@@ -387,63 +437,125 @@ export default function SystemManagement() {
                 label={maintenance ? 'Maintenance is on' : 'Maintenance is off'}
               />
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--border-color)' }}>
-                <FormControlLabel
-                  control={<Switch checked={noticeEnabled} disabled={saving} onChange={event => setNoticeEnabled(event.target.checked)} />}
-                  label="Show a banner that maintenance is coming"
-                />
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 12px' }}>
-                  Faculty and admins see the banner before the pause. Set the day and time it starts, and the time it ends. The start cannot be today.
-                </p>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Starts</div>
-                    <TextField
-                      type="datetime-local"
-                      value={scheduledFor}
-                      onChange={event => {
-                        const next = event.target.value
-                        if (next && !isLaterDay(next)) {
-                          setError('Choose a later day. Today and earlier dates are not available.')
-                          return
-                        }
-                        setScheduledFor(next)
-                      }}
-                      fullWidth
-                      size="small"
-                      hiddenLabel
-                      inputProps={{ min: tomorrowStartValue(), 'aria-label': 'Maintenance starts' }}
-                    />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 6 }}>Until</div>
-                    <TextField
-                      type="datetime-local"
-                      value={scheduledUntil}
-                      onChange={event => {
-                        const next = event.target.value
-                        if (next && !isLaterDay(next)) {
-                          setError('Choose a later day. Today and earlier dates are not available.')
-                          return
-                        }
-                        setScheduledUntil(next)
-                      }}
-                      fullWidth
-                      size="small"
-                      hiddenLabel
-                      inputProps={{ min: (scheduledFor && isLaterDay(scheduledFor) ? scheduledFor : tomorrowStartValue()), 'aria-label': 'Maintenance ends' }}
-                    />
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.95rem' }}>Schedule Maintenance</span>
+                  <Switch
+                    checked={scheduling}
+                    disabled={saving}
+                    onChange={event => {
+                      const on = event.target.checked
+                      setScheduling(on)
+                      if (!on) {
+                        setStarts('')
+                        setUntil('')
+                      }
+                    }}
+                    inputProps={{ 'aria-label': 'Schedule maintenance' }}
+                  />
                 </div>
-              </div>
-              <div style={{ marginTop: 14 }}>
-                <PrimaryBtn disabled={saving} onClick={() => saveMaintenance()}>
-                  {saving ? 'Saving' : 'Save maintenance'}
-                </PrimaryBtn>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', margin: '4px 0 12px' }}>
+                  Faculty and admins see a banner for each saved window.
+                </p>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+                  <div style={{ flex: '1 1 200px', minWidth: 0, opacity: scheduling ? 1 : 0.55 }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: scheduling ? 'var(--text-secondary)' : '#9CA3AF', marginBottom: 6 }}>Starts</div>
+                    <TextField
+                      type="datetime-local"
+                      value={starts}
+                      onChange={event => acceptStart(event.target.value)}
+                      disabled={!scheduling}
+                      fullWidth
+                      size="small"
+                      hiddenLabel
+                      inputProps={{ min: tomorrowStartValue(), step: 60, 'aria-label': 'Maintenance starts' }}
+                      sx={scheduleFieldSx}
+                    />
+                  </div>
+                  <div style={{ flex: '1 1 200px', minWidth: 0, opacity: scheduling ? 1 : 0.55 }}>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 700, color: scheduling ? 'var(--text-secondary)' : '#9CA3AF', marginBottom: 6 }}>Until</div>
+                    <TextField
+                      type="datetime-local"
+                      value={until}
+                      onChange={event => acceptUntil(event.target.value)}
+                      disabled={!scheduling}
+                      fullWidth
+                      size="small"
+                      hiddenLabel
+                      inputProps={{
+                        min: starts ? oneMinuteAfter(starts) : tomorrowStartValue(),
+                        step: 60,
+                        'aria-label': 'Maintenance ends',
+                      }}
+                      sx={scheduleFieldSx}
+                    />
+                  </div>
+                  <PrimaryBtn
+                    disabled={!scheduling || saving || !starts || !until || until <= starts}
+                    onClick={saveSchedule}
+                    style={{ marginLeft: 'auto', height: 40 }}
+                  >
+                    {saving ? 'Saving' : 'Save'}
+                  </PrimaryBtn>
+                </div>
+                {schedules.length > 0 && (
+                  <div style={{ marginTop: 16, overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                      <thead>
+                        <tr style={{ textAlign: 'left', color: 'var(--text-secondary)' }}>
+                          <th style={{ fontWeight: 700, padding: '8px 10px', borderBottom: '1px solid var(--border-color)' }}>Starts</th>
+                          <th style={{ fontWeight: 700, padding: '8px 10px', borderBottom: '1px solid var(--border-color)' }}>Until</th>
+                          <th style={{ fontWeight: 700, padding: '8px 10px', borderBottom: '1px solid var(--border-color)', width: 90 }} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {schedules.map(row => (
+                          <tr key={row.id}>
+                            <td style={{ padding: '10px', borderBottom: '1px solid var(--border-color)' }}>{formatWhen(row.starts_at)}</td>
+                            <td style={{ padding: '10px', borderBottom: '1px solid var(--border-color)' }}>{formatWhen(row.ends_at)}</td>
+                            <td style={{ padding: '10px', borderBottom: '1px solid var(--border-color)', textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                onClick={() => setPendingDelete(row)}
+                                disabled={saving}
+                                style={{
+                                  border: 0,
+                                  background: 'transparent',
+                                  color: '#AA2423',
+                                  fontWeight: 700,
+                                  cursor: saving ? 'not-allowed' : 'pointer',
+                                  fontFamily: 'inherit',
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </GlassCard>
       </div>
+      <Dialog
+        open={Boolean(pendingDelete)}
+        onClose={() => { if (!saving) setPendingDelete(null) }}
+        PaperProps={{ sx: { borderRadius: 3, p: 0.5, maxWidth: 420 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, pb: 1 }}>Delete this schedule?</DialogTitle>
+        <DialogContent>
+          <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            This removes the window from {formatWhen(pendingDelete?.starts_at)} until {formatWhen(pendingDelete?.ends_at)}.
+          </p>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <OutlineBtn disabled={saving} onClick={() => setPendingDelete(null)}>Cancel</OutlineBtn>
+          <PrimaryBtn disabled={saving} onClick={deleteSchedule}>{saving ? 'Deleting' : 'Delete'}</PrimaryBtn>
+        </DialogActions>
+      </Dialog>
       <style>{`
         @media (max-width: 900px) {
           .atlas-health-split { grid-template-columns: 1fr !important; }
