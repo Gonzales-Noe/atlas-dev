@@ -588,6 +588,67 @@ class MaintenanceUpdate(models.Model):
         ordering = ['-recorded_at']
 
 
+class Notification(models.Model):
+    """One alert for one person: maintenance, course requests, assignments, and similar."""
+
+    notification_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    recipient = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='notifications')
+    kind = models.CharField(max_length=40)
+    title = models.CharField(max_length=180)
+    body = models.TextField(blank=True, default='')
+    href = models.CharField(max_length=300, blank=True, default='')
+    dedupe_key = models.CharField(max_length=180, blank=True, default='')
+    read_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'notifications'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', '-created_at'], name='notif_recipient_created_idx'),
+            models.Index(fields=['recipient', 'read_at'], name='notif_recipient_read_idx'),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['recipient', 'dedupe_key'],
+                condition=~models.Q(dedupe_key=''),
+                name='uniq_notification_dedupe',
+            ),
+        ]
+
+
+class PushSubscription(models.Model):
+    """A browser Web Push subscription so an alert can arrive with the tab in the background."""
+
+    subscription_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.TextField(unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    user_agent = models.CharField(max_length=300, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'push_subscriptions'
+
+
+class WebPushConfig(models.Model):
+    """VAPID keys for this deployment. Generated once and reused so subscriptions stay valid."""
+
+    config_id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    public_key = models.CharField(max_length=200)
+    private_key = models.TextField()
+    subject = models.CharField(max_length=200, default='mailto:no-reply@atlas.local')
+
+    class Meta:
+        db_table = 'web_push_config'
+
+    def save(self, *args, **kwargs):
+        self.config_id = 1
+        super().save(*args, **kwargs)
+
+
 class SystemMetricSample(models.Model):
     """A short history of host load for the superadmin health chart."""
 

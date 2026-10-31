@@ -302,6 +302,8 @@ class CourseRequestReviewView(AcademicBaseView):
             course_request.save(
                 update_fields=["status", "admin_note", "reviewed_by", "reviewed_at", "updated_at"]
             )
+            from apps.users.notify import notify_course_request_rejected
+            notify_course_request_rejected(course_request)
             return Response(_serialize_course_request(course_request))
         return self._approve(request, institution, course_request, admin_note)
 
@@ -370,6 +372,8 @@ class CourseRequestReviewView(AcademicBaseView):
             )
         except Exception:
             pass
+        from apps.users.notify import notify_course_request_approved
+        notify_course_request_approved(course_request, course)
         payload = _serialize_course_request(course_request)
         payload["course_id"] = str(course.course_id)
         return Response(payload, status=status.HTTP_201_CREATED)

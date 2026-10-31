@@ -49,6 +49,7 @@ const GET_CACHE_SKIP = [
   '/integrations/llm-health',
   '/auth/system-health',
   '/auth/platform-theme',
+  '/auth/notifications',
   '/auth/platform-audit',
   '/integrations/rag-documents',
   '/integrations/course-rag-documents',

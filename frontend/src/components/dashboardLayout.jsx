@@ -9,7 +9,8 @@ import { useAuth }     from '../store/authStore'
 import { toInitials }  from '../utils'
 import SidebarUserMenu from './SidebarUserMenu'
 import AtlasLogo from './AtlasLogo'
-import { MaintenanceBanner, MaintenanceBell } from './MaintenanceNotice'
+import { MaintenanceBanner } from './MaintenanceNotice'
+import NotificationCenter from './NotificationCenter'
 
 // ── Role config ───────────────────────────────────────────────────────────────
 const ROLE_META = {
@@ -322,7 +323,7 @@ export default function DashboardLayout({ children, navItems = [], role = 'facul
         )}
 
         <div style={{ flex: 1 }} />
-        <MaintenanceBell />
+        <NotificationCenter />
 
       </header>
 

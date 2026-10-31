@@ -155,6 +155,8 @@ _MAINTENANCE_ALLOW_PREFIXES = (
     '/api/users/me/',
     '/api/auth/platform-theme/',
     '/api/users/platform-theme/',
+    '/api/auth/notifications/',
+    '/api/users/notifications/',
 )
 
 

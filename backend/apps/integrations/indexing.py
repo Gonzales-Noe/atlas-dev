@@ -179,6 +179,8 @@ def _run_index_job(document_id, file_bytes, file_type, file_name):
         GlobalDocument.objects.filter(document_id=document_id).update(
             status=GlobalDocument.IndexStatus.FAILED, error_message=message,
         )
+        from apps.users.notify import notify_knowledge_document
+        notify_knowledge_document(document_id, ready=False)
 
     _run_job(
         index_global_document, mark_failed, file_name,
@@ -230,6 +232,9 @@ def index_global_document(document_id, file_bytes, file_type, file_name):
         document.error_message = None
         document.save(update_fields=["status", "error_message"])
 
+    from apps.users.notify import notify_knowledge_document
+    notify_knowledge_document(document_id, ready=True)
+
     logger.info(
         "[ATLAS RAG] Indexed %d parents and %d children from %s.",
         len(parents_data), len(child_records), file_name,
@@ -275,6 +280,8 @@ def resume_course_file_if_needed(course_file):
         course_file.rag_status = RagStatusEnum.FAILED
         course_file.error_message = STALE_PROCESSING_MESSAGE
         course_file.save(update_fields=["rag_status", "error_message"])
+        from apps.users.notify import notify_course_file_failed
+        notify_course_file_failed(course_file.records_id)
     return course_file
 
 
@@ -284,6 +291,8 @@ def _run_course_job(records_id, file_bytes, file_type, file_name, module_tag, te
             rag_status=RagStatusEnum.FAILED, error_message=message,
         )
         _clear_upload(records_id)
+        from apps.users.notify import notify_course_file_failed
+        notify_course_file_failed(records_id)
 
     def on_progress(done, total):
         cache.set(_lock_key(records_id), "running", timeout=_LOCK_TTL_SECONDS)
@@ -350,6 +359,9 @@ def index_course_file(records_id, file_bytes, file_type, file_name, module_tag, 
         course_file.rag_status = RagStatusEnum.COMPLETED
         course_file.error_message = None
         course_file.save(update_fields=["rag_status", "error_message"])
+
+    from apps.users.notify import notify_course_file_ready
+    notify_course_file_ready(records_id)
 
     logger.info(
         "[ATLAS RAG] Indexed %d parents and %d children from course file %s.",

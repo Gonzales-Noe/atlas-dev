@@ -1,5 +1,5 @@
 /* ATLAS web service worker — enables installability + light offline shell. */
-const CACHE_NAME = 'atlas-web-v7'
+const CACHE_NAME = 'atlas-web-v8'
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',
@@ -26,6 +26,41 @@ self.addEventListener('activate', (event) => {
       ))
       .then(() => self.clients.claim()),
   )
+})
+
+self.addEventListener('push', (event) => {
+  let payload = { title: 'ATLAS', body: 'You have a new notification.', url: '/' }
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() }
+  } catch {
+    // Keep the fallback copy when the push payload is not JSON.
+  }
+  const target = payload.url || '/'
+  event.waitUntil((async () => {
+    await self.registration.showNotification(payload.title || 'ATLAS', {
+      body: payload.body || '',
+      icon: '/icons/icon-192.png',
+      badge: '/icons/favicon-32.png',
+      tag: payload.tag || 'atlas-notification',
+      data: { url: target },
+    })
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const client of windows) client.postMessage({ type: 'atlas-notification' })
+  })())
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const target = event.notification.data?.url || '/'
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    for (const client of windows) {
+      client.postMessage({ type: 'atlas-notification-open', url: target })
+      if ('focus' in client) return client.focus()
+    }
+    if (self.clients.openWindow) return self.clients.openWindow(target)
+    return undefined
+  })())
 })
 
 self.addEventListener('fetch', (event) => {

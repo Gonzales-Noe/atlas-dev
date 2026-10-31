@@ -4294,6 +4294,8 @@ def approve_assessment(request, assessment_id):
         )
     except Exception:
         logger.exception('Could not write the assessment approval audit log')
+    from apps.users.notify import notify_assessment_approved
+    notify_assessment_approved(assessment, request.user)
     return Response(
         {'success': True, 'assessment': _assessment_detail_payload(assessment)},
         status=status.HTTP_200_OK,
@@ -4716,6 +4718,8 @@ def create_course(request):
         "Faculty %s requested course %s (%s)",
         request.user.email, course_code, course_request.request_id,
     )
+    from apps.users.notify import notify_course_request_submitted
+    notify_course_request_submitted(course_request)
 
     return Response(
         {
