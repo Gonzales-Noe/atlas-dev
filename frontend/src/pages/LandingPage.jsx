@@ -19,7 +19,6 @@ import {
   Mail,
   MapPin,
   Server,
-  Sparkles,
   Star,
 } from 'lucide-react'
 
@@ -78,18 +77,14 @@ function GlassCard({ children, style, className = '' }) {
   )
 }
 
-// ── Packages ─────────────────────────────────────────────────────────────────
+// ── Institutional packages ───────────────────────────────────────────────────
 const PACKAGES = [
   {
     name: 'Starter',
-    tagline: 'Syllabus, modules, exams, and course analytics.',
-    price: 'Quote',
-    period: 'annual',
-    bestFor: 'Best for getting started',
-    highlights: [
-      { icon: Server, label: 'Private server and database' },
-      { icon: FileCheck, label: 'Syllabus, modules, and exams' },
-    ],
+    tagline: 'A private server and database to begin.',
+    color: 'rgba(142,28,27,0.08)',
+    border: 'rgba(170,36,35,0.4)',
+    glow: 'rgba(142,28,27,0.15)',
     features: [
       'Syllabus, modules, and assessments',
       'OMR scanning',
@@ -100,18 +95,14 @@ const PACKAGES = [
   },
   {
     name: 'Professional',
-    tagline: 'Web and Mobile for the whole campus.',
-    price: 'Quote',
-    period: 'annual',
-    bestFor: 'Best value for the campus',
-    badge: 'Popular',
-    highlights: [
-      { icon: LayoutDashboard, label: 'Web and Mobile for everyone' },
-      { icon: BarChart3, label: 'Analytics across programs' },
-    ],
+    tagline: 'A larger private deployment for the whole institution.',
+    color: 'rgba(142,28,27,0.12)',
+    border: 'rgba(226,75,74,0.6)',
+    glow: 'rgba(170,36,35,0.25)',
+    badge: 'Recommended',
     features: [
       'A larger private server and database',
-      'Web and Mobile for the whole campus',
+      'Web and Mobile for the whole institution',
       'Analytics across programs',
       'Exam-week scanning and priority support',
     ],
@@ -119,18 +110,14 @@ const PACKAGES = [
   },
   {
     name: 'Custom',
-    tagline: 'For campuses that need capacity to grow with them.',
-    price: 'Quote',
-    period: 'annual',
-    bestFor: 'Best for high growth',
-    highlights: [
-      { icon: Server, label: 'Capacity added as you grow' },
-      { icon: Clock, label: 'Support matched to your calendar' },
-    ],
+    tagline: 'Capacity that grows as you do.',
+    color: 'rgba(110,18,18,0.08)',
+    border: 'rgba(226,75,74,0.3)',
+    glow: 'rgba(142,28,27,0.1)',
     features: [
       'Servers and databases added as you grow',
       'More faculty added when you need them',
-      'Reports across colleges and programs',
+      'Reports across the institution, data kept separate',
       'Support and updates matched to your calendar',
     ],
     featured: false,
@@ -455,172 +442,18 @@ export default function LandingPage() {
           transform: translateY(-3px);
         }
 
-        .pricing-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.16fr) minmax(0, 0.92fr);
-          gap: 1.15rem;
-          align-items: center;
-          padding: 1.75rem 0.25rem 2.25rem;
-        }
-        .pricing-slot {
-          min-width: 0;
-        }
-        .pricing-slot.is-featured {
-          position: relative;
-          z-index: 2;
-        }
         .pricing-card {
-          background: #fffdfb;
-          border: 1px solid rgba(60, 40, 20, 0.1);
-          border-radius: 18px;
-          padding: 1.55rem 1.4rem 1.35rem;
-          box-shadow: 0 10px 30px rgba(60, 30, 10, 0.05);
-          display: flex;
-          flex-direction: column;
+          background: rgba(0,0,0,0.045);
+          border-radius: 24px;
+          padding: 2.5rem;
+          transition: all 0.35s ease;
           position: relative;
-          transition: transform 0.35s ease, box-shadow 0.35s ease;
         }
         .pricing-card:hover {
           transform: translateY(-6px);
-          box-shadow: 0 16px 40px rgba(60, 30, 10, 0.08);
         }
-        .pricing-slot.is-featured .pricing-card {
-          border: 2px solid #e24b4a;
-          padding: 1.85rem 1.65rem 0;
-          box-shadow: 0 22px 50px rgba(170, 36, 35, 0.16);
-          transform: scale(1.08);
-          overflow: hidden;
-        }
-        .pricing-slot.is-featured .pricing-card:hover {
-          transform: translateY(-8px) scale(1.08);
-          box-shadow: 0 28px 60px rgba(170, 36, 35, 0.22);
-        }
-        .pricing-head {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 0.75rem;
-          margin-bottom: 0.55rem;
-        }
-        .pricing-kicker {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          font-size: 0.78rem;
-          font-weight: 800;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          color: #1a1a1a;
-        }
-        .pricing-kicker svg {
-          color: var(--brand-accent);
-        }
-        .pricing-tagline {
-          color: rgba(17,17,17,0.55);
-          font-size: 0.9rem;
-          line-height: 1.5;
-          margin: 0;
-          min-height: 2.7em;
-        }
-        .pricing-price {
-          display: flex;
-          align-items: baseline;
-          gap: 0.35rem;
-          margin: 1.15rem 0 1.05rem;
-        }
-        .pricing-price strong {
-          font-size: 2.7rem;
-          font-weight: 800;
-          letter-spacing: -0.03em;
-          line-height: 1;
-          color: #161616;
-        }
-        .pricing-slot.is-featured .pricing-price strong {
-          font-size: 3.15rem;
-        }
-        .pricing-price span {
-          color: rgba(17,17,17,0.42);
-          font-size: 0.95rem;
-          font-weight: 500;
-        }
-        .pricing-highlights {
-          background: rgba(17,17,17,0.035);
-          border-radius: 12px;
-          padding: 0.8rem 0.9rem;
-          display: flex;
-          flex-direction: column;
-          gap: 0.65rem;
-          margin-bottom: 1.1rem;
-        }
-        .pricing-slot.is-featured .pricing-highlights {
-          background: rgba(226, 75, 74, 0.08);
-        }
-        .pricing-highlight {
-          display: flex;
-          align-items: center;
-          gap: 0.6rem;
-          font-size: 0.9rem;
-          color: #2a2a2a;
-          line-height: 1.35;
-        }
-        .pricing-highlight svg {
-          flex-shrink: 0;
-          color: rgba(17,17,17,0.55);
-        }
-        .pricing-card .pricing-cta {
-          width: 100%;
-          padding: 0.82rem 1rem;
-          border-radius: 10px;
-          font-size: 0.92rem;
-        }
-        .pricing-card .atlas-btn-outline.pricing-cta {
-          background: #fff;
-          border-color: rgba(17,17,17,0.14);
-        }
-        .pricing-best {
-          text-align: center;
-          font-size: 0.8rem;
-          color: rgba(17,17,17,0.45);
-          margin: 0.7rem 0 0;
-        }
-        .pricing-included {
-          margin-top: 1.05rem;
-          padding-top: 1rem;
-          border-top: 1px solid rgba(0,0,0,0.08);
-        }
-        .pricing-included h4 {
-          margin: 0 0 0.75rem;
-          font-size: 0.92rem;
-          font-weight: 700;
-          color: #1a1a1a;
-        }
-        .pricing-feature {
-          display: flex;
-          align-items: flex-start;
-          gap: 0.55rem;
-          margin-bottom: 0.55rem;
-          color: rgba(17,17,17,0.78);
-          font-size: 0.9rem;
-          line-height: 1.4;
-        }
-        .pricing-feature svg {
-          flex-shrink: 0;
-          margin-top: 2px;
-          color: #1f9d55;
-        }
-        .pricing-slot.is-featured .pricing-included {
-          margin: 1.15rem -1.65rem 0;
-          padding: 1.2rem 1.65rem 1.5rem;
-          border-top: none;
-          background: linear-gradient(180deg, rgba(255, 196, 168, 0.35) 0%, #e87856 24%, #c4382c 58%, #8e1c1b 100%);
-          color: #fff;
-        }
-        .pricing-slot.is-featured .pricing-included h4,
-        .pricing-slot.is-featured .pricing-feature {
-          color: #fff;
-        }
-        .pricing-slot.is-featured .pricing-feature svg {
-          color: #fff;
+        .pricing-card.popular {
+          background: rgba(142,28,27,0.15);
         }
 
         .team-card {
@@ -706,12 +539,7 @@ export default function LandingPage() {
           .hero-subtitle { font-size: 1.05rem !important; }
           .section-title { font-size: 2rem !important; }
           .features-grid { grid-template-columns: 1fr !important; }
-          .pricing-grid { grid-template-columns: 1fr !important; align-items: stretch; }
-          .pricing-slot.is-featured .pricing-card,
-          .pricing-slot.is-featured .pricing-card:hover {
-            transform: none;
-          }
-          .pricing-tagline { min-height: 0; }
+          .pricing-grid { grid-template-columns: 1fr !important; }
           .contact-grid { grid-template-columns: 1fr !important; gap: 2.5rem !important; }
           .stats-grid { grid-template-columns: repeat(2, 1fr) !important; }
           .testimonials-grid { grid-template-columns: 1fr !important; }
@@ -802,16 +630,18 @@ export default function LandingPage() {
         }
 
         .popular-badge {
-          background: #1a1a1a;
-          color: #fff;
-          font-size: 0.62rem;
-          font-weight: 800;
+          position: absolute;
+          top: -12px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: linear-gradient(135deg, var(--brand-primary-hover), var(--brand-primary));
+          color: white;
+          font-size: 0.72rem;
+          font-weight: 700;
           letter-spacing: 0.08em;
-          text-transform: uppercase;
-          padding: 4px 8px;
-          border-radius: 6px;
+          padding: 5px 18px;
+          border-radius: 100px;
           white-space: nowrap;
-          line-height: 1.2;
         }
 
         .contact-input {
@@ -1254,61 +1084,59 @@ export default function LandingPage() {
           <div
             ref={pricingRef}
             className="pricing-grid"
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.25rem', alignItems: 'stretch' }}
           >
             {PACKAGES.map((plan) => (
               <div
                 key={plan.name}
-                className={`pricing-slot fade-up ${pricingInView ? 'visible' : ''} ${plan.featured ? 'is-featured' : ''}`}
+                className={`pricing-card fade-up neon-border-glow ${pricingInView ? 'visible' : ''} ${plan.featured ? 'popular' : ''}`}
+                style={{
+                  border: `1px solid ${plan.border}`,
+                  background: plan.color,
+                  boxShadow: plan.featured ? `0 0 60px ${plan.glow}` : 'none',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
               >
-                <div className={`pricing-card ${plan.featured ? 'popular' : ''}`}>
-                  <div className="pricing-head">
-                    <h3 className="pricing-kicker">
-                      <Sparkles size={14} strokeWidth={2.25} aria-hidden="true" />
-                      {plan.name}
-                    </h3>
-                    {plan.badge && <span className="popular-badge">{plan.badge}</span>}
-                  </div>
+                {plan.badge && <div className="popular-badge">{plan.badge}</div>}
 
-                  <p className="pricing-tagline">{plan.tagline}</p>
-
-                  <div className="pricing-price">
-                    <strong>{plan.price}</strong>
-                    <span>/{plan.period}</span>
-                  </div>
-
-                  <div className="pricing-highlights">
-                    {plan.highlights.map((item) => (
-                      <div key={item.label} className="pricing-highlight">
-                        <item.icon size={16} strokeWidth={1.75} aria-hidden="true" />
-                        <span>{item.label}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <button
-                    className={plan.featured ? 'atlas-btn-primary pricing-cta' : 'atlas-btn-outline pricing-cta'}
-                    onClick={() => requestQuote(plan.name)}
-                  >
-                    {plan.featured ? 'Get started' : 'Request a quote'}
-                  </button>
-                  <p className="pricing-best">{plan.bestFor}</p>
-
-                  <div className="pricing-included">
-                    <h4>What&apos;s included:</h4>
-                    {plan.features.map((feat) => (
-                      <div key={feat} className="pricing-feature">
-                        <Check size={15} strokeWidth={2.5} aria-hidden="true" />
-                        <span>{feat}</span>
-                      </div>
-                    ))}
-                  </div>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <h3 style={{ fontSize: '1.35rem', fontWeight: 800, color: 'var(--brand-accent)', margin: '0 0 0.4rem' }}>
+                    {plan.name}
+                  </h3>
+                  <p style={{ color: 'rgba(17,17,17,0.63)', fontSize: '0.9rem', margin: 0, lineHeight: 1.5 }}>{plan.tagline}</p>
                 </div>
+
+                <div style={{ borderTop: '1px solid rgba(0,0,0,0.096)', paddingTop: '1.15rem', marginBottom: '1.5rem', flex: 1 }}>
+                  {plan.features.map((feat) => (
+                        <div key={feat} style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '0.7rem' }}>
+                          <span style={{
+                            width: 20, height: 20, borderRadius: '50%',
+                            background: 'rgba(170,36,35,0.2)',
+                            border: '1px solid rgba(170,36,35,0.4)',
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            marginRight: 10, flexShrink: 0, marginTop: 1,
+                          }}>
+                            <Check size={12} color="var(--brand-accent)" strokeWidth={2.5} aria-hidden="true" />
+                          </span>
+                          <span style={{ color: 'rgba(17,17,17,0.83)', fontSize: '0.9rem', lineHeight: 1.45 }}>{feat}</span>
+                        </div>
+                  ))}
+                </div>
+
+                <button
+                  className={plan.featured ? 'atlas-btn-primary' : 'atlas-btn-outline'}
+                  onClick={() => requestQuote(plan.name)}
+                  style={{ width: '100%', padding: '0.85rem', fontSize: '0.92rem', fontWeight: 700, marginTop: 'auto' }}
+                >
+                  Request a quote
+                </button>
               </div>
             ))}
           </div>
 
           <p style={{ textAlign: 'center', color: 'rgba(17,17,17,0.53)', fontSize: '0.88rem', marginTop: '2.5rem', lineHeight: 1.7, maxWidth: 720, marginLeft: 'auto', marginRight: 'auto' }}>
-            Starter, Professional, or Custom. A larger package adds capacity for this campus.
+            Each school gets its own ATLAS. When you outgrow a package, that deployment expands with you.
           </p>
         </div>
       </section>
