@@ -41,7 +41,6 @@ const SUPERADMIN_USER = {
   email: 'superadmin@atlas.local',
   role: 'superadmin',
   name: 'ATLAS Super Admin',
-  tenant_id: null,
 }
 
 const FACULTY_USER = {
@@ -49,20 +48,18 @@ const FACULTY_USER = {
   email: 'faculty@atlas.local',
   role: 'faculty',
   name: 'ATLAS Faculty',
-  tenant_id: 'faculty-01',
 }
 
 const ADMIN_USER = {
   id: 'admin',
   email: 'admin@atlas.local',
   role: 'admin',
-  name: 'Institutional Admin',
-  tenant_id: 'institution-01',
+  name: 'ATLAS Admin',
 }
 
 // ── State shape ────────────────────────────────────────────────────────────
 const initialState = {
-  user:          null,    // { id, email, role, name, tenant_id }
+  user:          null,    // { id, email, role, name }
   isAuthenticated: false,
   isLoading:     true,    // true while checking token on mount
   error:         null,

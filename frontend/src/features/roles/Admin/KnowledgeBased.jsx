@@ -69,7 +69,7 @@ function normalizeDocTypeLabel(value) {
     CHED_Handbook_on_Topology: 'CHED Handbook on Topology',
     Handbook_on_Typology: 'Handbook on Typology',
     OBE_Handbook_on_Typology: 'OBE Handbook on Typology',
-    Institution_Knowledge_Base: 'Institution Knowledge Base',
+    Institution_Knowledge_Base: 'Campus knowledge base',
     Syllabus: 'Syllabus',
     Assessment: 'Assessment',
     Policy: 'Policy',
@@ -273,7 +273,7 @@ export default function AdminKnowledgeBase() {
     <AdminLayout>
       <PageHeader
         title="Knowledge Base"
-        subtitle="Manage institution documents used for knowledge retrieval"
+        subtitle="Manage documents used for knowledge retrieval"
         action={<PrimaryBtn onClick={() => setCreateOpen(true)}><AddIcon fontSize="small" /> Upload File</PrimaryBtn>}
       />
 
@@ -317,7 +317,7 @@ export default function AdminKnowledgeBase() {
           <RouteSkeleton compact />
         ) : filtered.length === 0 ? (
           <GlassCard><div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>
-            {!documentsLoaded ? 'Documents could not be loaded.' : documents.length ? 'No documents match your search.' : 'No documents have been uploaded for this institution.'}
+            {!documentsLoaded ? 'Documents could not be loaded.' : documents.length ? 'No documents match your search.' : 'No documents have been uploaded yet.'}
           </div></GlassCard>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px,1fr))', gap: 12 }}>

@@ -9,22 +9,11 @@ from apps.integrations.models import (
     Institution,
     Section,
     UserProfile,
-    UserRole,
 )
 
 
 class AccountDeletionError(Exception):
     pass
-
-
-def _norm_role(role):
-    if role in {UserRole.SUPERADMIN, 'super_admin', 'superadmin'}:
-        return 'superadmin'
-    if role == UserRole.ADMIN:
-        return 'admin'
-    if role == UserRole.STUDENT:
-        return 'student'
-    return 'faculty'
 
 
 def _delete_institution_rows(institution):
@@ -110,44 +99,15 @@ def _delete_institution_rows(institution):
 
 @transaction.atomic
 def delete_user_account(target: UserProfile):
-    """Delete one user. If the target is the last admin of its institution,
-    delete the whole institution and all of its data, so a re-used email
-    starts from a clean first-time setup.
+    """Delete one user. The institution and its academic data stay, so another
+    admin can be added later on the same school.
 
     Returns dict(institution_deleted: bool, institution_id: str | None).
     """
     target = UserProfile.objects.select_for_update().get(pk=target.pk)
-    institution = target.institution
-    # Refresh the institution instance (no lock + join combo: Postgres forbids
-    # SELECT ... FOR UPDATE over the nullable LEFT OUTER JOIN that
-    # select_related('institution') generates).
-    role = _norm_role(target.role)
-
-    if institution is None or role != 'admin':
-        target.delete()
-        return {'institution_deleted': False, 'institution_id': None}
-
-    # Lock the institution row so two concurrent deletes can't orphan it.
-    institution = Institution.objects.select_for_update().get(pk=institution.pk)
-    remaining_admins = (
-        UserProfile.objects.select_for_update()
-        .filter(institution=institution, role=UserRole.ADMIN)
-        .exclude(pk=target.pk)
-        .count()
-    )
-    if remaining_admins > 0:
-        target.delete()
-        return {'institution_deleted': False, 'institution_id': str(institution.institution_id)}
-
-    institution_id = str(institution.institution_id)
-    try:
-        _delete_institution_rows(institution)
-    except ProtectedError as exc:
-        raise AccountDeletionError(
-            'This institution cannot be deleted because protected grading records '
-            f'still reference it: {exc.protected_objects!r}.'
-        )
-    return {'institution_deleted': True, 'institution_id': institution_id}
+    institution_id = str(target.institution_id) if target.institution_id else None
+    target.delete()
+    return {'institution_deleted': False, 'institution_id': institution_id}
 
 
 @transaction.atomic

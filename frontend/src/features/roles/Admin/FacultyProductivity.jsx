@@ -118,7 +118,7 @@ export default function FacultyProductivity() {
           Faculty productivity
         </div>
         <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginTop: 4, lineHeight: 1.5 }}>
-          Institution totals for syllabi, modules, assessments, and source files.
+          Totals for syllabi, modules, assessments, and source files.
         </div>
       </div>
 

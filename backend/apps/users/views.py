@@ -38,6 +38,7 @@ from apps.integrations.fixed_syllabus import canonical_syllabus_sections, publis
 from apps.integrations.syllabus_defaults import default_syllabus_sections
 from apps.integrations.document_processor import DocumentProcessor
 from apps.integrations.models import Assessment, AuditLog, Course, CourseLoad, Institution, InstitutionCustomization, MaintenanceUpdate, Section, StudentData, UserProfile, UserRole
+from apps.integrations.tenant import TENANT_INSTITUTION_NAME, ensure_tenant_institution
 from apps.integrations.trial import (
     PAID_PLAN_DAYS,
     TRIAL_FACULTY_LIMIT,
@@ -53,6 +54,7 @@ from .serializers import (
     ContactFormSerializer,
     DashboardSummarySerializer,
     EnrollCourseSerializer,
+    AdminCreateSerializer,
     FacultyCreateSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
@@ -312,7 +314,7 @@ class BillingCheckoutView(APIView):
 
     def post(self, request):
         if normalize_role(request.user.role) not in {'admin'}:
-            return Response({'detail': 'Only institution admins can start billing.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only admins can start billing.'}, status=status.HTTP_403_FORBIDDEN)
 
         try:
             plan_name = self._get_selected_plan(request)
@@ -321,7 +323,7 @@ class BillingCheckoutView(APIView):
 
         institution = getattr(request.user, 'institution', None)
         if not institution:
-            return Response({'detail': 'Institution not found for this account.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'This account is not set up yet.'}, status=status.HTTP_404_NOT_FOUND)
 
         if not settings.PAYMONGO_SECRET_KEY:
             return Response({'detail': 'PayMongo is not configured on this server.'}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -394,7 +396,7 @@ class BillingStatusView(APIView):
     def get(self, request):
         institution = getattr(request.user, 'institution', None)
         if not institution:
-            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'detail': 'This account is not set up yet.'}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({
             'application_status': institution.application_status,
@@ -507,7 +509,7 @@ class FacultyCreateView(APIView):
     def post(self, request):
         role = normalize_role(request.user.role)
         if role != 'admin':
-            return Response({'detail': 'Only institution admins can create faculty users.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only admins can create faculty users.'}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = FacultyCreateSerializer(data=request.data, context={'request': request})
         if not serializer.is_valid():
@@ -725,7 +727,7 @@ class DashboardSummaryView(APIView):
         payload = {
             'role': 'admin',
             'title': 'Admin Dashboard',
-            'subtitle': 'Oversee institutional users and governance tasks.',
+            'subtitle': 'Oversee faculty accounts and campus setup.',
             'cards': [
                 {'label': 'Active users', 'value': active_users, 'tone': 'admin'},
                 {'label': 'Faculty accounts', 'value': faculty_count, 'tone': 'admin'},
@@ -860,51 +862,93 @@ class AccountManagementView(APIView):
     def get(self, request):
         role = normalize_role(request.user.role)
         queryset = UserProfile.objects.select_related('institution').order_by('-created_at')
-        if role == 'admin':
-            queryset = queryset.filter(institution=request.user.institution)
+        if role in {'admin', 'superadmin'}:
+            queryset = queryset.filter(institution=ensure_tenant_institution())
         if role not in {'admin', 'superadmin'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         return Response([UserAccountSerializer(user).data for user in queryset])
 
 
+def _admin_account_row(profile):
+    return {
+        'user_id': str(profile.user_id),
+        'full_name': profile.full_name or profile.name,
+        'email': profile.email,
+        'is_active': profile.is_active,
+        'created_at': profile.created_at.isoformat() if profile.created_at else None,
+    }
+
+
 class InstitutionManagementView(APIView):
-    """List and approve institution applications for the superadmin console."""
+    """Superadmin console for the one institution and its admin accounts."""
 
     def _require_superadmin(self, request):
         if normalize_role(request.user.role) != 'superadmin':
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         return None
 
+    def _tenant_payload(self, institution):
+        admins = UserProfile.objects.filter(
+            institution=institution,
+            role=UserRole.ADMIN,
+        ).order_by('full_name', 'email')
+        return {
+            'id': str(institution.institution_id),
+            'institution': institution.name,
+            'status': 'active' if institution.is_active else 'inactive',
+            'subscription_plan': institution.selected_plan or institution.plan_tier,
+            'payment_status': institution.payment_status,
+            'users': UserProfile.objects.filter(institution=institution).count(),
+            'admins': [_admin_account_row(admin) for admin in admins],
+        }
+
     def get(self, request):
         denied = self._require_superadmin(request)
         if denied:
             return denied
+        return Response(self._tenant_payload(ensure_tenant_institution()))
 
-        institutions = Institution.objects.annotate(user_count=Count('userprofile')).order_by('-created_at')
-        rows = []
-        for institution in institutions:
-            admins = list(UserProfile.objects.filter(institution=institution, role=UserRole.ADMIN).order_by('created_at'))
-            rows.append({
-                'id': str(institution.institution_id),
-                'institution': institution.name,
-                'admin': ', '.join(admin.name for admin in admins) or 'Not assigned',
-                'email': ', '.join(admin.email for admin in admins),
-                'status': 'active' if institution.is_active else institution.application_status,
-                'subscription_plan': institution.selected_plan or institution.plan_tier,
-                'payment_status': institution.payment_status,
-                'users': institution.user_count,
-                'created_at': institution.created_at.isoformat(),
-            })
-        return Response(rows)
+    def post(self, request):
+        """Add another admin on the same institution."""
+        denied = self._require_superadmin(request)
+        if denied:
+            return denied
+
+        serializer = AdminCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        profile = serializer.save()
+        AuditLog.objects.create(
+            user=request.user,
+            action_type='admin_account_created',
+            resource_type='UserProfile',
+            resource_id=profile.user_id,
+            details={
+                'admin_email': profile.email,
+                'admin_name': profile.full_name or '',
+                'institution_id': str(profile.institution_id) if profile.institution_id else None,
+            },
+        )
+        from apps.users.notify import notify_users
+        notify_users(
+            [profile],
+            kind='account_ready',
+            title='Your ATLAS admin account is ready',
+            body='A super admin created your admin account. Sign in to manage the institution.',
+            href='/admin/dashboard',
+            dedupe_key=f'account-ready:{profile.pk}',
+        )
+        return Response(_admin_account_row(profile), status=status.HTTP_201_CREATED)
 
     def patch(self, request, institution_id):
         denied = self._require_superadmin(request)
         if denied:
             return denied
 
+        tenant = ensure_tenant_institution()
         institution = Institution.objects.filter(institution_id=institution_id).first()
-        if not institution:
-            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not institution or institution.pk != tenant.pk:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         was_active = institution.is_active
         decision = request.data.get('decision')
@@ -924,7 +968,13 @@ class InstitutionManagementView(APIView):
         if 'selected_plan' in request.data:
             institution.selected_plan = str(request.data['selected_plan']).strip()[:50]
         if 'name' in request.data:
-            institution.name = str(request.data['name']).strip()[:255]
+            submitted = str(request.data['name']).strip()
+            if submitted and submitted.lower() != TENANT_INSTITUTION_NAME.lower():
+                return Response(
+                    {'detail': f'This site is limited to {TENANT_INSTITUTION_NAME}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            institution.name = TENANT_INSTITUTION_NAME
         if 'payment_status' in request.data and request.data['payment_status'] in {'unpaid', 'pending', 'paid'}:
             institution.payment_status = request.data['payment_status']
             # When a plan is selected and marked paid, activate the subscription so
@@ -959,39 +1009,16 @@ class InstitutionManagementView(APIView):
                     "application_status": institution.application_status,
                 },
             )
-        return Response({'id': str(institution.institution_id), 'status': institution.application_status})
+        return Response(self._tenant_payload(institution))
 
     def delete(self, request, institution_id):
-        """Superadmin hard-delete: removes the institution, all member
-        accounts, and all academic data under it."""
-        from .deletion import AccountDeletionError, delete_institution
-
         denied = self._require_superadmin(request)
         if denied:
             return denied
-
-        institution = Institution.objects.filter(institution_id=institution_id).first()
-        if not institution:
-            return Response({'detail': 'Institution not found.'}, status=status.HTTP_404_NOT_FOUND)
-
-        institution_name = institution.name
-        institution_id_str = str(institution.institution_id)
-
-        try:
-            result = delete_institution(institution)
-        except AccountDeletionError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
-        AuditLog.objects.create(
-            user=request.user,
-            action_type="institution_deleted",
-            resource_type="Institution",
-            resource_id=institution_id_str,
-            details={
-                "deleted_institution_name": institution_name,
-                "institution_id": institution_id_str,
-            },
+        return Response(
+            {'detail': f'{TENANT_INSTITUTION_NAME} cannot be deleted.'},
+            status=status.HTTP_403_FORBIDDEN,
         )
-        return Response(result, status=status.HTTP_200_OK)
 
 
 class AccountDetailView(APIView):
@@ -1047,6 +1074,7 @@ class AccountDetailView(APIView):
         if 'email' in request.data:
             target.email = request.data['email'].strip().lower()
 
+        target.institution = ensure_tenant_institution()
         target.save()
         if target.is_active and not was_active:
             from apps.users.notify import notify_account_reactivated
@@ -1071,9 +1099,7 @@ class AccountDetailView(APIView):
         return Response(UserAccountSerializer(target).data)
 
     def delete(self, request, user_id):
-        """Delete one account. Deleting the last admin of an institution
-        removes the whole institution and all of its data, so a re-used
-        email starts from a clean first-time setup."""
+        """Delete one account. The institution and its courses stay."""
         from .deletion import AccountDeletionError, delete_user_account
 
         denied = self._require_manager(request)
@@ -1250,7 +1276,7 @@ class FacultyAssignmentsView(APIView):
             if not course_title:
                 return Response({'detail': 'Course title is required.'}, status=status.HTTP_400_BAD_REQUEST)
 
-            institution = request.user.institution if normalize_role(request.user.role) == 'admin' else None
+            institution = ensure_tenant_institution()
             if Course.objects.filter(course_code__iexact=course_code).exists():
                 return Response(
                     {'detail': f"A course with code '{course_code}' already exists."},
@@ -1505,9 +1531,9 @@ class InstitutionCustomizationView(APIView):
         # Any institution admin may fix or unfix fields and tables, and rename
         # sections. The saved format is then published to every institution.
         if normalize_role(request.user.role) != 'admin':
-            return Response({'detail': 'Only institution admins can edit customization.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only admins can edit the syllabus format.'}, status=status.HTTP_403_FORBIDDEN)
         if not request.user.institution:
-            return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'This account is not set up yet.'}, status=status.HTTP_400_BAD_REQUEST)
         customization, _ = InstitutionCustomization.objects.get_or_create(institution=request.user.institution)
         for field in (
             'header_image_url',
@@ -1545,9 +1571,9 @@ class SyllabusTemplatePreviewView(APIView):
 
     def post(self, request):
         if normalize_role(request.user.role) != 'admin':
-            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
         if not request.user.institution:
-            return Response({'detail': 'Admin has no institution.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'This account is not set up yet.'}, status=status.HTTP_400_BAD_REQUEST)
 
         uploaded_file = request.FILES.get('file')
         if uploaded_file is None:
@@ -1628,7 +1654,7 @@ class SyllabusTemplateFileView(APIView):
         if normalize_role(request.user.role) not in {'admin', 'faculty'}:
             return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
         if not request.user.institution:
-            return Response({'detail': 'No institution.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'This account is not set up yet.'}, status=status.HTTP_400_BAD_REQUEST)
         customization = InstitutionCustomization.objects.filter(institution=request.user.institution).first()
         if not customization or not customization.syllabus_template:
             return Response({'detail': 'No syllabus template uploaded.'}, status=status.HTTP_404_NOT_FOUND)
@@ -1659,7 +1685,7 @@ class SyllabusTemplateAnalyzeView(APIView):
 
     def post(self, request):
         if normalize_role(request.user.role) != 'admin':
-            return Response({'detail': 'Only institution admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response({'detail': 'Only admins can upload a syllabus template.'}, status=status.HTTP_403_FORBIDDEN)
 
         uploaded_file = request.FILES.get('file')
         if uploaded_file is None:

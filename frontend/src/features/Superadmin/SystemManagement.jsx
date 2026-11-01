@@ -415,7 +415,7 @@ export default function SystemManagement() {
             />
             <div style={{ flex: 1, minWidth: 0 }}>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', marginTop: 0 }}>
-                When maintenance is on, faculty and institution admins see this screen and their API calls pause.
+                When maintenance is on, faculty and admins see this screen and their API calls pause.
                 Superadmin access stays open.
               </p>
               <TextField

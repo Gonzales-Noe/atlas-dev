@@ -107,7 +107,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailPattern.test(email)) {
-      setError('Please enter a valid institutional email address.');
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -562,7 +562,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                   Welcome Back to <span className="glow-text">ATLAS!</span>
                 </h1>
                 <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.88rem', margin: 0 }}>
-                  Sign in to your institution's platform.
+                  Sign in to ATLAS.
                 </p>
               </div>
 
@@ -578,7 +578,7 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                     className="dark-input"
                     name="email"
                     type="email"
-                    placeholder="you@institution.edu.ph"
+                    placeholder="you@g.batstate-u.edu.ph"
                     value={form.email}
                     onChange={handleChange}
                     required

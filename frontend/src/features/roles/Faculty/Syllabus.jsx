@@ -52,7 +52,7 @@ export default function FacultySyllabus() {
       })
       .catch(() => {
         setSyllabusSections(DEFAULT_SECTIONS)
-        setAiMessage('Could not load your institution template. Showing the standard syllabus sections.')
+        setAiMessage('Could not load the syllabus template. Showing the standard sections.')
       })
   }, [])
 
@@ -171,7 +171,7 @@ export default function FacultySyllabus() {
                 </Tabs>
 
                 {currentSection.is_static ? (
-                  <Alert severity="info" sx={{ mb: 2 }}>This information is set by your institution and cannot be changed.</Alert>
+                  <Alert severity="info" sx={{ mb: 2 }}>This information is set by an admin and cannot be changed.</Alert>
                 ) : (
                   <Typography color="text.secondary" sx={{ mb: 2 }}>{currentSection.helper || `Complete the ${currentSection.label.toLowerCase()} section.`}</Typography>
                 )}

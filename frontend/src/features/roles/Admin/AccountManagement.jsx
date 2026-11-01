@@ -210,7 +210,6 @@ export default function AdminAccountManagement() {
     const matchSearch = !q
       || fac.email?.toLowerCase().includes(q)
       || displayName(fac).toLowerCase().includes(q)
-      || (fac.institution_name || '').toLowerCase().includes(q)
     const matchRole = !roleFilter || fac.role === roleFilter
     const matchStatus = !statusFilter || (statusFilter === 'active' ? fac.is_active : !fac.is_active)
     return matchSearch && matchRole && matchStatus
@@ -501,18 +500,14 @@ export default function AdminAccountManagement() {
   }
 
   // ── Delete account (DELETE /users/accounts/<user_id>/) ───────────────────
-  // Deleting a non-admin removes just that user; deleting the last admin of
-  // this institution removes the whole institution and all of its data, so a
-  // re-used email starts from a clean first-time setup.
+  // The institution stays, including when the last admin is removed.
   async function handleConfirmDeleteAccount() {
     if (!confirmDeleteAccount) return
     setDeletingAccount(true)
     try {
-      const { data } = await api.delete(`/users/accounts/${confirmDeleteAccount.user_id}/`)
+      await api.delete(`/users/accounts/${confirmDeleteAccount.user_id}/`)
       setNotice(
-        data?.institution_deleted
-          ? 'Account deleted. It was the last admin, so the institution and all of its data were removed — the email can be registered fresh.'
-          : `Account for ${confirmDeleteAccount.email} deleted.`,
+        `Account for ${confirmDeleteAccount.email} deleted.`,
       )
       setConfirmDeleteAccount(null)
       setDetailDialog(false)
@@ -770,7 +765,7 @@ export default function AdminAccountManagement() {
     <AdminLayout>
       <PageHeader
         title="Accounts"
-        subtitle="Manage faculty accounts, course assignments, and access within your institution"
+        subtitle="Manage faculty accounts, course assignments, and access"
         action={<PrimaryBtn onClick={handleCreate}><AddIcon fontSize="small" /> Add Faculty</PrimaryBtn>}
       />
 
@@ -798,7 +793,7 @@ export default function AdminAccountManagement() {
       <GlassCard style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <TextField
-            placeholder="Search by name, email, or institution…"
+            placeholder="Search by name or email…"
             size="small" value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             sx={{ flex: 1, minWidth: 220, ...inputSx }}
@@ -1002,7 +997,7 @@ export default function AdminAccountManagement() {
                 </div>
               </div>
               {[
-                { label: 'INSTITUTION', value: selectedFaculty.institution_name || '—' },
+                { label: 'CAMPUS', value: selectedFaculty.institution_name || '—' },
                 { label: 'ROLE', value: <StatusChip label={selectedFaculty.role} type={selectedFaculty.role === 'admin' ? 'warning' : 'info'} /> },
                 { label: 'STATUS', value: <StatusChip label={selectedFaculty.is_active ? 'active' : 'inactive'} type={selectedFaculty.is_active ? 'active' : 'inactive'} /> },
                 { label: 'ASSIGNED COURSES', value: assignmentsFor(selectedFaculty.user_id).length },
@@ -1149,9 +1144,8 @@ export default function AdminAccountManagement() {
             <strong style={{ color: 'var(--text-primary)' }}>{confirmDeleteAccount?.email}</strong>
             {confirmDeleteAccount?.role === 'admin' && (
               <>
-                {' '}— an <strong style={{ color: 'var(--text-primary)' }}>admin</strong>. If this is the
-                last admin, the whole institution and all of its data (courses, syllabi, assessments,
-                files, other accounts) are deleted too, and the email can be registered fresh.
+                {' '}— an <strong style={{ color: 'var(--text-primary)' }}>admin</strong>. Courses
+                and other accounts stay, so another admin can be added.
               </>
             )}
             {confirmDeleteAccount?.role !== 'admin' && (

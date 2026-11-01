@@ -22,13 +22,13 @@ from apps.integrations.models import (
     UserProfile,
     UserRole,
 )
-from apps.integrations.fixed_syllabus import attach_shared_syllabus_format, seed_course_syllabi
+from apps.integrations.fixed_syllabus import seed_course_syllabi
+from apps.integrations.tenant import TENANT_INSTITUTION_NAME, ensure_tenant_institution
 from apps.users.otp import OTP_ALPHABET, OTP_LENGTH, normalize_otp
 from apps.users.sessions import reject_if_session_invalid, start_session
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
-    trial_expiry,
     trial_is_active,
 )
 
@@ -220,12 +220,11 @@ class RegisterSerializer(serializers.Serializer):
         name = value.strip()
         if not name:
             raise serializers.ValidationError('Institution name is required.')
-        # Never attach a new signup to a school that already exists.
-        if Institution.objects.filter(name__iexact=name).exists():
+        if name.lower() != TENANT_INSTITUTION_NAME.lower():
             raise serializers.ValidationError(
-                'An institution with this name already exists. Ask your administrator for an account.'
+                f'This ATLAS site is for {TENANT_INSTITUTION_NAME}.'
             )
-        return name
+        return TENANT_INSTITUTION_NAME
 
     def validate(self, attrs):
         try:
@@ -243,7 +242,7 @@ class RegisterSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Student accounts are not supported. Register as faculty.'
             )
-        # Public signup creates the institution's first administrator.
+        # Public signup adds another admin of the one institution.
         return UserRole.ADMIN
 
     def validate_selected_plan(self, value):
@@ -254,34 +253,16 @@ class RegisterSerializer(serializers.Serializer):
 
     @transaction.atomic
     def create(self, validated_data):
-        institution_name = validated_data.pop('institution_name').strip()
+        validated_data.pop('institution_name', None)
         selected_plan = validated_data.pop('selected_plan', '').strip()
         role = validated_data.pop('role', UserRole.ADMIN)
         password = validated_data.pop('password')
         full_name = validated_data.pop('full_name', '').strip()
-        trial_started_at, trial_ends_at = trial_expiry()
 
-        if Institution.objects.filter(name__iexact=institution_name).exists():
-            raise serializers.ValidationError({
-                'institution_name': (
-                    'An institution with this name already exists. '
-                    'Ask your administrator for an account.'
-                ),
-            })
-
-        institution = Institution.objects.create(
-            name=institution_name,
-            plan_tier='free',
-            subscription_status=SubscriptionStatusEnum.TRIALING,
-            application_status='active',
-            payment_status=PaymentStatusEnum.UNPAID,
-            selected_plan=selected_plan,
-            is_active=True,
-            trial_started_at=trial_started_at,
-            trial_ends_at=trial_ends_at,
-        )
-
-        attach_shared_syllabus_format(institution)
+        institution = ensure_tenant_institution()
+        if selected_plan and not (institution.selected_plan or '').strip():
+            institution.selected_plan = selected_plan
+            institution.save(update_fields=['selected_plan'])
 
         return UserProfile.objects.create(
             institution=institution,
@@ -289,6 +270,48 @@ class RegisterSerializer(serializers.Serializer):
             full_name=full_name,
             password_hash=make_password(password),
             role=role,
+            is_active=True,
+        )
+
+
+class AdminCreateSerializer(serializers.Serializer):
+    """Superadmin adds another admin on the same institution."""
+
+    full_name = serializers.CharField(max_length=255)
+    email = serializers.EmailField()
+    password = serializers.CharField(min_length=8, write_only=True, trim_whitespace=False)
+
+    def validate_email(self, value):
+        normalized = value.strip().lower()
+        if UserProfile.objects.filter(email__iexact=normalized).exists():
+            raise serializers.ValidationError('A user with this email already exists.')
+        return normalized
+
+    def validate_full_name(self, value):
+        name = value.strip()
+        if not name:
+            raise serializers.ValidationError('Enter the admin name.')
+        return name
+
+    def validate(self, attrs):
+        try:
+            enforce_password_strength(
+                attrs.get('password', ''),
+                email=attrs.get('email', ''),
+                full_name=attrs.get('full_name', ''),
+            )
+        except serializers.ValidationError as exc:
+            raise serializers.ValidationError({'password': exc.detail}) from exc
+        return attrs
+
+    @transaction.atomic
+    def create(self, validated_data):
+        return UserProfile.objects.create(
+            institution=ensure_tenant_institution(),
+            email=validated_data['email'],
+            full_name=validated_data['full_name'],
+            password_hash=make_password(validated_data['password']),
+            role=UserRole.ADMIN,
             is_active=True,
         )
 
@@ -427,7 +450,7 @@ class FacultyCreateSerializer(serializers.Serializer):
         request = self.context.get('request')
         institution = getattr(getattr(request, 'user', None), 'institution', None)
         if institution is None:
-            raise serializers.ValidationError('Admin user has no associated institution.')
+            raise serializers.ValidationError('This account is not set up yet.')
 
         validated = []
         for index, assignment in enumerate(assignments):
@@ -455,7 +478,7 @@ class FacultyCreateSerializer(serializers.Serializer):
                     ).first()
                     if course is None:
                         raise serializers.ValidationError({
-                            index: {'courses': {course_index: 'Course not found in your institution.'}},
+                            index: {'courses': {course_index: 'Course not found.'}},
                         })
                     normalized_courses.append({'course_id': course.course_id})
                     continue
@@ -491,7 +514,7 @@ class FacultyCreateSerializer(serializers.Serializer):
         admin_user = request.user
         institution = admin_user.institution
         if not institution:
-            raise serializers.ValidationError('Admin user has no associated institution.')
+            raise serializers.ValidationError('This account is not set up yet.')
         if institution.subscription_status == SubscriptionStatusEnum.TRIALING:
             institution = Institution.objects.select_for_update().get(pk=institution.pk)
             if not trial_is_active(institution):

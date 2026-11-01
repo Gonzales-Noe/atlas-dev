@@ -32,7 +32,7 @@ export default function AdminDashboard() {
     fetchSetupStatus()
       .then(setSetup)
       .catch(err => {
-        setSetupError(err?.response?.data?.detail || 'Could not load institution statistics.')
+        setSetupError(err?.response?.data?.detail || 'Could not load campus statistics.')
       })
   }, [])
 
@@ -40,7 +40,7 @@ export default function AdminDashboard() {
     <AdminLayout>
       <PageHeader
         title={`Welcome, ${user?.name || 'Admin'}`}
-        subtitle="Institutional overview — manage your faculty and academic structure"
+        subtitle="Manage faculty and the academic structure"
       />
 
       <div style={{ marginBottom: 12 }}>
@@ -66,7 +66,7 @@ export default function AdminDashboard() {
             <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
               {setup?.setup_completed
                 ? 'Keep your sections and courses current so faculty assignments stay accurate.'
-                : 'Add faculty, their section and course assignments, and institutional knowledge.'}
+                : 'Add faculty, their section and course assignments, and the knowledge base.'}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

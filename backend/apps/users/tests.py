@@ -16,10 +16,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.users.middleware import DatabaseReconnectMiddleware
 
 from apps.integrations.models import UserProfile, UserRole
+from apps.integrations.tenant import TENANT_INSTITUTION_NAME
 from apps.users.serializers import (
     ContactFormSerializer,
     FacultyCreateSerializer,
     ProfileSettingsUpdateSerializer,
+    RegisterSerializer,
     UserAccountSerializer,
     UserProfileSerializer,
     UserProfileTokenRefreshSerializer,
@@ -602,3 +604,17 @@ class AuthSessionTests(TestCase):
         )
         self.assertEqual(me.status_code, 401)
         self.assertEqual(me.data['code'], 'session_ended')
+
+
+class SingleTenantRegistrationTests(SimpleTestCase):
+    def test_signup_rejects_a_different_institution(self):
+        serializer = RegisterSerializer()
+        with self.assertRaises(serializers.ValidationError):
+            serializer.validate_institution_name('University of the Philippines')
+
+    def test_signup_accepts_only_the_tenant_institution(self):
+        serializer = RegisterSerializer()
+        self.assertEqual(
+            serializer.validate_institution_name(f'  {TENANT_INSTITUTION_NAME}  '),
+            TENANT_INSTITUTION_NAME,
+        )

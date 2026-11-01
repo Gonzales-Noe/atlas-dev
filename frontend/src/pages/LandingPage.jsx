@@ -1,7 +1,6 @@
 import { useNavigate, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/authStore'
 import api from '../config/api'
-import { TENANT_INSTITUTION_NAME } from '../config/tenant'
 import atlasLogo from '../assets/atlas-logo.webp'
 import atlasHero from '../assets/atlas.webp'
 import delacion from '../assets/Delacion.webp'
@@ -158,7 +157,7 @@ const FEATURES = [
   {
     icon: Server,
     title: 'Private server',
-    desc: 'ATLAS runs on a server and database for Batangas State University - Lipa Campus. Courses, grades, and scans stay on that system.',
+    desc: 'ATLAS can run on a private server and database for your institution. Courses, grades, and scans stay on that system.',
     accent: 'rgba(226,75,74,0.3)',
   },
 ]
@@ -280,7 +279,7 @@ export default function LandingPage() {
 
     const trimmedName = contactForm.name.trim()
     const trimmedEmail = contactForm.email.trim()
-    const trimmedInstitution = TENANT_INSTITUTION_NAME
+    const trimmedInstitution = contactForm.institution.trim()
     const trimmedPackage = contactForm.package.trim()
     const trimmedMessage = contactForm.message.trim()
 
@@ -800,7 +799,7 @@ export default function LandingPage() {
                   SIGN IN
                 </button>
                 <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ padding: '0.6rem 1.4rem', fontSize: '0.88rem' }}>
-                  REQUEST A DEMO
+                  REQUEST A QUOTE
                 </button>
               </>
             ) : null}
@@ -847,7 +846,7 @@ export default function LandingPage() {
                 SIGN IN
               </button>
               <button className="atlas-btn-primary" onClick={() => scrollTo('contact')} style={{ flex: 1, padding: '0.7rem', fontSize: '0.9rem' }}>
-                REQUEST A DEMO
+                REQUEST A QUOTE
               </button>
             </div>
           ) : null}
@@ -892,12 +891,12 @@ export default function LandingPage() {
               margin: '0 0 2rem',
               maxWidth: '100%',
             }}>
-              ATLAS for {TENANT_INSTITUTION_NAME}. Web and Mobile include CHED OBE-aligned syllabi, modules, and assessments, OMR scanning, and descriptive analytics.
+              Web and Mobile for your institution: CHED OBE-aligned syllabi, modules, and assessments, OMR scanning, and descriptive analytics.
             </p>
 
             <div className="hero-cta-group">
               <button className="atlas-btn-primary subtle-neon-glow" onClick={() => scrollTo('contact')} style={{ padding: '0.9rem 2.5rem', fontSize: '1rem' }}>
-                Request a demo
+                Request a quote
               </button>
               <button
                 className="atlas-btn-outline"
@@ -913,7 +912,7 @@ export default function LandingPage() {
               {[
                 'CHED OBE-aligned',
                 'ATLAS Mobile OMR',
-                'Campus server and database',
+                'Private server and database',
               ].map((label) => (
                 <div key={label} style={{
                   background: 'rgba(0,0,0,0.06)',
@@ -963,10 +962,10 @@ export default function LandingPage() {
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem' }}>
             {[
-              { title: 'Campus server', label: 'Application traffic stays on the server for this campus' },
-              { title: 'Campus database', label: 'Courses, grades, scans, and exam keys stay on this system' },
+              { title: 'Private server', label: 'Application traffic stays on a server for your institution' },
+              { title: 'Private database', label: 'Courses, grades, scans, and exam keys stay on that system' },
               { title: 'Web and Mobile', label: 'Syllabus, modules, assessments, and OMR on one stack' },
-              { title: 'Room to grow', label: 'More faculty can be added without a second system' },
+              { title: 'Room to grow', label: 'More faculty can be added as the institution grows' },
             ].map(({ title, label }, i) => (
               <div key={i} className={`stat-card fade-up subtle-neon-glow ${statsInView ? 'visible' : ''}`}>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand-accent)', lineHeight: 1.3 }}>
@@ -1188,10 +1187,10 @@ export default function LandingPage() {
               <p style={{ color: 'var(--brand-accent)', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.15em', marginBottom: '0.75rem' }}>GET IN TOUCH</p>
               <h2 style={{ fontSize: '2.4rem', fontWeight: 800, margin: '0 0 1.2rem', lineHeight: 1.2 }}>
                 Request a<br />
-                <span className="glow-text">Demo</span>
+                <span className="glow-text">Quote</span>
               </h2>
               <p style={{ color: 'rgba(17,17,17,0.63)', lineHeight: 1.8, fontSize: '0.95rem', marginBottom: '2rem' }}>
-                Tell us which package fits {TENANT_INSTITUTION_NAME}: Starter, Professional, or Custom.
+                Want ATLAS for your institution? Tell us the school and which package fits: Starter, Professional, or Custom.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -1221,9 +1220,10 @@ export default function LandingPage() {
 
             <GlassCard style={{ padding: '2.5rem' }}>
               <form onSubmit={handleContactSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem', position: 'relative' }}>
-              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#1A1A1A' }}>Request a demo or quote</h3>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: 700, margin: '0 0 0.5rem', color: '#1A1A1A' }}>Request a quote</h3>
                 <input className="contact-input" name="name" value={contactForm.name} onChange={handleContactChange} placeholder="Your Name" maxLength={120} autoComplete="name" />
                 <input className="contact-input" name="email" type="email" value={contactForm.email} onChange={handleContactChange} placeholder="Email" maxLength={254} autoComplete="email" />
+                <input className="contact-input" name="institution" value={contactForm.institution} onChange={handleContactChange} placeholder="Institution Name" maxLength={200} autoComplete="organization" />
                 <div className="contact-honeypot" aria-hidden="true">
                   <label htmlFor="leave_blank">Leave this blank</label>
                   <input id="leave_blank" name="leave_blank" tabIndex={-1} autoComplete="off" value={contactForm.leave_blank} onChange={handleContactChange} />
@@ -1258,7 +1258,7 @@ export default function LandingPage() {
                   </div>
                 )}
                 <button type="submit" className="atlas-btn-primary" style={{ width: '100%', padding: '0.9rem', fontSize: '0.95rem' }} disabled={contactSubmitting}>
-                  {contactSubmitting ? 'Sending...' : 'Request a demo'}
+                  {contactSubmitting ? 'Sending...' : 'Request a quote'}
                 </button>
               </form>
             </GlassCard>

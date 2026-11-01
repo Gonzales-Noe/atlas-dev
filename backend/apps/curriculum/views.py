@@ -102,7 +102,7 @@ def _get_assigned_course_or_403(request, course_id):
     institution_id = getattr(request.user, 'institution_id', None)
     if not institution_id:
         return None, Response(
-            {'success': False, 'detail': 'Your account is not linked to an institution.'},
+            {'success': False, 'detail': 'Your account is not set up yet.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
     assignment = CourseLoad.objects.select_related('course', 'course__syllabus_owner').filter(
@@ -212,7 +212,7 @@ def faculty_courses(request):
         return _faculty_only_response()
     if not request.user.institution_id:
         return Response(
-            {'success': False, 'detail': 'Your account is not linked to an institution.'},
+            {'success': False, 'detail': 'Your account is not set up yet.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -4588,7 +4588,7 @@ def course_requests_mine(request):
         return _faculty_only_response()
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
     queryset = (
@@ -4613,7 +4613,7 @@ def create_course(request):
         return _faculty_only_response()
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

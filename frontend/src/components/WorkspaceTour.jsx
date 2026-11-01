@@ -59,7 +59,7 @@ const STEPS = [
     tab: 'syllabus',
     selector: '[data-tour="tab-syllabus"]',
     title: '1. Build the syllabus',
-    body: 'Upload an existing file or let AI draft the sections. Your institution’s format decides which fields are yours to fill and which are fixed.',
+    body: 'Upload an existing file or let AI draft the sections. The campus format decides which fields are yours to fill and which are fixed.',
   },
   {
     tab: 'syllabus',

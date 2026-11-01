@@ -5,6 +5,7 @@ import CircularProgress from '@mui/material/CircularProgress';
 import { Check, Circle, Eye, EyeOff, PartyPopper, School } from 'lucide-react';
 import { useAuth } from '../../store/authStore';
 import { ROUTES } from '../../config/route';
+import { TENANT_INSTITUTION_NAME } from '../../config/tenant';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
 import { StatusNotice } from '../../components/StatusNotice';
 
@@ -66,7 +67,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   const [scrolled, setScrolled] = useState(false);
 
   const [form, setForm] = useState({
-    full_name: '', email: '', institution_name: '', password: '', confirm_password: '',
+    full_name: '', email: '', password: '', confirm_password: '',
   });
   const emailIsValid = EMAIL_PATTERN.test(form.email.trim());
   const emailIsInvalid = form.email.length > 0 && !emailIsValid;
@@ -138,7 +139,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
   async function handleEmailSignUp(e) {
     e.preventDefault();
     const fullName = form.full_name.trim();
-    const institutionName = form.institution_name.trim();
+    const institutionName = TENANT_INSTITUTION_NAME;
     const email = form.email.trim();
     const password = form.password;
     const confirmPassword = form.confirm_password;
@@ -154,7 +155,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
     }
 
     if (!emailIsValid) {
-      setError('Please enter a valid institutional email address.');
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -661,7 +662,7 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                   Application <span className="glow-text">Submitted!</span>
                 </h1>
                 <div className="success-box">
-                  Your institution registration has been received. The ATLAS team will review and provide credentials within <strong>2–3 business days</strong>.
+                  Your admin account for {TENANT_INSTITUTION_NAME} is ready.
                 </div>
                 {isModal ? (
                   <button className="btn-secondary" onClick={() => onSwitch('signin')} style={{ width: '100%' }}>
@@ -681,10 +682,10 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                 <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
                   <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 32, marginBottom: '1.2rem' }} />
                   <h1 style={{ fontSize: '1.55rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
-                    Get <span className="glow-text">ATLAS</span> for Your Institution
+                    Get <span className="glow-text">ATLAS</span>
                   </h1>
                   <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: '0.85rem', margin: 0, lineHeight: 1.6 }}>
-                    Faculty accounts only. Approved institutions receive credentials within 2–3 business days.
+                    Create an admin account for {TENANT_INSTITUTION_NAME}.
                   </p>
                 </div>
 
@@ -721,25 +722,21 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
                       <input className="dark-input" name="full_name" placeholder="Juan dela Cruz" value={form.full_name} onChange={handleChange} required />
                     </div>
                     <div>
-                      <span className="label-text">INSTITUTION NAME</span>
-                      <input className="dark-input" name="institution_name" placeholder="University of the Philippines" value={form.institution_name} onChange={handleChange} required />
-                    </div>
-                    <div>
-                      <span className="label-text">INSTITUTIONAL EMAIL</span>
+                      <span className="label-text">EMAIL</span>
                       <input
                         className={`dark-input${emailIsInvalid ? ' email-invalid' : ''}`}
                         name="email"
                         type="email"
-                        placeholder="you@institution.edu.ph"
+                        placeholder="you@g.batstate-u.edu.ph"
                         value={form.email}
                         onChange={handleChange}
                         aria-invalid={emailIsInvalid}
-                        aria-describedby={emailIsInvalid ? 'institution-email-help' : undefined}
+                        aria-describedby={emailIsInvalid ? 'email-help' : undefined}
                         required
                       />
                       {emailIsInvalid && (
-                        <span id="institution-email-help" className="field-help invalid">
-                          Please enter a valid institutional email address.
+                        <span id="email-help" className="field-help invalid">
+                          Please enter a valid email address.
                         </span>
                       )}
                     </div>
@@ -844,8 +841,8 @@ export default function SignUpPage({ isModal, onClose, onSwitch }) {
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <School size={22} color="var(--brand-primary)" aria-hidden="true" />
               <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
-                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Let's get your institution set up!</span>
-                <span className="typing-text">Let's get your institution set up!</span>
+                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Let's get you set up!</span>
+                <span className="typing-text">Let's get you set up!</span>
               </div>
 
               <img

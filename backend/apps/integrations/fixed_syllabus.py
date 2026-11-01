@@ -1,9 +1,7 @@
-"""Copy admin-fixed syllabus content into every institution and course.
+"""Copy admin-fixed syllabus content onto the campus format and each course.
 
-An admin's fixed fields and tables are the format for the whole deployment:
-every institution that already exists, every institution created later, and
-every faculty or admin account, because those accounts read the institution
-format and the course syllabus.
+An admin's fixed fields and tables are the format for this campus. Faculty and
+admins read that format and the course syllabus.
 """
 
 import copy
@@ -74,7 +72,7 @@ def sections_for_institution(institution):
 
 
 def canonical_syllabus_sections():
-    """The format most recently saved by an admin, shared with every institution."""
+    """The format most recently saved by an admin for this campus."""
     for customization in InstitutionCustomization.objects.order_by('-updated_at').iterator():
         sections = customization.syllabus_sections
         if isinstance(sections, list) and sections:
@@ -432,7 +430,7 @@ def seed_institution_syllabi(institution, sections=None):
 
 
 def publish_fixed_syllabus(sections):
-    """Copy one admin's format onto every institution and every course syllabus."""
+    """Copy one admin's format onto the campus customization and every course syllabus."""
     if not isinstance(sections, list) or not sections:
         return 0
     for institution in Institution.objects.all().iterator():
