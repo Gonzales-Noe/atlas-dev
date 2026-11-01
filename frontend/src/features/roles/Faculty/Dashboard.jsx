@@ -208,11 +208,8 @@ export default function FacultyDashboard() {
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
             } : {
               display: 'grid',
+              gap: 1.25,
               gridTemplateColumns: layout === 'list-2' ? 'repeat(2, minmax(0, 1fr))' : '1fr',
-              border: '1px solid var(--border-color)',
-              borderRadius: 1.5,
-              overflow: 'hidden',
-              bgcolor: 'var(--bg-card)',
             }}
           >
             {courses.map((course, idx) => {
@@ -220,74 +217,69 @@ export default function FacultyDashboard() {
               const accentColor = CARD_COLORS[idx % CARD_COLORS.length]
               const openCourse = () => navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', course.course_id))
               if (layout !== 'cards') {
-                const columns = layout === 'list-2' ? 2 : 1
-                const remainder = courses.length % columns
-                const lastRowCount = remainder === 0 ? columns : remainder
-                const hideBottom = idx >= courses.length - lastRowCount
-                const hideRight = columns === 1 || idx % columns === columns - 1
                 const counts = [
                   [countLabel(course.syllabus_count, 'syllabus', 'syllabi'), 108],
                   [countLabel(course.module_count, 'module', 'modules'), 96],
                   [countLabel(course.assessment_count, 'assessment', 'assessments'), 124],
                 ]
                 return (
-                  <Box
+                  <Card
                     key={course.course_id}
-                    component="button"
-                    type="button"
-                    onClick={openCourse}
+                    elevation={0}
                     sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 1.25,
-                      height: 40,
-                      px: 1.5,
-                      m: 0,
-                      width: '100%',
-                      minWidth: 0,
-                      boxSizing: 'border-box',
-                      border: 0,
-                      borderBottom: hideBottom ? 'none' : '1px solid var(--border-color)',
-                      borderRight: hideRight ? 'none' : '1px solid var(--border-color)',
-                      borderRadius: 0,
-                      bgcolor: 'transparent',
                       color: 'var(--text-primary)',
-                      font: 'inherit',
-                      textAlign: 'left',
-                      cursor: 'pointer',
-                      '&:hover': { bgcolor: 'rgba(170, 36, 35, 0.06)' },
+                      background: 'var(--bg-card)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 3,
+                      boxShadow: 'var(--shadow-card)',
+                      transition: 'border-color 250ms, box-shadow 250ms',
+                      '&:hover': {
+                        borderColor: 'rgba(226,75,74,0.4)',
+                        boxShadow: 'var(--shadow-lg)',
+                      },
                     }}
                   >
-                    <CourseIcon sx={{ fontSize: 18, color: accentColor, flexShrink: 0 }} />
-                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flex: 1, minWidth: 0 }}>
-                      <Typography component="span" sx={{ color: '#E24B4A', fontWeight: 800, fontSize: '0.78rem', letterSpacing: '0.04em', flexShrink: 0, lineHeight: 1 }}>
-                        {course.course_code}
-                      </Typography>
-                      <Typography component="span" noWrap sx={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.84rem', lineHeight: 1 }}>
-                        {course.course_title}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                      {counts.map(([label, width]) => (
-                        <Typography
-                          key={label}
-                          component="span"
-                          sx={{
-                            width,
-                            textAlign: 'right',
-                            color: 'var(--text-secondary)',
-                            fontSize: '0.75rem',
-                            fontWeight: 500,
-                            lineHeight: 1,
-                            fontVariantNumeric: 'tabular-nums',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {label}
-                        </Typography>
-                      ))}
-                    </Box>
-                  </Box>
+                    <CardActionArea onClick={openCourse} sx={{ borderRadius: 3, color: 'inherit' }}>
+                      <CardContent sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1.25,
+                        px: 2,
+                        py: 1.25,
+                        '&:last-child': { pb: 1.25 },
+                      }}>
+                        <CourseIcon sx={{ fontSize: 18, color: accentColor, flexShrink: 0 }} />
+                        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flex: 1, minWidth: 0 }}>
+                          <Typography component="span" sx={{ color: '#E24B4A', fontWeight: 800, fontSize: '0.78rem', letterSpacing: '0.04em', flexShrink: 0, lineHeight: 1 }}>
+                            {course.course_code}
+                          </Typography>
+                          <Typography component="span" noWrap sx={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.84rem', lineHeight: 1 }}>
+                            {course.course_title}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          {counts.map(([label, width]) => (
+                            <Typography
+                              key={label}
+                              component="span"
+                              sx={{
+                                width,
+                                textAlign: 'right',
+                                color: 'var(--text-secondary)',
+                                fontSize: '0.75rem',
+                                fontWeight: 500,
+                                lineHeight: 1,
+                                fontVariantNumeric: 'tabular-nums',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {label}
+                            </Typography>
+                          ))}
+                        </Box>
+                      </CardContent>
+                    </CardActionArea>
+                  </Card>
                 )
               }
               return (
