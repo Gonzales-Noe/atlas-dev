@@ -188,7 +188,7 @@ export function forceSignOut(code) {
   revokeServerSession()
   clearBrowserSession({ broadcast: true, notice })
   window.dispatchEvent(new CustomEvent('atlas-session-logout'))
-  window.location.assign('/signin')
+  window.location.assign('/')
 }
 
 function hasOtherOpenTab() {
@@ -281,12 +281,13 @@ if (browserAvailable()) {
         return
       }
       if (data.type === 'logout') {
+        const automatic = Boolean(data.notice)
         clearBrowserSession({
           broadcast: false,
           notice: data.notice || SESSION_NOTICES.session_ended,
         })
         window.dispatchEvent(new CustomEvent('atlas-session-logout'))
-        window.location.assign('/signin')
+        window.location.assign(automatic ? '/' : '/signin')
       }
     }
   }

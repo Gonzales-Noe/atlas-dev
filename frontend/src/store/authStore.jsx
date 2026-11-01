@@ -373,7 +373,7 @@ export function AuthProvider({ children }) {
       notice: code ? (SESSION_NOTICES[code] || '') : '',
     })
     dispatch({ type: 'LOGOUT' })
-    if (code) window.location.assign('/signin')
+    if (code) window.location.assign('/')
   }
 
   const actionsRef = useRef(null)
