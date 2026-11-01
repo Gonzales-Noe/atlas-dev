@@ -26,7 +26,7 @@ PASS_MARK = "[PASS]"
 FAIL_MARK = "[FAIL]"
 WARN_MARK = "[WARN]"
 
-DEFAULT_PROVIDERS = ["nvidia", "groq", "gemma", "cloudflare", "openrouter"]
+DEFAULT_PROVIDERS = ["nvidia", "groq", "cloudflare", "openrouter"]
 
 
 def parse_args() -> argparse.Namespace:
