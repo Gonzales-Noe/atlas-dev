@@ -7,8 +7,7 @@ import { useAuth } from '../../store/authStore';
 import useRoleRedirect from '../../hooks/useRoleRedirect';
 import { ROUTES } from '../../config/route';
 import { mountGoogleSignInButton } from '../../config/googleAuth';
-import { consumeAuthNotice } from '../../config/session';
-import { StatusNotice } from '../../components/StatusNotice';
+import { consumeAuthNotice, readAuthNotice } from '../../config/session';
 
 import atlasLogo from '../../assets/atlas-logo.webp';
 import atlasMascot from '../../assets/atlas.webp';
@@ -43,7 +42,10 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(() => consumeAuthNotice());
+  // Read twice safely. Removing the notice inside this initializer drops it
+  // on the second call, and the sign-in page then looks like a normal visit.
+  const [signedOutMessage] = useState(readAuthNotice);
+  const [error, setError] = useState(signedOutMessage);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const googleButtonRef = useRef(null);
   const googleHandlersRef = useRef({});
@@ -58,6 +60,10 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
     setLoading,
     setError,
   };
+
+  useEffect(() => {
+    if (signedOutMessage) consumeAuthNotice();
+  }, [signedOutMessage]);
 
   useEffect(() => {
     let disposed = false;
@@ -396,24 +402,6 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
           border-bottom: 0;
         }
         
-        .typing-text {
-          position: absolute;
-          left: 1.4rem;
-          top: 1rem;
-          white-space: nowrap;
-          overflow: hidden;
-          border-right: 2px solid #1A1A1A;
-          animation: typing 2.5s steps(35, end) forwards, blink 0.75s step-end infinite;
-        }
-        @keyframes typing {
-          from { width: 0; }
-          to { width: calc(100% - 2.8rem); }
-        }
-        @keyframes blink {
-          from, to { border-color: transparent; }
-          50% { border-color: #1A1A1A; }
-        }
-
         @media (max-width: 768px) {
           .desktop-nav-links { display: none !important; }
           .hamburger-btn { display: flex !important; }
@@ -536,9 +524,10 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
 
             <div className="mascot-enter" style={{ position: 'relative', zIndex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
               <BookOpen size={22} color="var(--brand-primary)" aria-hidden="true" />
-              <div className="speech-bubble" style={{ display: 'inline-block', position: 'relative' }}>
-                <span style={{ visibility: 'hidden', whiteSpace: 'nowrap' }}>Welcome back! Ready to teach smarter?</span>
-                <span className="typing-text">Welcome back! Ready to teach smarter?</span>
+              <div className="speech-bubble" style={{ maxWidth: '100%' }}>
+                {signedOutMessage
+                  ? 'Your session ended. Sign in again.'
+                  : 'Welcome back! Ready to teach smarter?'}
               </div>
               <img
                 src={atlasMascot}
@@ -559,14 +548,16 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
               <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
                 <img src={atlasLogo} alt="ATLAS Logo" style={{ height: 34, objectFit: 'contain', marginBottom: '1.2rem' }} />
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, margin: '0 0 0.4rem', letterSpacing: '-0.01em' }}>
-                  Welcome Back to <span className="glow-text">ATLAS!</span>
+                  {signedOutMessage ? 'Sign in to ' : 'Welcome Back to '}<span className="glow-text">ATLAS!</span>
                 </h1>
                 <p style={{ color: 'rgba(0,0,0,0.55)', fontSize: '0.88rem', margin: 0 }}>
-                  Sign in to ATLAS.
+                  {signedOutMessage ? 'Your session ended.' : 'Sign in to ATLAS.'}
                 </p>
               </div>
 
-              <StatusNotice message={error} severity="error" />
+              {error ? (
+                <div className="error-box" role="alert">{error}</div>
+              ) : null}
 
               {/* Form */}
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>

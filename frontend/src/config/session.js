@@ -14,7 +14,7 @@ const ACTIVITY = 'atlas_last_activity'
 const TAB_PREFIX = 'atlas_open_tab:'
 
 export const IDLE_MS = 15 * 60 * 1000
-export const IDLE_WARNING_MS = 2 * 60 * 1000
+export const IDLE_WARNING_MS = 60 * 1000
 
 export const SESSION_NOTICES = {
   session_idle: 'You were signed out after 15 minutes of inactivity. Sign in again.',
@@ -137,9 +137,13 @@ export function setAuthNotice(notice) {
   sessionStorage.setItem(NOTICE, notice)
 }
 
-export function consumeAuthNotice() {
+export function readAuthNotice() {
   if (!browserAvailable()) return ''
-  const notice = sessionStorage.getItem(NOTICE) || ''
+  return sessionStorage.getItem(NOTICE) || ''
+}
+
+export function consumeAuthNotice() {
+  const notice = readAuthNotice()
   if (notice) sessionStorage.removeItem(NOTICE)
   return notice
 }
