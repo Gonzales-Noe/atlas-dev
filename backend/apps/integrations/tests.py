@@ -111,7 +111,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertEqual(captured['body']['chat_template_kwargs'], {'enable_thinking': False})
 
     def test_walks_the_chain_until_a_provider_succeeds(self):
-        service = _service('openrouter', 'groq', 'gemma')
+        service = _service('openrouter', 'groq', 'cloudflare')
         service.default_provider = 'openrouter'
 
         with patch.object(
@@ -126,20 +126,22 @@ class LLMProviderFallbackTests(SimpleTestCase):
             )
 
         self.assertEqual(generated_text, 'Draft text')
-        self.assertEqual(provider_used, 'gemma')
+        self.assertEqual(provider_used, 'cloudflare')
         self.assertEqual(
             [call.kwargs['provider_choice'] for call in generate_response.call_args_list],
-            ['openrouter', 'groq', 'gemma'],
+            ['openrouter', 'groq', 'cloudflare'],
         )
 
     def test_legacy_and_auto_provider_names(self):
         service = _service('openrouter', 'groq')
 
-        for legacy in ('gemini', 'gpt', 'anthropic'):
+        for legacy in ('gpt', 'anthropic'):
             self.assertEqual(
                 service.get_provider_and_model(legacy),
                 ('openrouter', service.openrouter_model),
             )
+        with self.assertRaisesRegex(ValueError, 'Unsupported provider choice: gemini'):
+            service.get_provider_and_model('gemini')
         self.assertEqual(service.get_provider_and_model('groq'), ('groq', service.groq_model))
         service.default_provider = 'groq'
         self.assertEqual(service.get_provider_and_model('auto'), ('groq', service.groq_model))
@@ -165,14 +167,14 @@ class LLMProviderFallbackTests(SimpleTestCase):
             with self.assertRaisesRegex(ValueError, 'all available providers'):
                 service.generate_response_with_fallback(
                     messages=[{'role': 'user', 'content': 'Write a draft'}],
-                    preferred_provider='gemini',
+                    preferred_provider='gpt',
                     max_tokens=1500,
                 )
 
         self.assertEqual(generate_response.call_count, 1)
 
     def test_rate_limited_provider_is_paused_for_later_requests(self):
-        service = _service('groq', 'gemma')
+        service = _service('groq', 'cloudflare')
         service.api_keys = {name: 'key' for name in service.api_keys}
         rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
         success = MagicMock(ok=True, status_code=200, headers={})
@@ -182,8 +184,8 @@ class LLMProviderFallbackTests(SimpleTestCase):
             first = service.generate_response_with_fallback([{'role': 'user', 'content': 'Hi'}], return_provider=True)
             second = service.generate_response_with_fallback([{'role': 'user', 'content': 'Hi'}], return_provider=True)
 
-        self.assertEqual(first, ('Draft text', 'gemma'))
-        self.assertEqual(second, ('Draft text', 'gemma'))
+        self.assertEqual(first, ('Draft text', 'cloudflare'))
+        self.assertEqual(second, ('Draft text', 'cloudflare'))
         self.assertEqual(post.call_count, 3)
         self.assertGreater(llm_service.provider_cooldown_remaining('groq'), 0)
 
@@ -228,7 +230,6 @@ class LLMProviderFallbackTests(SimpleTestCase):
         service.api_keys = {
             'openrouter': ['key-a', 'key-b'],
             'groq': [],
-            'gemma': [],
             'cloudflare': [],
         }
         rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
@@ -261,7 +262,6 @@ class LLMProviderFallbackTests(SimpleTestCase):
         service.api_keys = {
             'openrouter': ['key-a', 'key-b', 'key-c'],
             'groq': ['groq-key'],
-            'gemma': [],
             'cloudflare': [],
         }
         cut_off = MagicMock(ok=True, status_code=200, headers={})
@@ -289,7 +289,6 @@ class LLMProviderFallbackTests(SimpleTestCase):
         service.api_keys = {
             'openrouter': ['key-a', 'key-b'],
             'groq': [],
-            'gemma': [],
             'cloudflare': [],
         }
         rate_limited = MagicMock(ok=False, status_code=429, text='Rate limit reached', headers={'retry-after': '30'})
@@ -313,7 +312,6 @@ class LLMProviderFallbackTests(SimpleTestCase):
         service.api_keys = {
             'groq': ['key-a', 'key-b'],
             'openrouter': [],
-            'gemma': [],
             'cloudflare': [],
         }
         drained = MagicMock(ok=True, status_code=200, headers={
@@ -341,7 +339,7 @@ class LLMProviderFallbackTests(SimpleTestCase):
         self.assertGreater(key_cooldown_remaining('groq', 'key-a'), 0)
 
     def test_large_prompt_skips_groq_and_caps_its_completion_budget(self):
-        service = _service('groq', 'gemma')
+        service = _service('groq', 'cloudflare')
         big_prompt = 'x' * 4 * 9000
 
         with patch.object(service, 'generate_response', return_value='Draft text') as generate_response:
@@ -349,17 +347,17 @@ class LLMProviderFallbackTests(SimpleTestCase):
                 [{'role': 'user', 'content': big_prompt}], max_tokens=4096, return_provider=True,
             )
 
-        self.assertEqual(provider_used, 'gemma')
+        self.assertEqual(provider_used, 'cloudflare')
         self.assertEqual(generate_response.call_count, 1)
         self.assertEqual(service._completion_budget('groq', 5000, 8192), 2800)
 
     def test_ollama_takes_over_when_no_online_provider_can_fit_the_prompt(self):
-        service = _service('groq', 'gemma')
+        service = _service('groq', 'cloudflare')
         service.ollama_configured = True
         big_prompt = 'x' * 4 * 9000
 
         def no_online_room(provider, prompt_tokens, max_tokens):
-            if provider in ('nvidia', 'groq', 'gemma', 'cloudflare', 'openrouter'):
+            if provider in ('nvidia', 'groq', 'cloudflare', 'openrouter'):
                 return None
             return max_tokens
 

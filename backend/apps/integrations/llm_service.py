@@ -44,13 +44,6 @@ PROVIDER_SPECS = {
         default_model='openai/gpt-oss-120b',
         max_request_tokens=7800,
     ),
-    'gemma': ProviderSpec(
-        label='Google AI Studio (Gemma)',
-        base_url='https://generativelanguage.googleapis.com/v1beta/openai',
-        key_envs=('GEMINI_API_KEY',),
-        model_env='GEMMA_MODEL',
-        default_model='gemma-4-31b-it',
-    ),
     'cloudflare': ProviderSpec(
         label='Cloudflare Workers AI',
         base_url='https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1',
@@ -67,8 +60,6 @@ PROVIDER_SPECS = {
         fallback_models_env='OPENROUTER_FALLBACK_MODELS',
         default_fallback_models=(
             'nvidia/nemotron-3.5-lightning:free',
-            'google/gemma-4-31b-it:free',
-            'google/gemma-4-26b-a4b-it:free',
         ),
     ),
     'nvidia': ProviderSpec(
@@ -84,14 +75,13 @@ PROVIDER_SPECS = {
     ),
 }
 
-DEFAULT_CHAIN = ['nvidia', 'groq', 'gemma', 'cloudflare', 'openrouter']
+DEFAULT_CHAIN = ['nvidia', 'groq', 'cloudflare', 'openrouter']
 DEFAULT_GROQ_MODEL = PROVIDER_SPECS['groq'].default_model
 DEFAULT_OPENROUTER_MODEL = PROVIDER_SPECS['openrouter'].default_model
 
 # Older clients and saved settings may still send these names; they are served
 # by the open-source OpenRouter model instead of a proprietary one.
 LEGACY_PROVIDER_ALIASES = {
-    'gemini': 'openrouter',
     'gpt': 'openrouter',
     'anthropic': 'openrouter',
 }
