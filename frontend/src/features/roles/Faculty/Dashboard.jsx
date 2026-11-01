@@ -54,6 +54,11 @@ function storeCourseLayout(layout) {
   }
 }
 
+function countLabel(count, singular, plural) {
+  const n = count ?? 0
+  return `${n} ${n === 1 ? singular : plural}`
+}
+
 export default function FacultyDashboard() {
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -197,20 +202,94 @@ export default function FacultyDashboard() {
         ) : (
           <>
           <Box
-            sx={{
+            sx={layout === 'cards' ? {
               display: 'grid',
-              gap: layout === 'cards' ? 2.5 : 1.25,
-              gridTemplateColumns: layout === 'cards'
-                ? { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' }
-                : layout === 'list-2'
-                  ? 'repeat(2, minmax(0, 1fr))'
-                  : '1fr',
+              gap: 2.5,
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
+            } : {
+              display: 'grid',
+              gridTemplateColumns: layout === 'list-2' ? 'repeat(2, minmax(0, 1fr))' : '1fr',
+              border: '1px solid var(--border-color)',
+              borderRadius: 1.5,
+              overflow: 'hidden',
+              bgcolor: 'var(--bg-card)',
             }}
           >
             {courses.map((course, idx) => {
               const CourseIcon = CARD_ICONS[idx % CARD_ICONS.length]
               const accentColor = CARD_COLORS[idx % CARD_COLORS.length]
-              const isList = layout !== 'cards'
+              const openCourse = () => navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', course.course_id))
+              if (layout !== 'cards') {
+                const columns = layout === 'list-2' ? 2 : 1
+                const remainder = courses.length % columns
+                const lastRowCount = remainder === 0 ? columns : remainder
+                const hideBottom = idx >= courses.length - lastRowCount
+                const hideRight = columns === 1 || idx % columns === columns - 1
+                const counts = [
+                  [countLabel(course.syllabus_count, 'syllabus', 'syllabi'), 108],
+                  [countLabel(course.module_count, 'module', 'modules'), 96],
+                  [countLabel(course.assessment_count, 'assessment', 'assessments'), 124],
+                ]
+                return (
+                  <Box
+                    key={course.course_id}
+                    component="button"
+                    type="button"
+                    onClick={openCourse}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.25,
+                      height: 40,
+                      px: 1.5,
+                      m: 0,
+                      width: '100%',
+                      minWidth: 0,
+                      boxSizing: 'border-box',
+                      border: 0,
+                      borderBottom: hideBottom ? 'none' : '1px solid var(--border-color)',
+                      borderRight: hideRight ? 'none' : '1px solid var(--border-color)',
+                      borderRadius: 0,
+                      bgcolor: 'transparent',
+                      color: 'var(--text-primary)',
+                      font: 'inherit',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'rgba(170, 36, 35, 0.06)' },
+                    }}
+                  >
+                    <CourseIcon sx={{ fontSize: 18, color: accentColor, flexShrink: 0 }} />
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flex: 1, minWidth: 0 }}>
+                      <Typography component="span" sx={{ color: '#E24B4A', fontWeight: 800, fontSize: '0.78rem', letterSpacing: '0.04em', flexShrink: 0, lineHeight: 1 }}>
+                        {course.course_code}
+                      </Typography>
+                      <Typography component="span" noWrap sx={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.84rem', lineHeight: 1 }}>
+                        {course.course_title}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                      {counts.map(([label, width]) => (
+                        <Typography
+                          key={label}
+                          component="span"
+                          sx={{
+                            width,
+                            textAlign: 'right',
+                            color: 'var(--text-secondary)',
+                            fontSize: '0.75rem',
+                            fontWeight: 500,
+                            lineHeight: 1,
+                            fontVariantNumeric: 'tabular-nums',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {label}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Box>
+                )
+              }
               return (
                 <Card
                   key={course.course_id}
@@ -225,46 +304,43 @@ export default function FacultyDashboard() {
                     boxShadow: 'var(--shadow-card)',
                     transition: 'transform 250ms, box-shadow 250ms, border-color 250ms',
                     '&:hover': {
-                      transform: isList ? 'none' : 'translateY(-3px)',
+                      transform: 'translateY(-3px)',
                       borderColor: 'rgba(226,75,74,0.4)',
                       boxShadow: 'var(--shadow-lg)',
                     },
                   }}
                 >
-                  <CardActionArea onClick={() => navigate(ROUTES.FACULTY.WORKSPACE.replace(':courseId', course.course_id))} sx={{ height: '100%', borderRadius: 3, color: 'inherit' }}>
+                  <CardActionArea onClick={openCourse} sx={{ height: '100%', borderRadius: 3, color: 'inherit' }}>
                     <CardContent sx={{
-                      p: isList ? 2 : 3,
+                      p: 3,
                       display: 'flex',
-                      flexDirection: isList ? 'row' : 'column',
-                      alignItems: isList ? 'center' : 'stretch',
-                      gap: isList ? 1.5 : 0,
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
                       height: '100%',
-                      '&:last-child': { pb: isList ? 2 : 3 },
+                      '&:last-child': { pb: 3 },
                     }}>
                       <Box sx={{
-                        mb: isList ? 0 : 2,
-                        width: isList ? 40 : 48,
-                        height: isList ? 40 : 48,
+                        mb: 2,
+                        width: 48,
+                        height: 48,
                         flexShrink: 0,
-                        borderRadius: isList ? 2 : 3,
+                        borderRadius: 3,
                         bgcolor: accentColor + '30',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}>
-                        <CourseIcon sx={{ fontSize: isList ? 22 : 28, color: accentColor }} />
+                        <CourseIcon sx={{ fontSize: 28, color: accentColor }} />
                       </Box>
-                      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-                        <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
-                          {course.course_code}
-                        </Typography>
-                        <Typography variant={isList ? 'body1' : 'h6'} sx={{ color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.3, mt: 0.25, mb: isList ? 0 : 'auto', pb: isList ? 0 : 2 }}>
-                          {course.course_title}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 500, display: isList ? 'block' : 'inline' }}>
-                          {course.syllabus_count ?? 0} syllabi · {course.assessment_count ?? 0} assessments
-                        </Typography>
-                      </Box>
+                      <Typography variant="caption" sx={{ color: '#E24B4A', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', fontSize: '0.7rem' }}>
+                        {course.course_code}
+                      </Typography>
+                      <Typography variant="h6" sx={{ color: 'var(--text-primary)', fontWeight: 700, lineHeight: 1.3, mt: 0.25, mb: 'auto', pb: 2 }}>
+                        {course.course_title}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'var(--text-secondary)', fontWeight: 500 }}>
+                        {countLabel(course.syllabus_count, 'syllabus', 'syllabi')} · {countLabel(course.module_count, 'module', 'modules')} · {countLabel(course.assessment_count, 'assessment', 'assessments')}
+                      </Typography>
                     </CardContent>
                   </CardActionArea>
                 </Card>

@@ -241,6 +241,9 @@ def faculty_courses(request):
                 'course_title': (sc.get('course_title') or course.course_title) if sc else course.course_title,
                 'description': course.description,
                 'syllabus_count': Syllabus.objects.filter(course=course).count(),
+                'module_count': Module.objects.filter(syllabus__course=course).filter(
+                    Q(faculty=request.user) | Q(faculty__isnull=True)
+                ).count(),
                 'assessment_count': Assessment.objects.filter(course=course).count(),
             }
         )
