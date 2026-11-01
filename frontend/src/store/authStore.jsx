@@ -417,12 +417,44 @@ function SessionWatch({ enabled, onSignOut }) {
 
   useEffect(() => {
     if (!enabled) return undefined
-    setRemainingMs(Math.max(0, IDLE_MS - idleForMs()))
 
-    const soft = new Set(['mousemove', 'scroll', 'touchmove', 'pointermove'])
+    const signedOut = { current: false }
+    let deadlineTimer = 0
+
+    const expire = () => {
+      if (signedOut.current) return
+      signedOut.current = true
+      onSignOut('session_idle')
+    }
+
+    // One deadline, re-armed from the stored timestamp. A hidden tab's
+    // timers can fire late; the callback reads the clock again, so a late
+    // wake still signs the person out instead of starting a new 30 minutes.
+    const armDeadline = () => {
+      window.clearTimeout(deadlineTimer)
+      const remaining = IDLE_MS - idleForMs()
+      setRemainingMs(Math.max(0, remaining))
+      if (remaining <= 0) {
+        expire()
+        return
+      }
+      deadlineTimer = window.setTimeout(armDeadline, remaining)
+    }
+
     const onActivity = (event) => {
-      if (warningRef.current && soft.has(event.type)) return
+      if (!event.isTrusted || event.repeat) return
+      if (document.hidden) return
+      // Coming back to an already-expired page must not count as activity.
+      // That mousemove used to restart both the page clock and the server heartbeat.
+      if (idleForMs() >= IDLE_MS) {
+        expire()
+        return
+      }
+      // The warning stays up until they choose. A click on the dimmed page
+      // is not "still here" — only Stay signed in extends the session.
+      if (warningRef.current) return
       markSharedActivity()
+      armDeadline()
       const now = Date.now()
       if (now - lastBeat.current < 60000) return
       if (isDemoToken(getAccessToken())) return
@@ -430,29 +462,41 @@ function SessionWatch({ enabled, onSignOut }) {
       api.post('/auth/activity/', {}).catch(() => {})
     }
 
-    const events = ['mousedown', 'keydown', 'touchstart', 'pointerdown', 'mousemove', 'scroll']
-    events.forEach((name) => window.addEventListener(name, onActivity, { passive: true, capture: true }))
+    const onWake = () => {
+      if (document.visibilityState === 'hidden') return
+      armDeadline()
+    }
 
-    const signedOut = { current: false }
-    const tick = window.setInterval(() => {
-      const remaining = IDLE_MS - idleForMs()
-      setRemainingMs(remaining)
-      if (remaining <= 0 && !signedOut.current) {
-        signedOut.current = true
-        onSignOut('session_idle')
-      }
-    }, 1000)
+    // Clicks, keys, and the scroll wheel only. Mouse moves and scroll
+    // events also fire when a tab wakes or when the page updates itself,
+    // which kept resetting the idle clock with nobody at the keyboard.
+    const events = ['pointerdown', 'keydown', 'wheel']
+    events.forEach((name) => window.addEventListener(name, onActivity, { passive: true, capture: true }))
+    document.addEventListener('visibilitychange', onWake)
+    window.addEventListener('focus', onWake)
+    window.addEventListener('pageshow', onWake)
+
+    const tick = window.setInterval(armDeadline, 1000)
 
     const probe = () => {
+      if (idleForMs() >= IDLE_MS) {
+        expire()
+        return
+      }
       if (isDemoToken(getAccessToken())) return
       api.get('/auth/me/', { atlasCache: false }).catch(() => {})
     }
     const firstProbe = window.setTimeout(probe, 3000)
     const probeTimer = window.setInterval(probe, 60000)
+    armDeadline()
 
     return () => {
       events.forEach((name) => window.removeEventListener(name, onActivity, { capture: true }))
+      document.removeEventListener('visibilitychange', onWake)
+      window.removeEventListener('focus', onWake)
+      window.removeEventListener('pageshow', onWake)
       window.clearInterval(tick)
+      window.clearTimeout(deadlineTimer)
       window.clearTimeout(firstProbe)
       window.clearInterval(probeTimer)
     }

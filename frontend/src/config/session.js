@@ -92,10 +92,12 @@ export function markSharedActivity() {
 export function idleForMs() {
   try {
     const raw = localStorage.getItem(ACTIVITY)
-    if (!raw) return 0
+    // A missing stamp is already idle. Treating it as "just now" kept the
+    // open page signed in forever when the timestamp had been cleared.
+    if (!raw) return IDLE_MS
     const at = Number(raw)
-    if (!Number.isFinite(at) || at <= 0) return 0
-    return Date.now() - at
+    if (!Number.isFinite(at) || at <= 0) return IDLE_MS
+    return Math.max(0, Date.now() - at)
   } catch {
     return IDLE_MS
   }
