@@ -154,7 +154,7 @@ const ADMIN_FIXED_FIELDS = {
 
 const PROVIDERS = ['auto', 'nvidia', 'groq', 'cloudflare', 'openrouter', 'ollama']
 const PROVIDER_LABELS = {
-  auto: 'Auto (NVIDIA, then other free models)',
+  auto: 'Auto (Groq, NVIDIA, Cloudflare, OpenRouter, then Ollama)',
   nvidia: 'NVIDIA — Nemotron 3 Ultra',
   groq: 'Groq — GPT-OSS 120B',
   cloudflare: 'Cloudflare — GPT-OSS 120B',

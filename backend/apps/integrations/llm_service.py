@@ -5,7 +5,7 @@ Every hosted provider speaks the OpenAI chat-completions API. Requests walk
 the chain (LLM_PROVIDER_CHAIN) until one succeeds; a provider that is rate
 limited, out of credits or rejecting the key is put on a cooldown so later
 requests skip it instead of waiting on it again. Providers without an API
-key are skipped. Ollama (self-hosted) is used only when explicitly chosen.
+key are skipped. Ollama (self-hosted) is last in the chain.
 """
 
 import hashlib
@@ -75,7 +75,7 @@ PROVIDER_SPECS = {
     ),
 }
 
-DEFAULT_CHAIN = ['nvidia', 'groq', 'cloudflare', 'openrouter']
+DEFAULT_CHAIN = ['groq', 'nvidia', 'cloudflare', 'openrouter']
 DEFAULT_GROQ_MODEL = PROVIDER_SPECS['groq'].default_model
 DEFAULT_OPENROUTER_MODEL = PROVIDER_SPECS['openrouter'].default_model
 
