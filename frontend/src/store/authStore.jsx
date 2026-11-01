@@ -531,7 +531,7 @@ function SessionWatch({ enabled, onSignOut }) {
           Still there?
         </h2>
         <p style={{ margin: '0 0 1.25rem', lineHeight: 1.5, color: 'var(--text-secondary, rgba(0,0,0,0.7))' }}>
-          This page has been idle. ATLAS will sign you out in {formatRemaining(remainingMs)} to protect grades and course records.
+          In case you did not notice, this page has been idle. ATLAS will sign you out in {formatRemaining(remainingMs)}.
         </p>
         <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
           <button
