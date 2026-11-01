@@ -5,7 +5,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   TablePagination, TextField, Dialog, DialogTitle, DialogContent, DialogActions,
   Menu, MenuItem, IconButton, Divider, Stack,
-  Select, FormControl, InputLabel,
+  Select, FormControl, InputLabel, CircularProgress,
 } from '@mui/material'
 import MoreVertIcon from '@mui/icons-material/MoreVert'
 import AddIcon from '@mui/icons-material/Add'
@@ -21,7 +21,7 @@ import useDebouncedValue from '../../hooks/useDebouncedValue'
 const normalizePlan = p => {
   if (!p) return ''
   const s = String(p).trim().toLowerCase()
-  return { starter: 'Starter', professional: 'Professional', enterprise: 'Enterprise' }[s] || s
+  return { starter: 'Starter', professional: 'Professional', custom: 'Custom', enterprise: 'Custom' }[s] || s
 }
 
 function apiError(err, fallback) {
@@ -54,6 +54,7 @@ export default function AccountManagement() {
   const [notice, setNotice] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [busyAdminId, setBusyAdminId] = useState('')
   const [adminForm, setAdminForm] = useState(emptyAdminForm)
   const [subscriptionForm, setSubscriptionForm] = useState({ subscription_plan: '', payment_status: '' })
   const [saving, setSaving] = useState(false)
@@ -83,7 +84,9 @@ export default function AccountManagement() {
   const handleMenuClose = () => { setAnchorEl(null); setMenuAdmin(null) }
 
   const setAdminActive = async (admin, isActive) => {
+    if (busyAdminId) return
     setError('')
+    setBusyAdminId(admin.user_id)
     try {
       await api.patch(`/auth/accounts/${admin.user_id}/`, { is_active: isActive })
       setNotice(isActive ? `${admin.email} is active again.` : `${admin.email} is paused.`)
@@ -91,6 +94,8 @@ export default function AccountManagement() {
       load()
     } catch (err) {
       setError(apiError(err, 'Failed to update the admin.'))
+    } finally {
+      setBusyAdminId('')
     }
   }
 
@@ -179,7 +184,7 @@ export default function AccountManagement() {
             <div style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.08em', color: 'var(--text-tertiary)' }}>CAMPUS</div>
             <div style={{ fontSize: '1.05rem', fontWeight: 700, marginTop: 4 }}>{institution?.institution || TENANT_INSTITUTION_NAME}</div>
             <div style={{ color: 'var(--text-tertiary)', fontSize: '0.82rem', marginTop: 4 }}>
-              {institution?.subscription_plan || 'Plan not selected'} · {institution?.payment_status || 'payment unknown'}
+              {normalizePlan(institution?.subscription_plan) || 'Plan not selected'} · {institution?.payment_status || 'payment unknown'}
             </div>
           </div>
           <Stack direction="row" spacing={1} alignItems="center">
@@ -255,16 +260,26 @@ export default function AccountManagement() {
                     {admin.created_at ? new Date(admin.created_at).toLocaleDateString() : '—'}
                   </TableCell>
                   <TableCell>
-                    <IconButton size="small" onClick={e => handleMenuOpen(e, admin)} sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--bg-header)' } }}>
-                      <MoreVertIcon fontSize="small" />
+                    <IconButton size="small" onClick={e => handleMenuOpen(e, admin)} disabled={busyAdminId === admin.user_id} sx={{ color: 'var(--text-secondary)', '&:hover': { color: 'var(--text-primary)', background: 'var(--bg-header)' } }}>
+                      {busyAdminId === admin.user_id
+                        ? <CircularProgress size={16} sx={{ color: 'var(--text-secondary)' }} />
+                        : <MoreVertIcon fontSize="small" />}
                     </IconButton>
-                    <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAdmin?.user_id === admin.user_id} onClose={handleMenuClose}
+                    <Menu anchorEl={anchorEl} open={Boolean(anchorEl) && menuAdmin?.user_id === admin.user_id} onClose={() => { if (busyAdminId !== admin.user_id) handleMenuClose() }}
                       PaperProps={{ sx: { background: 'var(--shell-menu-bg) !important', border: '1px solid var(--shell-menu-border) !important', borderRadius: '14px !important', minWidth: 180, color: 'var(--text-primary)' } }}>
                       {admin.is_active
-                        ? <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => setAdminActive(admin, false)}>Pause admin</MenuItem>
-                        : <MenuItem sx={{ color: 'var(--status-success) !important' }} onClick={() => setAdminActive(admin, true)}>Activate admin</MenuItem>}
+                        ? <MenuItem disabled={Boolean(busyAdminId)} sx={{ color: '#E24B4A !important' }} onClick={() => setAdminActive(admin, false)}>
+                            {busyAdminId === admin.user_id
+                              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><CircularProgress size={14} sx={{ color: '#E24B4A' }} /> Pausing…</span>
+                              : 'Pause admin'}
+                          </MenuItem>
+                        : <MenuItem disabled={Boolean(busyAdminId)} sx={{ color: 'var(--status-success) !important' }} onClick={() => setAdminActive(admin, true)}>
+                            {busyAdminId === admin.user_id
+                              ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><CircularProgress size={14} /> Activating…</span>
+                              : 'Activate admin'}
+                          </MenuItem>}
                       <Divider sx={{ borderColor: 'var(--border-color) !important', my: '4px !important' }} />
-                      <MenuItem sx={{ color: '#E24B4A !important' }} onClick={() => { setConfirmDelete(admin); handleMenuClose() }}>Delete admin</MenuItem>
+                      <MenuItem disabled={Boolean(busyAdminId)} sx={{ color: '#E24B4A !important' }} onClick={() => { setConfirmDelete(admin); handleMenuClose() }}>Delete admin</MenuItem>
                     </Menu>
                   </TableCell>
                 </TableRow>
@@ -317,7 +332,7 @@ export default function AccountManagement() {
                 <MenuItem value="">Not selected</MenuItem>
                 <MenuItem value="Starter">Starter</MenuItem>
                 <MenuItem value="Professional">Professional</MenuItem>
-                <MenuItem value="Enterprise">Enterprise</MenuItem>
+                <MenuItem value="Custom">Custom</MenuItem>
               </Select>
             </FormControl>
             <FormControl fullWidth size="small" sx={inputSx}>
@@ -353,7 +368,9 @@ export default function AccountManagement() {
         </DialogContent>
         <DialogActions sx={{ p: 2, gap: 1 }}>
           <OutlineBtn onClick={() => setConfirmDelete(null)} disabled={deleting}>Cancel</OutlineBtn>
-          <PrimaryBtn onClick={deleteAdmin} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete admin'}</PrimaryBtn>
+          <PrimaryBtn onClick={deleteAdmin} disabled={deleting}>
+            {deleting ? <><CircularProgress size={14} sx={{ color: '#fff' }} /> Deleting…</> : 'Delete admin'}
+          </PrimaryBtn>
         </DialogActions>
       </Dialog>
     </SuperAdminLayout>
