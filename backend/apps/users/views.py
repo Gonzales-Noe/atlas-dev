@@ -219,7 +219,7 @@ class LogoutView(APIView):
 
 
 class AuthActivityView(APIView):
-    """Heartbeat from a page the person is actually using. Extends the 30-minute idle window."""
+    """Heartbeat from a page the person is actually using. Extends the 15-minute idle window."""
 
     def post(self, request):
         touch_session(request.user)

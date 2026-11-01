@@ -1,9 +1,10 @@
 // Tab session for ATLAS Web.
 // Tokens live in sessionStorage, so closing the tab drops them.
 // A second tab on this same browser can borrow the open tab's session.
-// Another device cannot. The server also ends the session after 30 idle
+// Another device cannot. The server also ends the session after 15 idle
 // minutes, or 12 hours after sign-in, whichever comes first.
-// Keep IDLE_MS equal to IDLE_TIMEOUT in backend/apps/users/sessions.py.
+// Keep IDLE_MS equal to the idle window in backend/apps/users/sessions.py.
+// The server waits two extra minutes so this page can finish its warning.
 
 const ACCESS = 'atlas_access_token'
 const REFRESH = 'atlas_refresh_token'
@@ -12,11 +13,11 @@ const NOTICE = 'atlas_auth_notice'
 const ACTIVITY = 'atlas_last_activity'
 const TAB_PREFIX = 'atlas_open_tab:'
 
-export const IDLE_MS = 30 * 60 * 1000
+export const IDLE_MS = 15 * 60 * 1000
 export const IDLE_WARNING_MS = 2 * 60 * 1000
 
 export const SESSION_NOTICES = {
-  session_idle: 'You were signed out after 30 minutes of inactivity. Sign in again.',
+  session_idle: 'You were signed out after 15 minutes of inactivity. Sign in again.',
   session_superseded: 'You were signed out because this account signed in on another device.',
   session_ended: 'Your session has ended. Sign in again.',
 }
