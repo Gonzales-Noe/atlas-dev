@@ -208,7 +208,7 @@ export default function FacultyDashboard() {
               gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', xl: 'repeat(4, 1fr)' },
             } : {
               display: 'grid',
-              gap: 1.25,
+              gap: '4px',
               gridTemplateColumns: layout === 'list-2' ? 'repeat(2, minmax(0, 1fr))' : '1fr',
             }}
           >
