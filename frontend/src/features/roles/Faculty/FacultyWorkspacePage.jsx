@@ -338,9 +338,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   const [actionError, setActionError]     = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'ollama', top_k: 5, extra_instructions: '' })
-  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'ollama', top_k: 5, extra_instructions: '' })
-  const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'ollama', top_k: 5, extra_instructions: '' })
+  const [syllabusParams, setSyllabusParams] = useState({ num_weeks: 18, provider: 'auto', top_k: 5, extra_instructions: '' })
+  const [moduleParams,   setModuleParams]   = useState({ module_title: '', week_number: 1, provider: 'auto', top_k: 5, extra_instructions: '' })
+  const [assessmentParams, setAssessmentParams] = useState({ assessment_type: 'quiz', num_items: 20, clos: '', provider: 'auto', top_k: 5, extra_instructions: '' })
 
   const [uploadForm, setUploadForm]         = useState({ module_tag: '', term_tag: '' })
   const [uploadFile, setUploadFile]         = useState(null)

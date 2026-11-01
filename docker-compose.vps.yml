@@ -50,7 +50,7 @@ services:
       OLLAMA_DEFAULT_MODEL: llama3.2:3b
       EMBEDDING_PROVIDER: local
       LOCAL_EMBEDDING_MODEL: BAAI/bge-base-en-v1.5
-      DEFAULT_LLM_PROVIDER: nvidia
+      DEFAULT_LLM_PROVIDER: groq
       WEB_CONCURRENCY: "2"
       PORT: "8000"
       SECURE_SSL_REDIRECT: "true"
