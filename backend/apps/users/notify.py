@@ -470,7 +470,7 @@ def notify_institution_status(institution, *, active):
         notify_users(
             people,
             kind='institution_active',
-            title='Your institution is active',
+            title='ATLAS is active',
             body=f'{institution.name} can use ATLAS again.',
             href_for_role={UserRole.ADMIN: ADMIN_HOME, UserRole.FACULTY: FACULTY_HOME},
             dedupe_key=f'institution-active:{institution.institution_id}:{timezone.now().isoformat()}',
@@ -479,7 +479,7 @@ def notify_institution_status(institution, *, active):
     notify_users(
         people,
         kind='institution_paused',
-        title='Your institution was paused',
+        title='ATLAS is paused',
         body=f'{institution.name} cannot use ATLAS until it is turned back on.',
         href_for_role={UserRole.ADMIN: ADMIN_HOME, UserRole.FACULTY: FACULTY_HOME},
         dedupe_key=f'institution-paused:{institution.institution_id}:{timezone.now().isoformat()}',

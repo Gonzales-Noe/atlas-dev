@@ -12,7 +12,7 @@ import { fetchSetupStatus } from '../features/roles/Admin/academicApi'
 import LoadingState from './LoadingState'
 import AtlasErrorCard, { plainServerMessage } from './AtlasErrorCard'
 
-const SETUP_MESSAGE = 'ATLAS could not check whether your school setup is finished. Try again in a moment.'
+const SETUP_MESSAGE = 'ATLAS could not check whether setup is finished. Try again in a moment.'
 
 export default function AdminSetupGate({ children }) {
   const { user } = useAuth()

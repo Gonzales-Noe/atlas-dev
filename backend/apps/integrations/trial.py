@@ -47,7 +47,7 @@ def trial_generation_gate(user, *, syllabus_generation):
     now = timezone.now()
     if not trial_is_active(institution, now):
         return Response(
-            {'detail': 'Your 7-day trial has ended. Ask your institution admin to choose a paid plan.'},
+            {'detail': 'Your 7-day trial has ended. Ask an admin to choose a paid plan.'},
             status=status.HTTP_402_PAYMENT_REQUIRED,
         )
 

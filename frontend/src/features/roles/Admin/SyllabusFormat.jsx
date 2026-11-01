@@ -604,7 +604,7 @@ export default function SyllabusFormat() {
 
   async function saveHeaderImage(nextUrl) {
     // Persist the header on its own so the upload is not blocked by section
-    // validation, and so the image applies to every institution's exports.
+    // validation, and so the image applies to every export.
     const previous = customization.header_image_url || ''
     setError('')
     setNotice('')
@@ -715,7 +715,7 @@ export default function SyllabusFormat() {
         : payload
       setCustomization(current => ({ ...current, ...response.data, syllabus_sections: storedSections }))
       dirtyRef.current = false
-      setNotice('Syllabus format saved. Every admin can change it, and it applies to every institution and faculty account.')
+      setNotice('Syllabus format saved. It applies to every faculty account.')
       return true
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to save syllabus format to the database.')
@@ -795,7 +795,7 @@ export default function SyllabusFormat() {
         <DialogTitle sx={{ color: 'var(--text-primary)' }}>Fixed content</DialogTitle>
         <DialogContent sx={{ bgcolor: 'var(--bg-card)' }}>
           <Typography variant="body2" sx={{ color: 'var(--text-secondary)', mb: 2 }}>
-            {fieldEditor.label} — Faculty see this content and cannot edit the field. Saving applies it to every Faculty syllabus in your institution.
+            {fieldEditor.label} — Faculty see this content and cannot edit the field. Saving applies it to every faculty syllabus.
           </Typography>
           <StatusNotice message={error} severity="error" />
           <TextField
@@ -1235,7 +1235,7 @@ export default function SyllabusFormat() {
             {tableFixed
               ? 'Fixed for every Faculty account. They see this table and cannot edit it. The table name is set by admins.'
               : editable
-                ? 'Any admin can rename this table. Faculty see that name and cannot change it. Save Format stores the name for every institution.'
+                ? 'Any admin can rename this table. Faculty see that name and cannot change it. Save Format stores the name for every faculty account.'
                 : sampleRows.length
                   ? 'Rows above are the default content; Faculty can edit every row in the Syllabus workspace.'
                   : 'Faculty fill this table row by row in the Syllabus workspace.'}
@@ -1568,7 +1568,7 @@ export default function SyllabusFormat() {
     <AdminLayout>
       <PageHeader
         title="Syllabus Format"
-        subtitle="The Admin view of the Faculty Syllabus workspace. Choose the sections Faculty see and lock the content that must stay the same. Changes apply to every admin account in your institution."
+        subtitle="Choose the sections faculty see and lock the content that must stay the same. Changes apply to every faculty account."
         action={<PrimaryBtn onClick={() => save()} disabled={loading || saving}>{saving ? 'Saving…' : 'Save Format'}</PrimaryBtn>}
       />
       <StatusNotice message={error} severity="error" />
@@ -1591,8 +1591,8 @@ export default function SyllabusFormat() {
                     Document header
                   </Typography>
                   <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                    Upload one header template. It becomes the letterhead of every exported DOCX and PDF for this
-                    institution — no text is added beside it. Only admins see this setting; Faculty never upload one.
+                    Upload one header template. It becomes the letterhead of every exported DOCX and PDF.
+                    No text is added beside it. Only admins see this setting; faculty never upload one.
                   </Typography>
                 </Box>
                 <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>

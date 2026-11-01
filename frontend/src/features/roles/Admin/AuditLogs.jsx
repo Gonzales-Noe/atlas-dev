@@ -51,9 +51,9 @@ const actionLabel = a => {
     'account_deactivated': 'Account Deactivated',
     'account_reactivated': 'Account Reactivated',
     'account_deleted': 'Account Deleted',
-    'institution_deactivated': 'Institution Deactivated',
-    'institution_reactivated': 'Institution Reactivated',
-    'institution_deleted': 'Institution Deleted',
+    'institution_deactivated': 'Campus paused',
+    'institution_reactivated': 'Campus restored',
+    'institution_deleted': 'Campus data removed',
     'admin_document_upload': 'Admin Document Upload',
     'course_request_approved': 'Course Request Approved',
     'course_request_submitted': 'Course Request Submitted',
@@ -115,7 +115,7 @@ export default function AdminAuditLogs() {
     <AdminLayout>
       <PageHeader
         title="Audit Logs"
-        subtitle="Review recorded activity for your institution"
+        subtitle="Review recorded activity on this campus"
       />
 
       <StatusNotice message={error} severity="error" />
@@ -183,7 +183,7 @@ export default function AdminAuditLogs() {
               ? 'Audit records could not be loaded.'
               : debouncedSearch.trim()
                 ? 'No audit records match your search.'
-                : 'No audit events have been recorded for this institution.'}
+                : 'No audit events have been recorded yet.'}
           </div>
         )}
         <TablePagination

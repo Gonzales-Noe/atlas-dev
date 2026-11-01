@@ -37,7 +37,7 @@ def _require_admin(request):
     institution = getattr(request.user, 'institution', None)
     if institution is None:
         return Response(
-            {'detail': 'Your account is not linked to an institution.'},
+            {'detail': 'Your account is not set up yet.'},
             status=status.HTTP_400_BAD_REQUEST,
         )
     return None

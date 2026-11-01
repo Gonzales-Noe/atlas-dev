@@ -145,8 +145,8 @@ export default function BillingOnboarding() {
         <div className="billing-brand">ATLAS / INSTITUTION SETUP</div>
         <header className="billing-header">
           <div>
-            <h1>{stage === 'trial' ? 'Your ATLAS trial is ready.' : stage === 'expired' ? 'Your trial has ended.' : 'Bring your institution into ATLAS.'}</h1>
-            <p>{application.institution ? `Application for ${application.institution}. ` : ''}{stage === 'trial' ? 'Explore syllabus generation for 7 days, with no payment method required.' : stage === 'expired' ? 'Choose a paid plan to restore access to your institution workspace.' : 'Choose a plan and complete a secure one-time payment to activate 30 days of access.'}</p>
+            <h1>{stage === 'trial' ? 'Your ATLAS trial is ready.' : stage === 'expired' ? 'Your trial has ended.' : 'Choose a plan for ATLAS.'}</h1>
+            <p>{stage === 'trial' ? 'Explore syllabus generation for 7 days, with no payment method required.' : stage === 'expired' ? 'Choose a paid plan to restore access to the workspace.' : 'Choose a plan and complete a secure one-time payment to activate 30 days of access.'}</p>
           </div>
           <div className="billing-muted">Step {stageNumber} of 3</div>
         </header>
@@ -157,7 +157,7 @@ export default function BillingOnboarding() {
         {stage === 'trial' && <section className="billing-panel">
           <h2>{trialDaysRemaining} {trialDaysRemaining === 1 ? 'day' : 'days'} left in your trial</h2>
           <p className="billing-muted">The trial includes up to {status.faculty_limit || 2} faculty accounts and {status.generation_limit || 5} syllabus generations per faculty. AI generation outside the Syllabus module is unavailable during the trial. No automatic charge will be made when it ends.</p>
-          {status.role === 'faculty' && <p className="billing-muted">Used syllabus generations: {status.generation_used || 0} of {status.generation_limit || 5}. Contact your institution admin if you need to upgrade after the trial.</p>}
+          {status.role === 'faculty' && <p className="billing-muted">Used syllabus generations: {status.generation_used || 0} of {status.generation_limit || 5}. Contact an admin if you need to upgrade after the trial.</p>}
           <StatusNotice message={error} severity="error" />
           <div className="billing-actions">
             {isAdmin && <button type="button" className="billing-button secondary" onClick={() => setStage('plan')}>Choose a paid plan</button>}
@@ -166,13 +166,13 @@ export default function BillingOnboarding() {
         </section>}
 
         {stage === 'expired' && <section className="billing-panel">
-          <h2>{isAdmin ? 'Restore your institution access' : 'Ask your institution admin to upgrade'}</h2>
-          <p className="billing-muted">{isAdmin ? 'Choose Starter or Professional below to pay for the next 30 days. Payment is manual; ATLAS will not charge you automatically.' : 'Your institution trial has ended. An admin must choose a paid plan before you can continue using the workspace.'}</p>
+          <h2>{isAdmin ? 'Restore access' : 'Ask an admin to upgrade'}</h2>
+          <p className="billing-muted">{isAdmin ? 'Choose Starter or Professional below to pay for the next 30 days. Payment is manual; ATLAS will not charge you automatically.' : 'The trial has ended. An admin must choose a paid plan before you can continue using the workspace.'}</p>
           {isAdmin && <div className="billing-actions"><button type="button" className="billing-button" onClick={() => setStage('plan')}>View paid plans</button></div>}
         </section>}
 
         {stage === 'plan' && <section className="billing-panel">
-          <h2>Select your institution plan</h2>
+          <h2>Select a plan</h2>
           <p className="billing-muted">Each payment provides 30 days of access. Renewal is manual; there is no automatic billing.</p>
           <div className="plan-grid">{PLANS.map(item => <button type="button" className={`plan-card ${plan === item.name ? 'selected' : ''}`} key={item.name} onClick={() => setPlan(item.name)}>
             <strong style={{ color: item.accent }}>{item.name}</strong><span className="plan-price">{item.price}</span><div className="plan-detail">{item.detail}</div>
@@ -195,7 +195,7 @@ export default function BillingOnboarding() {
 
         {stage === 'approved' && <section className="billing-panel">
           <div className="review-icon">✓</div>
-          <h2>Institution access is active</h2>
+          <h2>Access is active</h2>
           <p className="billing-muted">Your {plan || status.selected_plan || 'selected'} plan is active until {status.subscription_ends_at ? new Date(status.subscription_ends_at).toLocaleDateString() : 'the end of the current paid period'}. Renew manually to keep access.</p>
           <div className="billing-actions">
             <button type="button" className="billing-button" onClick={() => navigate(dashboardPath, { replace: true })}>Continue to workspace</button>

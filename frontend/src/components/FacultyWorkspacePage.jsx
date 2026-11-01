@@ -1402,7 +1402,7 @@ function SylField({ rules, fieldKey, value, InputProps, helperText, ...props }) 
       {...props}
       value={fixedText.trim() ? fixedText : value}
       disabled
-      helperText={helperText || (readOnlySyllabus ? 'Read-only' : 'Fixed by your institution')}
+      helperText={helperText || (readOnlySyllabus ? 'Read-only' : 'Fixed by an admin')}
       InputProps={{ ...InputProps, readOnly: true }}
     />
   )
@@ -1507,7 +1507,7 @@ function FixedBlueprintTable({ table }) {
         <Typography variant="body2" sx={{ mt: 1, color: 'var(--workspace-muted)', lineHeight: 1.6 }}>{table.footer}</Typography>
       )}
       <Typography variant="caption" sx={{ display: 'block', mt: 1, color: MAROON, fontWeight: 600 }}>
-        Fixed by your institution. This table cannot be edited.
+        Fixed by an admin. This table cannot be edited.
       </Typography>
     </Box>
   )
@@ -6352,7 +6352,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
           )}
           {readOnly && (
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-              Fixed by your institution
+              Fixed by an admin
             </Typography>
           )}
         </Stack>
@@ -6401,7 +6401,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   label={subsection.label || `Subsection ${index + 1}`}
                   required={Boolean(subsection.required) && !locked}
                   disabled={locked}
-                  helperText={locked ? 'Fixed by your institution' : undefined}
+                  helperText={locked ? 'Fixed by an admin' : undefined}
                   value={locked
                     ? (subsection.static_content || syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')
                     : (syllabusData.custom_subsections?.[activeConfiguredSection.key]?.[subsection.key] || '')}
@@ -6438,7 +6438,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <Paper elevation={0} sx={{ border: '1px solid rgba(0,0,0,0.09)', borderRadius: 2.5, p: 3 }}>
           <Typography variant="body2" sx={{ color: '#666' }}>
-            Your institution has not configured any syllabus sections yet.
+            Syllabus sections have not been set up yet.
           </Typography>
         </Paper>
       )
@@ -6609,7 +6609,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
       return (
         <SectionCard title="Framework Mapping"
           action={fixedFwTable
-            ? <Chip size="small" label="Fixed by institution" sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700 }} />
+            ? <Chip size="small" label="Fixed by an admin" sx={{ bgcolor: MAROON_LIGHT, color: MAROON, fontWeight: 700 }} />
             : <AddRowBtn label={`Add ${activeFw.key}`} onClick={() => addSylItem(activeFw.itemsField, { ...EMPTY_ATTR, code: `${activeFw.codePrefix}${fwItems.length + 1}` })} />}>
           {/* Tab strip */}
           <Box sx={{ display: 'flex', gap: 0.5, mb: 2, flexWrap: 'wrap', borderBottom: '1px solid rgba(0,0,0,0.07)', pb: 1 }}>
@@ -8018,7 +8018,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </Tabs>
             </Box>
             {activeConfiguredSection?.is_static && (activeConfiguredSection.static_content || '').trim() && (
-              <SectionCard title="Fixed by your institution">
+              <SectionCard title="Fixed by an admin">
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
                   {activeConfiguredSection.static_content}
                 </Typography>
@@ -8827,7 +8827,7 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
                   </Typography>
                   {configuredSections.length === 0 ? (
                     <Alert severity="warning" sx={{ fontSize: '0.8rem', alignItems: 'center' }}>
-                      Your institution has no syllabus sections configured yet. Add one in the Syllabus tab first.
+                      Syllabus sections have not been set up yet. Add one in the Syllabus tab first.
                     </Alert>
                   ) : (
                     <>

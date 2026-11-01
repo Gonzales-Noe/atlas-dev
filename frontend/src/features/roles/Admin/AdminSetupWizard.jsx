@@ -92,7 +92,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
         faculty_name: facultyById.get(assignment.faculty_id) || 'Faculty',
       })))
     } catch (err) {
-      setError(toMessage(err, 'Could not load your institution setup. Retry to continue.'))
+      setError(toMessage(err, 'Could not load setup. Retry to continue.'))
     } finally {
       setLoading(false)
     }
@@ -484,7 +484,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
           First-time setup
         </Typography>
         <Typography sx={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-primary)', mt: 0.5 }}>
-          Set up your institution
+          Set up ATLAS
         </Typography>
         <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)', mt: 0.5 }}>
           Complete the syllabus template and faculty assignments to unlock the admin workspace.
@@ -510,7 +510,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
 
       <DialogContent dividers sx={{ px: 3, py: 2.5, bgcolor: 'var(--bg-card)', borderColor: 'var(--border-color) !important' }}>
         {loading ? (
-          <LoadingState label="Loading your institution setup..." />
+          <LoadingState label="Loading setup..." />
         ) : (
           <Stack spacing={2}>
             <StatusNotice message={error} severity="error" />
@@ -518,9 +518,9 @@ export default function AdminSetupWizard({ open, onFinished }) {
 
             {activeStep === 0 && (
               <>
-                <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the institution syllabus template</Typography>
+                <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>1. Set the syllabus template</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Upload a PDF/DOCX syllabus to detect its sections, subsections and tables automatically, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared institutional information can be fixed for everyone.
+                  Upload a PDF/DOCX syllabus to detect its sections, subsections and tables automatically, or add sections manually. Add subsections as faculty answer fields and mark required fields; shared campus information can be fixed for everyone.
                 </Typography>
                 <Button
                   component="label"
@@ -575,7 +575,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
                         minRows={2}
                         size="small"
                         sx={{ ...inputSx, mt: 1.5 }}
-                        placeholder="For example, the institution's mission and vision."
+                        placeholder="For example, the campus mission and vision."
                       />
                     )}
                     {!section.is_static && (
@@ -721,7 +721,7 @@ export default function AdminSetupWizard({ open, onFinished }) {
               <>
                 <Typography sx={{ fontWeight: 700, color: 'var(--text-primary)' }}>3. Upload a knowledge base (optional)</Typography>
                 <Typography sx={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
-                  Add institutional reference documents now, or skip and upload them later from Knowledge Base.
+                  Add reference documents now, or skip and upload them later from Knowledge Base.
                 </Typography>
                 <Button component="label" variant="outlined" startIcon={<CloudUploadIcon />} disabled={saving}
                   sx={{ alignSelf: 'flex-start', textTransform: 'none', borderColor: 'var(--border-color)', color: 'var(--text-primary)' }}>

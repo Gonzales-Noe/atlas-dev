@@ -80,7 +80,7 @@ class CourseSerializer(serializers.ModelSerializer):
         institution = self.context.get('institution')
         if institution and value.institution_id != institution.institution_id:
             if not value.program_id or value.program.institution_id != institution.institution_id:
-                raise serializers.ValidationError('That section does not belong to your institution.')
+                raise serializers.ValidationError('That section was not found.')
         return value
 
     def validate(self, attrs):
@@ -92,7 +92,7 @@ class CourseSerializer(serializers.ModelSerializer):
                 queryset = queryset.exclude(course_id=self.instance.course_id)
             if queryset.exists():
                 raise serializers.ValidationError({
-                    'course_code': 'A course with this code already exists in your institution.',
+                    'course_code': 'A course with this code already exists.',
                 })
         return attrs
 

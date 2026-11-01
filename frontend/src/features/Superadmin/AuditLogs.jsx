@@ -38,9 +38,9 @@ const ACTION_LABELS = {
   account_deactivated: 'Account suspended',
   account_reactivated: 'Account reactivated',
   account_deleted: 'Account deleted',
-  institution_deactivated: 'Institution suspended',
-  institution_reactivated: 'Institution reactivated',
-  institution_deleted: 'Institution deleted',
+  institution_deactivated: 'Campus paused',
+  institution_reactivated: 'Campus restored',
+  institution_deleted: 'Campus data removed',
   assessment_approved: 'Assessment approved',
   course_request_approved: 'Course request approved',
   course_request_submitted: 'Course request submitted',
@@ -154,12 +154,9 @@ function describeLog(log) {
     const who = details.account_name || details.account_email || 'The account'
     lines.push(`${who} was ${log.action.endsWith('reactivated') ? 'reactivated' : 'suspended'}.`)
   } else if (log.action === 'institution_deleted') {
-    lines.push(details.deleted_institution_name
-      ? `${details.deleted_institution_name} and its data were deleted.`
-      : 'An institution was deleted.')
+    lines.push('Campus data was removed.')
   } else if (log.action === 'institution_deactivated' || log.action === 'institution_reactivated') {
-    const name = details.institution_name || 'The institution'
-    lines.push(`${name} was ${log.action.endsWith('reactivated') ? 'reactivated' : 'suspended'}.`)
+    lines.push(log.action.endsWith('reactivated') ? 'Campus access was restored.' : 'Campus access was paused.')
   }
 
   if (!lines.length) {
@@ -225,7 +222,7 @@ export default function AuditLogs() {
     <SuperAdminLayout>
       <PageHeader
         title="Audit Logs"
-        subtitle="Recorded actions across every institution on this deployment"
+        subtitle="Recorded actions on this campus"
       />
 
       <StatusNotice message={error} severity="error" />

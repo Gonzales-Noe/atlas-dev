@@ -593,7 +593,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                   Reset your <span className="glow-text">password</span>
                 </h1>
                 <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: '0.87rem', margin: '0 0 1.75rem', lineHeight: 1.6 }}>
-                  Enter your institutional email and we'll send you a one-time code.
+                  Enter your email and we'll send you a one-time code.
                 </p>
 
                 <StatusNotice message={error} severity="error" />
@@ -604,7 +604,7 @@ export default function PasswordResetPage({ isModal, onClose, onSwitch }) {
                     <input
                       className="dark-input"
                       type="email"
-                      placeholder="you@institution.edu.ph"
+                      placeholder="you@g.batstate-u.edu.ph"
                       value={email}
                       onChange={e => { setEmail(e.target.value); setError('') }}
                       required

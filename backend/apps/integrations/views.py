@@ -121,7 +121,7 @@ def _handle_global_rag_upload(request):
     """Shared implementation for global RAG document uploads."""
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -456,7 +456,7 @@ def list_rag_documents(request):
 
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -508,7 +508,7 @@ def delete_global_rag_document(request, document_id):
 
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -641,7 +641,7 @@ def list_audit_logs(request):
         return _forbidden_admin_only_response()
     if not request.user.institution_id:
         return Response(
-            {"success": False, "detail": "Your account is not linked to an institution."},
+            {"success": False, "detail": "Your account is not set up yet."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 

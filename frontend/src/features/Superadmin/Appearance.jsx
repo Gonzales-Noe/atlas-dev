@@ -69,14 +69,14 @@ export default function Appearance() {
     <SuperAdminLayout>
       <PageHeader
         title="Appearance"
-        subtitle="Replace the default red with the color this institution wants on the public site and the signed-in app"
+        subtitle="Replace the default red with the color used on the public site and the signed-in app"
       />
 
       <StatusNotice message={error} severity="error" />
       <StatusNotice message={notice} severity="success" />
 
       <div className="atlas-appearance-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(280px, 0.8fr)', gap: 16 }}>
-        <GlassCard title="Institution color">
+        <GlassCard title="Campus color">
           <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.88rem', lineHeight: 1.5 }}>
             Buttons, navigation, sign-in, the landing page, and faculty workspace accents follow this color.
             Pick a preset or enter any dark hex color. Pale colors are rejected so labels stay readable.
