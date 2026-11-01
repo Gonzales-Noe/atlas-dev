@@ -429,7 +429,7 @@ function SessionWatch({ enabled, onSignOut }) {
 
     // One deadline, re-armed from the stored timestamp. A hidden tab's
     // timers can fire late; the callback reads the clock again, so a late
-    // wake still signs the person out instead of starting a new 30 minutes.
+    // wake still signs the person out instead of starting a new idle window.
     const armDeadline = () => {
       window.clearTimeout(deadlineTimer)
       const remaining = IDLE_MS - idleForMs()

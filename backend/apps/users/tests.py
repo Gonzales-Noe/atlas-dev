@@ -557,7 +557,7 @@ class AuthSessionTests(TestCase):
     def test_idle_session_must_sign_in_again(self):
         data = self._login()
         self.user.refresh_from_db()
-        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=33)
+        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=18)
         self.user.save(update_fields=['auth_session_seen_at'])
 
         response = self.client.get(
@@ -578,7 +578,7 @@ class AuthSessionTests(TestCase):
     def test_activity_extends_the_idle_window(self):
         data = self._login()
         self.user.refresh_from_db()
-        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=20)
+        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=10)
         self.user.save(update_fields=['auth_session_seen_at'])
 
         touched = self.client.post(

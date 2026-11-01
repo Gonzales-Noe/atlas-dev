@@ -3,11 +3,11 @@
 The browser keeps tokens only for the open tab. The server is the authority
 for the other two rules:
 
-- 30 minutes without a heartbeat from the open page ends the session.
+- 15 minutes without a heartbeat from the open page ends the session.
 - A new sign-in replaces the previous one, on this browser or another device.
 
 The refresh token itself expires 12 hours after sign-in (SIMPLE_JWT).
-Keep the 30-minute idle window equal to IDLE_MS in frontend/src/config/session.js.
+Keep the 15-minute idle window equal to IDLE_MS in frontend/src/config/session.js.
 """
 
 import secrets
@@ -19,15 +19,15 @@ from rest_framework.exceptions import AuthenticationFailed
 from apps.integrations.models import UserProfile
 
 # Two extra minutes cover a heartbeat that landed just before the last click,
-# so the open page can show its own 30-minute warning before the server refuses.
-IDLE_TIMEOUT = timedelta(minutes=32)
+# so the open page can show its own 15-minute warning before the server refuses.
+IDLE_TIMEOUT = timedelta(minutes=17)
 HEARTBEAT_INTERVAL_SECONDS = 60
 
 SESSION_IDLE = 'session_idle'
 SESSION_SUPERSEDED = 'session_superseded'
 SESSION_ENDED = 'session_ended'
 
-IDLE_MESSAGE = 'You were signed out after 30 minutes of inactivity. Sign in again.'
+IDLE_MESSAGE = 'You were signed out after 15 minutes of inactivity. Sign in again.'
 SUPERSEDED_MESSAGE = 'You were signed out because this account signed in on another device.'
 ENDED_MESSAGE = 'Your session has ended. Sign in again.'
 
