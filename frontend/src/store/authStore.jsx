@@ -401,6 +401,12 @@ export function AuthProvider({ children }) {
   )
 }
 
+function playIdleChime() {
+  const audio = new Audio('/sounds/idle-double-tap.wav')
+  audio.volume = 0.85
+  audio.play().catch(() => {})
+}
+
 function formatRemaining(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000))
   const minutes = Math.floor(total / 60)
@@ -414,6 +420,17 @@ function SessionWatch({ enabled, onSignOut }) {
   const warningRef = useRef(warning)
   warningRef.current = warning
   const lastBeat = useRef(0)
+  const chimePlayed = useRef(false)
+
+  useEffect(() => {
+    if (!warning) {
+      chimePlayed.current = false
+      return
+    }
+    if (chimePlayed.current) return
+    chimePlayed.current = true
+    playIdleChime()
+  }, [warning])
 
   useEffect(() => {
     if (!enabled) return undefined
