@@ -176,8 +176,9 @@ function SectionsTab({ courseId }) {
       const already = r.data.already_in_section || []
       const other = r.data.in_other_section || []
       const invalid = r.data.invalid || []
+      const sectionName = sections.find(section => section.section_id === selectedId)?.section_name || 'this section'
       const parts = []
-      if (added) parts.push(`Added ${added}.`)
+      if (added) parts.push(`Added ${added} student_id on ${sectionName}.`)
       if (already.length) parts.push(`${already.length} already in this section.`)
       if (other.length) parts.push(other.map(item => item.detail).join(' '))
       if (invalid.length) parts.push(`${invalid.length} could not be read.`)
@@ -1007,6 +1008,38 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 // RESULTS TAB — section scorebook of major examinations
 // ─────────────────────────────────────────────────────────────────────────────
 const SCORE_POLL_MS = 1000
+const SCORE_ID_WIDTH = 148
+const SCORE_EXAM_WIDTH = 176
+
+const scoreTableSx = {
+  tableLayout: 'fixed',
+  borderCollapse: 'separate',
+  borderSpacing: 0,
+  '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER, boxSizing: 'border-box' },
+  '& .MuiTableRow-root:hover': { bgcolor: 'var(--workspace-card)' },
+  '& .MuiTableRow-root:hover .score-id': { bgcolor: 'var(--workspace-card)' },
+}
+
+function ScoreColGroup({ exams }) {
+  const columns = exams.length ? exams : [null]
+  return (
+    <colgroup>
+      <col style={{ width: SCORE_ID_WIDTH }} />
+      {columns.map((exam, index) => (
+        <col key={exam?.exam_id || `empty-${index}`} style={{ width: SCORE_EXAM_WIDTH }} />
+      ))}
+    </colgroup>
+  )
+}
+
+function ScoreColumns({ exams, children }) {
+  const width = SCORE_ID_WIDTH + Math.max(exams.length, 1) * SCORE_EXAM_WIDTH
+  return (
+    <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', '& table': { width, minWidth: '100%' } }}>
+      {children}
+    </Box>
+  )
+}
 
 const EXPORT_FORMATS = [
   { id: 'docx', label: 'Word' },
@@ -1051,6 +1084,8 @@ function ResultsTab({ courseId }) {
   const [exporting, setExporting] = useState('')
   const bookRef = useRef(null)
   const flashTimer = useRef(null)
+  const headScrollRef = useRef(null)
+  const bodyScrollRef = useRef(null)
 
   if (forCourse !== courseId) {
     setForCourse(courseId)
@@ -1233,90 +1268,101 @@ function ResultsTab({ courseId }) {
           No student IDs in {sectionName || 'this section'} yet. Add them on the Sections tab.
         </Typography>
       ) : (
-        <TableContainer
-          component={Paper}
+        <Paper
           elevation={0}
           sx={{
             flex: 1,
             minHeight: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
             bgcolor: SURFACE,
             color: TEXT,
             border: `1px solid ${BORDER}`,
             borderRadius: 2,
-            overflow: 'auto',
           }}
         >
-          <Table stickyHeader size="small" sx={{
-            '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER },
-            '& .MuiTableRow-root:hover': { bgcolor: 'var(--workspace-card)' },
-            '& .MuiTableRow-root:hover .score-id': { bgcolor: 'var(--workspace-card)' },
-          }}>
-            <TableHead>
-              <TableRow>
-                <TableCell className="score-id" sx={{
-                  position: 'sticky', top: 0, left: 0, zIndex: 4, bgcolor: BG,
-                  fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 120,
-                }}>
-                  Student ID
-                </TableCell>
-                {exams.map(exam => (
-                  <TableCell key={exam.exam_id} align="center" sx={{ position: 'sticky', top: 0, zIndex: 2, fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 108, bgcolor: BG }}>
-                    <Box sx={{ lineHeight: 1.25 }}>{exam.name}</Box>
-                    <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
-                      {exam.source === 'mobile' ? 'Mobile' : 'Web'}
-                      {exam.max_score ? ` · ${exam.max_score}` : ''}
-                    </Box>
-                  </TableCell>
-                ))}
-                {exams.length === 0 && (
-                  <TableCell sx={{ fontSize: '0.72rem', color: MUTED, bgcolor: BG }}>
-                    Major examination scores appear here after an answer sheet is created.
-                  </TableCell>
-                )}
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {students.map(student => (
-                <TableRow key={student.student_id} hover sx={{ '&:last-child td': { border: 0 } }}>
-                  <TableCell className="score-id" sx={{
-                    position: 'sticky', left: 0, zIndex: 1, bgcolor: SURFACE,
-                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-                    fontSize: '0.8rem', fontWeight: 700,
-                  }}>
-                    {student.student_id}
-                  </TableCell>
-                  {exams.length === 0 && <TableCell />}
-                  {exams.map(exam => {
-                    const cell = student.scores?.[exam.exam_id]
-                    const key = `${student.student_id}:${exam.exam_id}`
-                    const lit = Boolean(flash[key])
-                    return (
-                      <TableCell
-                        key={exam.exam_id}
-                        align="center"
-                        sx={{
-                          fontSize: '0.8rem',
-                          fontWeight: 700,
-                          bgcolor: lit ? 'rgba(94, 218, 126, 0.28)' : 'transparent',
-                          transition: 'background-color 0.7s ease',
-                        }}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.4 }}>
-                          <span>{cell?.score == null ? '—' : cell.score}</span>
-                          {cell?.flagged && (
-                            <Tooltip title="Flagged for review">
-                              <FlagIcon sx={{ fontSize: 13, color: '#FCA5A5' }} />
-                            </Tooltip>
-                          )}
+          <ScoreColumns exams={exams}>
+            <Box ref={headScrollRef} sx={{ overflow: 'hidden', flexShrink: 0, bgcolor: BG, borderBottom: `1px solid ${BORDER}` }}>
+              <Table size="small" sx={scoreTableSx}>
+                <ScoreColGroup exams={exams} />
+                <TableHead>
+                  <TableRow>
+                    <TableCell className="score-id" sx={{ bgcolor: BG, fontWeight: 700, fontSize: '0.72rem', py: 1 }}>
+                      Student ID
+                    </TableCell>
+                    {exams.map(exam => (
+                      <TableCell key={exam.exam_id} align="center" sx={{ bgcolor: BG, fontWeight: 700, fontSize: '0.72rem', py: 1 }}>
+                        <Box sx={{ lineHeight: 1.25 }}>{exam.name}</Box>
+                        <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
+                          {exam.source === 'mobile' ? 'Mobile' : 'Web'}
+                          {exam.max_score ? ` · ${exam.max_score}` : ''}
                         </Box>
                       </TableCell>
-                    )
-                  })}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                    ))}
+                    {exams.length === 0 && (
+                      <TableCell sx={{ fontSize: '0.72rem', color: MUTED, bgcolor: BG }}>
+                        Major examination scores appear here after an answer sheet is created.
+                      </TableCell>
+                    )}
+                  </TableRow>
+                </TableHead>
+              </Table>
+            </Box>
+            <TableContainer
+              ref={bodyScrollRef}
+              sx={{ flex: 1, minHeight: 0, overflow: 'auto', bgcolor: SURFACE }}
+              onScroll={event => {
+                if (headScrollRef.current) headScrollRef.current.scrollLeft = event.currentTarget.scrollLeft
+              }}
+            >
+              <Table size="small" sx={scoreTableSx}>
+                <ScoreColGroup exams={exams} />
+                <TableBody>
+                  {students.map(student => (
+                    <TableRow key={student.student_id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                      <TableCell className="score-id" sx={{
+                        bgcolor: SURFACE,
+                        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                        fontSize: '0.8rem',
+                        fontWeight: 700,
+                      }}>
+                        {student.student_id}
+                      </TableCell>
+                      {exams.length === 0 && <TableCell />}
+                      {exams.map(exam => {
+                        const cell = student.scores?.[exam.exam_id]
+                        const key = `${student.student_id}:${exam.exam_id}`
+                        const lit = Boolean(flash[key])
+                        return (
+                          <TableCell
+                            key={exam.exam_id}
+                            align="center"
+                            sx={{
+                              fontSize: '0.8rem',
+                              fontWeight: 700,
+                              bgcolor: lit ? 'rgba(94, 218, 126, 0.28)' : SURFACE,
+                              transition: 'background-color 0.7s ease',
+                            }}
+                          >
+                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.4 }}>
+                              <span>{cell?.score == null ? '—' : cell.score}</span>
+                              {cell?.flagged && (
+                                <Tooltip title="Flagged for review">
+                                  <FlagIcon sx={{ fontSize: 13, color: '#FCA5A5' }} />
+                                </Tooltip>
+                              )}
+                            </Box>
+                          </TableCell>
+                        )
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </ScoreColumns>
+        </Paper>
       )}
     </Box>
   )
