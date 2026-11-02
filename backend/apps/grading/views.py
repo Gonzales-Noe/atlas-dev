@@ -1500,8 +1500,8 @@ def grading_scorebook(request):
 @permission_classes([IsAuthenticated])
 def grading_scorebook_export(request):
     """
-    GET /api/grading/scorebook/export/?course_id=&section_id=&format=docx|pdf|xlsx
-    Student ID and score columns only.
+    GET /api/grading/scorebook/export/?course_id=&section_id=&file_type=docx|pdf|xlsx
+    First column is the student ID. The columns after it are the exam scores.
     """
     faculty, course, section, _handled, error = _scorebook_context(request)
     if error:
@@ -1511,7 +1511,7 @@ def grading_scorebook_export(request):
             {"success": False, "detail": "Choose a section you handle."},
             status=status.HTTP_400_BAD_REQUEST,
         )
-    fmt = (request.query_params.get("format") or "").strip().lower()
+    fmt = (request.query_params.get("file_type") or "").strip().lower()
     if fmt not in {"docx", "pdf", "xlsx"}:
         return Response(
             {"success": False, "detail": "Choose a Word, PDF, or Excel file."},
