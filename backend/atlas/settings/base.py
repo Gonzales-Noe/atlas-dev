@@ -146,6 +146,25 @@ STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ── Encryption at rest (AES-256-GCM) ─────────────────────────────────────────
+# Comma-separated 256-bit keys (base64url or 64-char hex). The FIRST key encrypts new
+# data; the rest are kept only to read older data while rotating.
+# Generate one:  python manage.py encrypt_at_rest --generate-key
+ATLAS_ENCRYPTION_KEYS = [
+    key.strip()
+    for key in os.environ.get('ATLAS_ENCRYPTION_KEYS', '').split(',')
+    if key.strip()
+]
+# Without a key, development falls back to one derived from SECRET_KEY (DEBUG only).
+# Production must set ATLAS_ENCRYPTION_KEYS; a system check fails the deploy otherwise.
+ATLAS_ENCRYPTION_ALLOW_DERIVED_KEY = False
+
+# Uploaded files (e.g. the syllabus template) are stored encrypted on disk.
+STORAGES = {
+    'default': {'BACKEND': 'apps.integrations.storage.EncryptedFileSystemStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+}
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 EMAIL_BACKEND = os.environ.get('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')

@@ -31,6 +31,8 @@ class IntegrationsConfig(AppConfig):
     name = 'apps.integrations'
 
     def ready(self):
+        from . import checks  # noqa: F401  (registers the encryption key system check)
+
         # Loading the embedding model takes ~30 s; do it once at startup instead
         # of inside the first upload/search request.
         if os.environ.get("PRELOAD_EMBEDDER", "true").lower() != "true":

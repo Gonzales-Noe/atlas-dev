@@ -10,7 +10,7 @@ export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-atlas.settings.prod}"
 
 python <<'PY'
 import os, sys
-required = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "SECRET_KEY"]
+required = ["DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST", "SECRET_KEY", "ATLAS_ENCRYPTION_KEYS"]
 missing = [k for k in required if not os.environ.get(k)]
 if missing:
     print("FATAL: missing env vars:", ", ".join(missing), file=sys.stderr)

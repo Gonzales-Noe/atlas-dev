@@ -5,6 +5,8 @@ from django.db import models
 from django.utils import timezone
 from pgvector.django import VectorField
 
+from .fields import EncryptedJSONField, EncryptedTextField
+
 class RagStatusEnum(models.TextChoices):
     PENDING = 'PENDING', 'Pending'
     PROCESSING = 'PROCESSING', 'Processing'
@@ -493,7 +495,7 @@ class AssessmentScoreResult(models.Model):
     # SR code (e.g. "23-35007"). Same identifier as bubble_sheet_scans.student_identifier.
     student_identifier = models.CharField(max_length=64, db_index=True)
     score = models.DecimalField(max_digits=5, decimal_places=2)
-    performance = models.JSONField(null=True, blank=True)
+    performance = EncryptedJSONField(null=True, blank=True)
 
     class Meta:
         db_table = 'assessment_score_results'
@@ -535,7 +537,7 @@ class AnalyticsSnapshot(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     result = models.ForeignKey(AssessmentScoreResult, on_delete=models.SET_NULL, null=True, blank=True)
     snapshot_type = models.CharField(max_length=100)
-    snapshot_data = models.JSONField()
+    snapshot_data = EncryptedJSONField()
     generated_at = models.DateTimeField(auto_now_add=True)
     is_saved = models.BooleanField(default=False)
 
@@ -662,7 +664,7 @@ class WebPushConfig(models.Model):
 
     config_id = models.PositiveSmallIntegerField(primary_key=True, default=1)
     public_key = models.CharField(max_length=200)
-    private_key = models.TextField()
+    private_key = EncryptedTextField()
     subject = models.CharField(max_length=200, default='mailto:no-reply@atlas.local')
 
     class Meta:
@@ -707,7 +709,7 @@ class ParentChunk(models.Model):
     uploader = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
     module_tag = models.CharField(max_length=255, null=True, blank=True)
     term_tag = models.CharField(max_length=255, null=True, blank=True)
-    parent_content = models.TextField()
+    parent_content = EncryptedTextField()
 
     class Meta:
         db_table = 'parent_chunk'
@@ -716,7 +718,7 @@ class ChildChunk(models.Model):
     child_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     parent = models.ForeignKey(ParentChunk, on_delete=models.CASCADE)
     uploader = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
-    overlap_text = models.TextField(null=True, blank=True)
+    overlap_text = EncryptedTextField(null=True, blank=True)
     # Same BGE-Base-v1.5 vectors as global_document_chunk. Parents are not embedded.
     embedding_vector = VectorField(dimensions=768, null=True, blank=True)
 
@@ -775,7 +777,7 @@ class GlobalDocumentChunk(models.Model):
     )
 
     page_number = models.IntegerField(null=True, blank=True)
-    text_content = models.TextField()
+    text_content = EncryptedTextField()
     token_count = models.IntegerField(null=True, blank=True)
 
     # BGE-Base-v1.5 uses 768 dimensions.
@@ -800,7 +802,7 @@ class SupportReport(models.Model):
         Institution, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='support_reports',
     )
-    message = models.TextField()
+    message = EncryptedTextField()
     phone_note = models.CharField(max_length=300, blank=True, default='')
     status = models.CharField(max_length=32, default=STATUS_WITH_ADMIN)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.db import models
 
+from apps.integrations.fields import EncryptedJSONField
 from apps.integrations.models import (
     Assessment,
     AssessmentScoreResult,
@@ -111,7 +112,7 @@ class OmrJobResult(models.Model):
     confidence = models.DecimalField(max_digits=5, decimal_places=4, null=True, blank=True)
     is_flagged = models.BooleanField(default=False, db_index=True)
     flag_reason = models.CharField(max_length=255, null=True, blank=True)
-    responses_json = models.JSONField(default=dict, blank=True)
+    responses_json = EncryptedJSONField(default=dict, blank=True)
     omr_metrics_json = models.JSONField(default=dict, blank=True)
     mapped_assessment_result = models.ForeignKey(
         AssessmentScoreResult,
@@ -149,8 +150,8 @@ class OmrReviewAction(models.Model):
         related_name="omr_review_actions",
     )
     action_type = models.CharField(max_length=20, choices=OmrReviewActionType.choices)
-    before_json = models.JSONField(default=dict, blank=True)
-    after_json = models.JSONField(default=dict, blank=True)
+    before_json = EncryptedJSONField(default=dict, blank=True)
+    after_json = EncryptedJSONField(default=dict, blank=True)
     comment = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -230,7 +231,7 @@ class BubbleSheetScan(models.Model):
     # Student ID decoded from the ID bubble grid below the QR code (e.g. "23-35007")
     student_identifier = models.CharField(max_length=64, db_index=True, null=True, blank=True)
     # {"1": "A", "2": "C", ...}  — detected answers
-    responses = models.JSONField(default=dict)
+    responses = EncryptedJSONField(default=dict)
     score_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     score_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     max_score = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
@@ -316,7 +317,7 @@ class QuickExamScan(models.Model):
     )
     student_identifier = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     student_name = models.CharField(max_length=150, null=True, blank=True)
-    responses = models.JSONField(default=dict)
+    responses = EncryptedJSONField(default=dict)
     score_raw = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
     score_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     max_score = models.DecimalField(max_digits=7, decimal_places=2, null=True, blank=True)
