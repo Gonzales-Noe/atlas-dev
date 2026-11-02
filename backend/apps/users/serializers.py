@@ -25,7 +25,7 @@ from apps.integrations.models import (
 from apps.integrations.fixed_syllabus import seed_course_syllabi
 from apps.integrations.tenant import TENANT_INSTITUTION_NAME, ensure_tenant_institution
 from apps.users.otp import OTP_ALPHABET, OTP_LENGTH, normalize_otp
-from apps.users.sessions import reject_if_session_invalid, start_session
+from apps.users.sessions import reject_if_session_invalid, session_kind, start_session
 from apps.integrations.trial import (
     TRIAL_FACULTY_LIMIT,
     institution_access_is_active,
@@ -126,6 +126,7 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = 'email'
     email = serializers.EmailField(write_only=True)
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+    client = serializers.CharField(required=False, allow_blank=True, default='')
 
     def validate(self, attrs):
         email = attrs.get('email', '').strip().lower()
@@ -139,11 +140,14 @@ class UserProfileTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'detail': 'Student accounts are no longer supported. ATLAS is for faculty and administrators.',
             })
 
-        return tokens_for_profile(profile)
+        return tokens_for_profile(
+            profile,
+            kind=session_kind(self.context.get('request'), attrs.get('client')),
+        )
 
 
-def tokens_for_profile(profile):
-    session_id = start_session(profile)
+def tokens_for_profile(profile, kind='web'):
+    session_id = start_session(profile, kind=kind)
     refresh = RefreshToken.for_user(profile)
     refresh['sid'] = session_id
     refresh['role'] = normalize_role(profile.role)

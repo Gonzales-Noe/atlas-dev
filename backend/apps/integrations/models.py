@@ -107,7 +107,8 @@ class UserProfile(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     picture_url = models.URLField(max_length=500, blank=True, null=True)
-    # Replaced on every sign-in so only one device stays signed in.
+    # Legacy single-session columns. Live sign-ins are rows in AuthSession,
+    # so the website and the phone can stay signed in together.
     auth_session_id = models.CharField(max_length=64, blank=True, default='')
     auth_session_seen_at = models.DateTimeField(null=True, blank=True)
 
@@ -136,6 +137,29 @@ class UserProfile(models.Model):
             return self.full_name.strip()
         local_part = self.email.split('@', 1)[0]
         return local_part.replace('.', ' ').replace('_', ' ').title()
+
+
+class AuthSession(models.Model):
+    """One sign-in on one device. A new sign-in adds a row; it does not replace the others."""
+
+    KIND_WEB = 'web'
+    KIND_MOBILE = 'mobile'
+
+    session_id = models.CharField(max_length=64, primary_key=True)
+    user = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name='auth_sessions',
+    )
+    seen_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    # The phone has no 15-minute page idle clock. The website does.
+    kind = models.CharField(max_length=16, default=KIND_WEB)
+
+    class Meta:
+        db_table = 'auth_sessions'
+        indexes = [
+            models.Index(fields=['user', '-seen_at'], name='auth_session_user_seen_idx'),
+        ]
+
 
 class College(models.Model):
     """A college/unit within an institution, e.g. College of Engineering."""
@@ -760,3 +784,36 @@ class GlobalDocumentChunk(models.Model):
 
     class Meta:
         db_table = 'global_document_chunk'
+
+
+class SupportReport(models.Model):
+    """A problem a faculty member sent from the mobile app."""
+
+    STATUS_WITH_ADMIN = 'with_admin'
+    STATUS_WITH_SUPERADMIN = 'with_superadmin'
+
+    report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reporter = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name='support_reports',
+    )
+    institution = models.ForeignKey(
+        Institution, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='support_reports',
+    )
+    message = models.TextField()
+    phone_note = models.CharField(max_length=300, blank=True, default='')
+    status = models.CharField(max_length=32, default=STATUS_WITH_ADMIN)
+    created_at = models.DateTimeField(auto_now_add=True)
+    forwarded_at = models.DateTimeField(null=True, blank=True)
+    forwarded_by = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='forwarded_support_reports',
+    )
+
+    class Meta:
+        db_table = 'support_reports'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['institution', '-created_at'], name='support_inst_created_idx'),
+            models.Index(fields=['status', '-created_at'], name='support_status_created_idx'),
+        ]

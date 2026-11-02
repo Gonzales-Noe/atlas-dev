@@ -31,7 +31,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.users.sessions import end_session, touch_session
+from apps.users.sessions import end_session, session_kind, touch_session
 
 from apps.integrations import syllabus_pipeline, syllabus_template_doc
 from apps.integrations.fixed_syllabus import canonical_syllabus_sections, publish_fixed_syllabus, seed_course_syllabi
@@ -189,7 +189,10 @@ class GoogleAuthView(APIView):
             except Exception:
                 pass
 
-        return Response(tokens_for_profile(profile))
+        return Response(tokens_for_profile(
+            profile,
+            kind=session_kind(request, request.data.get('client')),
+        ))
 
 
 class AuthTokenRefreshView(TokenRefreshView):
@@ -222,7 +225,8 @@ class AuthActivityView(APIView):
     """Heartbeat from a page the person is actually using. Extends the 15-minute idle window."""
 
     def post(self, request):
-        touch_session(request.user)
+        session_id = request.auth.get('sid') if request.auth is not None else None
+        touch_session(request.user, session_id)
         return Response({'ok': True})
 
 
@@ -264,7 +268,10 @@ class RegisterView(APIView):
         return Response(
             {
                 'detail': 'Registration received.',
-                **tokens_for_profile(profile),
+                **tokens_for_profile(
+                    profile,
+                    kind=session_kind(request, request.data.get('client')),
+                ),
                 'user': UserProfileSerializer(profile).data,
             },
             status=status.HTTP_201_CREATED,

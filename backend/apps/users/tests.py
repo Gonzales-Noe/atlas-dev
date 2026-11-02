@@ -11,11 +11,11 @@ from django.test import RequestFactory, SimpleTestCase, TestCase, override_setti
 from rest_framework import serializers
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.settings import api_settings
-from rest_framework_simplejwt.tokens import AccessToken
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from apps.users.middleware import DatabaseReconnectMiddleware
 
-from apps.integrations.models import UserProfile, UserRole
+from apps.integrations.models import AuthSession, UserProfile, UserRole
 from apps.integrations.tenant import TENANT_INSTITUTION_NAME
 from apps.users.serializers import (
     ContactFormSerializer,
@@ -530,35 +530,74 @@ class AuthSessionTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         return response.data
 
-    def test_second_login_signs_out_the_first_device(self):
+    def _sid(self, data):
+        return RefreshToken(data['refresh']).payload['sid']
+
+    def test_second_login_keeps_the_first_device(self):
         first = self._login()
         second = self._login()
 
-        stale = self.client.post(
+        still_first = self.client.post(
             '/api/auth/token/refresh/',
             {'refresh': first['refresh']},
             format='json',
         )
-        self.assertEqual(stale.status_code, 401)
-        self.assertEqual(stale.data['code'], 'session_superseded')
+        self.assertEqual(still_first.status_code, 200, still_first.content)
 
-        current = self.client.post(
+        still_second = self.client.post(
             '/api/auth/token/refresh/',
             {'refresh': second['refresh']},
             format='json',
         )
-        self.assertEqual(current.status_code, 200)
-        me = self.client.get(
+        self.assertEqual(still_second.status_code, 200, still_second.content)
+
+        web = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {first['access']}",
+        )
+        phone = self.client.get(
             '/api/auth/me/',
             HTTP_AUTHORIZATION=f"Bearer {second['access']}",
         )
-        self.assertEqual(me.status_code, 200)
+        self.assertEqual(web.status_code, 200)
+        self.assertEqual(phone.status_code, 200)
+        self.assertEqual(AuthSession.objects.filter(user=self.user).count(), 2)
+
+    def test_phone_sign_in_does_not_idle_out_with_the_website(self):
+        web = self._login()
+        phone = self.client.post(
+            '/api/auth/token/',
+            {'email': self.user.email, 'password': 'SessionPass9!', 'client': 'mobile'},
+            format='json',
+            HTTP_USER_AGENT='Dart/3.6 (dart:io)',
+        )
+        self.assertEqual(phone.status_code, 200, phone.content)
+        self.assertEqual(
+            AuthSession.objects.get(session_id=self._sid(phone.data)).kind,
+            AuthSession.KIND_MOBILE,
+        )
+
+        stale = timezone.now() - timedelta(minutes=18)
+        AuthSession.objects.filter(session_id=self._sid(web)).update(seen_at=stale)
+        AuthSession.objects.filter(session_id=self._sid(phone.data)).update(seen_at=stale)
+
+        website = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {web['access']}",
+        )
+        mobile = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {phone.data['access']}",
+        )
+        self.assertEqual(website.status_code, 401)
+        self.assertEqual(website.data['code'], 'session_idle')
+        self.assertEqual(mobile.status_code, 200, mobile.content)
 
     def test_idle_session_must_sign_in_again(self):
         data = self._login()
-        self.user.refresh_from_db()
-        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=18)
-        self.user.save(update_fields=['auth_session_seen_at'])
+        AuthSession.objects.filter(session_id=self._sid(data)).update(
+            seen_at=timezone.now() - timedelta(minutes=18),
+        )
 
         response = self.client.get(
             '/api/auth/me/',
@@ -577,33 +616,40 @@ class AuthSessionTests(TestCase):
 
     def test_activity_extends_the_idle_window(self):
         data = self._login()
-        self.user.refresh_from_db()
-        self.user.auth_session_seen_at = timezone.now() - timedelta(minutes=10)
-        self.user.save(update_fields=['auth_session_seen_at'])
+        session = AuthSession.objects.get(session_id=self._sid(data))
+        session.seen_at = timezone.now() - timedelta(minutes=10)
+        session.save(update_fields=['seen_at'])
 
         touched = self.client.post(
             '/api/auth/activity/',
             HTTP_AUTHORIZATION=f"Bearer {data['access']}",
         )
         self.assertEqual(touched.status_code, 200, touched.content)
-        self.user.refresh_from_db()
-        self.assertLess(timezone.now() - self.user.auth_session_seen_at, timedelta(minutes=1))
+        session.refresh_from_db()
+        self.assertLess(timezone.now() - session.seen_at, timedelta(minutes=1))
 
     def test_logout_ends_only_this_session(self):
-        data = self._login()
+        first = self._login()
+        second = self._login()
         gone = self.client.post(
             '/api/auth/logout/',
-            {'refresh': data['refresh']},
+            {'refresh': first['refresh']},
             format='json',
         )
         self.assertEqual(gone.status_code, 200)
 
         me = self.client.get(
             '/api/auth/me/',
-            HTTP_AUTHORIZATION=f"Bearer {data['access']}",
+            HTTP_AUTHORIZATION=f"Bearer {first['access']}",
         )
         self.assertEqual(me.status_code, 401)
         self.assertEqual(me.data['code'], 'session_ended')
+
+        other = self.client.get(
+            '/api/auth/me/',
+            HTTP_AUTHORIZATION=f"Bearer {second['access']}",
+        )
+        self.assertEqual(other.status_code, 200, other.content)
 
 
 class SingleTenantRegistrationTests(SimpleTestCase):
