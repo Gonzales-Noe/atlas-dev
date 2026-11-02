@@ -9,6 +9,7 @@ import SecurityAuditIcon from '@mui/icons-material/Security';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import PaletteIcon from '@mui/icons-material/Palette';
+import FeedbackOutlinedIcon from '@mui/icons-material/FeedbackOutlined';
 
 export default function SuperAdminLayout({ children }) {
   const navItems = [
@@ -16,6 +17,7 @@ export default function SuperAdminLayout({ children }) {
     { label: 'Admins', to: ROUTES.SUPERADMIN.ACCOUNT_MANAGEMENT, icon: <AccountBalanceIcon /> },
     { label: 'System Health', to: ROUTES.SUPERADMIN.SYSTEM_MANAGEMENT, icon: <MonitorHeartIcon /> },
     { label: 'Audit Logs', to: ROUTES.SUPERADMIN.AUDIT_LOGS, icon: <SecurityAuditIcon /> },
+    { label: 'Issue Reports', to: ROUTES.SUPERADMIN.ISSUE_REPORTS, icon: <FeedbackOutlinedIcon /> },
     { label: 'Appearance', to: ROUTES.SUPERADMIN.APPEARANCE, icon: <PaletteIcon /> },
   ];
 
