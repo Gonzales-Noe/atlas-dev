@@ -10380,11 +10380,11 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
 
         {/* MIDDLE */}
         <Box data-tour={`tab-${activeTab}`} sx={{
-          flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-          ...(activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' ? {} : { overflow: 'auto', p: 2.5 }),
+          flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          ...(activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' || activeTab === 'grading' ? {} : { overflow: 'auto', p: 2.5 }),
         }}>
-          {activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment'
-            ? <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
+          {activeTab === 'syllabus' || activeTab === 'module' || activeTab === 'assessment' || activeTab === 'grading'
+            ? <Box sx={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', p: 2.5, pb: 0 }}>{renderCenterPanel()}</Box>
             : renderCenterPanel()
           }
         </Box>
