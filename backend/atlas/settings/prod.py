@@ -59,7 +59,8 @@ CORS_ALLOWED_ORIGINS = [
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STORAGES = {
     'default': {
-        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        # AES-256-GCM encrypted files on disk (see apps.integrations.storage).
+        'BACKEND': 'apps.integrations.storage.EncryptedFileSystemStorage',
     },
     'staticfiles': {
         # Non-manifest: avoids collectstatic failures on missing referenced files
