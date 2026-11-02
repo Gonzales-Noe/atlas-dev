@@ -19,6 +19,7 @@ import DialogTitle from '@mui/material/DialogTitle'
 import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import LinearProgress from '@mui/material/LinearProgress'
+import Menu from '@mui/material/Menu'
 import Radio from '@mui/material/Radio'
 import RadioGroup from '@mui/material/RadioGroup'
 import Paper from '@mui/material/Paper'
@@ -1081,6 +1082,7 @@ function ResultsTab({ courseId }) {
   const [book, setBook] = useState(null)
   const [err, setErr] = useState('')
   const [flash, setFlash] = useState({})
+  const [exportAnchor, setExportAnchor] = useState(null)
   const [exporting, setExporting] = useState('')
   const bookRef = useRef(null)
   const flashTimer = useRef(null)
@@ -1171,7 +1173,7 @@ function ResultsTab({ courseId }) {
     setExporting(format)
     try {
       const r = await api.get('/grading/scorebook/export/', {
-        params: { course_id: courseId, section_id: activeSection, format },
+        params: { course_id: courseId, section_id: activeSection, file_type: format },
         responseType: 'blob',
         atlasCache: false,
       })
@@ -1236,23 +1238,42 @@ function ResultsTab({ courseId }) {
             </MenuItem>
           ))}
         </LF>
-        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+        <Button
+          size="small"
+          variant="outlined"
+          disabled={!canExport || !!exporting}
+          startIcon={exporting
+            ? <CircularProgress size={14} sx={{ color: MAROON }} />
+            : <DownloadIcon sx={{ fontSize: 16 }} />}
+          onClick={event => setExportAnchor(event.currentTarget)}
+          sx={{ color: MAROON, borderColor: MAROON, textTransform: 'none', fontWeight: 700, '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
+        >
+          Export
+        </Button>
+        <Menu
+          anchorEl={exportAnchor}
+          open={Boolean(exportAnchor)}
+          onClose={() => setExportAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+          slotProps={{
+            paper: {
+              elevation: 2,
+              sx: { bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, mt: 0.5, minWidth: 160 },
+            },
+          }}
+        >
           {EXPORT_FORMATS.map(format => (
-            <Button
+            <MenuItem
               key={format.id}
-              size="small"
-              variant="outlined"
-              disabled={!canExport || !!exporting}
-              startIcon={exporting === format.id
-                ? <CircularProgress size={14} sx={{ color: MAROON }} />
-                : <DownloadIcon sx={{ fontSize: 15 }} />}
-              onClick={() => exportBook(format.id)}
-              sx={{ color: MAROON, borderColor: MAROON, textTransform: 'none', fontWeight: 700, '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
+              disabled={!!exporting}
+              onClick={() => { setExportAnchor(null); exportBook(format.id) }}
+              sx={{ fontSize: '0.86rem' }}
             >
-              {format.label}
-            </Button>
+              {format.label} (.{format.id})
+            </MenuItem>
           ))}
-        </Stack>
+        </Menu>
       </Paper>
 
       <StatusNotice message={err} severity="error" />
