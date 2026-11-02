@@ -7,7 +7,7 @@
 //
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
-import { StatusNotice } from './StatusNotice'
+import { showStatusNotice, StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -16,9 +16,11 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import FormControlLabel from '@mui/material/FormControlLabel'
 import IconButton from '@mui/material/IconButton'
 import LinearProgress from '@mui/material/LinearProgress'
-import Menu from '@mui/material/Menu'
+import Radio from '@mui/material/Radio'
+import RadioGroup from '@mui/material/RadioGroup'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -118,6 +120,8 @@ function SectionsTab({ courseId }) {
   const [selectedId, setSelectedId] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [addMode, setAddMode] = useState('one')
   const [oneId, setOneId] = useState('')
   const [pasted, setPasted] = useState('')
   const [error, setError] = useState('')
@@ -181,6 +185,7 @@ function SectionsTab({ courseId }) {
       setNotice(parts.join(' ') || 'Nothing new to add.')
       setOneId('')
       setPasted('')
+      if (added && !other.length && !invalid.length) setAddOpen(false)
       await load()
     } catch (e) {
       setError(extractApiError(e))
@@ -198,8 +203,8 @@ function SectionsTab({ courseId }) {
         </Tooltip>
       }
     >
-      <StatusNotice message={error} severity="error" />
-      <StatusNotice message={notice} severity={noticeSeverity || 'success'} />
+      {!addOpen && <StatusNotice message={error} severity="error" />}
+      {!addOpen && <StatusNotice message={notice} severity={noticeSeverity || 'success'} />}
       {loading ? (
         <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
       ) : sections.length === 0 ? (
@@ -233,9 +238,20 @@ function SectionsTab({ courseId }) {
           </Stack>
 
           <Box>
-            <Typography variant="caption" sx={{ color: MUTED, display: 'block', mb: 0.75 }}>
-              {students.length} student {students.length === 1 ? 'ID' : 'IDs'}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.75 }}>
+              <Typography variant="caption" sx={{ color: MUTED, flex: 1 }}>
+                {students.length} student {students.length === 1 ? 'ID' : 'IDs'}
+              </Typography>
+              <Button
+                size="small"
+                variant="contained"
+                startIcon={<AddIcon sx={{ fontSize: 16 }} />}
+                onClick={() => { setAddMode('one'); setOneId(''); setPasted(''); setError(''); setNotice(''); setAddOpen(true) }}
+                sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 700 }}
+              >
+                Add student/s
+              </Button>
+            </Stack>
             {students.length === 0 ? (
               <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
                 No student IDs in this section yet.
@@ -272,11 +288,44 @@ function SectionsTab({ courseId }) {
             )}
           </Box>
 
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'flex-start' }}>
+        </Stack>
+      )}
+
+      <Dialog
+        open={addOpen}
+        onClose={() => { if (!saving) setAddOpen(false) }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: DIALOG_PAPER_SX }}
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Add student/s</DialogTitle>
+        <DialogContent>
+          <StatusNotice message={error} severity="error" />
+          <StatusNotice message={notice} severity={noticeSeverity || 'success'} />
+          <RadioGroup
+            value={addMode}
+            onChange={e => setAddMode(e.target.value)}
+            sx={{ mb: 1.5 }}
+          >
+            <FormControlLabel
+              value="one"
+              control={<Radio size="small" sx={{ color: MUTED, '&.Mui-checked': { color: MAROON } }} />}
+              label="One student ID"
+              sx={{ color: TEXT, '& .MuiFormControlLabel-label': { fontSize: '0.86rem' } }}
+            />
+            <FormControlLabel
+              value="paste"
+              control={<Radio size="small" sx={{ color: MUTED, '&.Mui-checked': { color: MAROON } }} />}
+              label="Paste several IDs"
+              sx={{ color: TEXT, '& .MuiFormControlLabel-label': { fontSize: '0.86rem' } }}
+            />
+          </RadioGroup>
+          {addMode === 'one' ? (
             <LF
               label="Student ID"
               value={oneId}
               placeholder="23-35007"
+              autoFocus
               onChange={e => setOneId(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -285,31 +334,18 @@ function SectionsTab({ courseId }) {
                 }
               }}
               disabled={saving}
-              sx={{ maxWidth: 280 }}
             />
-            <Button
-              size="small"
-              variant="contained"
-              disabled={saving || !oneId.trim()}
-              onClick={() => addIds([oneId])}
-              sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', mt: { sm: 0.25 } }}
-            >
-              Add
-            </Button>
-          </Stack>
-
-          <Box>
-            <Typography variant="caption" sx={{ color: MUTED, display: 'block', mb: 0.75 }}>
-              Or paste several IDs, one per line
-            </Typography>
+          ) : (
             <TextField
               value={pasted}
               onChange={e => setPasted(e.target.value)}
               placeholder={'23-35007\n23-35018'}
+              label="Student IDs, one per line"
               multiline
-              minRows={4}
+              minRows={5}
               fullWidth
               size="small"
+              autoFocus
               disabled={saving}
               sx={{
                 '& .MuiOutlinedInput-root': {
@@ -319,20 +355,26 @@ function SectionsTab({ courseId }) {
                   '&:hover fieldset': { borderColor: MAROON },
                   '&.Mui-focused fieldset': { borderColor: MAROON },
                 },
+                '& .MuiInputLabel-root': { color: MUTED },
+                '& .MuiInputLabel-root.Mui-focused': { color: 'var(--brand-accent)' },
               }}
             />
-            <Button
-              size="small"
-              variant="outlined"
-              disabled={saving || !pasted.trim()}
-              onClick={() => addIds(parseStudentIds(pasted))}
-              sx={{ mt: 1, color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
-            >
-              {saving ? 'Adding…' : 'Add pasted IDs'}
-            </Button>
-          </Box>
-        </Stack>
-      )}
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 1.5 }}>
+          <Button onClick={() => setAddOpen(false)} disabled={saving} sx={{ textTransform: 'none', fontSize: '0.82rem', color: MUTED }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            disabled={saving || (addMode === 'one' ? !oneId.trim() : !pasted.trim())}
+            onClick={() => addIds(addMode === 'one' ? [oneId] : parseStudentIds(pasted))}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}
+          >
+            {saving ? 'Adding…' : 'Add'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </SCard>
   )
 }
@@ -363,12 +405,13 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
   useEffect(() => { loadTemplates() }, [loadTemplates])
 
   return (
-    <Box>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <Tabs
         value={tab}
         onChange={(_, v) => setTab(v)}
         sx={{
-          mb: 2,
+          flexShrink: 0,
+          mb: 0,
           borderBottom: `1px solid ${BORDER}`,
           '& .MuiTab-root': { color: MUTED, fontSize: '0.78rem', fontWeight: 600, textTransform: 'none', minHeight: 38 },
           '& .Mui-selected': { color: 'var(--brand-accent) !important' },
@@ -380,6 +423,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
         <Tab label="Sections" />
       </Tabs>
 
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: tab === 1 ? 'hidden' : 'auto', pt: 2 }}>
       <StatusNotice message={error} severity="error" />
 
       {tab === 0 && (
@@ -399,6 +443,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
       {tab === 2 && (
         <SectionsTab courseId={courseId} />
       )}
+      </Box>
     </Box>
   )
 }
@@ -963,9 +1008,37 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 // ─────────────────────────────────────────────────────────────────────────────
 const SCORE_POLL_MS = 1000
 
+const EXPORT_FORMATS = [
+  { id: 'docx', label: 'Word' },
+  { id: 'pdf', label: 'PDF' },
+  { id: 'xlsx', label: 'Excel' },
+]
+
 function downloadName(header, fallback) {
   const match = /filename="?([^";]+)"?/i.exec(header || '')
   return match ? match[1] : fallback
+}
+
+async function blobMessage(data) {
+  if (!(data instanceof Blob)) return ''
+  try {
+    const text = await data.text()
+    const parsed = JSON.parse(text)
+    return parsed.detail || parsed.message || ''
+  } catch {
+    return ''
+  }
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
 function ResultsTab({ courseId }) {
@@ -975,7 +1048,6 @@ function ResultsTab({ courseId }) {
   const [book, setBook] = useState(null)
   const [err, setErr] = useState('')
   const [flash, setFlash] = useState({})
-  const [exportAnchor, setExportAnchor] = useState(null)
   const [exporting, setExporting] = useState('')
   const bookRef = useRef(null)
   const flashTimer = useRef(null)
@@ -1055,11 +1127,13 @@ function ResultsTab({ courseId }) {
   useEffect(() => () => clearTimeout(flashTimer.current), [])
 
   async function exportBook(format) {
+    const choice = EXPORT_FORMATS.find(item => item.id === format)
     const activeSection = sectionId || book?.section?.section_id
-    if (!activeSection) return
-    setExportAnchor(null)
+    if (!activeSection) {
+      showStatusNotice('Choose a section first.', 'error')
+      return
+    }
     setExporting(format)
-    setErr('')
     try {
       const r = await api.get('/grading/scorebook/export/', {
         params: { course_id: courseId, section_id: activeSection, format },
@@ -1067,30 +1141,17 @@ function ResultsTab({ courseId }) {
         atlasCache: false,
       })
       const blob = r.data
-      if (blob?.type?.includes('json') || blob?.type?.includes('text')) {
-        const text = await blob.text()
-        let detail = 'That file could not be created.'
-        try { detail = JSON.parse(text).detail || detail } catch { /* keep the fallback */ }
-        setErr(detail)
+      const type = blob?.type || ''
+      if (type.includes('json') || type.includes('text/html') || type.includes('text/plain')) {
+        showStatusNotice(await blobMessage(blob) || 'That file could not be created.', 'error')
         return
       }
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = downloadName(r.headers?.['content-disposition'], `scores.${format}`)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
+      const filename = downloadName(r.headers?.['content-disposition'], `scores.${format}`)
+      saveBlob(blob, filename)
+      showStatusNotice(`${choice?.label || 'Score'} file downloaded.`, 'success')
     } catch (e) {
-      let detail = ''
-      const data = e?.response?.data
-      if (data instanceof Blob) {
-        try {
-          detail = JSON.parse(await data.text()).detail || ''
-        } catch { /* the body was not JSON */ }
-      }
-      setErr(detail || extractApiError(e))
+      const detail = await blobMessage(e?.response?.data)
+      showStatusNotice(detail || extractApiError(e) || 'That file could not be created.', 'error')
     } finally {
       setExporting('')
     }
@@ -1101,61 +1162,68 @@ function ResultsTab({ courseId }) {
   const students = waiting ? [] : (book.students || [])
   const sectionName = waiting ? '' : (book.section?.section_name || '')
 
+  const canExport = Boolean(sectionId || book?.section?.section_id) && !waiting
+
   return (
-    <Stack spacing={2}>
-      <SCard
-        title="Scorebook"
-        action={
-          <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden', gap: 1.5 }}>
+      <Paper
+        elevation={0}
+        sx={{
+          flexShrink: 0,
+          bgcolor: SURFACE,
+          color: TEXT,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 2.5,
+          px: 2,
+          py: 1.25,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          flexWrap: 'wrap',
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.07em', textTransform: 'uppercase' }}>
+          Scorebook
+        </Typography>
+        <Box sx={{ flex: 1, minWidth: 8 }} />
+        <LF
+          select
+          label="Section"
+          value={sectionId}
+          onChange={e => setSectionId(e.target.value)}
+          sx={{ width: { xs: '100%', sm: 220 }, maxWidth: '100%' }}
+          disabled={!sections.length}
+        >
+          {sections.length === 0 && <MenuItem value="">No section</MenuItem>}
+          {sections.map(section => (
+            <MenuItem key={section.section_id} value={section.section_id}>
+              {section.section_name} ({section.student_count})
+            </MenuItem>
+          ))}
+        </LF>
+        <Stack direction="row" spacing={0.75} useFlexGap flexWrap="wrap">
+          {EXPORT_FORMATS.map(format => (
             <Button
+              key={format.id}
               size="small"
               variant="outlined"
-              startIcon={exporting ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <DownloadIcon sx={{ fontSize: 16 }} />}
-              disabled={waiting || !book?.section || !!exporting}
-              onClick={e => setExportAnchor(e.currentTarget)}
-              sx={{ color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
+              disabled={!canExport || !!exporting}
+              startIcon={exporting === format.id
+                ? <CircularProgress size={14} sx={{ color: MAROON }} />
+                : <DownloadIcon sx={{ fontSize: 15 }} />}
+              onClick={() => exportBook(format.id)}
+              sx={{ color: MAROON, borderColor: MAROON, textTransform: 'none', fontWeight: 700, '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
             >
-              Export
+              {format.label}
             </Button>
-            <Menu
-              anchorEl={exportAnchor}
-              open={Boolean(exportAnchor)}
-              onClose={() => setExportAnchor(null)}
-              PaperProps={{ elevation: 2, sx: { bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}` } }}
-            >
-              <MenuItem onClick={() => exportBook('docx')} sx={{ fontSize: '0.84rem' }}>Word (.docx)</MenuItem>
-              <MenuItem onClick={() => exportBook('pdf')} sx={{ fontSize: '0.84rem' }}>PDF</MenuItem>
-              <MenuItem onClick={() => exportBook('xlsx')} sx={{ fontSize: '0.84rem' }}>Excel (.xlsx)</MenuItem>
-            </Menu>
-          </>
-        }
-      >
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
-          <LF
-            select
-            label="Section"
-            value={sectionId}
-            onChange={e => { setSectionId(e.target.value); setErr('') }}
-            sx={{ maxWidth: 280 }}
-            disabled={!sections.length}
-          >
-            {sections.length === 0 && <MenuItem value="">No section</MenuItem>}
-            {sections.map(section => (
-              <MenuItem key={section.section_id} value={section.section_id}>
-                {section.section_name} ({section.student_count})
-              </MenuItem>
-            ))}
-          </LF>
-          <Typography variant="caption" sx={{ color: MUTED }}>
-            Scores update as answer sheets are scanned.
-          </Typography>
+          ))}
         </Stack>
-      </SCard>
+      </Paper>
 
       <StatusNotice message={err} severity="error" />
 
       {waiting ? (
-        <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+        <LinearProgress sx={{ flexShrink: 0, height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
       ) : !sections.length ? (
         <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
           No section is assigned to you for this course yet.
@@ -1169,11 +1237,12 @@ function ResultsTab({ courseId }) {
           component={Paper}
           elevation={0}
           sx={{
+            flex: 1,
+            minHeight: 0,
             bgcolor: SURFACE,
             color: TEXT,
             border: `1px solid ${BORDER}`,
             borderRadius: 2,
-            maxHeight: 'min(70vh, 640px)',
             overflow: 'auto',
           }}
         >
@@ -1185,13 +1254,13 @@ function ResultsTab({ courseId }) {
             <TableHead>
               <TableRow>
                 <TableCell className="score-id" sx={{
-                  position: 'sticky', left: 0, zIndex: 3, bgcolor: BG,
+                  position: 'sticky', top: 0, left: 0, zIndex: 4, bgcolor: BG,
                   fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 120,
                 }}>
                   Student ID
                 </TableCell>
                 {exams.map(exam => (
-                  <TableCell key={exam.exam_id} align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 108, bgcolor: BG }}>
+                  <TableCell key={exam.exam_id} align="center" sx={{ position: 'sticky', top: 0, zIndex: 2, fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 108, bgcolor: BG }}>
                     <Box sx={{ lineHeight: 1.25 }}>{exam.name}</Box>
                     <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
                       {exam.source === 'mobile' ? 'Mobile' : 'Web'}
@@ -1249,6 +1318,6 @@ function ResultsTab({ courseId }) {
           </Table>
         </TableContainer>
       )}
-    </Stack>
+    </Box>
   )
 }
