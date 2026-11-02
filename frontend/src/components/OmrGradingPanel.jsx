@@ -296,7 +296,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
             '& .MuiTabs-indicator': { bgcolor: MAROON, height: 2.5 },
           }}>
           <Tab value="templates" label="Templates" />
-          <Tab value="jobs"      label="Grading Jobs" />
+          <Tab value="jobs"      label="Scoring Jobs" />
           <Tab value="results"
             label={selectedJob ? `Results — ${STATUS_CFG[selectedJob.status]?.label ?? selectedJob.status}` : 'Results'}
             disabled={!selectedJobId} />
@@ -384,7 +384,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
       {omrSub === 'jobs' && (
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, alignItems: 'start' }}>
           {/* Jobs list */}
-          <SCard title="Grading Jobs"
+          <SCard title="Scoring Jobs"
             action={
               <IconButton size="small" onClick={loadJobs} disabled={jobsLoading} sx={{ color: MAROON, p: 0.5 }}>
                 <RefreshIcon sx={{ fontSize: '1rem' }} />
@@ -606,7 +606,7 @@ export default function OmrGradingPanel({ courseId, assessments = [] }) {
 
       {omrSub === 'results' && !selectedJobId && (
         <Typography variant="body2" sx={{ color: 'var(--workspace-faint)', textAlign: 'center', mt: 5 }}>
-          Select a job from the Grading Jobs tab to view its results.
+          Select a job from the Scoring Jobs tab to view its results.
         </Typography>
       )}
     </Box>

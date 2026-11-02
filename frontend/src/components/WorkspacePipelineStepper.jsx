@@ -17,7 +17,7 @@ export const PIPELINE_STEPS = [
   { key: 'module', label: 'Modules', Icon: ViewModuleIcon },
   { key: 'tos', label: 'TOS', Icon: TableChartIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
-  { key: 'grading', label: 'Grading', Icon: GradeIcon },
+  { key: 'grading', label: 'Scoring', Icon: GradeIcon },
   { key: 'analytics', label: 'Analytics', Icon: AnalyticsIcon },
 ]
 

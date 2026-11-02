@@ -101,7 +101,7 @@ export default function FacultyGrading() {
       <Box sx={{ p: { xs: 2, md: 3 }, display: 'flex', flexDirection: 'column', minHeight: '85vh' }}>
         <Box sx={{ mb: 2 }}>
           <Typography variant="h4" sx={{ fontWeight: 800, mb: 0.5 }}>
-            Grading & Student Scores
+            Scoring & Student Scores
           </Typography>
           <Typography color="text.secondary" sx={{ fontSize: '0.95rem' }}>
             View student scores and performance for major examinations.

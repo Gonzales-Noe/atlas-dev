@@ -45,6 +45,7 @@ const GET_CACHE_SKIP = [
   '/auth/google',
   '/auth/password-reset',
   '/grading/jobs',
+  '/grading/scorebook',
   '/integrations/traffic',
   '/integrations/llm-health',
   '/auth/system-health',

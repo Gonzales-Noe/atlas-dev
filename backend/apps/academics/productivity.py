@@ -26,7 +26,7 @@ PACE_STAGES = (
     ('syllabus', 'Syllabus', 'created_at', 'syllabus_at'),
     ('module', 'Modules', 'syllabus_at', 'module_at'),
     ('assessment', 'Assessments', 'module_at', 'assessment_at'),
-    ('grading', 'Grading', 'assessment_at', 'grading_at'),
+    ('grading', 'Scoring', 'assessment_at', 'grading_at'),
     ('analytics', 'Analytics', 'grading_at', 'analytics_at'),
 )
 

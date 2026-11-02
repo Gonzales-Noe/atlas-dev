@@ -65,7 +65,7 @@ const WORKSPACE_TABS = [
   { key: 'syllabus',   label: 'Syllabus',    Icon: MenuBookIcon },
   { key: 'module',     label: 'Modules',     Icon: ViewModuleIcon },
   { key: 'assessment', label: 'Assessments', Icon: AssignmentIcon },
-  { key: 'grading',    label: 'Grading',     Icon: GradeIcon },
+  { key: 'grading',    label: 'Scoring',     Icon: GradeIcon },
   { key: 'analytics',  label: 'Analytics',   Icon: BarChartIcon },
 ]
 
@@ -1997,9 +1997,9 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     }
 
     return (
-      <SectionCard title="Vision-Based Grading">
+      <SectionCard title="Vision-Based Scoring">
         <Typography variant="body2" sx={{ color: '#666' }}>
-          This panel is reserved for the upcoming vision-based grading workflow.
+          This panel is reserved for the upcoming vision-based scoring workflow.
         </Typography>
       </SectionCard>
     )

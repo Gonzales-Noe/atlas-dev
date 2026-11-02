@@ -701,7 +701,7 @@ class DashboardSummaryView(APIView):
         payload = {
             'role': 'faculty',
             'title': 'Faculty Dashboard',
-            'subtitle': 'Manage your teaching load, assessments, and grading workflow.',
+            'subtitle': 'Manage your teaching load, assessments, and scoring workflow.',
             'cards': [
                 {'label': 'Assigned courses', 'value': course_count, 'tone': 'faculty'},
                 {'label': 'Assessments', 'value': assessment_count, 'tone': 'faculty'},
@@ -711,7 +711,7 @@ class DashboardSummaryView(APIView):
                 {'label': 'Syllabus', 'to': '/faculty/syllabus'},
                 {'label': 'Module Builder', 'to': '/faculty/module'},
                 {'label': 'Assessment', 'to': '/faculty/assessment'},
-                {'label': 'Grading', 'to': '/faculty/grading'},
+                {'label': 'Scoring', 'to': '/faculty/grading'},
             ],
             'recent': courses,
             'courses': list(by_course.values()),

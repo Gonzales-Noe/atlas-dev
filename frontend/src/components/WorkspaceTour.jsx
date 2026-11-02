@@ -53,7 +53,7 @@ const STEPS = [
     tab: 'syllabus',
     selector: '[data-tour="pipeline"]',
     title: 'The six-step pipeline',
-    body: 'Syllabus → Modules → TOS → Assessments → Grading → Analytics. A step is highlighted only while you are in it, or after you have finished it.',
+    body: 'Syllabus → Modules → TOS → Assessments → Scoring → Analytics. A step is highlighted only while you are in it, or after you have finished it.',
   },
   {
     tab: 'syllabus',
@@ -90,7 +90,7 @@ const STEPS = [
     tab: 'assessment',
     selector: '[data-tour="pipeline-step-assessment"]',
     title: '4. Assessments and beyond',
-    body: 'Assessments reuse the TOS Bloom targets. After grading, the Analytics step turns the results into reports.',
+    body: 'Assessments reuse the TOS Bloom targets. After scoring, the Analytics step turns the results into reports.',
   },
 ]
 

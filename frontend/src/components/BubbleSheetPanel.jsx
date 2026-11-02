@@ -1,11 +1,11 @@
 // BubbleSheetPanel.jsx — Self-contained Bubble Sheet workflow
-// Tabs: Templates | Results
+// Tabs: Templates | Results | Sections
 //
 // Props:
 //   courseId    – current course UUID (string)
 //   assessments – array of { assessment_id, title } for the course
 //
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
 import { StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
@@ -16,15 +16,16 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
-import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
 import LinearProgress from '@mui/material/LinearProgress'
+import Menu from '@mui/material/Menu'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Tabs from '@mui/material/Tabs'
@@ -35,7 +36,6 @@ import MenuItem from '@mui/material/MenuItem'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import DownloadIcon from '@mui/icons-material/Download'
-import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import FlagIcon from '@mui/icons-material/Flag'
 import StarIcon from '@mui/icons-material/Star'
@@ -241,14 +241,32 @@ function SectionsTab({ courseId }) {
                 No student IDs in this section yet.
               </Typography>
             ) : (
-              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+              <Box sx={{
+                display: 'grid',
+                gridAutoFlow: 'column',
+                gridTemplateRows: `repeat(${Math.min(12, students.length)}, auto)`,
+                gridAutoColumns: 'minmax(132px, 168px)',
+                justifyContent: 'start',
+                columnGap: 2.5,
+                overflowX: 'auto',
+                pb: 0.5,
+              }}>
                 {students.map(student => (
-                  <Chip
+                  <Box
                     key={student.block_id}
-                    label={student.student_id}
-                    size="small"
-                    sx={{ height: 24, fontSize: '0.75rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }}
-                  />
+                    sx={{
+                      py: 0.6,
+                      px: 0.75,
+                      borderBottom: `1px solid ${BORDER}`,
+                      color: TEXT,
+                      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                      fontSize: '0.84rem',
+                      letterSpacing: '0.01em',
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {student.student_id}
+                  </Box>
                 ))}
               </Box>
             )}
@@ -376,11 +394,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
         />
       )}
       {tab === 1 && (
-        <ResultsTab
-          courseId={courseId}
-          templates={templates}
-          onNotice={onNotice}
-        />
+        <ResultsTab courseId={courseId} />
       )}
       {tab === 2 && (
         <SectionsTab courseId={courseId} />
@@ -945,261 +959,296 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RESULTS TAB
+// RESULTS TAB — section scorebook of major examinations
 // ─────────────────────────────────────────────────────────────────────────────
-function ResultsTab({ courseId, templates, onNotice }) {
-  const [selectedTemplate, setSelectedTemplate] = useState('')
-  const [scans, setScans] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [flagOnly, setFlagOnly] = useState(false)
-  const [err, setErr] = useState('')
-  const [editScan, setEditScan] = useState(null)
+const SCORE_POLL_MS = 1000
 
-  async function loadScans(tmplId, fo) {
-    if (!tmplId) return
-    setLoading(true)
-    setErr('')
-    try {
-      const params = fo ? '?flagged=1' : ''
-      const r = await api.get(`/grading/bubble/templates/${tmplId}/scans/${params}`)
-      setScans(r.data.scans || [])
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setLoading(false)
-    }
+function downloadName(header, fallback) {
+  const match = /filename="?([^";]+)"?/i.exec(header || '')
+  return match ? match[1] : fallback
+}
+
+function ResultsTab({ courseId }) {
+  const [sectionId, setSectionId] = useState('')
+  const [forCourse, setForCourse] = useState(courseId)
+  const [sections, setSections] = useState([])
+  const [book, setBook] = useState(null)
+  const [err, setErr] = useState('')
+  const [flash, setFlash] = useState({})
+  const [exportAnchor, setExportAnchor] = useState(null)
+  const [exporting, setExporting] = useState('')
+  const bookRef = useRef(null)
+  const flashTimer = useRef(null)
+
+  if (forCourse !== courseId) {
+    setForCourse(courseId)
+    setSectionId('')
+    setBook(null)
+    bookRef.current = null
   }
+
+  const load = useCallback(async (silent, activeSectionId, token) => {
+    if (!courseId) return
+    try {
+      const r = await api.get('/grading/scorebook/', {
+        params: {
+          course_id: courseId,
+          ...(activeSectionId ? { section_id: activeSectionId } : {}),
+        },
+        atlasCache: false,
+      })
+      if (token.cancelled) return
+      const data = r.data || {}
+      setSections(data.sections || [])
+      if (!activeSectionId && data.section?.section_id) {
+        setSectionId(data.section.section_id)
+      }
+      const prev = bookRef.current
+      const same = prev
+        && prev.revision === data.revision
+        && prev.section?.section_id === data.section?.section_id
+      if (!same) {
+        const flashes = {}
+        if (prev && prev.section?.section_id && prev.section.section_id === data.section?.section_id) {
+          const oldRows = new Map((prev.students || []).map(student => [student.student_id, student]))
+          for (const student of data.students || []) {
+            const old = oldRows.get(student.student_id)
+            for (const [examId, cell] of Object.entries(student.scores || {})) {
+              if (cell?.score != null && cell.score !== old?.scores?.[examId]?.score) {
+                flashes[`${student.student_id}:${examId}`] = true
+              }
+            }
+          }
+        }
+        bookRef.current = data
+        setBook(data)
+        if (Object.keys(flashes).length) {
+          setFlash(flashes)
+          clearTimeout(flashTimer.current)
+          flashTimer.current = setTimeout(() => setFlash({}), 1800)
+        }
+      }
+      if (!silent) setErr('')
+    } catch (e) {
+      if (!token.cancelled && !silent) setErr(extractApiError(e))
+    }
+  }, [courseId])
 
   useEffect(() => {
-    if (selectedTemplate) loadScans(selectedTemplate, flagOnly)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplate, flagOnly])
+    const token = { cancelled: false }
+    bookRef.current = null
+    load(false, sectionId, token)
+    const timer = setInterval(() => {
+      if (document.visibilityState === 'visible') load(true, sectionId, token)
+    }, SCORE_POLL_MS)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load(true, sectionId, token)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      token.cancelled = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [load, sectionId])
 
-  async function handleDelete(scanId) {
-    if (!window.confirm('Delete this scan result?')) return
+  useEffect(() => () => clearTimeout(flashTimer.current), [])
+
+  async function exportBook(format) {
+    const activeSection = sectionId || book?.section?.section_id
+    if (!activeSection) return
+    setExportAnchor(null)
+    setExporting(format)
+    setErr('')
     try {
-      await api.delete(`/grading/bubble/scans/${scanId}/`)
-      setScans(p => p.filter(s => s.scan_id !== scanId))
+      const r = await api.get('/grading/scorebook/export/', {
+        params: { course_id: courseId, section_id: activeSection, format },
+        responseType: 'blob',
+        atlasCache: false,
+      })
+      const blob = r.data
+      if (blob?.type?.includes('json') || blob?.type?.includes('text')) {
+        const text = await blob.text()
+        let detail = 'That file could not be created.'
+        try { detail = JSON.parse(text).detail || detail } catch { /* keep the fallback */ }
+        setErr(detail)
+        return
+      }
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = downloadName(r.headers?.['content-disposition'], `scores.${format}`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
     } catch (e) {
-      setErr(extractApiError(e))
+      let detail = ''
+      const data = e?.response?.data
+      if (data instanceof Blob) {
+        try {
+          detail = JSON.parse(await data.text()).detail || ''
+        } catch { /* the body was not JSON */ }
+      }
+      setErr(detail || extractApiError(e))
+    } finally {
+      setExporting('')
     }
   }
 
-  const avg = scans.length
-    ? (scans.reduce((s, r) => s + Number(r.score_percent), 0) / scans.length).toFixed(1)
-    : null
+  const waiting = !book || (sectionId && book.section?.section_id !== sectionId)
+  const exams = waiting ? [] : (book.exams || [])
+  const students = waiting ? [] : (book.students || [])
+  const sectionName = waiting ? '' : (book.section?.section_name || '')
 
   return (
     <Stack spacing={2}>
-      <SCard title="Filter">
-        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
-          <LF select label="Template" value={selectedTemplate}
-            onChange={e => setSelectedTemplate(e.target.value)}
-            sx={{ maxWidth: 260 }}>
-            <MenuItem value="">— Choose template —</MenuItem>
-            {templates.map(t => (
-              <MenuItem key={t.template_id} value={t.template_id}>{t.name}</MenuItem>
+      <SCard
+        title="Scorebook"
+        action={
+          <>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={exporting ? <CircularProgress size={14} sx={{ color: MAROON }} /> : <DownloadIcon sx={{ fontSize: 16 }} />}
+              disabled={waiting || !book?.section || !!exporting}
+              onClick={e => setExportAnchor(e.currentTarget)}
+              sx={{ color: MAROON, borderColor: MAROON, textTransform: 'none', '&:hover': { borderColor: 'var(--brand-primary-hover)', bgcolor: 'rgba(170,36,35,0.08)' } }}
+            >
+              Export
+            </Button>
+            <Menu
+              anchorEl={exportAnchor}
+              open={Boolean(exportAnchor)}
+              onClose={() => setExportAnchor(null)}
+              PaperProps={{ elevation: 2, sx: { bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}` } }}
+            >
+              <MenuItem onClick={() => exportBook('docx')} sx={{ fontSize: '0.84rem' }}>Word (.docx)</MenuItem>
+              <MenuItem onClick={() => exportBook('pdf')} sx={{ fontSize: '0.84rem' }}>PDF</MenuItem>
+              <MenuItem onClick={() => exportBook('xlsx')} sx={{ fontSize: '0.84rem' }}>Excel (.xlsx)</MenuItem>
+            </Menu>
+          </>
+        }
+      >
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }}>
+          <LF
+            select
+            label="Section"
+            value={sectionId}
+            onChange={e => { setSectionId(e.target.value); setErr('') }}
+            sx={{ maxWidth: 280 }}
+            disabled={!sections.length}
+          >
+            {sections.length === 0 && <MenuItem value="">No section</MenuItem>}
+            {sections.map(section => (
+              <MenuItem key={section.section_id} value={section.section_id}>
+                {section.section_name} ({section.student_count})
+              </MenuItem>
             ))}
           </LF>
-          <LF select label="Show" value={flagOnly ? '1' : '0'}
-            onChange={e => setFlagOnly(e.target.value === '1')}
-            sx={{ maxWidth: 160 }}>
-            <MenuItem value="0">All scans</MenuItem>
-            <MenuItem value="1">Flagged only</MenuItem>
-          </LF>
-          <Tooltip title="Refresh">
-            <IconButton size="small" onClick={() => loadScans(selectedTemplate, flagOnly)} sx={{ color: MUTED }}>
-              <RefreshIcon sx={{ fontSize: 16 }} />
-            </IconButton>
-          </Tooltip>
+          <Typography variant="caption" sx={{ color: MUTED }}>
+            Scores update as answer sheets are scanned.
+          </Typography>
         </Stack>
       </SCard>
 
       <StatusNotice message={err} severity="error" />
 
-      {loading
-        ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
-        : selectedTemplate && scans.length === 0
-          ? <Typography variant="body2" sx={{ fontSize: '0.82rem', pl: 0.5, color: MUTED }}>
-              No scan results yet for this template.
-            </Typography>
-          : scans.length > 0 && (
-            <>
-              {avg !== null && (
-                <Stack direction="row" spacing={2} sx={{ mb: 0.5 }}>
-                  <StatCard label="Total Scans" value={scans.length} />
-                  <StatCard label="Class Average" value={`${avg}%`} />
-                  <StatCard label="Flagged" value={scans.filter(s => s.is_flagged).length} warn />
-                </Stack>
-              )}
-              <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, overflow: 'hidden' }}>
-                <Table size="small" sx={{
-                  '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER },
-                  '& .MuiTableRow-root:hover': { bgcolor: 'var(--workspace-card)' },
+      {waiting ? (
+        <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+      ) : !sections.length ? (
+        <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
+          No section is assigned to you for this course yet.
+        </Typography>
+      ) : students.length === 0 ? (
+        <Typography variant="body2" sx={{ fontSize: '0.82rem', color: MUTED }}>
+          No student IDs in {sectionName || 'this section'} yet. Add them on the Sections tab.
+        </Typography>
+      ) : (
+        <TableContainer
+          component={Paper}
+          elevation={0}
+          sx={{
+            bgcolor: SURFACE,
+            color: TEXT,
+            border: `1px solid ${BORDER}`,
+            borderRadius: 2,
+            maxHeight: 'min(70vh, 640px)',
+            overflow: 'auto',
+          }}
+        >
+          <Table stickyHeader size="small" sx={{
+            '& .MuiTableCell-root': { color: TEXT, borderColor: BORDER },
+            '& .MuiTableRow-root:hover': { bgcolor: 'var(--workspace-card)' },
+            '& .MuiTableRow-root:hover .score-id': { bgcolor: 'var(--workspace-card)' },
+          }}>
+            <TableHead>
+              <TableRow>
+                <TableCell className="score-id" sx={{
+                  position: 'sticky', left: 0, zIndex: 3, bgcolor: BG,
+                  fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 120,
                 }}>
-                  <TableHead>
-                    <TableRow sx={{ bgcolor: BG }}>
-                      {['Student ID', 'Score', '%', 'Flag', 'Date', ''].map(h => (
-                        <TableCell key={h} sx={{ fontWeight: 700, fontSize: '0.72rem', py: 1 }}>{h}</TableCell>
-                      ))}
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {scans.map(s => (
-                      <TableRow key={s.scan_id} hover sx={{ '&:last-child td': { border: 0 } }}>
-                        <TableCell sx={{ fontSize: '0.78rem' }}>{s.student_identifier || '—'}</TableCell>
-                        <TableCell sx={{ fontSize: '0.78rem' }}>{s.score_raw} / {s.max_score}</TableCell>
-                        <TableCell sx={{ fontSize: '0.78rem', fontWeight: 700 }}>{s.score_percent}%</TableCell>
-                        <TableCell>
-                          {s.is_flagged
-                            ? <Tooltip title={s.flag_reason || 'Flagged'}><FlagIcon sx={{ fontSize: 15, color: 'error.main' }} /></Tooltip>
-                            : null}
-                        </TableCell>
-                        <TableCell sx={{ fontSize: '0.72rem', color: MUTED }}>
-                          {new Date(s.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <Stack direction="row" spacing={0.25}>
-                            <Tooltip title="Edit"><IconButton size="small" onClick={() => setEditScan(s)}><EditIcon sx={{ fontSize: 14 }} /></IconButton></Tooltip>
-                            <Tooltip title="Delete"><IconButton size="small" color="error" onClick={() => handleDelete(s.scan_id)}><DeleteIcon sx={{ fontSize: 14 }} /></IconButton></Tooltip>
-                          </Stack>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Paper>
-            </>
-          )
-      }
-
-      {editScan && (
-        <EditScanDialog
-          scan={editScan}
-          templates={templates}
-          onClose={() => setEditScan(null)}
-          onSaved={() => { setEditScan(null); loadScans(selectedTemplate, flagOnly); onNotice?.('Scan saved.') }}
-        />
-      )}
-    </Stack>
-  )
-}
-
-function StatCard({ label, value, warn = false }) {
-  return (
-    <Paper elevation={0} sx={{ bgcolor: SURFACE, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 2, px: 2, py: 1 }}>
-      <Typography sx={{ fontSize: '0.68rem', color: MUTED, textTransform: 'uppercase', letterSpacing: '0.07em' }}>{label}</Typography>
-      <Typography sx={{ fontWeight: 700, fontSize: '1.1rem', color: warn ? '#FCA5A5' : 'var(--brand-accent)' }}>{value}</Typography>
-    </Paper>
-  )
-}
-
-// ── Edit Scan Dialog ───────────────────────────────────────────────────────
-function EditScanDialog({ scan, templates, onClose, onSaved }) {
-  const tmpl = templates.find(t => t.template_id === scan.template_id)
-  const choices = tmpl
-    ? Array.from({ length: tmpl.num_choices }, (_, i) => String.fromCharCode(65 + i))
-    : ['A', 'B', 'C', 'D']
-
-  const [studentId, setStudentId] = useState(scan.student_identifier || '')
-  const [responses, setResponses] = useState({ ...scan.responses })
-  const [isFlagged, setIsFlagged] = useState(scan.is_flagged)
-  const [flagReason, setFlagReason] = useState(scan.flag_reason || '')
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState('')
-
-  function setResponse(itemNo, val) {
-    setResponses(p => ({ ...p, [String(itemNo)]: val }))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setErr('')
-    try {
-      await api.patch(`/grading/bubble/scans/${scan.scan_id}/`, {
-        student_identifier: studentId,
-        responses,
-        is_flagged: isFlagged,
-        flag_reason: flagReason,
-      })
-      onSaved()
-    } catch (e) {
-      setErr(extractApiError(e))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const itemNums = Object.keys(responses).map(Number).sort((a, b) => a - b)
-  const rows = []
-  for (let i = 0; i < itemNums.length; i += 10) {
-    rows.push(itemNums.slice(i, i + 10))
-  }
-
-  return (
-    <Dialog open onClose={onClose} maxWidth="md" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
-      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>Edit Scan Result</DialogTitle>
-      <DialogContent dividers>
-        <Stack spacing={2} sx={{ pt: 1 }}>
-          <StatusNotice message={err} severity="error" />
-          <LF label="Student ID number" value={studentId} onChange={e => setStudentId(e.target.value)} />
-
-          <Typography variant="caption" sx={{ fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '0.68rem' }}>
-            Detected Responses — click to correct
-          </Typography>
-          <Stack spacing={0.75}>
-            {rows.map((rowItems, rIdx) => (
-              <Stack key={rIdx} direction="row" spacing={0.5} flexWrap="wrap">
-                {rowItems.map(itemNo => (
-                  <Box key={itemNo} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1.5 }}>
-                    <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: MUTED }}>
-                      {itemNo}.
-                    </Typography>
-                    {choices.map(ch => (
-                      <Box
-                        key={ch}
-                        onClick={() => setResponse(itemNo, ch)}
+                  Student ID
+                </TableCell>
+                {exams.map(exam => (
+                  <TableCell key={exam.exam_id} align="center" sx={{ fontWeight: 700, fontSize: '0.72rem', py: 1, minWidth: 108, bgcolor: BG }}>
+                    <Box sx={{ lineHeight: 1.25 }}>{exam.name}</Box>
+                    <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
+                      {exam.source === 'mobile' ? 'Mobile' : 'Web'}
+                      {exam.max_score ? ` · ${exam.max_score}` : ''}
+                    </Box>
+                  </TableCell>
+                ))}
+                {exams.length === 0 && (
+                  <TableCell sx={{ fontSize: '0.72rem', color: MUTED, bgcolor: BG }}>
+                    Major examination scores appear here after an answer sheet is created.
+                  </TableCell>
+                )}
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {students.map(student => (
+                <TableRow key={student.student_id} hover sx={{ '&:last-child td': { border: 0 } }}>
+                  <TableCell className="score-id" sx={{
+                    position: 'sticky', left: 0, zIndex: 1, bgcolor: SURFACE,
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+                    fontSize: '0.8rem', fontWeight: 700,
+                  }}>
+                    {student.student_id}
+                  </TableCell>
+                  {exams.length === 0 && <TableCell />}
+                  {exams.map(exam => {
+                    const cell = student.scores?.[exam.exam_id]
+                    const key = `${student.student_id}:${exam.exam_id}`
+                    const lit = Boolean(flash[key])
+                    return (
+                      <TableCell
+                        key={exam.exam_id}
+                        align="center"
                         sx={{
-                          width: 22, height: 22, borderRadius: '50%',
-                          border: `1.5px solid ${responses[String(itemNo)] === ch ? MAROON : BORDER}`,
-                          bgcolor: responses[String(itemNo)] === ch ? MAROON : 'transparent',
-                          color: responses[String(itemNo)] === ch ? '#fff' : TEXT,
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '0.65rem', fontWeight: 700, cursor: 'pointer',
-                          transition: 'all 0.12s',
-                          '&:hover': { borderColor: MAROON },
+                          fontSize: '0.8rem',
+                          fontWeight: 700,
+                          bgcolor: lit ? 'rgba(94, 218, 126, 0.28)' : 'transparent',
+                          transition: 'background-color 0.7s ease',
                         }}
                       >
-                        {ch}
-                      </Box>
-                    ))}
-                  </Box>
-                ))}
-              </Stack>
-            ))}
-          </Stack>
-
-          <Divider />
-          <Stack direction="row" spacing={1.5} alignItems="center">
-            <LF select label="Flagged?" value={isFlagged ? '1' : '0'}
-              onChange={e => setIsFlagged(e.target.value === '1')} sx={{ maxWidth: 160 }}>
-              <MenuItem value="0">No</MenuItem>
-              <MenuItem value="1">Yes</MenuItem>
-            </LF>
-            {isFlagged && (
-              <LF label="Flag reason" value={flagReason} onChange={e => setFlagReason(e.target.value)} />
-            )}
-          </Stack>
-        </Stack>
-      </DialogContent>
-      <DialogActions sx={{ px: 3, py: 1.5 }}>
-        <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving}
-          startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
-          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
-          Save Changes
-        </Button>
-      </DialogActions>
-    </Dialog>
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.4 }}>
+                          <span>{cell?.score == null ? '—' : cell.score}</span>
+                          {cell?.flagged && (
+                            <Tooltip title="Flagged for review">
+                              <FlagIcon sx={{ fontSize: 13, color: '#FCA5A5' }} />
+                            </Tooltip>
+                          )}
+                        </Box>
+                      </TableCell>
+                    )
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Stack>
   )
 }
