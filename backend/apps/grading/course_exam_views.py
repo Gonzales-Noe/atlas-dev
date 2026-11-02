@@ -55,7 +55,7 @@ class CourseExamItemSerializer(serializers.Serializer):
 class CourseExamCreateSerializer(serializers.Serializer):
     course_id = serializers.UUIDField()
     title = serializers.CharField(max_length=150)
-    exam_type = serializers.CharField(max_length=100, required=False, default="Quiz")
+    exam_type = serializers.CharField(max_length=100, required=False, default="Major Examination")
     term = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     num_choices = serializers.IntegerField(min_value=2, max_value=4, required=False, default=4)
     num_id_columns = serializers.IntegerField(min_value=4, max_value=8, required=False, default=8)
@@ -146,7 +146,9 @@ def course_exams(request):
         return Response({"success": False, "detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
 
     title = d["title"].strip()
-    exam_type = (d.get("exam_type") or "Quiz").strip() or "Quiz"
+    exam_type = (d.get("exam_type") or "Major Examination").strip() or "Major Examination"
+    if "quiz" in exam_type.lower():
+        exam_type = "Major Examination"
     term = (d.get("term") or "").strip() or _default_term(course)
     items = d["items"]
     total = len(items)

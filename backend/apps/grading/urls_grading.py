@@ -6,6 +6,8 @@ urlpatterns = [
     path("student-scores/", views.student_scores, name="grading_student_scores"),
     path("sections/", views.grading_sections, name="grading_sections"),
     path("blocks/", views.grading_blocks, name="grading_blocks"),
+    path("scorebook/export/", views.grading_scorebook_export, name="grading_scorebook_export"),
+    path("scorebook/", views.grading_scorebook, name="grading_scorebook"),
     path("reports/", views.grading_reports, name="grading_reports"),
     path("scans/recent/", views.grading_recent_scans, name="grading_recent_scans"),
     path(

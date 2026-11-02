@@ -34,6 +34,7 @@ from apps.grading.models import (
 )
 from apps.grading.services import analytics
 from apps.grading.services.mapper import OmrMapperService
+from apps.grading.services.scorebook import build_scorebook, export_scorebook
 
 from .serializers import (
     BubbleAnswerKeySerializer,
@@ -1410,6 +1411,124 @@ def grading_recent_scans(request):
             "created_at": s.created_at.isoformat(),
         })
     return Response({"success": True, "scans": rows, "count": len(rows)})
+
+
+def _scorebook_context(request):
+    """Faculty, course, and the section they asked for. Last item is an error Response."""
+    if not _is_faculty_user(request):
+        return None, None, None, None, _faculty_only_response()
+    faculty = _get_faculty_profile(request)
+    if not faculty:
+        return None, None, None, None, Response(
+            {"success": False, "detail": "No faculty profile linked."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    course_id = (request.query_params.get("course_id") or "").strip()
+    if not _valid_uuid(course_id) or not _faculty_can_access_course(faculty, course_id):
+        return None, None, None, None, Response(
+            {"success": False, "detail": "Access denied."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    course = Course.objects.filter(pk=course_id).first()
+    if course is None:
+        return None, None, None, None, Response(
+            {"success": False, "detail": "Course not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    handled = list(_handled_sections(faculty, course_id))
+    section_id = (request.query_params.get("section_id") or "").strip()
+    section = None
+    if section_id:
+        if not _valid_uuid(section_id):
+            return None, None, None, None, Response(
+                {"success": False, "detail": "Invalid section."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        section = next((item for item in handled if str(item.section_id) == section_id), None)
+        if section is None:
+            return None, None, None, None, Response(
+                {"success": False, "detail": "Choose a section you handle."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    elif handled:
+        section = handled[0]
+    return faculty, course, section, handled, None
+
+
+def _sections_payload(handled):
+    return [
+        {
+            "section_id": str(item.section_id),
+            "section_name": item.section_name,
+            "student_count": item.student_count,
+        }
+        for item in handled
+    ]
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grading_scorebook(request):
+    """
+    GET /api/grading/scorebook/?course_id=&section_id=
+    One row per student in the section, one column per major examination
+    (web answer sheets and mobile major exams). Quizzes are omitted.
+    """
+    faculty, course, section, handled, error = _scorebook_context(request)
+    if error:
+        return error
+    if section is None:
+        book = {
+            "course": {
+                "course_id": str(course.pk),
+                "course_code": course.course_code or "",
+                "course_title": course.course_title or "",
+            },
+            "section": None,
+            "exams": [],
+            "students": [],
+            "revision": "0",
+        }
+    else:
+        book = build_scorebook(faculty, course, section)
+    response = Response({"success": True, "sections": _sections_payload(handled), **book})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def grading_scorebook_export(request):
+    """
+    GET /api/grading/scorebook/export/?course_id=&section_id=&format=docx|pdf|xlsx
+    Student ID and score columns only.
+    """
+    faculty, course, section, _handled, error = _scorebook_context(request)
+    if error:
+        return error
+    if section is None:
+        return Response(
+            {"success": False, "detail": "Choose a section you handle."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    fmt = (request.query_params.get("format") or "").strip().lower()
+    if fmt not in {"docx", "pdf", "xlsx"}:
+        return Response(
+            {"success": False, "detail": "Choose a Word, PDF, or Excel file."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        payload, content_type, filename = export_scorebook(build_scorebook(faculty, course, section), fmt)
+    except Exception:
+        logger.exception("Scorebook export failed")
+        return Response(
+            {"success": False, "detail": "That file could not be created."},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+    response = HttpResponse(payload, content_type=content_type)
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 # ── Bubble Sheet Template CRUD ────────────────────────────────────────────────

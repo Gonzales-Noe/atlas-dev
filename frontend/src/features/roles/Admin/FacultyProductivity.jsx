@@ -42,7 +42,7 @@ const PACE_SERIES = [
   { key: 'syllabus', name: 'Syllabus', color: 'var(--brand-primary)' },
   { key: 'module', name: 'Modules', color: 'var(--brand-accent)' },
   { key: 'assessment', name: 'Assessments', color: '#60AAFF' },
-  { key: 'grading', name: 'Grading', color: '#C4A000' },
+  { key: 'grading', name: 'Scoring', color: '#C4A000' },
   { key: 'analytics', name: 'Analytics', color: '#5EDA7E' },
 ]
 
