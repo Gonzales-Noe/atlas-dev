@@ -33,6 +33,7 @@ export const ROUTES = {
     ACADEMIC_STRUCTURE: '/admin/academic-structure',
     KNOWLEDGE_BASE:     '/admin/knowledge-base',
     AUDIT_LOGS:         '/admin/audit-logs',
+    ISSUE_REPORTS:      '/admin/issue-reports',
   },
 
   // Super Admin (ATLAS team)
@@ -42,5 +43,6 @@ export const ROUTES = {
     AUDIT_LOGS:         '/superadmin/audit-logs',
     SYSTEM_MANAGEMENT:  '/superadmin/system-management',
     APPEARANCE:         '/superadmin/appearance',
+    ISSUE_REPORTS:      '/superadmin/issue-reports',
   },
 }

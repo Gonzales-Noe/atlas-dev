@@ -24,6 +24,7 @@ const AdminAccountManagement = lazy(() => import('./features/roles/Admin/Account
 const AdminAcademicStructure = lazy(() => import('./features/roles/Admin/AcademicStructure.jsx'))
 const AdminSyllabusFormat = lazy(() => import('./features/roles/Admin/SyllabusFormat.jsx'))
 const AdminKnowledgeBase = lazy(() => import('./features/roles/Admin/KnowledgeBased.jsx'))
+const IssueReports = lazy(() => import('./features/support/IssueReports.jsx'))
 const BillingOnboarding = lazy(() => import('./pages/billing/BillingOnboarding.jsx'))
 const LegalPage = lazy(() => import('./pages/legal/LegalPage.jsx'))
 
@@ -96,6 +97,14 @@ function App() {
           element={
             <ProtectedRoute role="superadmin">
               <SuperAdminDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.SUPERADMIN.ISSUE_REPORTS}
+          element={
+            <ProtectedRoute role="superadmin">
+              <IssueReports audience="superadmin" />
             </ProtectedRoute>
           }
         />
@@ -230,6 +239,14 @@ function App() {
           element={
             <ProtectedRoute role="admin">
               <AdminSyllabusFormat />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.ADMIN.ISSUE_REPORTS}
+          element={
+            <ProtectedRoute role="admin">
+              <IssueReports audience="admin" />
             </ProtectedRoute>
           }
         />

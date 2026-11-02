@@ -1,5 +1,6 @@
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import AssessmentIcon from '@mui/icons-material/Assessment'
+import FeedbackOutlinedIcon from '@mui/icons-material/FeedbackOutlined'
 import PeopleIcon from '@mui/icons-material/People'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
@@ -16,6 +17,7 @@ export default function AdminLayout({ children }) {
     { label: 'Accounts', to: ROUTES.ADMIN.ACCOUNT_MANAGEMENT, icon: <PeopleIcon /> },
     { label: 'Knowledge Base', to: ROUTES.ADMIN.KNOWLEDGE_BASE, icon: <MenuBookIcon /> },
     { label: 'Audit Logs', to: ROUTES.ADMIN.AUDIT_LOGS, icon: <AssessmentIcon /> },
+    { label: 'Issue Reports', to: ROUTES.ADMIN.ISSUE_REPORTS, icon: <FeedbackOutlinedIcon /> },
   ]
   return (
     <AdminSetupGate>
