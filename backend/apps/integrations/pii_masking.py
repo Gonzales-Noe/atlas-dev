@@ -346,3 +346,29 @@ def mask_and_verify(text: str, *, context: str = "document") -> str:
         out = mask_pii(out).text
     assert_no_high_confidence_pii(out, context=context)
     return out
+
+
+def recheck_retrieved_text(text: str, *, context: str = "retrieved chunk") -> str:
+    """
+    Second masking stage, run on text pulled back out of the index just before it is
+    placed in an LLM prompt (the first stage runs before chunking / embedding).
+
+    Chunks indexed before masking existed, edited rows, or patterns added since the
+    chunk was indexed can still hold PII. This re-scans the text, re-masks anything
+    found, and returns "" (the caller drops the chunk) if an email or PH mobile number
+    still survives. Clean text is returned unchanged.
+    """
+    if not text:
+        return text or ""
+    if not scan_pii(text):
+        return text
+    masked = mask_pii(text).text
+    critical = [f for f in scan_pii(masked) if f.kind in _HIGH_CONFIDENCE_KINDS]
+    if critical:
+        logger.warning(
+            "[ATLAS PII] Dropped %s at retrieval: %d high-confidence hit(s) survived masking",
+            context, len(critical),
+        )
+        return ""
+    logger.info("[ATLAS PII] Re-masked %s at retrieval", context)
+    return masked

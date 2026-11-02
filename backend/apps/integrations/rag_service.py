@@ -26,6 +26,7 @@ import time
 from pgvector.django import CosineDistance
 
 from .models import GlobalDocumentChunk, ChildChunk, ParentChunk
+from .pii_masking import recheck_retrieved_text
 
 logger = logging.getLogger(__name__)
 
@@ -346,6 +347,30 @@ def _progressive_context_summary(query: str, chunks: list) -> tuple:
     return summary, unique_refs
 
 
+def _recheck_results_for_pii(results: list, text_keys: tuple = ("text",)) -> list:
+    """
+    Retrieval-time PII recheck. Every chunk is re-scanned and re-masked before it
+    can reach the context summary, the CoT prompt, or the LLM Provider Chain. A chunk
+    whose text cannot be cleaned is dropped rather than sent.
+    """
+    safe = []
+    for item in results:
+        cleaned = dict(item)
+        keep = True
+        for key in text_keys:
+            original = item.get(key)
+            if not original:
+                continue
+            masked = recheck_retrieved_text(original, context=f"{key} of {item.get('document_title') or 'chunk'}")
+            if not masked:
+                keep = False
+                break
+            cleaned[key] = masked
+        if keep:
+            safe.append(cleaned)
+    return safe
+
+
 # ── Retrieval ────────────────────────────────────────────────────────────────
 
 def semantic_search(
@@ -466,6 +491,8 @@ def semantic_search(
                 "page_number":    chunk.page_number,
                 "score":          round(float(score), 4),
             })
+
+        results = _recheck_results_for_pii(results, ("text",))
 
         logger.info(
             "semantic_search(%r) → %d parents → %d %s results",
@@ -659,6 +686,8 @@ def course_semantic_search(
                 "page_number":    None,
                 "score":          round(float(score), 4),
             })
+
+        results = _recheck_results_for_pii(results, ("text", "parent_text"))
 
         logger.info(
             "course_semantic_search(%r, course=%s) → %d results",
