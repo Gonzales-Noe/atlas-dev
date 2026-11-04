@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import {
   Dialog, DialogActions, DialogContent, DialogTitle, Divider,
   MenuItem, TextField, Typography,
 } from '@mui/material'
-import DoneAllIcon from '@mui/icons-material/DoneAll'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
 import api from '../../config/api'
-import { PageHeader, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
+import { StatusNotice } from '../../components/StatusNotice'
+import { PageHeader, PrimaryBtn, OutlineBtn } from '../../components/ui'
+import {
+  IssueReportsBoard,
+  ReportDetailDialog,
+  issueInputSx,
+  when,
+} from './issueReportUi'
 
 const RESOLUTION_CATEGORIES = [
   { value: 'fixed', label: 'Fixed' },
@@ -28,233 +33,6 @@ const emptyResolutionForm = () => ({
   resolution_follow_up: '',
 })
 
-const inputSx = {
-  '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
-  '& .MuiInputLabel-root': { fontSize: '0.875rem' },
-  input: { color: 'var(--text-primary)' },
-  '& .MuiSelect-select': { color: 'var(--text-primary)' },
-  textarea: { color: 'var(--text-primary)' },
-}
-
-function when(value) {
-  if (!value) return ''
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-}
-
-function ReportImage({ reportId, hasImage }) {
-  const [src, setSrc] = useState('')
-  const [status, setStatus] = useState(hasImage ? 'loading' : 'none')
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!hasImage || !reportId) {
-      setStatus('none')
-      setSrc('')
-      return undefined
-    }
-    let cancelled = false
-    let objectUrl = ''
-    setStatus('loading')
-    ;(async () => {
-      try {
-        const { data, headers } = await api.get(`/auth/support-reports/${reportId}/image/`, {
-          responseType: 'blob',
-          atlasCache: false,
-          skipAtlasErrorCard: true,
-          headers: {
-            Accept: 'image/*,application/octet-stream',
-          },
-          transformRequest: [(body, requestHeaders) => {
-            if (requestHeaders && typeof requestHeaders === 'object') {
-              delete requestHeaders['Content-Type']
-              delete requestHeaders['content-type']
-            }
-            return body
-          }],
-        })
-        const type = String(data?.type || headers?.['content-type'] || '')
-        if (!data || data.size < 32 || type.includes('json') || type.includes('text/html')) {
-          if (!cancelled) {
-            setSrc('')
-            setStatus('missing')
-          }
-          return
-        }
-        objectUrl = URL.createObjectURL(data)
-        if (cancelled) {
-          URL.revokeObjectURL(objectUrl)
-          return
-        }
-        setSrc(objectUrl)
-        setStatus('ready')
-      } catch {
-        if (!cancelled) {
-          setSrc('')
-          setStatus('missing')
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [hasImage, reportId])
-
-  useEffect(() => {
-    if (!open) return undefined
-    const onKey = (event) => {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = previous
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open])
-
-  if (!hasImage || status === 'none') return null
-  if (status === 'loading') {
-    return (
-      <div style={{
-        marginTop: 12,
-        width: 160,
-        height: 220,
-        borderRadius: 12,
-        border: '1px solid var(--border-color)',
-        background: 'var(--bg-header, rgba(255,255,255,0.04))',
-        display: 'grid',
-        placeItems: 'center',
-        color: 'var(--text-secondary)',
-        fontSize: '0.78rem',
-      }}
-      >
-        Loading…
-      </div>
-    )
-  }
-  if (status === 'missing' || !src) {
-    return (
-      <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-        Screenshot unavailable — ask faculty to send the report again.
-      </p>
-    )
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        style={{
-          display: 'block',
-          marginTop: 12,
-          padding: 0,
-          border: '1px solid var(--border-color)',
-          borderRadius: 12,
-          overflow: 'hidden',
-          background: 'var(--bg-header, rgba(255,255,255,0.04))',
-          cursor: 'zoom-in',
-          width: 160,
-          height: 220,
-          flexShrink: 0,
-        }}
-      >
-        <img
-          src={src}
-          alt="Issue screenshot"
-          style={{
-            display: 'block',
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain',
-            objectPosition: 'center',
-          }}
-        />
-      </button>
-      {open && createPortal(
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Issue screenshot preview"
-          onClick={() => setOpen(false)}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') setOpen(false)
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 2000,
-            border: 'none',
-            background: 'rgba(0,0,0,0.82)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'zoom-out',
-            padding: 24,
-          }}
-        >
-          <img
-            src={src}
-            alt="Issue screenshot enlarged"
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              maxWidth: 'min(920px, 100%)',
-              maxHeight: '90vh',
-              width: 'auto',
-              height: 'auto',
-              borderRadius: 12,
-              objectFit: 'contain',
-              boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
-            }}
-          />
-        </div>,
-        document.body,
-      )}
-    </>
-  )
-}
-
-function StatusTag({ resolved }) {
-  if (resolved) {
-    return (
-      <span style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 5,
-        fontSize: '0.72rem',
-        fontWeight: 800,
-        letterSpacing: '0.08em',
-        textTransform: 'uppercase',
-        color: '#15803d',
-        background: 'rgba(34,197,94,0.12)',
-        borderRadius: 999,
-        padding: '3px 9px 3px 7px',
-      }}>
-        <DoneAllIcon sx={{ fontSize: 15, color: '#15803d' }} />
-        RESOLVED
-      </span>
-    )
-  }
-  return (
-    <span style={{
-      fontSize: '0.72rem',
-      fontWeight: 800,
-      letterSpacing: '0.08em',
-      textTransform: 'uppercase',
-      color: 'var(--brand-primary, #AA2423)',
-      background: 'rgba(170,36,35,0.1)',
-      borderRadius: 999,
-      padding: '3px 8px',
-    }}>
-      OPEN
-    </span>
-  )
-}
-
 export default function IssueReports({ audience = 'admin' }) {
   const isAdmin = audience === 'admin'
   const isSuperadmin = audience === 'superadmin'
@@ -263,8 +41,10 @@ export default function IssueReports({ audience = 'admin' }) {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const [sendingId, setSendingId] = useState('')
   const [resolvingId, setResolvingId] = useState('')
+  const [selected, setSelected] = useState(null)
   const [resolveTarget, setResolveTarget] = useState(null)
   const [resolutionForm, setResolutionForm] = useState(emptyResolutionForm)
   const hasLoadedRef = useRef(false)
@@ -315,9 +95,12 @@ export default function IssueReports({ audience = 'admin' }) {
   async function sendUp(id) {
     setSendingId(id)
     setError('')
+    setSuccess('')
     try {
       const { data } = await api.post(`/auth/support-reports/${id}/forward/`)
       setReports((rows) => rows.map((row) => (row.id === id ? { ...row, ...data } : row)))
+      setSelected((current) => (current?.id === id ? { ...current, ...data } : current))
+      setSuccess('Report sent to the ATLAS team.')
       window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
     } catch (err) {
       setError(err?.response?.data?.detail || 'This report could not be sent. Try again in a moment.')
@@ -330,6 +113,7 @@ export default function IssueReports({ audience = 'admin' }) {
     setResolveTarget(row)
     setResolutionForm(emptyResolutionForm())
     setError('')
+    setSuccess('')
   }
 
   async function submitResolve() {
@@ -344,6 +128,7 @@ export default function IssueReports({ audience = 'admin' }) {
     }
     setResolvingId(resolveTarget.id)
     setError('')
+    setSuccess('')
     try {
       const { data } = await api.post(`/auth/support-reports/${resolveTarget.id}/resolve/`, {
         resolved: true,
@@ -353,8 +138,10 @@ export default function IssueReports({ audience = 'admin' }) {
         resolution_follow_up: resolutionForm.resolution_follow_up.trim(),
       })
       setReports((rows) => rows.map((row) => (row.id === resolveTarget.id ? { ...row, ...data } : row)))
+      setSelected((current) => (current?.id === resolveTarget.id ? { ...current, ...data } : current))
       setResolveTarget(null)
       setResolutionForm(emptyResolutionForm())
+      setSuccess('Report marked as resolved.')
       window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
     } catch (err) {
       setError(err?.response?.data?.detail || 'Could not update that report. Try again in a moment.')
@@ -366,9 +153,12 @@ export default function IssueReports({ audience = 'admin' }) {
   async function reopenReport(id) {
     setResolvingId(id)
     setError('')
+    setSuccess('')
     try {
       const { data } = await api.post(`/auth/support-reports/${id}/resolve/`, { resolved: false })
       setReports((rows) => rows.map((row) => (row.id === id ? { ...row, ...data } : row)))
+      setSelected((current) => (current?.id === id ? { ...current, ...data } : current))
+      setSuccess('Report marked as open.')
       window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
     } catch (err) {
       setError(err?.response?.data?.detail || 'Could not update that report. Try again in a moment.')
@@ -377,133 +167,77 @@ export default function IssueReports({ audience = 'admin' }) {
     }
   }
 
+  const selectedSent = selected?.status === 'with_superadmin'
+  const selectedResolved = Boolean(selected?.is_resolved)
+
   return (
     <Layout>
+      <StatusNotice message={error} severity="error" />
+      <StatusNotice message={success} severity="success" />
+
       <PageHeader
         title="Issue reports"
         subtitle={isAdmin
-          ? 'Messages faculty sent from ATLAS (app or web). Send one to the ATLAS team when the campus needs more help.'
-          : 'Messages a campus admin has passed on from faculty.'}
+          ? 'Messages faculty sent from ATLAS (app or web). Open one to review details, then send it to the ATLAS team when needed.'
+          : 'Messages a campus admin has passed on from faculty. Open one to review details and resolve it.'}
       />
-      {error && (
-        <p style={{ color: 'var(--brand-primary)', margin: '0 0 16px', fontSize: '0.9rem' }}>{error}</p>
-      )}
-      {loading ? (
-        <GlassCard>
-          <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Loading reports…</p>
-        </GlassCard>
-      ) : reports.length === 0 ? (
-        <GlassCard>
-          <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-            {isAdmin
-              ? 'No messages yet. When a faculty member reports a problem, it will show up here.'
-              : 'Nothing has been sent up yet. A campus admin sends a report here when they want the ATLAS team to look at it.'}
-          </p>
-        </GlassCard>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {reports.map((row) => {
-            const sent = row.status === 'with_superadmin'
-            const resolved = Boolean(row.is_resolved)
-            return (
-              <GlassCard key={row.id}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
-                  <div style={{ minWidth: 0, flex: '1 1 280px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                        {row.faculty_name || 'A faculty member'}
-                      </div>
-                      <StatusTag resolved={resolved} />
-                    </div>
-                    <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: 2 }}>
-                      {[row.faculty_email, row.campus, when(row.created_at)].filter(Boolean).join(' · ')}
-                    </div>
-                    <p style={{ margin: '12px 0 0', color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
-                      {row.message}
-                    </p>
-                    <ReportImage reportId={row.id} hasImage={Boolean(row.has_image)} />
-                    {row.phone_note ? (
-                      <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                        Phone details: {row.phone_note}
-                      </p>
-                    ) : null}
-                    {resolved ? (
-                      <div style={{
-                        marginTop: 12,
-                        padding: 12,
-                        borderRadius: 12,
-                        border: '1px solid rgba(34,197,94,0.28)',
-                        background: 'rgba(34,197,94,0.08)',
-                      }}
-                      >
-                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
-                          {row.resolution_category_label || 'Resolved'}
-                          {row.resolved_at ? ` · ${when(row.resolved_at)}` : ''}
-                        </div>
-                        {row.resolution_summary ? (
-                          <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>
-                            {row.resolution_summary}
-                          </p>
-                        ) : null}
-                        {row.resolution_details ? (
-                          <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-                            {row.resolution_details}
-                          </p>
-                        ) : null}
-                        {row.resolution_follow_up ? (
-                          <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                            Follow-up: {row.resolution_follow_up}
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                    {isAdmin ? (
-                      sent ? (
-                        <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700 }}>
-                          Sent to the ATLAS team{row.forwarded_at ? ` · ${when(row.forwarded_at)}` : ''}
-                        </span>
-                      ) : (
-                        <PrimaryBtn
-                          small
-                          disabled={sendingId === row.id || resolved}
-                          onClick={() => sendUp(row.id)}
-                        >
-                          {sendingId === row.id ? 'Sending…' : 'Send to the ATLAS team'}
-                        </PrimaryBtn>
-                      )
-                    ) : (
-                      <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700 }}>
-                        From a campus admin{row.forwarded_at ? ` · ${when(row.forwarded_at)}` : ''}
-                      </span>
-                    )}
-                    {isSuperadmin && (
-                      resolved ? (
-                        <OutlineBtn
-                          small
-                          disabled={resolvingId === row.id}
-                          onClick={() => reopenReport(row.id)}
-                        >
-                          {resolvingId === row.id ? 'Updating…' : 'Mark as open'}
-                        </OutlineBtn>
-                      ) : (
-                        <PrimaryBtn
-                          small
-                          disabled={resolvingId === row.id}
-                          onClick={() => openResolveForm(row)}
-                        >
-                          Mark as resolved
-                        </PrimaryBtn>
-                      )
-                    )}
-                  </div>
-                </div>
-              </GlassCard>
-            )
-          })}
-        </div>
-      )}
+
+      <IssueReportsBoard
+        reports={reports}
+        loading={loading}
+        emptyText={isAdmin
+          ? 'No messages yet. When a faculty member reports a problem, it will show up here.'
+          : 'Nothing has been sent up yet. A campus admin sends a report here when they want the ATLAS team to look at it.'}
+        onOpen={setSelected}
+      />
+
+      <ReportDetailDialog
+        open={Boolean(selected)}
+        report={selected}
+        onClose={() => setSelected(null)}
+        footer={(
+          <>
+            {isAdmin ? (
+              selectedSent ? (
+                <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700, mr: 'auto' }}>
+                  Sent to the ATLAS team{selected?.forwarded_at ? ` · ${when(selected.forwarded_at)}` : ''}
+                </Typography>
+              ) : (
+                <PrimaryBtn
+                  small
+                  disabled={sendingId === selected?.id || selectedResolved}
+                  onClick={() => sendUp(selected.id)}
+                >
+                  {sendingId === selected?.id ? 'Sending…' : 'Send to the ATLAS team'}
+                </PrimaryBtn>
+              )
+            ) : (
+              <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700, mr: 'auto' }}>
+                From a campus admin{selected?.forwarded_at ? ` · ${when(selected.forwarded_at)}` : ''}
+              </Typography>
+            )}
+            {isSuperadmin ? (
+              selectedResolved ? (
+                <OutlineBtn
+                  small
+                  disabled={resolvingId === selected?.id}
+                  onClick={() => reopenReport(selected.id)}
+                >
+                  {resolvingId === selected?.id ? 'Updating…' : 'Mark as open'}
+                </OutlineBtn>
+              ) : (
+                <PrimaryBtn
+                  small
+                  disabled={resolvingId === selected?.id}
+                  onClick={() => openResolveForm(selected)}
+                >
+                  Mark as resolved
+                </PrimaryBtn>
+              )
+            ) : null}
+          </>
+        )}
+      />
 
       <Dialog
         open={Boolean(resolveTarget)}
@@ -524,7 +258,7 @@ export default function IssueReports({ audience = 'admin' }) {
             size="small"
             value={resolutionForm.resolution_category}
             onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_category: event.target.value }))}
-            sx={inputSx}
+            sx={issueInputSx}
           >
             {RESOLUTION_CATEGORIES.map((item) => (
               <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
@@ -535,7 +269,7 @@ export default function IssueReports({ audience = 'admin' }) {
             size="small"
             value={resolutionForm.resolution_summary}
             onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_summary: event.target.value }))}
-            sx={inputSx}
+            sx={issueInputSx}
             inputProps={{ maxLength: 300 }}
             placeholder="e.g. Fixed text-size scaling on Appearance"
           />
@@ -546,7 +280,7 @@ export default function IssueReports({ audience = 'admin' }) {
             minRows={3}
             value={resolutionForm.resolution_details}
             onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_details: event.target.value }))}
-            sx={inputSx}
+            sx={issueInputSx}
             placeholder="Root cause, what changed, verification steps…"
           />
           <TextField
@@ -554,7 +288,7 @@ export default function IssueReports({ audience = 'admin' }) {
             size="small"
             value={resolutionForm.resolution_follow_up}
             onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_follow_up: event.target.value }))}
-            sx={inputSx}
+            sx={issueInputSx}
             inputProps={{ maxLength: 300 }}
             placeholder="e.g. Maintenance window Friday 10pm–11pm"
           />
