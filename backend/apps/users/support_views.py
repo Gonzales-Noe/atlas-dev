@@ -3,20 +3,25 @@
 import logging
 import mimetypes
 
+from datetime import timedelta
+
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-logger = logging.getLogger(__name__)
-
+from apps.integrations.encryption import decrypt_bytes, encrypt_bytes, is_encrypted_bytes
 from apps.integrations.models import SupportReport, UserProfile, UserRole
 from apps.users.notify import institution_people, notify_users
 from apps.users.serializers import normalize_role
 
+logger = logging.getLogger(__name__)
+
 ADMIN_REPORTS = '/admin/issue-reports'
 SUPERADMIN_REPORTS = '/superadmin/issue-reports'
+EDIT_WINDOW = timedelta(hours=24)
 
 ALLOWED_IMAGE_TYPES = {
     'image/jpeg',
@@ -26,10 +31,30 @@ ALLOWED_IMAGE_TYPES = {
 }
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
+RESOLUTION_CATEGORIES = {
+    'fixed': 'Fixed',
+    'workaround': 'Workaround provided',
+    'maintenance_planned': 'Maintenance update planned',
+    'cannot_reproduce': 'Could not reproduce',
+    'duplicate': 'Duplicate',
+    'by_design': 'Working as designed',
+    'other': 'Other',
+}
+
 
 def _person(user):
     name = (getattr(user, 'name', None) or '').strip()
     return name or user.email or 'A faculty member'
+
+
+def _has_image(row):
+    return bool(row.image_blob) or bool(row.image)
+
+
+def _can_edit_report(report):
+    if report.is_resolved or not report.created_at:
+        return False
+    return timezone.now() <= report.created_at + EDIT_WINDOW
 
 
 def _serialize(row):
@@ -38,14 +63,21 @@ def _serialize(row):
         'id': str(row.report_id),
         'message': row.message,
         'phone_note': row.phone_note or '',
-        'has_image': bool(row.image),
+        'has_image': _has_image(row),
         'status': row.status,
         'is_resolved': bool(row.is_resolved),
         'resolved_at': row.resolved_at.isoformat() if row.resolved_at else None,
+        'resolution_category': row.resolution_category or '',
+        'resolution_category_label': RESOLUTION_CATEGORIES.get(row.resolution_category or '', ''),
+        'resolution_summary': row.resolution_summary or '',
+        'resolution_details': row.resolution_details or '',
+        'resolution_follow_up': row.resolution_follow_up or '',
+        'can_edit': _can_edit_report(row),
         'faculty_name': _person(reporter) if reporter else 'A faculty member',
         'faculty_email': reporter.email if reporter else '',
         'campus': row.institution.name if row.institution_id and row.institution else '',
         'created_at': row.created_at.isoformat() if row.created_at else None,
+        'updated_at': row.updated_at.isoformat() if getattr(row, 'updated_at', None) else None,
         'forwarded_at': row.forwarded_at.isoformat() if row.forwarded_at else None,
     }
 
@@ -98,8 +130,46 @@ def _validate_image(upload):
     return ''
 
 
+def _read_upload_bytes(upload):
+    upload.seek(0)
+    data = upload.read()
+    if isinstance(data, memoryview):
+        data = data.tobytes()
+    elif isinstance(data, bytearray):
+        data = bytes(data)
+    return data or b''
+
+
+def _image_payload(report):
+    """Return (bytes, content_type) for a report screenshot, or (None, '')."""
+    if report.image_blob:
+        raw = bytes(report.image_blob)
+        try:
+            data = decrypt_bytes(raw) if is_encrypted_bytes(raw) else raw
+        except Exception:
+            logger.exception('Could not decrypt support report image blob %s', report.report_id)
+            data = None
+        if data:
+            mime = (report.image_mime or '').strip() or 'image/jpeg'
+            return data, mime
+
+    if report.image:
+        try:
+            report.image.open('rb')
+            data = report.image.read()
+            report.image.close()
+        except Exception:
+            logger.exception('Could not read support report image file %s', report.report_id)
+            return None, ''
+        if data:
+            mime = mimetypes.guess_type(report.image.name)[0] or 'application/octet-stream'
+            return data, mime
+    return None, ''
+
+
 class SupportReportListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request):
         role = normalize_role(request.user.role)
@@ -128,7 +198,7 @@ class SupportReportListView(APIView):
     def post(self, request):
         if normalize_role(request.user.role) != 'faculty':
             return Response(
-                {'detail': 'Only a faculty account can send a report from the app.'},
+                {'detail': 'Only a faculty account can send a report.'},
                 status=status.HTTP_403_FORBIDDEN,
             )
         message = str(request.data.get('message') or '').strip()
@@ -137,16 +207,34 @@ class SupportReportListView(APIView):
         if len(message) > 4000:
             message = message[:4000]
         phone_note = str(request.data.get('phone_note') or '').strip()[:300]
-        image = request.FILES.get('image')
+        image = request.FILES.get('image') or request.FILES.get('screenshot')
         image_error = _validate_image(image)
         if image_error:
             return Response({'detail': image_error}, status=status.HTTP_400_BAD_REQUEST)
+
+        raw = _read_upload_bytes(image)
+        if not raw:
+            return Response({'detail': 'Add a screenshot of the issue.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(raw) > MAX_IMAGE_BYTES:
+            return Response({'detail': 'Keep the screenshot under 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        mime = (getattr(image, 'content_type', None) or '').lower().strip()
+        if mime not in ALLOWED_IMAGE_TYPES:
+            name = (getattr(image, 'name', None) or '').lower()
+            if name.endswith('.png'):
+                mime = 'image/png'
+            elif name.endswith('.webp'):
+                mime = 'image/webp'
+            else:
+                mime = 'image/jpeg'
+
         report = SupportReport.objects.create(
             reporter=request.user,
             institution_id=request.user.institution_id,
             message=message,
             phone_note=phone_note,
-            image=image,
+            image_blob=encrypt_bytes(raw),
+            image_mime=mime,
             status=SupportReport.STATUS_WITH_ADMIN,
         )
         admins = institution_people(request.user.institution_id, [UserRole.ADMIN])
@@ -191,26 +279,80 @@ class SupportReportImageView(APIView):
             return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
         if not _can_view_report(request.user, report):
             return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
-        if not report.image:
+        if not _has_image(report):
             return Response({'detail': 'This report has no screenshot.'}, status=status.HTTP_404_NOT_FOUND)
-        try:
-            report.image.open('rb')
-            data = report.image.read()
-            report.image.close()
-        except Exception:
-            logger.exception('Could not read support report image %s', report_id)
+
+        data, content_type = _image_payload(report)
+        if not data:
             return Response(
                 {'detail': 'This screenshot file is missing. Ask the faculty member to send the report again.'},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        if not data:
-            return Response({'detail': 'This report has no screenshot.'}, status=status.HTTP_404_NOT_FOUND)
-        content_type = mimetypes.guess_type(report.image.name)[0] or 'application/octet-stream'
-        response = HttpResponse(data, content_type=content_type)
+        response = HttpResponse(data, content_type=content_type or 'image/jpeg')
         response['Content-Length'] = str(len(data))
         response['Cache-Control'] = 'private, max-age=300'
         response['Content-Disposition'] = 'inline'
         return response
+
+
+class SupportReportDetailView(APIView):
+    """Faculty can patch their own report within 24 hours (even if escalated)."""
+
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def patch(self, request, report_id):
+        if normalize_role(request.user.role) != 'faculty':
+            return Response({'detail': 'Only the faculty who sent this report can edit it.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            report = SupportReport.objects.select_related('reporter', 'institution').get(
+                report_id=report_id,
+                reporter=request.user,
+            )
+        except SupportReport.DoesNotExist:
+            return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_edit_report(report):
+            return Response(
+                {'detail': 'This report can only be edited within 24 hours, and not after it is resolved.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = request.data.get('message', None)
+        if message is not None:
+            message = str(message).strip()
+            if not message:
+                return Response({'detail': 'Please tell us what happened.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(message) > 4000:
+                message = message[:4000]
+            report.message = message
+
+        if 'phone_note' in request.data:
+            report.phone_note = str(request.data.get('phone_note') or '').strip()[:300]
+
+        image = request.FILES.get('image') or request.FILES.get('screenshot')
+        if image is not None:
+            image_error = _validate_image(image)
+            if image_error:
+                return Response({'detail': image_error}, status=status.HTTP_400_BAD_REQUEST)
+            raw = _read_upload_bytes(image)
+            if not raw:
+                return Response({'detail': 'Add a screenshot of the issue.'}, status=status.HTTP_400_BAD_REQUEST)
+            if len(raw) > MAX_IMAGE_BYTES:
+                return Response({'detail': 'Keep the screenshot under 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
+            mime = (getattr(image, 'content_type', None) or '').lower().strip()
+            if mime not in ALLOWED_IMAGE_TYPES:
+                name = (getattr(image, 'name', None) or '').lower()
+                if name.endswith('.png'):
+                    mime = 'image/png'
+                elif name.endswith('.webp'):
+                    mime = 'image/webp'
+                else:
+                    mime = 'image/jpeg'
+            report.image_blob = encrypt_bytes(raw)
+            report.image_mime = mime
+
+        report.save()
+        return Response(_serialize(report))
 
 
 class SupportReportResolveView(APIView):
@@ -231,16 +373,38 @@ class SupportReportResolveView(APIView):
             resolved = bool(resolved_raw)
 
         if resolved and not report.is_resolved:
+            category = str(request.data.get('resolution_category') or '').strip()
+            summary = str(request.data.get('resolution_summary') or '').strip()
+            details = str(request.data.get('resolution_details') or '').strip()
+            follow_up = str(request.data.get('resolution_follow_up') or '').strip()
+            if category not in RESOLUTION_CATEGORIES:
+                return Response(
+                    {'detail': 'Choose how this issue was resolved (for example Fixed or Maintenance update planned).'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if not summary:
+                return Response(
+                    {'detail': 'Add a short resolution summary.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             report.is_resolved = True
             report.resolved_at = timezone.now()
             report.resolved_by = request.user
-            report.save(update_fields=['is_resolved', 'resolved_at', 'resolved_by'])
+            report.resolution_category = category
+            report.resolution_summary = summary[:300]
+            report.resolution_details = details[:4000]
+            report.resolution_follow_up = follow_up[:300]
+            report.save(update_fields=[
+                'is_resolved', 'resolved_at', 'resolved_by',
+                'resolution_category', 'resolution_summary', 'resolution_details', 'resolution_follow_up',
+            ])
+            preview = summary if len(summary) <= 160 else f'{summary[:157]}...'
             if report.reporter_id:
                 notify_users(
                     [report.reporter],
                     kind='support_report_resolved',
                     title='Your issue report was marked resolved',
-                    body='Campus support marked your report as resolved.',
+                    body=preview,
                     href='',
                     dedupe_key=f'support-report-resolved:{report.report_id}',
                 )
@@ -248,7 +412,14 @@ class SupportReportResolveView(APIView):
             report.is_resolved = False
             report.resolved_at = None
             report.resolved_by = None
-            report.save(update_fields=['is_resolved', 'resolved_at', 'resolved_by'])
+            report.resolution_category = ''
+            report.resolution_summary = ''
+            report.resolution_details = ''
+            report.resolution_follow_up = ''
+            report.save(update_fields=[
+                'is_resolved', 'resolved_at', 'resolved_by',
+                'resolution_category', 'resolution_summary', 'resolution_details', 'resolution_follow_up',
+            ])
             if report.reporter_id:
                 notify_users(
                     [report.reporter],

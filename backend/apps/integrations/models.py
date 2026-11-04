@@ -804,7 +804,11 @@ class SupportReport(models.Model):
     )
     message = EncryptedTextField()
     phone_note = models.CharField(max_length=300, blank=True, default='')
+    # Disk field kept for older rows; new reports store bytes in image_blob (DB)
+    # so screenshots survive container rebuilds.
     image = models.ImageField(upload_to='support_reports/', blank=True, default='')
+    image_blob = models.BinaryField(null=True, blank=True)
+    image_mime = models.CharField(max_length=64, blank=True, default='')
     status = models.CharField(max_length=32, default=STATUS_WITH_ADMIN)
     is_resolved = models.BooleanField(default=False)
     resolved_at = models.DateTimeField(null=True, blank=True)
@@ -812,7 +816,12 @@ class SupportReport(models.Model):
         UserProfile, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='resolved_support_reports',
     )
+    resolution_category = models.CharField(max_length=40, blank=True, default='')
+    resolution_summary = models.CharField(max_length=300, blank=True, default='')
+    resolution_details = models.TextField(blank=True, default='')
+    resolution_follow_up = models.CharField(max_length=300, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
     forwarded_at = models.DateTimeField(null=True, blank=True)
     forwarded_by = models.ForeignKey(
         UserProfile, on_delete=models.SET_NULL, null=True, blank=True,

@@ -13,6 +13,7 @@ from .platform_views import (
     SystemHealthView,
 )
 from .support_views import (
+    SupportReportDetailView,
     SupportReportForwardView,
     SupportReportImageView,
     SupportReportListView,
@@ -66,6 +67,7 @@ urlpatterns = [
     path('support-reports/<uuid:report_id>/image/', SupportReportImageView.as_view(), name='support_report_image'),
     path('support-reports/<uuid:report_id>/resolve/', SupportReportResolveView.as_view(), name='support_report_resolve'),
     path('support-reports/<uuid:report_id>/forward/', SupportReportForwardView.as_view(), name='support_report_forward'),
+    path('support-reports/<uuid:report_id>/', SupportReportDetailView.as_view(), name='support_report_detail'),
     path('faculty/', FacultyCreateView.as_view(), name='faculty_create'),
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
     path('platform-theme/', PlatformThemeView.as_view(), name='platform_theme'),
