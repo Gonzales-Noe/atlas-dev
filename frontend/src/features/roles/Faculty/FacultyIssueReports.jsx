@@ -23,7 +23,10 @@ export default function FacultyIssueReports() {
   const load = useCallback(async ({ silent = false } = {}) => {
     if (!silent || !hasLoadedRef.current) setLoading(true)
     try {
-      const { data } = await api.get('/auth/support-reports/', { atlasCache: false })
+      const { data } = await api.get('/auth/support-reports/', {
+        atlasCache: false,
+        params: { include_images: 1 },
+      })
       setReports(Array.isArray(data?.reports) ? data.reports : [])
       hasLoadedRef.current = true
       if (!silent) setError('')
