@@ -5,6 +5,7 @@ import mimetypes
 
 from datetime import timedelta
 
+from django.core.files.base import ContentFile
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -140,6 +141,39 @@ def _read_upload_bytes(upload):
     return data or b''
 
 
+def _resolve_image_mime(upload):
+    mime = (getattr(upload, 'content_type', None) or '').lower().strip()
+    if mime in ALLOWED_IMAGE_TYPES:
+        return 'image/jpeg' if mime == 'image/jpg' else mime
+    name = (getattr(upload, 'name', None) or '').lower()
+    if name.endswith('.png'):
+        return 'image/png'
+    if name.endswith('.webp'):
+        return 'image/webp'
+    return 'image/jpeg'
+
+
+def _image_filename(mime, upload_name=''):
+    name = (upload_name or '').replace('\\', '/').split('/')[-1].strip()
+    lower = name.lower()
+    if lower.endswith(('.jpg', '.jpeg', '.png', '.webp')) and name:
+        return name[:80]
+    if mime == 'image/png':
+        return 'screenshot.png'
+    if mime == 'image/webp':
+        return 'screenshot.webp'
+    return 'screenshot.jpg'
+
+
+def _attach_screenshot(report, raw, mime, upload_name=''):
+    """Store screenshot in DB blob and on disk so either serve path can recover it."""
+    report.image_blob = encrypt_bytes(raw)
+    report.image_mime = mime
+    filename = _image_filename(mime, upload_name)
+    # Plaintext here: EncryptedFileSystemStorage encrypts on disk write.
+    report.image.save(filename, ContentFile(raw), save=False)
+
+
 def _image_payload(report):
     """Return (bytes, content_type) for a report screenshot, or (None, '')."""
     if report.image_blob:
@@ -162,7 +196,11 @@ def _image_payload(report):
             logger.exception('Could not read support report image file %s', report.report_id)
             return None, ''
         if data:
-            mime = mimetypes.guess_type(report.image.name)[0] or 'application/octet-stream'
+            mime = (
+                (report.image_mime or '').strip()
+                or mimetypes.guess_type(report.image.name)[0]
+                or 'application/octet-stream'
+            )
             return data, mime
     return None, ''
 
@@ -218,25 +256,16 @@ class SupportReportListView(APIView):
         if len(raw) > MAX_IMAGE_BYTES:
             return Response({'detail': 'Keep the screenshot under 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
 
-        mime = (getattr(image, 'content_type', None) or '').lower().strip()
-        if mime not in ALLOWED_IMAGE_TYPES:
-            name = (getattr(image, 'name', None) or '').lower()
-            if name.endswith('.png'):
-                mime = 'image/png'
-            elif name.endswith('.webp'):
-                mime = 'image/webp'
-            else:
-                mime = 'image/jpeg'
-
-        report = SupportReport.objects.create(
+        mime = _resolve_image_mime(image)
+        report = SupportReport(
             reporter=request.user,
             institution_id=request.user.institution_id,
             message=message,
             phone_note=phone_note,
-            image_blob=encrypt_bytes(raw),
-            image_mime=mime,
             status=SupportReport.STATUS_WITH_ADMIN,
         )
+        _attach_screenshot(report, raw, mime, getattr(image, 'name', '') or '')
+        report.save()
         admins = institution_people(request.user.institution_id, [UserRole.ADMIN])
         who = _person(request.user)
         preview = message if len(message) <= 180 else f'{message[:177]}...'
@@ -339,17 +368,8 @@ class SupportReportDetailView(APIView):
                 return Response({'detail': 'Add a screenshot of the issue.'}, status=status.HTTP_400_BAD_REQUEST)
             if len(raw) > MAX_IMAGE_BYTES:
                 return Response({'detail': 'Keep the screenshot under 5 MB.'}, status=status.HTTP_400_BAD_REQUEST)
-            mime = (getattr(image, 'content_type', None) or '').lower().strip()
-            if mime not in ALLOWED_IMAGE_TYPES:
-                name = (getattr(image, 'name', None) or '').lower()
-                if name.endswith('.png'):
-                    mime = 'image/png'
-                elif name.endswith('.webp'):
-                    mime = 'image/webp'
-                else:
-                    mime = 'image/jpeg'
-            report.image_blob = encrypt_bytes(raw)
-            report.image_mime = mime
+            mime = _resolve_image_mime(image)
+            _attach_screenshot(report, raw, mime, getattr(image, 'name', '') or '')
 
         report.save()
         return Response(_serialize(report))

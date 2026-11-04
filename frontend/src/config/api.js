@@ -176,6 +176,17 @@ function refreshAccessToken() {
   return refreshPromise
 }
 
+function clearJsonContentType(headers) {
+  if (!headers) return
+  if (typeof headers.delete === 'function') {
+    headers.delete('Content-Type')
+    headers.delete('content-type')
+    return
+  }
+  delete headers['Content-Type']
+  delete headers['content-type']
+}
+
 // ── Request interceptor: attach JWT access token ──────────────────────────
 api.interceptors.request.use(
   (config) => {
@@ -186,6 +197,14 @@ api.interceptors.request.use(
     const token = getAccessToken()
     if (token && !isDemoToken(token)) {
       config.headers.Authorization = `Bearer ${token}`
+    }
+    // Global JSON Content-Type breaks multipart uploads (issue screenshots).
+    // Leave Content-Type unset so the browser can add multipart boundary.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      clearJsonContentType(config.headers)
+      if (config.headers && typeof config.headers.set !== 'function') {
+        config.headers['Content-Type'] = undefined
+      }
     }
     const cached = readGetCache(config)
     if (cached) {
