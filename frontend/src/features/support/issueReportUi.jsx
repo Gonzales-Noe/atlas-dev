@@ -87,21 +87,33 @@ export function ReportImage({ reportId, hasImage, compact = false }) {
     setStatus('loading')
     ;(async () => {
       try {
-        const { data, headers } = await api.get(`/auth/support-reports/${reportId}/image/`, {
+        const response = await api.get(`/auth/support-reports/${reportId}/image/`, {
           responseType: 'blob',
           atlasCache: false,
           skipAtlasErrorCard: true,
-          headers: { Accept: 'image/*,application/octet-stream' },
+          headers: { Accept: '*/*' },
           transformRequest: [(body, requestHeaders) => {
-            if (requestHeaders && typeof requestHeaders === 'object') {
+            if (requestHeaders && typeof requestHeaders.delete === 'function') {
+              requestHeaders.delete('Content-Type')
+              requestHeaders.delete('content-type')
+            } else if (requestHeaders && typeof requestHeaders === 'object') {
               delete requestHeaders['Content-Type']
               delete requestHeaders['content-type']
             }
             return body
           }],
+          validateStatus: (status) => status >= 200 && status < 500,
         })
-        const type = String(data?.type || headers?.['content-type'] || '')
-        if (!data || data.size < 32 || type.includes('json') || type.includes('text/html')) {
+        const data = response?.data
+        const headerType = String(response?.headers?.['content-type'] || response?.headers?.['Content-Type'] || '')
+        const type = String(data?.type || headerType || '')
+        if (
+          response.status !== 200
+          || !data
+          || data.size < 32
+          || type.includes('json')
+          || type.includes('text/html')
+        ) {
           if (!cancelled) {
             setSrc('')
             setStatus('missing')

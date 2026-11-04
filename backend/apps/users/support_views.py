@@ -49,7 +49,13 @@ def _person(user):
 
 
 def _has_image(row):
-    return bool(row.image_blob) or bool(row.image)
+    if row.image_blob is not None:
+        try:
+            if len(bytes(row.image_blob)) >= 32:
+                return True
+        except Exception:
+            pass
+    return bool(row.image)
 
 
 def _can_edit_report(report):
@@ -166,26 +172,52 @@ def _image_filename(mime, upload_name=''):
 
 
 def _attach_screenshot(report, raw, mime, upload_name=''):
-    """Store screenshot in DB blob and on disk so either serve path can recover it."""
-    report.image_blob = encrypt_bytes(raw)
+    """Store screenshot in DB blob and on disk so either serve path can recover it.
+
+    image_blob is stored as plaintext image bytes (endpoint is auth-gated).
+    Sealed ATLASENC1 blobs are still accepted on read for older rows.
+    Disk copy goes through EncryptedFileSystemStorage.
+    """
+    report.image_blob = bytes(raw)
     report.image_mime = mime
     filename = _image_filename(mime, upload_name)
-    # Plaintext here: EncryptedFileSystemStorage encrypts on disk write.
-    report.image.save(filename, ContentFile(raw), save=False)
+    try:
+        report.image.save(filename, ContentFile(raw), save=False)
+    except Exception:
+        logger.exception(
+            'Could not save support report screenshot to disk; DB blob was still stored',
+        )
+
+
+def _decode_image_blob(raw):
+    """Return plaintext image bytes from a DB blob, or None."""
+    if not raw:
+        return None
+    data = bytes(raw)
+    if len(data) < 32:
+        return None
+    if is_encrypted_bytes(data):
+        try:
+            return decrypt_bytes(data)
+        except Exception:
+            logger.exception('Could not decrypt support report image blob')
+            return None
+    # Plain JPEG/PNG/WebP (or other image bytes) stored after the plaintext fix.
+    return data
 
 
 def _image_payload(report):
     """Return (bytes, content_type) for a report screenshot, or (None, '')."""
     if report.image_blob:
-        raw = bytes(report.image_blob)
-        try:
-            data = decrypt_bytes(raw) if is_encrypted_bytes(raw) else raw
-        except Exception:
-            logger.exception('Could not decrypt support report image blob %s', report.report_id)
-            data = None
+        data = _decode_image_blob(report.image_blob)
         if data:
             mime = (report.image_mime or '').strip() or 'image/jpeg'
             return data, mime
+        logger.warning(
+            'Support report %s has image_blob but it could not be decoded (%s bytes)',
+            report.report_id,
+            len(bytes(report.image_blob)) if report.image_blob is not None else 0,
+        )
 
     if report.image:
         try:
@@ -194,14 +226,25 @@ def _image_payload(report):
             report.image.close()
         except Exception:
             logger.exception('Could not read support report image file %s', report.report_id)
-            return None, ''
-        if data:
-            mime = (
-                (report.image_mime or '').strip()
-                or mimetypes.guess_type(report.image.name)[0]
-                or 'application/octet-stream'
-            )
-            return data, mime
+            data = None
+        if data and len(data) >= 32:
+            # Disk storage may still hold sealed ATLASENC1 bytes if read bypassed decrypt.
+            if is_encrypted_bytes(data):
+                try:
+                    data = decrypt_bytes(data)
+                except Exception:
+                    logger.exception(
+                        'Could not decrypt support report image file bytes %s',
+                        report.report_id,
+                    )
+                    data = None
+            if data:
+                mime = (
+                    (report.image_mime or '').strip()
+                    or mimetypes.guess_type(report.image.name)[0]
+                    or 'image/jpeg'
+                )
+                return data, mime
     return None, ''
 
 
