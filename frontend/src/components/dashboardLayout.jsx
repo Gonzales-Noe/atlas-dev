@@ -85,8 +85,24 @@ function NavItem({ item, collapsed }) {
           flexShrink: 0,
           color: isActive ? 'var(--active-color)' : 'var(--shell-icon)',
           transition: 'color 200ms',
+          position: 'relative',
         }}>
           {React.cloneElement(item.icon, { style: { fontSize: 20 } })}
+          {collapsed && item.badge ? (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute',
+                top: -2,
+                right: -2,
+                width: 8,
+                height: 8,
+                borderRadius: 999,
+                background: 'var(--brand-primary, #AA2423)',
+                boxShadow: '0 0 0 2px var(--shell-bg, #fff)',
+              }}
+            />
+          ) : null}
         </div>
 
         {/* Label */}
@@ -98,8 +114,24 @@ function NavItem({ item, collapsed }) {
             fontFamily: 'var(--font-sans)',
             whiteSpace: 'nowrap',
             transition: 'color 200ms',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            minWidth: 0,
           }}>
             {item.label}
+            {item.badge ? (
+              <span
+                aria-label="Open issue reports"
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  background: 'var(--brand-primary, #AA2423)',
+                  flexShrink: 0,
+                }}
+              />
+            ) : null}
           </span>
         )}
       </div>

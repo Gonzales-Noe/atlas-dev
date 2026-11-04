@@ -17,7 +17,6 @@ import AddIcon from '@mui/icons-material/Add'
 import SearchIcon from '@mui/icons-material/Search'
 import AddLinkIcon from '@mui/icons-material/AddLink'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
-import CloseIcon from '@mui/icons-material/Close'
 import StarIcon from '@mui/icons-material/Star'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
 import AdminLayout from './AdminLayout'
@@ -1285,112 +1284,98 @@ export default function AdminAccountManagement() {
                       const courseOptions = linkedCourses.length ? linkedCourses : academicCourses
                       return (
                       <Box key={groupIndex} sx={{ border: '1px dashed var(--border-color)', borderRadius: '12px', p: 1.5 }}>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          <Autocomplete
-                            options={sections}
-                            value={selectedSection}
-                            disabled={creatingFaculty}
-                            getOptionLabel={(option) => option.display_name || option.code || ''}
-                            isOptionEqualToValue={(option, value) => option.section_id === value.section_id}
-                            onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                              ...item,
-                              assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                ...entry,
-                                section: value?.code || '',
-                                section_id: value?.section_id || '',
-                                courses: entry.courses.map(() => emptyCourseAssignment()),
-                              } : entry),
-                            } : item))}
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                label="Section"
-                                placeholder="Type to search sections"
-                                size="small"
-                                sx={inputSx}
-                              />
-                            )}
-                            sx={{ flex: 1, minWidth: 0 }}
-                          />
-                          <IconButton
-                            size="small"
-                            aria-label={`Remove section ${groupIndex + 1}`}
-                            disabled={form.assignments.length === 1 || creatingFaculty}
-                            onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                              ...item,
-                              assignments: item.assignments.filter((_, groupNo) => groupNo !== groupIndex),
-                            } : item))}
-                            sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
-                          >
-                            <DeleteOutlinedIcon fontSize="small" />
-                          </IconButton>
-                        </Stack>
-                        <Stack spacing={1} sx={{ mt: 1.25 }}>
-                          {group.courses.map((course, courseIndex) => {
-                            const selectedCourse = courseOptions.find(option => option.course_id === course.course_id) || null
-                            return (
-                            <Stack key={courseIndex} direction="row" spacing={1} alignItems="center">
-                              <Autocomplete
-                                options={courseOptions}
-                                value={selectedCourse}
+                        <Stack direction="row" spacing={1} alignItems="flex-start">
+                          <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+                            <Autocomplete
+                              options={sections}
+                              value={selectedSection}
+                              disabled={creatingFaculty}
+                              getOptionLabel={(option) => option.display_name || option.code || ''}
+                              isOptionEqualToValue={(option, value) => option.section_id === value.section_id}
+                              onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                ...item,
+                                assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                  ...entry,
+                                  section: value?.code || '',
+                                  section_id: value?.section_id || '',
+                                  courses: entry.courses.map(() => emptyCourseAssignment()),
+                                } : entry),
+                              } : item))}
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  label="Section"
+                                  placeholder="Type to search sections"
+                                  size="small"
+                                  sx={inputSx}
+                                />
+                              )}
+                            />
+                            {group.courses.map((course, courseIndex) => {
+                              const selectedCourse = courseOptions.find(option => option.course_id === course.course_id) || null
+                              return (
+                                <Autocomplete
+                                  key={courseIndex}
+                                  options={courseOptions}
+                                  value={selectedCourse}
+                                  disabled={creatingFaculty}
+                                  getOptionLabel={courseOptionLabel}
+                                  isOptionEqualToValue={(option, value) => option.course_id === value.course_id}
+                                  onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                    ...item,
+                                    assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                      ...entry,
+                                      courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? {
+                                        course_id: value?.course_id || '',
+                                        course_code: value?.course_code || '',
+                                        course_title: value?.course_title || '',
+                                      } : courseEntry),
+                                    } : entry),
+                                  } : item))}
+                                  renderInput={(params) => (
+                                    <TextField
+                                      {...params}
+                                      label="Course"
+                                      placeholder="Type to search courses"
+                                      size="small"
+                                      sx={inputSx}
+                                    />
+                                  )}
+                                />
+                              )
+                            })}
+                            <Box>
+                              <Button
+                                size="small" startIcon={<AddIcon fontSize="small" />}
                                 disabled={creatingFaculty}
-                                getOptionLabel={courseOptionLabel}
-                                isOptionEqualToValue={(option, value) => option.course_id === value.course_id}
-                                onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                                  ...item,
-                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                    ...entry,
-                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? {
-                                      course_id: value?.course_id || '',
-                                      course_code: value?.course_code || '',
-                                      course_title: value?.course_title || '',
-                                    } : courseEntry),
-                                  } : entry),
-                                } : item))}
-                                renderInput={(params) => (
-                                  <TextField
-                                    {...params}
-                                    label="Course"
-                                    placeholder="Type to search courses"
-                                    size="small"
-                                    sx={inputSx}
-                                  />
-                                )}
-                                sx={{ flex: 1, minWidth: 0 }}
-                              />
-                              <IconButton
-                                size="small"
-                                aria-label="Remove course"
-                                disabled={group.courses.length === 1 || creatingFaculty}
                                 onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                                   ...item,
                                   assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
                                     ...entry,
-                                    courses: entry.courses.filter((_, courseNo) => courseNo !== courseIndex),
+                                    courses: [...entry.courses, emptyCourseAssignment()],
                                   } : entry),
                                 } : item))}
-                                sx={{ color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                                sx={{ textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
                               >
-                                <CloseIcon fontSize="small" />
-                              </IconButton>
-                            </Stack>
-                            )
-                          })}
+                                Add course
+                              </Button>
+                            </Box>
+                          </Stack>
+                          {form.assignments.length > 1 && (
+                            <IconButton
+                              size="small"
+                              aria-label={`Remove section and courses ${groupIndex + 1}`}
+                              disabled={creatingFaculty}
+                              onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                                ...item,
+                                assignments: item.assignments.filter((_, groupNo) => groupNo !== groupIndex),
+                              } : item))}
+                              sx={{ mt: 0.5, color: 'var(--text-secondary)', '&:hover': { color: '#F87171', background: 'rgba(248,113,113,0.08)' } }}
+                            >
+                              <DeleteOutlinedIcon fontSize="small" />
+                            </IconButton>
+                          )}
                         </Stack>
-                        <Button
-                          size="small" startIcon={<AddIcon fontSize="small" />}
-                          disabled={creatingFaculty}
-                          onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                            ...item,
-                            assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                              ...entry,
-                              courses: [...entry.courses, emptyCourseAssignment()],
-                            } : entry),
-                          } : item))}
-                          sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
-                        >
-                          Add course
-                        </Button>
                       </Box>
                       )
                     })}

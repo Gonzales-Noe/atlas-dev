@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
 import api from '../../config/api'
-import { PageHeader, GlassCard, PrimaryBtn } from '../../components/ui'
+import { PageHeader, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
 
 function when(value) {
   if (!value) return ''
@@ -105,6 +105,7 @@ export default function IssueReports({ audience = 'admin' }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sendingId, setSendingId] = useState('')
+  const [resolvingId, setResolvingId] = useState('')
   const hasLoadedRef = useRef(false)
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -156,10 +157,25 @@ export default function IssueReports({ audience = 'admin' }) {
     try {
       const { data } = await api.post(`/auth/support-reports/${id}/forward/`)
       setReports((rows) => rows.map((row) => (row.id === id ? { ...row, ...data } : row)))
+      window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
     } catch (err) {
       setError(err?.response?.data?.detail || 'This report could not be sent. Try again in a moment.')
     } finally {
       setSendingId('')
+    }
+  }
+
+  async function setResolved(id, resolved) {
+    setResolvingId(id)
+    setError('')
+    try {
+      const { data } = await api.post(`/auth/support-reports/${id}/resolve/`, { resolved })
+      setReports((rows) => rows.map((row) => (row.id === id ? { ...row, ...data } : row)))
+      window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not update that report. Try again in a moment.')
+    } finally {
+      setResolvingId('')
     }
   }
 
@@ -190,12 +206,27 @@ export default function IssueReports({ audience = 'admin' }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           {reports.map((row) => {
             const sent = row.status === 'with_superadmin'
+            const resolved = Boolean(row.is_resolved)
             return (
               <GlassCard key={row.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
                   <div style={{ minWidth: 0, flex: '1 1 280px' }}>
-                    <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
-                      {row.faculty_name || 'A faculty member'}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
+                        {row.faculty_name || 'A faculty member'}
+                      </div>
+                      <span style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                        color: resolved ? '#15803d' : 'var(--brand-primary, #AA2423)',
+                        background: resolved ? 'rgba(34,197,94,0.12)' : 'rgba(170,36,35,0.1)',
+                        borderRadius: 999,
+                        padding: '3px 8px',
+                      }}>
+                        {resolved ? 'Resolved' : 'Open'}
+                      </span>
                     </div>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: 2 }}>
                       {[row.faculty_email, row.campus, when(row.created_at)].filter(Boolean).join(' · ')}
@@ -209,8 +240,13 @@ export default function IssueReports({ audience = 'admin' }) {
                         Phone details: {row.phone_note}
                       </p>
                     ) : null}
+                    {resolved && row.resolved_at ? (
+                      <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                        Resolved {when(row.resolved_at)}
+                      </p>
+                    ) : null}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
                     {isAdmin ? (
                       sent ? (
                         <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700 }}>
@@ -219,7 +255,7 @@ export default function IssueReports({ audience = 'admin' }) {
                       ) : (
                         <PrimaryBtn
                           small
-                          disabled={sendingId === row.id}
+                          disabled={sendingId === row.id || resolved}
                           onClick={() => sendUp(row.id)}
                         >
                           {sendingId === row.id ? 'Sending…' : 'Send to the ATLAS team'}
@@ -229,6 +265,23 @@ export default function IssueReports({ audience = 'admin' }) {
                       <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontWeight: 700 }}>
                         From a campus admin{row.forwarded_at ? ` · ${when(row.forwarded_at)}` : ''}
                       </span>
+                    )}
+                    {resolved ? (
+                      <OutlineBtn
+                        small
+                        disabled={resolvingId === row.id}
+                        onClick={() => setResolved(row.id, false)}
+                      >
+                        {resolvingId === row.id ? 'Updating…' : 'Mark as open'}
+                      </OutlineBtn>
+                    ) : (
+                      <PrimaryBtn
+                        small
+                        disabled={resolvingId === row.id}
+                        onClick={() => setResolved(row.id, true)}
+                      >
+                        {resolvingId === row.id ? 'Updating…' : 'Mark as resolved'}
+                      </PrimaryBtn>
                     )}
                   </div>
                 </div>

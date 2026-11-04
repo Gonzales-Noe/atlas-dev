@@ -7,9 +7,11 @@ import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
 import AccountTreeIcon from '@mui/icons-material/AccountTree'
 import DashboardLayout from '../../../components/dashboardLayout'
 import AdminSetupGate from '../../../components/AdminSetupGate'
+import useOpenIssueReportCount from '../../../hooks/useOpenIssueReportCount'
 import { ROUTES } from '../../../config/route'
 
 export default function AdminLayout({ children }) {
+  const openIssues = useOpenIssueReportCount(true)
   const navItems = [
     { label: 'Dashboard', to: ROUTES.ADMIN.DASHBOARD, icon: <DashboardIcon /> },
     { label: 'Syllabus Format', to: ROUTES.ADMIN.SYLLABUS_FORMAT, icon: <FormatAlignLeftIcon /> },
@@ -17,7 +19,12 @@ export default function AdminLayout({ children }) {
     { label: 'Accounts', to: ROUTES.ADMIN.ACCOUNT_MANAGEMENT, icon: <PeopleIcon /> },
     { label: 'Knowledge Base', to: ROUTES.ADMIN.KNOWLEDGE_BASE, icon: <MenuBookIcon /> },
     { label: 'Audit Logs', to: ROUTES.ADMIN.AUDIT_LOGS, icon: <AssessmentIcon /> },
-    { label: 'Issue Reports', to: ROUTES.ADMIN.ISSUE_REPORTS, icon: <FeedbackOutlinedIcon /> },
+    {
+      label: 'Issue Reports',
+      to: ROUTES.ADMIN.ISSUE_REPORTS,
+      icon: <FeedbackOutlinedIcon />,
+      badge: openIssues > 0,
+    },
   ]
   return (
     <AdminSetupGate>

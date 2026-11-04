@@ -342,20 +342,43 @@ export default function AdminAcademicStructure() {
       )}
 
       <GlassCard style={{ padding: 0 }}>
-        <Tabs value={tab} onChange={(_, value) => setTab(value)}
-          sx={{ px: 2, borderBottom: '1px solid var(--border-color)', '& .MuiTab-root': { color: 'var(--text-secondary)', textTransform: 'none', fontWeight: 700, fontSize: '0.85rem' }, '& .Mui-selected': { color: 'var(--text-primary) !important' } }}>
-          <Tab label="Sections" />
-          <Tab label="Courses" />
-        </Tabs>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+          paddingRight: 16,
+          borderBottom: '1px solid var(--border-color)',
+        }}>
+          <Tabs value={tab} onChange={(_, value) => setTab(value)}
+            sx={{
+              minHeight: 48,
+              '& .MuiTab-root': {
+                color: 'var(--text-secondary)',
+                textTransform: 'none',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                minHeight: 48,
+              },
+              '& .Mui-selected': { color: 'var(--text-primary) !important' },
+            }}>
+            <Tab label="Sections" />
+            <Tab label="Courses" />
+          </Tabs>
+          {tab === 0 ? (
+            <PrimaryBtn small disabled={saving} onClick={openAddSection}>
+              <AddIcon fontSize="small" /> Add section
+            </PrimaryBtn>
+          ) : (
+            <PrimaryBtn small disabled={saving} onClick={openAddCourse}>
+              <AddIcon fontSize="small" /> Add course
+            </PrimaryBtn>
+          )}
+        </div>
 
         <div style={{ padding: 22 }}>
           {tab === 0 && (
             <>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                <PrimaryBtn small disabled={saving} onClick={openAddSection}>
-                  <AddIcon fontSize="small" /> Add section
-                </PrimaryBtn>
-              </div>
               {loading ? <LoadingState label="Loading sections..." /> : (
                 <TableContainer>
                   <Table size="small">
@@ -412,10 +435,7 @@ export default function AdminAcademicStructure() {
 
           {tab === 1 && (
             <>
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 }}>
-                <PrimaryBtn small disabled={saving} onClick={openAddCourse}>
-                  <AddIcon fontSize="small" /> Add course
-                </PrimaryBtn>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                 <TextField placeholder="Filter courses by code or title…" size="small"
                   sx={{ ...inputSx, width: 280, maxWidth: '100%' }}
                   onChange={event => setCourseFilter(event.target.value)} value={courseFilter} />

@@ -806,6 +806,12 @@ class SupportReport(models.Model):
     phone_note = models.CharField(max_length=300, blank=True, default='')
     image = models.ImageField(upload_to='support_reports/', blank=True, default='')
     status = models.CharField(max_length=32, default=STATUS_WITH_ADMIN)
+    is_resolved = models.BooleanField(default=False)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    resolved_by = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='resolved_support_reports',
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     forwarded_at = models.DateTimeField(null=True, blank=True)
     forwarded_by = models.ForeignKey(
