@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
+import DoneAllIcon from '@mui/icons-material/DoneAll'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
 import api from '../../config/api'
@@ -134,8 +135,46 @@ function ReportImage({ reportId, hasImage }) {
   )
 }
 
+function StatusTag({ resolved }) {
+  if (resolved) {
+    return (
+      <span style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        fontSize: '0.72rem',
+        fontWeight: 800,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        color: '#15803d',
+        background: 'rgba(34,197,94,0.12)',
+        borderRadius: 999,
+        padding: '3px 9px 3px 7px',
+      }}>
+        <DoneAllIcon sx={{ fontSize: 15, color: '#15803d' }} />
+        RESOLVED
+      </span>
+    )
+  }
+  return (
+    <span style={{
+      fontSize: '0.72rem',
+      fontWeight: 800,
+      letterSpacing: '0.08em',
+      textTransform: 'uppercase',
+      color: 'var(--brand-primary, #AA2423)',
+      background: 'rgba(170,36,35,0.1)',
+      borderRadius: 999,
+      padding: '3px 8px',
+    }}>
+      OPEN
+    </span>
+  )
+}
+
 export default function IssueReports({ audience = 'admin' }) {
   const isAdmin = audience === 'admin'
+  const isSuperadmin = audience === 'superadmin'
   const Layout = isAdmin ? AdminLayout : SuperAdminLayout
   const location = useLocation()
   const [reports, setReports] = useState([])
@@ -252,18 +291,7 @@ export default function IssueReports({ audience = 'admin' }) {
                       <div style={{ fontWeight: 800, color: 'var(--text-primary)' }}>
                         {row.faculty_name || 'A faculty member'}
                       </div>
-                      <span style={{
-                        fontSize: '0.72rem',
-                        fontWeight: 800,
-                        letterSpacing: '0.04em',
-                        textTransform: 'uppercase',
-                        color: resolved ? '#15803d' : 'var(--brand-primary, #AA2423)',
-                        background: resolved ? 'rgba(34,197,94,0.12)' : 'rgba(170,36,35,0.1)',
-                        borderRadius: 999,
-                        padding: '3px 8px',
-                      }}>
-                        {resolved ? 'Resolved' : 'Open'}
-                      </span>
+                      <StatusTag resolved={resolved} />
                     </div>
                     <div style={{ color: 'var(--text-secondary)', fontSize: '0.82rem', marginTop: 2 }}>
                       {[row.faculty_email, row.campus, when(row.created_at)].filter(Boolean).join(' · ')}
@@ -303,22 +331,24 @@ export default function IssueReports({ audience = 'admin' }) {
                         From a campus admin{row.forwarded_at ? ` · ${when(row.forwarded_at)}` : ''}
                       </span>
                     )}
-                    {resolved ? (
-                      <OutlineBtn
-                        small
-                        disabled={resolvingId === row.id}
-                        onClick={() => setResolved(row.id, false)}
-                      >
-                        {resolvingId === row.id ? 'Updating…' : 'Mark as open'}
-                      </OutlineBtn>
-                    ) : (
-                      <PrimaryBtn
-                        small
-                        disabled={resolvingId === row.id}
-                        onClick={() => setResolved(row.id, true)}
-                      >
-                        {resolvingId === row.id ? 'Updating…' : 'Mark as resolved'}
-                      </PrimaryBtn>
+                    {isSuperadmin && (
+                      resolved ? (
+                        <OutlineBtn
+                          small
+                          disabled={resolvingId === row.id}
+                          onClick={() => setResolved(row.id, false)}
+                        >
+                          {resolvingId === row.id ? 'Updating…' : 'Mark as open'}
+                        </OutlineBtn>
+                      ) : (
+                        <PrimaryBtn
+                          small
+                          disabled={resolvingId === row.id}
+                          onClick={() => setResolved(row.id, true)}
+                        >
+                          {resolvingId === row.id ? 'Updating…' : 'Mark as resolved'}
+                        </PrimaryBtn>
+                      )
                     )}
                   </div>
                 </div>

@@ -60,8 +60,6 @@ def _can_view_report(user, report):
 
 def _can_resolve_report(user, report):
     role = normalize_role(user.role)
-    if role == 'admin':
-        return bool(user.institution_id and report.institution_id == user.institution_id)
     if role == 'superadmin':
         return report.status == SupportReport.STATUS_WITH_SUPERADMIN
     return False
