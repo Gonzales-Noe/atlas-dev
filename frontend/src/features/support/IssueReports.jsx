@@ -24,11 +24,26 @@ function ReportImage({ reportId, hasImage }) {
     let objectUrl = ''
     ;(async () => {
       try {
-        const { data } = await api.get(`/auth/support-reports/${reportId}/image/`, {
+        const { data, headers } = await api.get(`/auth/support-reports/${reportId}/image/`, {
           responseType: 'blob',
           atlasCache: false,
           skipAtlasErrorCard: true,
+          headers: {
+            Accept: 'image/*,application/octet-stream',
+          },
+          transformRequest: [(body, requestHeaders) => {
+            if (requestHeaders && typeof requestHeaders === 'object') {
+              delete requestHeaders['Content-Type']
+              delete requestHeaders['content-type']
+            }
+            return body
+          }],
         })
+        const type = String(data?.type || headers?.['content-type'] || '')
+        if (!data || data.size < 32 || type.includes('json') || type.includes('text/html')) {
+          if (!cancelled) setSrc('')
+          return
+        }
         objectUrl = URL.createObjectURL(data)
         if (cancelled) {
           URL.revokeObjectURL(objectUrl)
