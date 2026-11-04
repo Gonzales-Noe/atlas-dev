@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
@@ -43,6 +44,20 @@ function ReportImage({ reportId, hasImage }) {
     }
   }, [hasImage, reportId])
 
+  useEffect(() => {
+    if (!open) return undefined
+    const onKey = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
   if (!hasImage || !src) return null
 
   return (
@@ -55,30 +70,42 @@ function ReportImage({ reportId, hasImage }) {
           marginTop: 12,
           padding: 0,
           border: '1px solid var(--border-color)',
-          borderRadius: 10,
+          borderRadius: 12,
           overflow: 'hidden',
-          background: 'transparent',
-          cursor: 'pointer',
-          maxWidth: 280,
+          background: 'var(--bg-header, rgba(255,255,255,0.04))',
+          cursor: 'zoom-in',
+          width: 160,
+          height: 220,
+          flexShrink: 0,
         }}
       >
         <img
           src={src}
           alt="Issue screenshot"
-          style={{ display: 'block', width: '100%', maxHeight: 180, objectFit: 'cover' }}
+          style={{
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            objectPosition: 'center',
+          }}
         />
       </button>
-      {open && (
-        <button
-          type="button"
-          aria-label="Close image preview"
+      {open && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Issue screenshot preview"
           onClick={() => setOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setOpen(false)
+          }}
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 80,
+            zIndex: 2000,
             border: 'none',
-            background: 'rgba(0,0,0,0.72)',
+            background: 'rgba(0,0,0,0.82)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -89,9 +116,19 @@ function ReportImage({ reportId, hasImage }) {
           <img
             src={src}
             alt="Issue screenshot enlarged"
-            style={{ maxWidth: 'min(960px, 100%)', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain' }}
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              maxWidth: 'min(920px, 100%)',
+              maxHeight: '90vh',
+              width: 'auto',
+              height: 'auto',
+              borderRadius: 12,
+              objectFit: 'contain',
+              boxShadow: '0 18px 48px rgba(0,0,0,0.45)',
+            }}
           />
-        </button>
+        </div>,
+        document.body,
       )}
     </>
   )
