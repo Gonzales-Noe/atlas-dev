@@ -789,10 +789,12 @@ class GlobalDocumentChunk(models.Model):
 
 
 class SupportReport(models.Model):
-    """A problem a faculty member sent from the mobile app."""
+    """A problem a faculty member sent from the mobile app or web."""
 
     STATUS_WITH_ADMIN = 'with_admin'
     STATUS_WITH_SUPERADMIN = 'with_superadmin'
+    SOURCE_WEB = 'web'
+    SOURCE_MOBILE = 'mobile'
 
     report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reporter = models.ForeignKey(
@@ -804,6 +806,8 @@ class SupportReport(models.Model):
     )
     message = EncryptedTextField()
     phone_note = models.CharField(max_length=300, blank=True, default='')
+    # web | mobile — where the faculty member submitted the report
+    source = models.CharField(max_length=20, blank=True, default='')
     # Disk field kept for older rows; new reports store bytes in image_blob (DB)
     # so screenshots survive container rebuilds.
     image = models.ImageField(upload_to='support_reports/', blank=True, default='')

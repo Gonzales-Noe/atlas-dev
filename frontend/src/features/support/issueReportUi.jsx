@@ -71,12 +71,23 @@ function isImageFile(file) {
   return name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.webp')
 }
 
-export function ReportImage({ reportId, hasImage, compact = false }) {
+export function ReportImage({
+  reportId,
+  hasImage,
+  imageBase64 = '',
+  imageMime = 'image/jpeg',
+  compact = false,
+}) {
   const [src, setSrc] = useState('')
-  const [status, setStatus] = useState(hasImage ? 'loading' : 'none')
+  const [status, setStatus] = useState(hasImage || imageBase64 ? 'loading' : 'none')
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
+    if (imageBase64) {
+      setSrc(`data:${imageMime || 'image/jpeg'};base64,${imageBase64}`)
+      setStatus('ready')
+      return undefined
+    }
     if (!hasImage || !reportId) {
       setStatus('none')
       setSrc('')
@@ -102,7 +113,7 @@ export function ReportImage({ reportId, hasImage, compact = false }) {
             }
             return body
           }],
-          validateStatus: (status) => status >= 200 && status < 500,
+          validateStatus: (statusCode) => statusCode >= 200 && statusCode < 500,
         })
         const data = response?.data
         const headerType = String(response?.headers?.['content-type'] || response?.headers?.['Content-Type'] || '')
@@ -138,7 +149,7 @@ export function ReportImage({ reportId, hasImage, compact = false }) {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [hasImage, reportId])
+  }, [hasImage, reportId, imageBase64, imageMime])
 
   useEffect(() => {
     if (!open) return undefined
@@ -442,6 +453,7 @@ export function SubmitIssueDialog({
     try {
       const form = new FormData()
       form.append('message', text)
+      form.append('source', 'web')
       if (file) form.append('image', file)
       let data
       if (editing) {
@@ -563,11 +575,17 @@ export function ReportDetailDialog({
       <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
         {!forFaculty ? (
           <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem', mb: 1 }}>
-            {[report.faculty_name, report.faculty_email, report.campus, when(report.created_at)].filter(Boolean).join(' · ')}
+            {[
+              report.faculty_name,
+              report.faculty_email,
+              report.campus,
+              report.source_label || null,
+              when(report.created_at),
+            ].filter(Boolean).join(' · ')}
           </Typography>
         ) : (
           <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.82rem', mb: 1 }}>
-            {when(report.created_at)}
+            {[report.source_label || null, when(report.created_at)].filter(Boolean).join(' · ')}
           </Typography>
         )}
         <Typography sx={{ color: 'var(--text-primary)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
@@ -578,7 +596,12 @@ export function ReportDetailDialog({
             Phone details: {report.phone_note}
           </Typography>
         ) : null}
-        <ReportImage reportId={report.id} hasImage={Boolean(report.has_image)} />
+        <ReportImage
+          reportId={report.id}
+          hasImage={Boolean(report.has_image)}
+          imageBase64={report.image_base64 || ''}
+          imageMime={report.image_mime || 'image/jpeg'}
+        />
         {resolved ? (
           <Box sx={{
             mt: 2,
@@ -625,8 +648,8 @@ function ReportCard({ row, index, layout, forFaculty, onOpen }) {
     ? (row.message || 'Issue report')
     : (row.faculty_name || 'A faculty member')
   const subtitle = forFaculty
-    ? when(row.created_at)
-    : [row.campus, when(row.created_at)].filter(Boolean).join(' · ')
+    ? [row.source_label || null, when(row.created_at)].filter(Boolean).join(' · ')
+    : [row.campus, row.source_label || null, when(row.created_at)].filter(Boolean).join(' · ')
   const meta = statusLabel(row, { forFaculty })
 
   if (layout !== 'cards') {
