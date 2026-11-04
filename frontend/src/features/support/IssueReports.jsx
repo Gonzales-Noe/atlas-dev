@@ -53,7 +53,10 @@ export default function IssueReports({ audience = 'admin' }) {
     if (!silent || !hasLoadedRef.current) setLoading(true)
     if (!silent) setError('')
     try {
-      const { data } = await api.get('/auth/support-reports/', { atlasCache: false })
+      const { data } = await api.get('/auth/support-reports/', {
+        atlasCache: false,
+        params: { include_images: 1 },
+      })
       setReports(Array.isArray(data?.reports) ? data.reports : [])
       hasLoadedRef.current = true
     } catch (err) {
