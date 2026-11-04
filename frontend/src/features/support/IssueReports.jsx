@@ -1,11 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
+import {
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  MenuItem, TextField, Typography,
+} from '@mui/material'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
 import api from '../../config/api'
 import { PageHeader, GlassCard, PrimaryBtn, OutlineBtn } from '../../components/ui'
+
+const RESOLUTION_CATEGORIES = [
+  { value: 'fixed', label: 'Fixed' },
+  { value: 'workaround', label: 'Workaround provided' },
+  { value: 'maintenance_planned', label: 'Maintenance update planned' },
+  { value: 'cannot_reproduce', label: 'Could not reproduce' },
+  { value: 'duplicate', label: 'Duplicate' },
+  { value: 'by_design', label: 'Working as designed' },
+  { value: 'other', label: 'Other' },
+]
+
+const emptyResolutionForm = () => ({
+  resolution_category: 'fixed',
+  resolution_summary: '',
+  resolution_details: '',
+  resolution_follow_up: '',
+})
+
+const inputSx = {
+  '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
+  '& .MuiInputLabel-root': { fontSize: '0.875rem' },
+  input: { color: 'var(--text-primary)' },
+  '& .MuiSelect-select': { color: 'var(--text-primary)' },
+  textarea: { color: 'var(--text-primary)' },
+}
 
 function when(value) {
   if (!value) return ''
@@ -16,12 +45,18 @@ function when(value) {
 
 function ReportImage({ reportId, hasImage }) {
   const [src, setSrc] = useState('')
+  const [status, setStatus] = useState(hasImage ? 'loading' : 'none')
   const [open, setOpen] = useState(false)
 
   useEffect(() => {
-    if (!hasImage || !reportId) return undefined
+    if (!hasImage || !reportId) {
+      setStatus('none')
+      setSrc('')
+      return undefined
+    }
     let cancelled = false
     let objectUrl = ''
+    setStatus('loading')
     ;(async () => {
       try {
         const { data, headers } = await api.get(`/auth/support-reports/${reportId}/image/`, {
@@ -41,7 +76,10 @@ function ReportImage({ reportId, hasImage }) {
         })
         const type = String(data?.type || headers?.['content-type'] || '')
         if (!data || data.size < 32 || type.includes('json') || type.includes('text/html')) {
-          if (!cancelled) setSrc('')
+          if (!cancelled) {
+            setSrc('')
+            setStatus('missing')
+          }
           return
         }
         objectUrl = URL.createObjectURL(data)
@@ -50,8 +88,12 @@ function ReportImage({ reportId, hasImage }) {
           return
         }
         setSrc(objectUrl)
+        setStatus('ready')
       } catch {
-        if (!cancelled) setSrc('')
+        if (!cancelled) {
+          setSrc('')
+          setStatus('missing')
+        }
       }
     })()
     return () => {
@@ -74,7 +116,33 @@ function ReportImage({ reportId, hasImage }) {
     }
   }, [open])
 
-  if (!hasImage || !src) return null
+  if (!hasImage || status === 'none') return null
+  if (status === 'loading') {
+    return (
+      <div style={{
+        marginTop: 12,
+        width: 160,
+        height: 220,
+        borderRadius: 12,
+        border: '1px solid var(--border-color)',
+        background: 'var(--bg-header, rgba(255,255,255,0.04))',
+        display: 'grid',
+        placeItems: 'center',
+        color: 'var(--text-secondary)',
+        fontSize: '0.78rem',
+      }}
+      >
+        Loading…
+      </div>
+    )
+  }
+  if (status === 'missing' || !src) {
+    return (
+      <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+        Screenshot unavailable — ask faculty to send the report again.
+      </p>
+    )
+  }
 
   return (
     <>
@@ -197,6 +265,8 @@ export default function IssueReports({ audience = 'admin' }) {
   const [error, setError] = useState('')
   const [sendingId, setSendingId] = useState('')
   const [resolvingId, setResolvingId] = useState('')
+  const [resolveTarget, setResolveTarget] = useState(null)
+  const [resolutionForm, setResolutionForm] = useState(emptyResolutionForm)
   const hasLoadedRef = useRef(false)
 
   const load = useCallback(async ({ silent = false } = {}) => {
@@ -256,11 +326,48 @@ export default function IssueReports({ audience = 'admin' }) {
     }
   }
 
-  async function setResolved(id, resolved) {
+  function openResolveForm(row) {
+    setResolveTarget(row)
+    setResolutionForm(emptyResolutionForm())
+    setError('')
+  }
+
+  async function submitResolve() {
+    if (!resolveTarget) return
+    if (!resolutionForm.resolution_category) {
+      setError('Choose how this issue was resolved.')
+      return
+    }
+    if (!resolutionForm.resolution_summary.trim()) {
+      setError('Add a short resolution summary.')
+      return
+    }
+    setResolvingId(resolveTarget.id)
+    setError('')
+    try {
+      const { data } = await api.post(`/auth/support-reports/${resolveTarget.id}/resolve/`, {
+        resolved: true,
+        resolution_category: resolutionForm.resolution_category,
+        resolution_summary: resolutionForm.resolution_summary.trim(),
+        resolution_details: resolutionForm.resolution_details.trim(),
+        resolution_follow_up: resolutionForm.resolution_follow_up.trim(),
+      })
+      setReports((rows) => rows.map((row) => (row.id === resolveTarget.id ? { ...row, ...data } : row)))
+      setResolveTarget(null)
+      setResolutionForm(emptyResolutionForm())
+      window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not update that report. Try again in a moment.')
+    } finally {
+      setResolvingId('')
+    }
+  }
+
+  async function reopenReport(id) {
     setResolvingId(id)
     setError('')
     try {
-      const { data } = await api.post(`/auth/support-reports/${id}/resolve/`, { resolved })
+      const { data } = await api.post(`/auth/support-reports/${id}/resolve/`, { resolved: false })
       setReports((rows) => rows.map((row) => (row.id === id ? { ...row, ...data } : row)))
       window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
     } catch (err) {
@@ -275,8 +382,8 @@ export default function IssueReports({ audience = 'admin' }) {
       <PageHeader
         title="Issue reports"
         subtitle={isAdmin
-          ? 'Messages faculty sent from the ATLAS app. Send one to the ATLAS team when the campus needs more help.'
-          : 'Messages a campus admin has passed on from faculty in the ATLAS app.'}
+          ? 'Messages faculty sent from ATLAS (app or web). Send one to the ATLAS team when the campus needs more help.'
+          : 'Messages a campus admin has passed on from faculty.'}
       />
       {error && (
         <p style={{ color: 'var(--brand-primary)', margin: '0 0 16px', fontSize: '0.9rem' }}>{error}</p>
@@ -289,7 +396,7 @@ export default function IssueReports({ audience = 'admin' }) {
         <GlassCard>
           <p style={{ margin: 0, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
             {isAdmin
-              ? 'No messages yet. When a faculty member reports a problem in the app, it will show up here.'
+              ? 'No messages yet. When a faculty member reports a problem, it will show up here.'
               : 'Nothing has been sent up yet. A campus admin sends a report here when they want the ATLAS team to look at it.'}
           </p>
         </GlassCard>
@@ -320,10 +427,35 @@ export default function IssueReports({ audience = 'admin' }) {
                         Phone details: {row.phone_note}
                       </p>
                     ) : null}
-                    {resolved && row.resolved_at ? (
-                      <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-                        Resolved {when(row.resolved_at)}
-                      </p>
+                    {resolved ? (
+                      <div style={{
+                        marginTop: 12,
+                        padding: 12,
+                        borderRadius: 12,
+                        border: '1px solid rgba(34,197,94,0.28)',
+                        background: 'rgba(34,197,94,0.08)',
+                      }}
+                      >
+                        <div style={{ fontWeight: 800, color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                          {row.resolution_category_label || 'Resolved'}
+                          {row.resolved_at ? ` · ${when(row.resolved_at)}` : ''}
+                        </div>
+                        {row.resolution_summary ? (
+                          <p style={{ margin: '6px 0 0', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                            {row.resolution_summary}
+                          </p>
+                        ) : null}
+                        {row.resolution_details ? (
+                          <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                            {row.resolution_details}
+                          </p>
+                        ) : null}
+                        {row.resolution_follow_up ? (
+                          <p style={{ margin: '6px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
+                            Follow-up: {row.resolution_follow_up}
+                          </p>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
@@ -351,7 +483,7 @@ export default function IssueReports({ audience = 'admin' }) {
                         <OutlineBtn
                           small
                           disabled={resolvingId === row.id}
-                          onClick={() => setResolved(row.id, false)}
+                          onClick={() => reopenReport(row.id)}
                         >
                           {resolvingId === row.id ? 'Updating…' : 'Mark as open'}
                         </OutlineBtn>
@@ -359,9 +491,9 @@ export default function IssueReports({ audience = 'admin' }) {
                         <PrimaryBtn
                           small
                           disabled={resolvingId === row.id}
-                          onClick={() => setResolved(row.id, true)}
+                          onClick={() => openResolveForm(row)}
                         >
-                          {resolvingId === row.id ? 'Updating…' : 'Mark as resolved'}
+                          Mark as resolved
                         </PrimaryBtn>
                       )
                     )}
@@ -372,6 +504,68 @@ export default function IssueReports({ audience = 'admin' }) {
           })}
         </div>
       )}
+
+      <Dialog
+        open={Boolean(resolveTarget)}
+        onClose={() => { if (!resolvingId) setResolveTarget(null) }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { background: 'var(--bg-card) !important', backgroundImage: 'none' } }}
+      >
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>Resolve issue report</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+            Record how this was resolved. Faculty will see this on their report.
+          </Typography>
+          <TextField
+            select
+            label="Resolution type"
+            size="small"
+            value={resolutionForm.resolution_category}
+            onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_category: event.target.value }))}
+            sx={inputSx}
+          >
+            {RESOLUTION_CATEGORIES.map((item) => (
+              <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            label="Resolution summary"
+            size="small"
+            value={resolutionForm.resolution_summary}
+            onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_summary: event.target.value }))}
+            sx={inputSx}
+            inputProps={{ maxLength: 300 }}
+            placeholder="e.g. Fixed text-size scaling on Appearance"
+          />
+          <TextField
+            label="Details (optional)"
+            size="small"
+            multiline
+            minRows={3}
+            value={resolutionForm.resolution_details}
+            onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_details: event.target.value }))}
+            sx={inputSx}
+            placeholder="Root cause, what changed, verification steps…"
+          />
+          <TextField
+            label="Follow-up / maintenance note (optional)"
+            size="small"
+            value={resolutionForm.resolution_follow_up}
+            onChange={(event) => setResolutionForm((current) => ({ ...current, resolution_follow_up: event.target.value }))}
+            sx={inputSx}
+            inputProps={{ maxLength: 300 }}
+            placeholder="e.g. Maintenance window Friday 10pm–11pm"
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={() => setResolveTarget(null)} disabled={Boolean(resolvingId)}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={submitResolve} disabled={Boolean(resolvingId)}>
+            {resolvingId ? 'Saving…' : 'Mark as resolved'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
     </Layout>
   )
 }
