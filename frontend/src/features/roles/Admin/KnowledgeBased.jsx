@@ -18,12 +18,12 @@ import UploadFileIcon from '@mui/icons-material/UploadFile'
 import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
 import CloseIcon from '@mui/icons-material/Close'
 import DeleteOutlinedIcon from '@mui/icons-material/DeleteOutlined'
-import { BookOpen, ClipboardList } from 'lucide-react'
+import { ClipboardList } from 'lucide-react'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
 import useDebouncedValue from '../../../hooks/useDebouncedValue'
 import RouteSkeleton from '../../../components/RouteSkeleton'
-import { PageHeader, GlassCard, StatCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
+import { PageHeader, GlassCard, PrimaryBtn, OutlineBtn } from '../../../components/ui'
 
 const inputSx = {
   '& .MuiOutlinedInput-root': { background: 'var(--input-bg)', borderRadius: 2, fontSize: '0.875rem' },
@@ -279,10 +279,6 @@ export default function AdminKnowledgeBase() {
 
       <StatusNotice message={error} severity="error" />
       <StatusNotice message={notice} severity="success" />
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 360px)', gap: 14, marginBottom: 20 }}>
-        <StatCard title="Total Documents" value={documentsLoaded ? documents.length : '—'} icon={<BookOpen size={18} color="#E24B4A" />} accent="#E24B4A" />
-      </div>
 
       <GlassCard style={{ marginBottom: 14 }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>

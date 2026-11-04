@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import AdminLayout from '../roles/Admin/AdminLayout'
 import SuperAdminLayout from '../Superadmin/SuperAdminLayout'
 import api from '../../config/api'
@@ -11,20 +12,108 @@ function when(value) {
   return date.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
+function ReportImage({ reportId, hasImage }) {
+  const [src, setSrc] = useState('')
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!hasImage || !reportId) return undefined
+    let cancelled = false
+    let objectUrl = ''
+    ;(async () => {
+      try {
+        const { data } = await api.get(`/auth/support-reports/${reportId}/image/`, {
+          responseType: 'blob',
+          atlasCache: false,
+          skipAtlasErrorCard: true,
+        })
+        objectUrl = URL.createObjectURL(data)
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+        setSrc(objectUrl)
+      } catch {
+        if (!cancelled) setSrc('')
+      }
+    })()
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [hasImage, reportId])
+
+  if (!hasImage || !src) return null
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'block',
+          marginTop: 12,
+          padding: 0,
+          border: '1px solid var(--border-color)',
+          borderRadius: 10,
+          overflow: 'hidden',
+          background: 'transparent',
+          cursor: 'pointer',
+          maxWidth: 280,
+        }}
+      >
+        <img
+          src={src}
+          alt="Issue screenshot"
+          style={{ display: 'block', width: '100%', maxHeight: 180, objectFit: 'cover' }}
+        />
+      </button>
+      {open && (
+        <button
+          type="button"
+          aria-label="Close image preview"
+          onClick={() => setOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            border: 'none',
+            background: 'rgba(0,0,0,0.72)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'zoom-out',
+            padding: 24,
+          }}
+        >
+          <img
+            src={src}
+            alt="Issue screenshot enlarged"
+            style={{ maxWidth: 'min(960px, 100%)', maxHeight: '90vh', borderRadius: 12, objectFit: 'contain' }}
+          />
+        </button>
+      )}
+    </>
+  )
+}
+
 export default function IssueReports({ audience = 'admin' }) {
   const isAdmin = audience === 'admin'
   const Layout = isAdmin ? AdminLayout : SuperAdminLayout
+  const location = useLocation()
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sendingId, setSendingId] = useState('')
+  const hasLoadedRef = useRef(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
+  const load = useCallback(async ({ silent = false } = {}) => {
+    if (!silent || !hasLoadedRef.current) setLoading(true)
+    if (!silent) setError('')
     try {
-      const { data } = await api.get('/auth/support-reports/')
+      const { data } = await api.get('/auth/support-reports/', { atlasCache: false })
       setReports(Array.isArray(data?.reports) ? data.reports : [])
+      hasLoadedRef.current = true
     } catch (err) {
       setError(err?.response?.data?.detail || 'These reports could not be loaded. Try again in a moment.')
     } finally {
@@ -34,6 +123,31 @@ export default function IssueReports({ audience = 'admin' }) {
 
   useEffect(() => {
     load()
+  }, [load, location.search])
+
+  useEffect(() => {
+    const soft = () => load({ silent: true })
+    const timer = window.setInterval(soft, 30000)
+    const onFocus = () => soft()
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') soft()
+    }
+    const onRefresh = () => soft()
+    const onMessage = (event) => {
+      const type = event?.data?.type
+      if (type === 'atlas-notification' || type === 'atlas-notification-open') soft()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('atlas-issue-reports-refresh', onRefresh)
+    navigator.serviceWorker?.addEventListener?.('message', onMessage)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('atlas-issue-reports-refresh', onRefresh)
+      navigator.serviceWorker?.removeEventListener?.('message', onMessage)
+    }
   }, [load])
 
   async function sendUp(id) {
@@ -89,6 +203,7 @@ export default function IssueReports({ audience = 'admin' }) {
                     <p style={{ margin: '12px 0 0', color: 'var(--text-primary)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                       {row.message}
                     </p>
+                    <ReportImage reportId={row.id} hasImage={Boolean(row.has_image)} />
                     {row.phone_note ? (
                       <p style={{ margin: '10px 0 0', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
                         Phone details: {row.phone_note}

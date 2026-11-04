@@ -1,5 +1,8 @@
 """Faculty problem reports: campus admin first, then the ATLAS team if the admin sends it on."""
 
+import mimetypes
+
+from django.http import FileResponse
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -11,6 +14,14 @@ from apps.users.serializers import normalize_role
 
 ADMIN_REPORTS = '/admin/issue-reports'
 SUPERADMIN_REPORTS = '/superadmin/issue-reports'
+
+ALLOWED_IMAGE_TYPES = {
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+}
+MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
 
 def _person(user):
@@ -24,6 +35,7 @@ def _serialize(row):
         'id': str(row.report_id),
         'message': row.message,
         'phone_note': row.phone_note or '',
+        'has_image': bool(row.image),
         'status': row.status,
         'faculty_name': _person(reporter) if reporter else 'A faculty member',
         'faculty_email': reporter.email if reporter else '',
@@ -31,6 +43,28 @@ def _serialize(row):
         'created_at': row.created_at.isoformat() if row.created_at else None,
         'forwarded_at': row.forwarded_at.isoformat() if row.forwarded_at else None,
     }
+
+
+def _can_view_report(user, report):
+    role = normalize_role(user.role)
+    if role == 'admin':
+        return bool(user.institution_id and report.institution_id == user.institution_id)
+    if role == 'superadmin':
+        return report.status == SupportReport.STATUS_WITH_SUPERADMIN
+    return False
+
+
+def _validate_image(upload):
+    if not upload:
+        return 'Add a screenshot of the issue.'
+    content_type = (getattr(upload, 'content_type', None) or '').lower().strip()
+    name = (getattr(upload, 'name', None) or '').lower()
+    if content_type not in ALLOWED_IMAGE_TYPES and not name.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+        return 'Use a JPEG, PNG, or WebP image.'
+    size = getattr(upload, 'size', None)
+    if size is not None and size > MAX_IMAGE_BYTES:
+        return 'Keep the screenshot under 5 MB.'
+    return ''
 
 
 class SupportReportListView(APIView):
@@ -64,11 +98,16 @@ class SupportReportListView(APIView):
         if len(message) > 4000:
             message = message[:4000]
         phone_note = str(request.data.get('phone_note') or '').strip()[:300]
+        image = request.FILES.get('image')
+        image_error = _validate_image(image)
+        if image_error:
+            return Response({'detail': image_error}, status=status.HTTP_400_BAD_REQUEST)
         report = SupportReport.objects.create(
             reporter=request.user,
             institution_id=request.user.institution_id,
             message=message,
             phone_note=phone_note,
+            image=image,
             status=SupportReport.STATUS_WITH_ADMIN,
         )
         admins = institution_people(request.user.institution_id, [UserRole.ADMIN])
@@ -91,6 +130,22 @@ class SupportReportListView(APIView):
         payload = _serialize(report)
         payload['delivered_to'] = 'admin' if admins else 'superadmin'
         return Response(payload, status=status.HTTP_201_CREATED)
+
+
+class SupportReportImageView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, report_id):
+        try:
+            report = SupportReport.objects.select_related('reporter', 'institution').get(report_id=report_id)
+        except SupportReport.DoesNotExist:
+            return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not _can_view_report(request.user, report):
+            return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
+        if not report.image:
+            return Response({'detail': 'This report has no screenshot.'}, status=status.HTTP_404_NOT_FOUND)
+        content_type = mimetypes.guess_type(report.image.name)[0] or 'application/octet-stream'
+        return FileResponse(report.image.open('rb'), content_type=content_type)
 
 
 class SupportReportForwardView(APIView):

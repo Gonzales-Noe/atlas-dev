@@ -12,7 +12,7 @@ from .platform_views import (
     PlatformThemeView,
     SystemHealthView,
 )
-from .support_views import SupportReportForwardView, SupportReportListView
+from .support_views import SupportReportForwardView, SupportReportImageView, SupportReportListView
 from .views import (
     AuthActivityView,
     AuthTokenRefreshView,
@@ -56,6 +56,7 @@ urlpatterns = [
     path('register/', RegisterView.as_view(), name='auth_register'),
     path('contact/', ContactFormView.as_view(), name='contact_form'),
     path('support-reports/', SupportReportListView.as_view(), name='support_reports'),
+    path('support-reports/<uuid:report_id>/image/', SupportReportImageView.as_view(), name='support_report_image'),
     path('support-reports/<uuid:report_id>/forward/', SupportReportForwardView.as_view(), name='support_report_forward'),
     path('faculty/', FacultyCreateView.as_view(), name='faculty_create'),
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
