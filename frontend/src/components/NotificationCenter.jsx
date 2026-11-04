@@ -5,6 +5,17 @@ import api from '../config/api'
 import { getGenerationNotificationsEnabled, setGenerationNotificationsEnabled } from '../utils/userPreferences'
 import { setServerAlertsEnabled } from '../utils/pushNotifications'
 
+function navigateWithRefresh(navigate, href) {
+  if (!href || !href.startsWith('/')) return
+  const [path, search = ''] = href.split('?')
+  const params = new URLSearchParams(search)
+  params.set('focus', String(Date.now()))
+  navigate(`${path}?${params.toString()}`)
+  if (path.includes('issue-reports')) {
+    window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
+  }
+}
+
 function timeAgo(iso) {
   const then = new Date(iso).getTime()
   if (Number.isNaN(then)) return ''
@@ -48,9 +59,12 @@ export default function NotificationCenter() {
     window.addEventListener('focus', onFocus)
     const onMessage = (event) => {
       const type = event?.data?.type
-      if (type === 'atlas-notification') refresh()
+      if (type === 'atlas-notification') {
+        refresh()
+        window.dispatchEvent(new CustomEvent('atlas-issue-reports-refresh'))
+      }
       if (type === 'atlas-notification-open' && event.data.url) {
-        if (event.data.url.startsWith('/')) navigate(event.data.url)
+        navigateWithRefresh(navigate, event.data.url)
         refresh()
       }
     }
@@ -104,7 +118,7 @@ export default function NotificationCenter() {
   function openItem(item) {
     if (!item.read) markRead([item.id])
     setOpen(false)
-    if (item.href && item.href.startsWith('/')) navigate(item.href)
+    navigateWithRefresh(navigate, item.href)
   }
 
   const badge = unread > 9 ? '9+' : String(unread)

@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import {
-  IconButton, MenuItem, Tab, Tabs,
+  Dialog, DialogActions, DialogContent, DialogTitle, Divider,
+  IconButton, MenuItem, Tab, Tabs, Typography,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
@@ -25,6 +26,8 @@ const inputSx = {
   '& .MuiSelect-select': { color: 'var(--text-primary)' },
 }
 
+const dialogPaperSx = { background: 'var(--bg-card) !important', backgroundImage: 'none' }
+
 const headCellSx = {
   fontWeight: 700, fontSize: '0.72rem', letterSpacing: '0.06em',
   color: 'var(--text-secondary) !important', textTransform: 'uppercase',
@@ -39,6 +42,7 @@ const groupHeaderSx = {
 }
 const groupCountSx = { marginLeft: 8, fontWeight: 500, letterSpacing: 0, textTransform: 'none' }
 const emptyStructure = { sections: [], courses: [] }
+const emptySection = () => ({ code: '', year_number: '' })
 const emptyCourse = () => ({
   course_code: '', course_title: '', description: '', category: 'professional', units: '', section: '',
 })
@@ -53,6 +57,11 @@ function toMessage(err, fallback) {
     .join(' · ') || fallback
 }
 
+function yearLabelFor(value) {
+  if (value === '' || value == null) return 'Year not set'
+  return SECTION_YEARS.find(year => year.value === Number(value))?.label || 'Year not set'
+}
+
 export default function AdminAcademicStructure() {
   const [structure, setStructure] = useState(emptyStructure)
   const [loading, setLoading] = useState(true)
@@ -60,9 +69,13 @@ export default function AdminAcademicStructure() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState(0)
-  const [sectionForm, setSectionForm] = useState({ code: '', year_number: '' })
+  const [sectionForm, setSectionForm] = useState(emptySection)
   const [courseForm, setCourseForm] = useState(emptyCourse)
+  const [editingSection, setEditingSection] = useState(null)
   const [editingCourse, setEditingCourse] = useState(null)
+  const [sectionDialogOpen, setSectionDialogOpen] = useState(false)
+  const [courseDialogOpen, setCourseDialogOpen] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(null)
   const [courseFilter, setCourseFilter] = useState('')
   const [requests, setRequests] = useState([])
   const [requestsLoading, setRequestsLoading] = useState(false)
@@ -96,8 +109,10 @@ export default function AdminAcademicStructure() {
       await action()
       await load()
       setNotice(successMessage)
+      return true
     } catch (err) {
       setError(toMessage(err, 'The change could not be saved.'))
+      return false
     } finally {
       setSaving(false)
     }
@@ -128,25 +143,71 @@ export default function AdminAcademicStructure() {
     }
   }
 
-  async function saveSection() {
-    if (!sectionForm.code.trim()) return
-    await run(async () => {
-      await createSection({
-        code: sectionForm.code.trim(),
-        year_number: sectionForm.year_number === '' ? null : Number(sectionForm.year_number),
-      })
-      setSectionForm({ code: '', year_number: '' })
-    }, 'Section added.')
+  function openAddSection() {
+    setEditingSection(null)
+    setSectionForm(emptySection())
+    setSectionDialogOpen(true)
   }
 
-  async function changeSectionYear(section, rawValue) {
-    const yearNumber = rawValue === '' ? null : Number(rawValue)
-    if ((section.year_number ?? null) === yearNumber) return
-    const yearLabel = SECTION_YEARS.find(year => year.value === yearNumber)?.label
-    await run(
-      () => updateSection(section.section_id, { year_number: yearNumber }),
-      yearLabel ? `${section.code} moved to ${yearLabel}.` : `${section.code} moved to “Year not set”.`,
-    )
+  function openEditSection(section) {
+    setEditingSection(section)
+    setSectionForm({
+      code: section.code || '',
+      year_number: section.year_number ?? '',
+    })
+    setSectionDialogOpen(true)
+  }
+
+  function closeSectionDialog() {
+    setSectionDialogOpen(false)
+    setEditingSection(null)
+    setSectionForm(emptySection())
+  }
+
+  function openAddCourse() {
+    setEditingCourse(null)
+    setCourseForm(emptyCourse())
+    setCourseDialogOpen(true)
+  }
+
+  function openEditCourse(course) {
+    setEditingCourse(course)
+    setCourseForm({
+      ...emptyCourse(),
+      course_code: course.course_code,
+      course_title: course.course_title,
+      description: course.description || '',
+      category: course.category || 'professional',
+      units: course.units ?? '',
+      section: course.section || '',
+    })
+    setCourseDialogOpen(true)
+  }
+
+  function closeCourseDialog() {
+    setCourseDialogOpen(false)
+    setEditingCourse(null)
+    setCourseForm(emptyCourse())
+  }
+
+  async function saveSection() {
+    if (!sectionForm.code.trim()) return
+    const payload = {
+      code: sectionForm.code.trim(),
+      year_number: sectionForm.year_number === '' ? null : Number(sectionForm.year_number),
+    }
+    const ok = await run(async () => {
+      if (editingSection) {
+        await updateSection(editingSection.section_id, payload)
+      } else {
+        await createSection(payload)
+      }
+    }, editingSection ? 'Section updated.' : 'Section added.')
+    if (ok) {
+      setSectionDialogOpen(false)
+      setEditingSection(null)
+      setSectionForm(emptySection())
+    }
   }
 
   async function saveCourse() {
@@ -159,29 +220,28 @@ export default function AdminAcademicStructure() {
       units: courseForm.units === '' ? null : Number(courseForm.units),
       section: courseForm.section || null,
     }
-    await run(async () => {
+    const ok = await run(async () => {
       if (editingCourse) {
         await updateCourse(editingCourse.course_id, payload)
       } else {
         await createCourse(payload)
       }
+    }, editingCourse ? 'Course updated.' : 'Course added.')
+    if (ok) {
+      setCourseDialogOpen(false)
       setEditingCourse(null)
       setCourseForm(emptyCourse())
-    }, editingCourse ? 'Course updated.' : 'Course added.')
+    }
   }
 
-  function startEditCourse(course) {
-    setEditingCourse(course)
-    setCourseForm({
-      ...emptyCourse(),
-      course_code: course.course_code,
-      course_title: course.course_title,
-      description: course.description || '',
-      category: course.category || 'professional',
-      units: course.units ?? '',
-      section: course.section || '',
-    })
-    setTab(1)
+  async function confirmDeleteAction() {
+    if (!confirmDelete) return
+    const { kind, id, successMessage } = confirmDelete
+    const ok = await run(async () => {
+      if (kind === 'section') await deleteSection(id)
+      else await deleteCourse(id)
+    }, successMessage)
+    if (ok) setConfirmDelete(null)
   }
 
   const filteredCourses = structure.courses.filter(course => {
@@ -291,19 +351,8 @@ export default function AdminAcademicStructure() {
         <div style={{ padding: 22 }}>
           {tab === 0 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 1fr) minmax(160px, 1fr) auto', gap: 12, marginBottom: 20 }}>
-                <TextField label="Section code" size="small" value={sectionForm.code}
-                  onChange={event => setSectionForm(current => ({ ...current, code: event.target.value }))}
-                  sx={inputSx} inputProps={{ maxLength: 50 }} />
-                <TextField select label="Year level" size="small" value={sectionForm.year_number}
-                  onChange={event => setSectionForm(current => ({ ...current, year_number: event.target.value }))}
-                  sx={inputSx}>
-                  <MenuItem value="">Year not set</MenuItem>
-                  {SECTION_YEARS.map(year => (
-                    <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
-                  ))}
-                </TextField>
-                <PrimaryBtn small disabled={saving || !sectionForm.code.trim()} onClick={saveSection}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <PrimaryBtn small disabled={saving} onClick={openAddSection}>
                   <AddIcon fontSize="small" /> Add section
                 </PrimaryBtn>
               </div>
@@ -327,22 +376,22 @@ export default function AdminAcademicStructure() {
                           {group.sections.map(section => (
                             <TableRow key={section.section_id}>
                               <TableCell sx={bodyCellSx}>{section.code}</TableCell>
-                              <TableCell sx={bodyCellSx}>
-                                <TextField select size="small" value={section.year_number ?? ''}
-                                  disabled={saving}
-                                  onChange={event => changeSectionYear(section, event.target.value)}
-                                  sx={{ ...inputSx, minWidth: 140 }}
-                                  slotProps={{ select: { inputProps: { 'aria-label': `Year level for section ${section.code}` } } }}>
-                                  <MenuItem value="">Year not set</MenuItem>
-                                  {SECTION_YEARS.map(year => (
-                                    <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
-                                  ))}
-                                </TextField>
-                              </TableCell>
+                              <TableCell sx={bodyCellSx}>{yearLabelFor(section.year_number)}</TableCell>
                               <TableCell sx={bodyCellSx} align="right">
+                                <IconButton aria-label={`Edit section ${section.code}`} size="small"
+                                  disabled={saving}
+                                  onClick={() => openEditSection(section)}
+                                  sx={{ color: 'var(--text-secondary)' }}>
+                                  <EditIcon fontSize="small" />
+                                </IconButton>
                                 <IconButton aria-label={`Delete section ${section.code}`} size="small"
                                   disabled={saving}
-                                  onClick={() => run(() => deleteSection(section.section_id), 'Section removed.')}
+                                  onClick={() => setConfirmDelete({
+                                    kind: 'section',
+                                    id: section.section_id,
+                                    label: section.code,
+                                    successMessage: 'Section removed.',
+                                  })}
                                   sx={{ color: '#E24B4A' }}>
                                   <DeleteOutlinedIcon fontSize="small" />
                                 </IconButton>
@@ -363,50 +412,10 @@ export default function AdminAcademicStructure() {
 
           {tab === 1 && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(200px, 2.2fr) minmax(90px, 0.6fr)', gap: 12, marginBottom: 12 }}>
-                <TextField label="Course code" size="small" value={courseForm.course_code}
-                  onChange={event => setCourseForm(current => ({ ...current, course_code: event.target.value }))}
-                  sx={inputSx} inputProps={{ maxLength: 100 }} />
-                <TextField label="Course title" size="small" value={courseForm.course_title}
-                  onChange={event => setCourseForm(current => ({ ...current, course_title: event.target.value }))}
-                  sx={inputSx} inputProps={{ maxLength: 255 }} />
-                <TextField label="Units" type="number" size="small" value={courseForm.units}
-                  onChange={event => setCourseForm(current => ({ ...current, units: event.target.value }))}
-                  sx={inputSx} inputProps={{ min: 0, step: 0.5 }} />
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 12 }}>
-                <TextField select label="Section (optional)" size="small" value={courseForm.section}
-                  onChange={event => setCourseForm(current => ({ ...current, section: event.target.value }))}
-                  sx={inputSx}>
-                  <MenuItem value="">No section</MenuItem>
-                  {structure.sections.map(section => (
-                    <MenuItem key={section.section_id} value={section.section_id}>
-                      {section.display_name || section.code}{section.year_label ? ` · ${section.year_label}` : ''}
-                    </MenuItem>
-                  ))}
-                </TextField>
-                <TextField select label="Category" size="small" value={courseForm.category}
-                  onChange={event => setCourseForm(current => ({ ...current, category: event.target.value }))}
-                  sx={inputSx}>
-                  {COURSE_CATEGORIES.map(category => (
-                    <MenuItem key={category.value} value={category.value}>{category.label}</MenuItem>
-                  ))}
-                </TextField>
-                <TextField label="Description (optional)" size="small" value={courseForm.description}
-                  onChange={event => setCourseForm(current => ({ ...current, description: event.target.value }))}
-                  sx={inputSx} />
-              </div>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 16 }}>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <PrimaryBtn small disabled={saving || !courseForm.course_code.trim() || !courseForm.course_title.trim()} onClick={saveCourse}>
-                    <AddIcon fontSize="small" /> {editingCourse ? 'Update course' : 'Add course'}
-                  </PrimaryBtn>
-                  {editingCourse && (
-                    <OutlineBtn small disabled={saving} onClick={() => { setEditingCourse(null); setCourseForm(emptyCourse()) }}>
-                      Cancel
-                    </OutlineBtn>
-                  )}
-                </div>
+                <PrimaryBtn small disabled={saving} onClick={openAddCourse}>
+                  <AddIcon fontSize="small" /> Add course
+                </PrimaryBtn>
                 <TextField placeholder="Filter courses by code or title…" size="small"
                   sx={{ ...inputSx, width: 280, maxWidth: '100%' }}
                   onChange={event => setCourseFilter(event.target.value)} value={courseFilter} />
@@ -437,10 +446,17 @@ export default function AdminAcademicStructure() {
                               <TableCell sx={bodyCellSx}>{course.section_label || course.section_code || '—'}</TableCell>
                               <TableCell sx={bodyCellSx}>{course.units ?? '—'}</TableCell>
                               <TableCell sx={bodyCellSx} align="right">
-                                <IconButton aria-label={`Edit course ${course.course_code}`} size="small" onClick={() => startEditCourse(course)}
+                                <IconButton aria-label={`Edit course ${course.course_code}`} size="small"
+                                  disabled={saving}
+                                  onClick={() => openEditCourse(course)}
                                   sx={{ color: 'var(--text-secondary)' }}><EditIcon fontSize="small" /></IconButton>
                                 <IconButton aria-label={`Delete course ${course.course_code}`} size="small" disabled={saving}
-                                  onClick={() => run(() => deleteCourse(course.course_id), 'Course removed.')}
+                                  onClick={() => setConfirmDelete({
+                                    kind: 'course',
+                                    id: course.course_id,
+                                    label: `${course.course_code} — ${course.course_title}`,
+                                    successMessage: 'Course removed.',
+                                  })}
                                   sx={{ color: '#E24B4A' }}><DeleteOutlinedIcon fontSize="small" /></IconButton>
                               </TableCell>
                             </TableRow>
@@ -460,6 +476,120 @@ export default function AdminAcademicStructure() {
           )}
         </div>
       </GlassCard>
+
+      <Dialog
+        open={sectionDialogOpen}
+        onClose={() => { if (!saving) closeSectionDialog() }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+      >
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>
+          {editingSection ? 'Edit section' : 'Add section'}
+        </DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField label="Section code" size="small" value={sectionForm.code}
+            onChange={event => setSectionForm(current => ({ ...current, code: event.target.value }))}
+            sx={inputSx} inputProps={{ maxLength: 50 }} autoFocus />
+          <TextField select label="Year level" size="small" value={sectionForm.year_number}
+            onChange={event => setSectionForm(current => ({ ...current, year_number: event.target.value }))}
+            sx={inputSx}>
+            <MenuItem value="">Year not set</MenuItem>
+            {SECTION_YEARS.map(year => (
+              <MenuItem key={year.value} value={year.value}>{year.label}</MenuItem>
+            ))}
+          </TextField>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={closeSectionDialog} disabled={saving}>Cancel</OutlineBtn>
+          <PrimaryBtn
+            disabled={saving || !sectionForm.code.trim()}
+            onClick={saveSection}
+          >
+            {saving ? 'Saving…' : editingSection ? 'Save changes' : 'Add section'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={courseDialogOpen}
+        onClose={() => { if (!saving) closeCourseDialog() }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+      >
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>
+          {editingCourse ? 'Edit course' : 'Add course'}
+        </DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <TextField label="Course code" size="small" value={courseForm.course_code}
+            onChange={event => setCourseForm(current => ({ ...current, course_code: event.target.value }))}
+            sx={inputSx} inputProps={{ maxLength: 100 }} autoFocus />
+          <TextField label="Course title" size="small" value={courseForm.course_title}
+            onChange={event => setCourseForm(current => ({ ...current, course_title: event.target.value }))}
+            sx={inputSx} inputProps={{ maxLength: 255 }} />
+          <TextField label="Units" type="number" size="small" value={courseForm.units}
+            onChange={event => setCourseForm(current => ({ ...current, units: event.target.value }))}
+            sx={inputSx} inputProps={{ min: 0, step: 0.5 }} />
+          <TextField select label="Section (optional)" size="small" value={courseForm.section}
+            onChange={event => setCourseForm(current => ({ ...current, section: event.target.value }))}
+            sx={inputSx}>
+            <MenuItem value="">No section</MenuItem>
+            {structure.sections.map(section => (
+              <MenuItem key={section.section_id} value={section.section_id}>
+                {section.display_name || section.code}{section.year_label ? ` · ${section.year_label}` : ''}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField select label="Category" size="small" value={courseForm.category}
+            onChange={event => setCourseForm(current => ({ ...current, category: event.target.value }))}
+            sx={inputSx}>
+            {COURSE_CATEGORIES.map(category => (
+              <MenuItem key={category.value} value={category.value}>{category.label}</MenuItem>
+            ))}
+          </TextField>
+          <TextField label="Description (optional)" size="small" value={courseForm.description}
+            onChange={event => setCourseForm(current => ({ ...current, description: event.target.value }))}
+            sx={inputSx} multiline minRows={2} />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={closeCourseDialog} disabled={saving}>Cancel</OutlineBtn>
+          <PrimaryBtn
+            disabled={saving || !courseForm.course_code.trim() || !courseForm.course_title.trim()}
+            onClick={saveCourse}
+          >
+            {saving ? 'Saving…' : editingCourse ? 'Save changes' : 'Add course'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(confirmDelete)}
+        onClose={() => { if (!saving) setConfirmDelete(null) }}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: dialogPaperSx }}
+      >
+        <DialogTitle sx={{ color: 'var(--text-primary)' }}>
+          {confirmDelete?.kind === 'section' ? 'Delete section?' : 'Delete course?'}
+        </DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2.5, bgcolor: 'var(--bg-card)' }}>
+          <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+            This permanently deletes{' '}
+            <strong style={{ color: 'var(--text-primary)' }}>{confirmDelete?.label}</strong>
+            . This cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={() => setConfirmDelete(null)} disabled={saving}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={confirmDeleteAction} disabled={saving}>
+            {saving ? 'Deleting…' : confirmDelete?.kind === 'section' ? 'Delete section' : 'Delete course'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
     </AdminLayout>
   )
 }

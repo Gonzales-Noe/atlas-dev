@@ -804,6 +804,7 @@ class SupportReport(models.Model):
     )
     message = EncryptedTextField()
     phone_note = models.CharField(max_length=300, blank=True, default='')
+    image = models.ImageField(upload_to='support_reports/', blank=True, default='')
     status = models.CharField(max_length=32, default=STATUS_WITH_ADMIN)
     created_at = models.DateTimeField(auto_now_add=True)
     forwarded_at = models.DateTimeField(null=True, blank=True)

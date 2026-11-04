@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
   Dialog, DialogTitle, DialogContent, DialogActions, Typography,
   TextField, Divider, Stack, IconButton, Menu, MenuItem, FormControlLabel, Switch,
-  InputLabel, Select, FormControl, CircularProgress, Button, Box, Tooltip,
+  InputLabel, Select, FormControl, CircularProgress, Button, Box, Tooltip, Autocomplete,
 } from '@mui/material'
 import { StatusNotice } from '../../../components/StatusNotice'
 import EditIcon from '@mui/icons-material/Edit'
@@ -57,10 +57,19 @@ function initials(fac) {
   return displayName(fac).split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase() || '–'
 }
 
+const emptyCourseAssignment = () => ({ course_id: '', course_code: '', course_title: '' })
 const emptyFacultyForm = () => ({
   full_name: '', email: '', password: '',
-  assignments: [{ section: '', courses: [{ course_code: '', course_title: '' }] }],
+  assignments: [{ section: '', section_id: '', courses: [emptyCourseAssignment()] }],
 })
+
+function courseOptionLabel(course) {
+  if (!course) return ''
+  const code = course.course_code || ''
+  const title = course.course_title || ''
+  if (code && title) return `${code} — ${title}`
+  return code || title || ''
+}
 
 function createFormsError(forms) {
   for (const [index, form] of forms.entries()) {
@@ -70,12 +79,12 @@ function createFormsError(forms) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return `Enter a valid email for ${label}.`
     if (form.password.length < 8) return `Temporary password for ${label} must be at least 8 characters.`
     for (const group of form.assignments) {
-      const courses = group.courses.filter(course => course.course_code.trim() || course.course_title.trim())
+      const courses = group.courses.filter(course => course.course_id || course.course_code.trim() || course.course_title.trim())
       if (courses.length && !group.section.trim()) {
         return `Add a section for the courses listed under ${label}, or clear those course rows.`
       }
-      if (courses.some(course => !course.course_code.trim() || !course.course_title.trim())) {
-        return `Each course under ${label} needs both a code and a name.`
+      if (courses.some(course => !course.course_id && (!course.course_code.trim() || !course.course_title.trim()))) {
+        return `Pick a saved course for each course row under ${label}.`
       }
     }
   }
@@ -87,11 +96,20 @@ function assignmentsPayload(form) {
     .map(group => ({
       section: group.section.trim(),
       courses: group.courses
-        .map(course => ({
-          course_code: course.course_code.trim(),
-          course_title: course.course_title.trim(),
-        }))
-        .filter(course => course.course_code || course.course_title),
+        .map(course => {
+          if (course.course_id) {
+            return {
+              course_id: course.course_id,
+              course_code: course.course_code.trim(),
+              course_title: course.course_title.trim(),
+            }
+          }
+          return {
+            course_code: course.course_code.trim(),
+            course_title: course.course_title.trim(),
+          }
+        })
+        .filter(course => course.course_id || course.course_code || course.course_title),
     }))
     .filter(group => group.section && group.courses.length)
 }
@@ -129,6 +147,7 @@ export default function AdminAccountManagement() {
   const [anchorEl, setAnchorEl] = useState(null)
   const [menuItem, setMenuItem] = useState(null)
   const [sections, setSections] = useState([])
+  const [academicCourses, setAcademicCourses] = useState([])
   const [editForm, setEditForm] = useState({ full_name: '', email: '', status: 'active' })
   const [createForms, setCreateForms] = useState(() => [emptyFacultyForm()])
   const [creatingFaculty, setCreatingFaculty] = useState(false)
@@ -143,8 +162,14 @@ export default function AdminAccountManagement() {
     loadAssignments()
     loadCustomization()
     fetchAcademicStructure()
-      .then(data => setSections(data.sections || []))
-      .catch(() => setSections([]))
+      .then(data => {
+        setSections(data.sections || [])
+        setAcademicCourses(data.courses || [])
+      })
+      .catch(() => {
+        setSections([])
+        setAcademicCourses([])
+      })
   }, [])
 
   async function refreshAssignmentLists() {
@@ -1242,22 +1267,50 @@ export default function AdminAccountManagement() {
                       <Box component="span" sx={{ fontWeight: 500, color: 'var(--text-secondary)' }}>· optional</Box>
                     </Typography>
                     <Typography sx={{ fontSize: '0.74rem', color: 'var(--text-tertiary)', mt: 0.25 }}>
-                      Leave blank to add the account now and assign sections later.
+                      {sections.length || academicCourses.length
+                        ? 'Type to search saved sections and courses from Academic Structure.'
+                        : 'No sections or courses saved yet. Add them in Academic Structure, or create the account now and assign later.'}
                     </Typography>
                   </Box>
 
                   <Stack spacing={1.25}>
-                    {form.assignments.map((group, groupIndex) => (
+                    {form.assignments.map((group, groupIndex) => {
+                      const selectedSection = sections.find(section => (
+                        section.section_id === group.section_id
+                        || (section.code || '').toLowerCase() === (group.section || '').toLowerCase()
+                      )) || null
+                      const linkedCourses = selectedSection
+                        ? academicCourses.filter(course => course.section === selectedSection.section_id)
+                        : []
+                      const courseOptions = linkedCourses.length ? linkedCourses : academicCourses
+                      return (
                       <Box key={groupIndex} sx={{ border: '1px dashed var(--border-color)', borderRadius: '12px', p: 1.5 }}>
                         <Stack direction="row" spacing={1} alignItems="center">
-                          <TextField
-                            label="Section" placeholder="e.g. BSIT 1101"
-                            value={group.section}
-                            onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                          <Autocomplete
+                            options={sections}
+                            value={selectedSection}
+                            disabled={creatingFaculty}
+                            getOptionLabel={(option) => option.display_name || option.code || ''}
+                            isOptionEqualToValue={(option, value) => option.section_id === value.section_id}
+                            onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                               ...item,
-                              assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? { ...entry, section: event.target.value } : entry),
+                              assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
+                                ...entry,
+                                section: value?.code || '',
+                                section_id: value?.section_id || '',
+                                courses: entry.courses.map(() => emptyCourseAssignment()),
+                              } : entry),
                             } : item))}
-                            fullWidth size="small" sx={inputSx}
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label="Section"
+                                placeholder="Type to search sections"
+                                size="small"
+                                sx={inputSx}
+                              />
+                            )}
+                            sx={{ flex: 1, minWidth: 0 }}
                           />
                           <IconButton
                             size="small"
@@ -1273,29 +1326,37 @@ export default function AdminAccountManagement() {
                           </IconButton>
                         </Stack>
                         <Stack spacing={1} sx={{ mt: 1.25 }}>
-                          {group.courses.map((course, courseIndex) => (
+                          {group.courses.map((course, courseIndex) => {
+                            const selectedCourse = courseOptions.find(option => option.course_id === course.course_id) || null
+                            return (
                             <Stack key={courseIndex} direction="row" spacing={1} alignItems="center">
-                              <TextField
-                                label="Course code" value={course.course_code}
-                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
+                              <Autocomplete
+                                options={courseOptions}
+                                value={selectedCourse}
+                                disabled={creatingFaculty}
+                                getOptionLabel={courseOptionLabel}
+                                isOptionEqualToValue={(option, value) => option.course_id === value.course_id}
+                                onChange={(_, value) => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                                   ...item,
                                   assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
                                     ...entry,
-                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_code: event.target.value } : courseEntry),
+                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? {
+                                      course_id: value?.course_id || '',
+                                      course_code: value?.course_code || '',
+                                      course_title: value?.course_title || '',
+                                    } : courseEntry),
                                   } : entry),
                                 } : item))}
-                                size="small" sx={{ width: 140, flexShrink: 0, ...inputSx }}
-                              />
-                              <TextField
-                                label="Course name" value={course.course_title}
-                                onChange={event => setCreateForms(current => current.map((item, index) => index === formIndex ? {
-                                  ...item,
-                                  assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
-                                    ...entry,
-                                    courses: entry.courses.map((courseEntry, courseNo) => courseNo === courseIndex ? { ...courseEntry, course_title: event.target.value } : courseEntry),
-                                  } : entry),
-                                } : item))}
-                                size="small" sx={{ flex: 1, minWidth: 0, ...inputSx }}
+                                renderInput={(params) => (
+                                  <TextField
+                                    {...params}
+                                    label="Course"
+                                    placeholder="Type to search courses"
+                                    size="small"
+                                    sx={inputSx}
+                                  />
+                                )}
+                                sx={{ flex: 1, minWidth: 0 }}
                               />
                               <IconButton
                                 size="small"
@@ -1313,7 +1374,8 @@ export default function AdminAccountManagement() {
                                 <CloseIcon fontSize="small" />
                               </IconButton>
                             </Stack>
-                          ))}
+                            )
+                          })}
                         </Stack>
                         <Button
                           size="small" startIcon={<AddIcon fontSize="small" />}
@@ -1322,7 +1384,7 @@ export default function AdminAccountManagement() {
                             ...item,
                             assignments: item.assignments.map((entry, groupNo) => groupNo === groupIndex ? {
                               ...entry,
-                              courses: [...entry.courses, { course_code: '', course_title: '' }],
+                              courses: [...entry.courses, emptyCourseAssignment()],
                             } : entry),
                           } : item))}
                           sx={{ mt: 0.5, textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
@@ -1330,14 +1392,15 @@ export default function AdminAccountManagement() {
                           Add course
                         </Button>
                       </Box>
-                    ))}
+                      )
+                    })}
                     <Box>
                       <Button
                         size="small" startIcon={<AddIcon fontSize="small" />}
                         disabled={creatingFaculty}
                         onClick={() => setCreateForms(current => current.map((item, index) => index === formIndex ? {
                           ...item,
-                          assignments: [...item.assignments, { section: '', courses: [{ course_code: '', course_title: '' }] }],
+                          assignments: [...item.assignments, { section: '', section_id: '', courses: [emptyCourseAssignment()] }],
                         } : item))}
                         sx={{ textTransform: 'none', fontSize: '0.76rem', color: 'var(--text-secondary)' }}
                       >
