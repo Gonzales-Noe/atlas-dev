@@ -1,5 +1,6 @@
 """Faculty problem reports: campus admin first, then the ATLAS team if the admin sends it on."""
 
+import base64
 import logging
 import mimetypes
 
@@ -13,7 +14,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.integrations.encryption import decrypt_bytes, encrypt_bytes, is_encrypted_bytes
+from apps.integrations.encryption import decrypt_bytes, is_encrypted_bytes
 from apps.integrations.models import SupportReport, UserProfile, UserRole
 from apps.users.notify import institution_people, notify_users
 from apps.users.serializers import normalize_role
@@ -23,6 +24,8 @@ logger = logging.getLogger(__name__)
 ADMIN_REPORTS = '/admin/issue-reports'
 SUPERADMIN_REPORTS = '/superadmin/issue-reports'
 EDIT_WINDOW = timedelta(hours=24)
+# Inline screenshots in list/detail JSON so mobile can render without a second binary GET.
+MAX_INLINE_IMAGE_BYTES = 2 * 1024 * 1024
 
 ALLOWED_IMAGE_TYPES = {
     'image/jpeg',
@@ -41,6 +44,35 @@ RESOLUTION_CATEGORIES = {
     'by_design': 'Working as designed',
     'other': 'Other',
 }
+
+SOURCE_LABELS = {
+    SupportReport.SOURCE_WEB: 'ATLAS Web',
+    SupportReport.SOURCE_MOBILE: 'ATLAS Mobile',
+}
+
+
+def _normalize_source(raw, request=None):
+    value = str(raw or '').strip().lower()
+    if value in ('web', 'atlas_web', 'atlas-web', 'browser'):
+        return SupportReport.SOURCE_WEB
+    if value in ('mobile', 'atlas_mobile', 'atlas-mobile', 'app', 'android', 'ios'):
+        return SupportReport.SOURCE_MOBILE
+    # Fallback from client headers when the form omits source.
+    ua = ''
+    if request is not None:
+        ua = str(request.META.get('HTTP_USER_AGENT') or '').lower()
+        explicit = str(request.META.get('HTTP_X_ATLAS_CLIENT') or '').strip().lower()
+        if explicit in ('web', 'mobile'):
+            return explicit
+    if 'dart' in ua or 'okhttp' in ua or 'cfnetwork' in ua or 'atlas-mobile' in ua:
+        return SupportReport.SOURCE_MOBILE
+    if ua:
+        return SupportReport.SOURCE_WEB
+    return ''
+
+
+def _source_label(source):
+    return SOURCE_LABELS.get(source or '', '') or (source or '')
 
 
 def _person(user):
@@ -64,13 +96,17 @@ def _can_edit_report(report):
     return timezone.now() <= report.created_at + EDIT_WINDOW
 
 
-def _serialize(row):
+def _serialize(row, include_image=False):
     reporter = row.reporter
-    return {
+    has_image = _has_image(row)
+    source = (row.source or '').strip()
+    payload = {
         'id': str(row.report_id),
         'message': row.message,
         'phone_note': row.phone_note or '',
-        'has_image': _has_image(row),
+        'source': source,
+        'source_label': _source_label(source) or 'Unknown',
+        'has_image': has_image,
         'status': row.status,
         'is_resolved': bool(row.is_resolved),
         'resolved_at': row.resolved_at.isoformat() if row.resolved_at else None,
@@ -87,6 +123,15 @@ def _serialize(row):
         'updated_at': row.updated_at.isoformat() if getattr(row, 'updated_at', None) else None,
         'forwarded_at': row.forwarded_at.isoformat() if row.forwarded_at else None,
     }
+    if include_image and has_image:
+        data, mime = _image_payload(row)
+        if data and len(data) <= MAX_INLINE_IMAGE_BYTES:
+            payload['image_base64'] = base64.b64encode(data).decode('ascii')
+            payload['image_mime'] = mime or 'image/jpeg'
+        elif not data:
+            # Advertised image was unreadable — don't keep promising a screenshot.
+            payload['has_image'] = False
+    return payload
 
 
 def _can_view_report(user, report):
@@ -270,7 +315,11 @@ class SupportReportListView(APIView):
             ).select_related('reporter', 'institution')
         else:
             return Response({'detail': 'Only a campus admin can open these reports.'}, status=status.HTTP_403_FORBIDDEN)
-        reports = [_serialize(row) for row in rows[:100]]
+        # Faculty (mobile + web) always get inline image bytes when readable.
+        # Admin/superadmin can opt in with ?include_images=1.
+        include_flag = str(request.query_params.get('include_images', '')).strip().lower()
+        include_images = role == 'faculty' or include_flag in ('1', 'true', 'yes', 'on')
+        reports = [_serialize(row, include_image=include_images) for row in rows[:100]]
         open_count = sum(1 for row in reports if not row['is_resolved'])
         if role in ('admin', 'superadmin'):
             open_count = _open_queryset_for(request.user).count()
@@ -288,6 +337,7 @@ class SupportReportListView(APIView):
         if len(message) > 4000:
             message = message[:4000]
         phone_note = str(request.data.get('phone_note') or '').strip()[:300]
+        source = _normalize_source(request.data.get('source'), request) or SupportReport.SOURCE_WEB
         image = request.FILES.get('image') or request.FILES.get('screenshot')
         image_error = _validate_image(image)
         if image_error:
@@ -305,6 +355,7 @@ class SupportReportListView(APIView):
             institution_id=request.user.institution_id,
             message=message,
             phone_note=phone_note,
+            source=source,
             status=SupportReport.STATUS_WITH_ADMIN,
         )
         _attach_screenshot(report, raw, mime, getattr(image, 'name', '') or '')
@@ -326,7 +377,7 @@ class SupportReportListView(APIView):
             report.forwarded_at = timezone.now()
             report.save(update_fields=['status', 'forwarded_at'])
             _notify_superadmins(report, who, preview, sent_by_campus=False)
-        payload = _serialize(report)
+        payload = _serialize(report, include_image=True)
         payload['delivered_to'] = 'admin' if admins else 'superadmin'
         return Response(payload, status=status.HTTP_201_CREATED)
 
@@ -415,7 +466,7 @@ class SupportReportDetailView(APIView):
             _attach_screenshot(report, raw, mime, getattr(image, 'name', '') or '')
 
         report.save()
-        return Response(_serialize(report))
+        return Response(_serialize(report, include_image=True))
 
 
 class SupportReportResolveView(APIView):
@@ -493,7 +544,7 @@ class SupportReportResolveView(APIView):
                     dedupe_key=f'support-report-reopened:{report.report_id}:{int(timezone.now().timestamp())}',
                 )
 
-        return Response(_serialize(report))
+        return Response(_serialize(report, include_image=True))
 
 
 class SupportReportForwardView(APIView):
@@ -513,7 +564,7 @@ class SupportReportForwardView(APIView):
         except SupportReport.DoesNotExist:
             return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
         if report.status == SupportReport.STATUS_WITH_SUPERADMIN:
-            return Response(_serialize(report))
+            return Response(_serialize(report, include_image=True))
         report.status = SupportReport.STATUS_WITH_SUPERADMIN
         report.forwarded_at = timezone.now()
         report.forwarded_by = request.user
@@ -521,7 +572,7 @@ class SupportReportForwardView(APIView):
         who = _person(report.reporter) if report.reporter_id else 'A faculty member'
         preview = report.message if len(report.message) <= 180 else f'{report.message[:177]}...'
         _notify_superadmins(report, who, preview, sent_by_campus=True)
-        return Response(_serialize(report))
+        return Response(_serialize(report, include_image=True))
 
 
 def _notify_superadmins(report, faculty_name, preview, *, sent_by_campus):
