@@ -1,12 +1,15 @@
 """Faculty problem reports: campus admin first, then the ATLAS team if the admin sends it on."""
 
+import logging
 import mimetypes
 
-from django.http import FileResponse
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 from apps.integrations.models import SupportReport, UserProfile, UserRole
 from apps.users.notify import institution_people, notify_users
@@ -190,8 +193,24 @@ class SupportReportImageView(APIView):
             return Response({'detail': 'That report was not found.'}, status=status.HTTP_404_NOT_FOUND)
         if not report.image:
             return Response({'detail': 'This report has no screenshot.'}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            report.image.open('rb')
+            data = report.image.read()
+            report.image.close()
+        except Exception:
+            logger.exception('Could not read support report image %s', report_id)
+            return Response(
+                {'detail': 'This screenshot file is missing. Ask the faculty member to send the report again.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if not data:
+            return Response({'detail': 'This report has no screenshot.'}, status=status.HTTP_404_NOT_FOUND)
         content_type = mimetypes.guess_type(report.image.name)[0] or 'application/octet-stream'
-        return FileResponse(report.image.open('rb'), content_type=content_type)
+        response = HttpResponse(data, content_type=content_type)
+        response['Content-Length'] = str(len(data))
+        response['Cache-Control'] = 'private, max-age=300'
+        response['Content-Disposition'] = 'inline'
+        return response
 
 
 class SupportReportResolveView(APIView):

@@ -54,6 +54,9 @@ services:
       WEB_CONCURRENCY: "2"
       PORT: "8000"
       SECURE_SSL_REDIRECT: "true"
+    volumes:
+      # Keep uploaded screenshots / syllabus templates across container rebuilds.
+      - media_data:/app/media
     depends_on:
       - redis
       - ollama
@@ -94,6 +97,7 @@ services:
 volumes:
   redis_data:
   ollama_data:
+  media_data:
 
 networks:
   atlas:
