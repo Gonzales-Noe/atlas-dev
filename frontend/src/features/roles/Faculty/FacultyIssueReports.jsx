@@ -268,14 +268,14 @@ export default function FacultyIssueReports() {
 
       if (editingId) {
         const { data } = await api.patch(`/auth/support-reports/${editingId}/`, form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 'Content-Type': undefined },
           skipAtlasErrorCard: true,
         })
         setReports((rows) => rows.map((row) => (row.id === editingId ? { ...row, ...data } : row)))
         setSuccess('Your report was updated.')
       } else {
         const { data } = await api.post('/auth/support-reports/', form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
+          headers: { 'Content-Type': undefined },
           skipAtlasErrorCard: true,
         })
         setReports((rows) => [data, ...rows.filter((row) => row.id !== data.id)])
