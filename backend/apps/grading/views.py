@@ -893,6 +893,8 @@ def _score_row(student_id, grade_level, section, record, total_items) -> dict:
         "flagged": record["flagged"] if record else False,
         "source": "bubble_sheet" if record else None,
         "scanned_at": record["scanned_at"] if record else None,
+        # Lets mobile open one scan without downloading the full template scan list.
+        "scan_id": (record.get("scan_id") if record else None),
     }
 
 
