@@ -1,16 +1,16 @@
 """
 Descriptive analytics over bubble-sheet scans, grouped through the `blocks` roster.
 
-Item analysis follows the classical upper/lower 27% procedure used for
-teacher-made tests:
+Item analysis (aligned with ATLAS SpotCheck / Obj51):
   1. Score every paper and rank from highest to lowest.
   2. Take the upper 27% (U group) and lower 27% (L group); set aside the middle 46%.
-  3. Per item, count correct answers in each group (U, L).
-  4. Difficulty      P = (U + L) / 2n
-  5. Discrimination  D = (U - L) / n
+  3. Per item, count correct answers in each group (U, L) and overall.
+  4. Difficulty      P = (correct on item) / (examinees)   — whole class
+  5. Discrimination  D = (U - L) / n_group               — Kelley upper/lower
   6. Distractor analysis: every wrong option should attract >= 5% of examinees
      and more of the L group than the U group.
-  7. Test reliability via KR-20 = k/(k-1) * (1 - sum(p*q) / variance_of_totals).
+  7. Test reliability via KR-20 = k/(k-1) * (1 - sum(p*q) / sample_variance_of_totals),
+     where p is whole-class proportion correct (Excel VAR / VAR.S).
 """
 
 from __future__ import annotations
@@ -446,9 +446,13 @@ def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, d
     upper = scored[:n_group]
     lower = scored[-n_group:]
 
-    variance = pstdev(totals) ** 2 if n_total > 1 else 0.0
+    # Population SD used for point-biserial; sample variance for KR-20 (Excel VAR).
+    pop_variance = pstdev(totals) ** 2 if n_total > 1 else 0.0
+    sample_variance = (
+        pop_variance * n_total / (n_total - 1) if n_total > 1 else 0.0
+    )
     mean_total = mean(totals)
-    sd_total = math.sqrt(variance)
+    sd_total = math.sqrt(pop_variance)
 
     items = []
     sum_pq = 0.0
@@ -458,8 +462,8 @@ def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, d
         u = sum(1 for _, _, m in upper if m[i])
         l = sum(1 for _, _, m in lower if m[i])
         r_all = sum(1 for _, _, m in scored if m[i])
-        # Steps 4–5: indices.
-        p = (u + l) / (2 * n_group)
+        # Steps 4–5: whole-class difficulty; Kelley discrimination.
+        p_ul = (u + l) / (2 * n_group)
         d = (u - l) / n_group
         p_all = r_all / n_total
         sum_pq += p_all * (1 - p_all)
@@ -509,21 +513,24 @@ def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, d
             "upper_correct": u,
             "lower_correct": l,
             "total_correct": r_all,
-            "difficulty": round(p, 3),
+            # Primary P = whole-class proportion (SpotCheck / Obj51).
+            "difficulty": round(p_all, 3),
             "difficulty_all": round(p_all, 3),
+            # Kelley upper/lower P kept for method transparency.
+            "difficulty_ul": round(p_ul, 3),
             "discrimination": round(d, 3),
             "point_biserial": point_biserial,
-            "difficulty_label": difficulty_label(p),
+            "difficulty_label": difficulty_label(p_all),
             "discrimination_label": discrimination_label(d),
-            "decision": item_decision(p, d),
+            "decision": item_decision(p_all, d),
             "options": options,
             "distractor_issues": issues,
         })
 
     k = len(item_numbers)
     kr20 = None
-    if k > 1 and variance > 0:
-        kr20 = round((k / (k - 1)) * (1 - sum_pq / variance), 3)
+    if k > 1 and sample_variance > 0:
+        kr20 = round((k / (k - 1)) * (1 - sum_pq / sample_variance), 3)
 
     decisions = {"Retain": 0, "Revise": 0, "Discard": 0}
     difficulty_mix = defaultdict(int)
