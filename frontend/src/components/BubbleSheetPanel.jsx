@@ -115,7 +115,7 @@ function parseStudentIds(text) {
   )]
 }
 
-function SectionsTab({ courseId }) {
+function SectionsTab({ courseId, reloadToken = 0 }) {
   const [sections, setSections] = useState([])
   const [blocks, setBlocks] = useState([])
   const [selectedId, setSelectedId] = useState('')
@@ -129,12 +129,14 @@ function SectionsTab({ courseId }) {
   const [notice, setNotice] = useState('')
   const [noticeSeverity, setNoticeSeverity] = useState('success')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     if (!courseId) return
-    setLoading(true)
-    setError('')
+    if (!silent) {
+      setLoading(true)
+      setError('')
+    }
     try {
-      const r = await api.get(`/grading/blocks/?course_id=${courseId}`)
+      const r = await api.get(`/grading/blocks/?course_id=${courseId}`, { atlasCache: false })
       const nextSections = r.data.sections || []
       setSections(nextSections)
       setBlocks(r.data.blocks || [])
@@ -143,14 +145,15 @@ function SectionsTab({ courseId }) {
           ? current
           : (nextSections[0]?.section_id || '')
       ))
+      if (!silent) setError('')
     } catch (e) {
-      setError(extractApiError(e))
+      if (!silent) setError(extractApiError(e))
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }, [courseId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(reloadToken > 0) }, [load, reloadToken])
 
   const students = blocks.filter(block => block.section_id === selectedId)
 
@@ -389,22 +392,39 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
   const [templates, setTemplates] = useState([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [error, setError] = useState('')
+  // Bumped when scorebook/mobile sync lands so Templates + Sections refetch too
+  const [dataEpoch, setDataEpoch] = useState(0)
 
-  const loadTemplates = useCallback(async () => {
+  const loadTemplates = useCallback(async (silent = false) => {
     if (!courseId) return
-    setTemplatesLoading(true)
-    setError('')
+    if (!silent) {
+      setTemplatesLoading(true)
+      setError('')
+    }
     try {
-      const r = await api.get(`/grading/bubble/templates/?course_id=${courseId}`)
+      const r = await api.get(`/grading/bubble/templates/?course_id=${courseId}`, { atlasCache: false })
       setTemplates(r.data.templates || [])
+      if (!silent) setError('')
     } catch (e) {
-      setError(extractApiError(e))
+      if (!silent) setError(extractApiError(e))
     } finally {
-      setTemplatesLoading(false)
+      if (!silent) setTemplatesLoading(false)
     }
   }, [courseId])
 
   useEffect(() => { loadTemplates() }, [loadTemplates])
+
+  useEffect(() => {
+    setDataEpoch(0)
+  }, [courseId])
+
+  useEffect(() => {
+    if (dataEpoch > 0) loadTemplates(true)
+  }, [dataEpoch, loadTemplates])
+
+  const onDataSynced = useCallback(() => {
+    setDataEpoch(n => n + 1)
+  }, [])
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -428,7 +448,8 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: tab === 1 ? 'hidden' : 'auto', pt: 2 }}>
       <StatusNotice message={error} severity="error" />
 
-      {tab === 0 && (
+      {/* Keep all tabs mounted so Results keeps polling and can refresh the others after sync */}
+      <Box sx={{ display: tab === 0 ? 'block' : 'none' }}>
         <TemplatesTab
           courseId={courseId}
           assessments={assessments}
@@ -438,13 +459,21 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
           onModifyTemplate={onModifyTemplate}
           onNotice={onNotice}
         />
-      )}
-      {tab === 1 && (
-        <ResultsTab courseId={courseId} />
-      )}
-      {tab === 2 && (
-        <SectionsTab courseId={courseId} />
-      )}
+      </Box>
+      <Box
+        sx={{
+          display: tab === 1 ? 'flex' : 'none',
+          flex: 1,
+          minHeight: 0,
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <ResultsTab courseId={courseId} onDataSynced={onDataSynced} />
+      </Box>
+      <Box sx={{ display: tab === 2 ? 'block' : 'none' }}>
+        <SectionsTab courseId={courseId} reloadToken={dataEpoch} />
+      </Box>
       </Box>
     </Box>
   )
@@ -1075,7 +1104,7 @@ function saveBlob(blob, filename) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
-function ResultsTab({ courseId }) {
+function ResultsTab({ courseId, onDataSynced }) {
   const [sectionId, setSectionId] = useState('')
   const [forCourse, setForCourse] = useState(courseId)
   const [sections, setSections] = useState([])
@@ -1088,6 +1117,8 @@ function ResultsTab({ courseId }) {
   const flashTimer = useRef(null)
   const headScrollRef = useRef(null)
   const bodyScrollRef = useRef(null)
+  const onDataSyncedRef = useRef(onDataSynced)
+  onDataSyncedRef.current = onDataSynced
 
   if (forCourse !== courseId) {
     setForCourse(courseId)
@@ -1113,10 +1144,14 @@ function ResultsTab({ courseId }) {
         setSectionId(data.section.section_id)
       }
       const prev = bookRef.current
-      const same = prev
+      const sectionsSig = (data.sections || [])
+        .map(section => `${section.section_id}:${section.student_count}`)
+        .join('|')
+      const sameBook = prev
         && prev.revision === data.revision
         && prev.section?.section_id === data.section?.section_id
-      if (!same) {
+      const sameRoster = prev && prev._sectionsSig === sectionsSig
+      if (!sameBook) {
         const flashes = {}
         if (prev && prev.section?.section_id && prev.section.section_id === data.section?.section_id) {
           const oldRows = new Map((prev.students || []).map(student => [student.student_id, student]))
@@ -1129,13 +1164,18 @@ function ResultsTab({ courseId }) {
             }
           }
         }
-        bookRef.current = data
+        bookRef.current = { ...data, _sectionsSig: sectionsSig }
         setBook(data)
         if (Object.keys(flashes).length) {
           setFlash(flashes)
           clearTimeout(flashTimer.current)
           flashTimer.current = setTimeout(() => setFlash({}), 1800)
         }
+        // Notify sibling tabs after a live sync (not the first paint)
+        if (prev) onDataSyncedRef.current?.()
+      } else if (!sameRoster) {
+        bookRef.current = { ...prev, _sectionsSig: sectionsSig }
+        if (prev) onDataSyncedRef.current?.()
       }
       if (!silent) setErr('')
     } catch (e) {
