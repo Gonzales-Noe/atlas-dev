@@ -741,7 +741,7 @@ export default function FacultyAnalyticsReports({ courseId }) {
           {item.point_biserial != null ? ` · r_pb = ${item.point_biserial}` : ''}
         </Txt>
         <Txt size={11.5} color={MUTED} sx={{ mt: 0.5 }}>
-          P = ({item.upper_correct} + {item.lower_correct}) ÷ (2×{n}) = {fmtNum(asNum(item.difficulty), 2)}{'   '}
+          P = {item.total_correct}/{iaSummary.examinees} = {fmtNum(asNum(item.difficulty), 2)}{'   '}
           D = ({item.upper_correct} − {item.lower_correct}) ÷ {n} = {fmtNum(asNum(item.discrimination), 2)}
         </Txt>
         <Txt size={11.5} weight={700} sx={{ mt: 1, mb: 0.5 }}>Distractor analysis</Txt>
@@ -847,11 +847,11 @@ export default function FacultyAnalyticsReports({ courseId }) {
     ['1. Score and rank', `All ${iaSummary.examinees} papers were scored against the answer key and ranked from highest to lowest total score.`],
     ['2. Form upper and lower groups', `The top 27% (${iaSummary.group_size} papers) form the Upper group and the bottom 27% (${iaSummary.group_size} papers) form the Lower group. The middle 46% is set aside.`],
     ['3. Tally correct answers per item', 'U = number correct in the Upper group, L = number correct in the Lower group.'],
-    ['4. Difficulty index', 'P = (U + L) ÷ 2n.  0.86+ very easy · 0.71–0.85 easy · 0.30–0.70 moderate (ideal) · 0.15–0.29 difficult · below 0.15 very difficult.'],
-    ['5. Discrimination index', 'D = (U − L) ÷ n.  0.40+ very good · 0.30–0.39 good · 0.20–0.29 marginal (revise) · below 0.20 poor · negative = more low scorers got it right (discard).'],
+    ['4. Difficulty index', 'P = (number correct on the item) ÷ (number of examinees).  0.86+ very easy · 0.71–0.85 easy · 0.30–0.70 moderate (ideal) · 0.15–0.29 difficult · below 0.15 very difficult.'],
+    ['5. Discrimination index', 'D = (U − L) ÷ n using the upper/lower 27% groups.  0.40+ very good · 0.30–0.39 good · 0.20–0.29 marginal (revise) · below 0.20 poor · negative = more low scorers got it right (discard).'],
     ['6. Distractor analysis', 'Every wrong option should be chosen by at least 5% of students, and by more Lower- than Upper-group students. Options that fail are flagged.'],
     ['7. Decision', 'Retain: moderate difficulty and D ≥ 0.30 (or D ≥ 0.40 when difficulty is 0.15–0.85). Discard: negative D, or very easy/very difficult with D < 0.20. Otherwise Revise.'],
-    ['8. Test reliability (KR-20)', 'KR-20 = k/(k−1) × (1 − Σpq ÷ σ²), where k = number of items, p = proportion correct, q = 1 − p, σ² = variance of total scores. 0.70+ is acceptable for classroom tests.'],
+    ['8. Test reliability (KR-20)', 'KR-20 = k/(k−1) × (1 − Σpq ÷ σ²), where k = number of items, p = whole-class proportion correct, q = 1 − p, σ² = sample variance of total scores (Excel VAR). 0.70+ is acceptable for classroom tests.'],
   ]
 
   let itemAnalysisCard
