@@ -329,7 +329,7 @@ def notify_mobile_app_updated(version_name, release_notes=''):
     """Tell faculty a new ATLAS Mobile build is ready to install."""
     version = (version_name or '').strip() or 'new'
     notes = (release_notes or '').strip()
-    body = f'Version {version} is ready. Open ATLAS Mobile in the sidebar to download it.'
+    body = f'Version {version} is ready. Open ATLAS Mobile in the sidebar to install it from the QR code.'
     if notes:
         body = f'{body} What’s new: {notes}'
     faculty = list(

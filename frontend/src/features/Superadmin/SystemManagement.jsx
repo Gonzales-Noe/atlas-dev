@@ -448,7 +448,7 @@ export default function SystemManagement() {
 
       <GlassCard title="ATLAS Mobile release" style={{ marginBottom: 16 }}>
         <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-          Upload a new APK to replace the faculty download. Every publish notifies all faculty with the version notes.
+          Upload a new APK to replace the faculty install. Every publish notifies all faculty with the version notes.
           Prefer a split build under ~55 MB (`flutter build apk --release --split-per-abi`, usually the arm64-v8a file).
         </p>
         <div style={{ display: 'grid', gap: 10, fontSize: '0.9rem', marginBottom: 14 }}>
