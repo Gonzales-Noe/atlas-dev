@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
+import Popover from '@mui/material/Popover'
 import Typography from '@mui/material/Typography'
 import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
+import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
 import QRCode from 'qrcode'
@@ -73,6 +75,7 @@ export default function FacultyAtlasMobile() {
   const [qrDataUrl, setQrDataUrl] = useState('')
   const [slide, setSlide] = useState(0)
   const [updateBannerVisible, setUpdateBannerVisible] = useState(false)
+  const [whatsNewAnchor, setWhatsNewAnchor] = useState(null)
 
   useEffect(() => {
     let mounted = true
@@ -148,6 +151,7 @@ export default function FacultyAtlasMobile() {
   const versionLabel = release?.version_name ? `Version ${release.version_name}` : 'Not published yet'
   const activePreview = PREVIEWS[slide]
   const ActiveIcon = activePreview.icon
+  const whatsNewOpen = Boolean(whatsNewAnchor)
 
   function dismissUpdateBanner() {
     if (release?.version_name) {
@@ -201,7 +205,7 @@ export default function FacultyAtlasMobile() {
                 Update available — {versionLabel}
               </Typography>
               <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.35 }}>
-                A new build is ready. Scan the QR code on the right to install it.
+                A new build is ready. Scan the QR code below to install it, or open What’s New for details.
               </Typography>
             </Box>
             <IconButton
@@ -220,20 +224,17 @@ export default function FacultyAtlasMobile() {
             flex: 1,
             minHeight: 0,
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.35fr) minmax(300px, 0.85fr)' },
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.2fr) minmax(280px, 0.9fr)' },
             gridTemplateRows: { xs: 'auto', md: '1fr' },
             gap: 1.5,
           }}
         >
-          {/* Left column — stacked cards fill remaining height */}
+          {/* Left column */}
           <Box
             sx={{
               minHeight: 0,
               display: 'grid',
-              gridTemplateRows: {
-                xs: 'auto',
-                md: whatsNewItems.length ? 'auto minmax(0, 1fr) auto' : 'auto minmax(0, 1fr) auto',
-              },
+              gridTemplateRows: { xs: 'auto', md: 'auto minmax(0, 1fr) auto' },
               gap: 1.5,
             }}
           >
@@ -253,18 +254,48 @@ export default function FacultyAtlasMobile() {
                   }}
                 />
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.2 }}>
-                    ATLAS Mobile
-                  </Typography>
-                  <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.84rem', mt: 0.35 }}>
-                    Internal app · {versionLabel}
-                    {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
-                  </Typography>
-                  {release?.published_at ? (
-                    <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.74rem', mt: 0.35 }}>
-                      Updated {formatPublished(release.published_at)}
-                    </Typography>
-                  ) : null}
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5 }}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.2 }}>
+                        ATLAS Mobile
+                      </Typography>
+                      <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.84rem', mt: 0.35 }}>
+                        Internal app · {versionLabel}
+                        {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
+                      </Typography>
+                      {release?.published_at ? (
+                        <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.74rem', mt: 0.35 }}>
+                          Updated {formatPublished(release.published_at)}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                    {whatsNewItems.length ? (
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded={whatsNewOpen}
+                        onClick={(event) => setWhatsNewAnchor(event.currentTarget)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          border: '1px solid var(--border-color)',
+                          background: 'var(--bg-elevated, var(--bg-card))',
+                          color: 'var(--text-primary)',
+                          borderRadius: 999,
+                          padding: '6px 12px',
+                          cursor: 'pointer',
+                          fontWeight: 700,
+                          fontSize: '0.78rem',
+                          lineHeight: 1,
+                          flexShrink: 0,
+                        }}
+                      >
+                        <NewReleasesOutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
+                        What’s New
+                      </button>
+                    ) : null}
+                  </Box>
                   <Typography
                     sx={{
                       mt: 1,
@@ -288,91 +319,96 @@ export default function FacultyAtlasMobile() {
               </Box>
             </GlassCard>
 
-            <GlassCard fill style={{ height: '100%', marginBottom: 0 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, flex: 1 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 1, color: 'var(--text-secondary)', flexShrink: 0 }}>
-                  App preview
-                </Typography>
+            <Box id="atlas-mobile-qr" sx={{ minHeight: 0, height: { xs: 'auto', md: '100%' } }}>
+              <GlassCard
+                fill
+                title="Install on your phone"
+                style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
+              >
                 <Box
                   sx={{
-                    flex: 1,
-                    minHeight: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
+                    display: 'grid',
+                    gridTemplateColumns: { xs: '1fr', sm: 'auto 1fr' },
+                    gap: 2,
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 1.25,
-                    textAlign: 'center',
-                    px: 0.5,
+                    height: '100%',
+                    minHeight: 0,
+                    flex: 1,
                   }}
                 >
-                  <Box
-                    sx={{
-                      width: { xs: 96, md: 'min(120px, 28%)' },
-                      aspectRatio: '108 / 168',
-                      maxHeight: '48%',
-                      borderRadius: '22px',
-                      border: '3px solid var(--text-primary)',
-                      background: 'linear-gradient(160deg, rgba(226,75,74,0.14), rgba(247,249,252,0.95))',
-                      display: 'grid',
-                      placeItems: 'center',
-                      boxShadow: 'var(--shadow-card)',
-                      flexShrink: 1,
-                    }}
-                  >
-                    <ActiveIcon sx={{ fontSize: { xs: 34, md: 42 }, color: 'var(--brand-primary)' }} />
-                  </Box>
-                  <Box sx={{ maxWidth: 360 }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.95rem' }}>{activePreview.title}</Typography>
-                    <Typography sx={{ mt: 0.4, color: 'var(--text-secondary)', lineHeight: 1.4, fontSize: '0.8rem' }}>
-                      {activePreview.body}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
+                    {qrDataUrl && available ? (
+                      <Box
+                        component="img"
+                        src={qrDataUrl}
+                        alt="QR code to install ATLAS Mobile"
+                        sx={{
+                          width: { xs: 160, md: 168 },
+                          height: { xs: 160, md: 168 },
+                          display: 'block',
+                          flexShrink: 0,
+                        }}
+                      />
+                    ) : (
+                      <Box
+                        sx={{
+                          width: { xs: 160, md: 168 },
+                          height: { xs: 160, md: 168 },
+                          borderRadius: 2,
+                          background: 'var(--track-bg)',
+                          display: 'grid',
+                          placeItems: 'center',
+                          color: 'var(--text-tertiary)',
+                          fontSize: '0.76rem',
+                          px: 2,
+                          textAlign: 'center',
+                        }}
+                      >
+                        {loading ? 'Preparing…' : 'QR appears when a build is published'}
+                      </Box>
+                    )}
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', textAlign: 'center' }}>
+                      Scan with your phone camera
                     </Typography>
                   </Box>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, mt: 1, flexShrink: 0 }}>
-                  {PREVIEWS.map((item, index) => (
-                    <button
-                      key={item.title}
-                      type="button"
-                      aria-label={`Show preview ${index + 1}`}
-                      onClick={() => setSlide(index)}
-                      style={{
-                        width: index === slide ? 22 : 8,
-                        height: 8,
-                        borderRadius: 99,
-                        border: 0,
-                        cursor: 'pointer',
-                        background: index === slide ? 'var(--brand-primary)' : 'var(--border-color)',
-                        transition: 'width 200ms, background 200ms',
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            </GlassCard>
 
-            <GlassCard style={{ marginBottom: 0 }}>
-              {whatsNewItems.length ? (
-                <Box sx={{ mb: 1.25 }}>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.5 }}>What’s New</Typography>
-                  <Box
-                    component="ul"
-                    sx={{
-                      m: 0,
-                      pl: 2,
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.8rem',
-                      lineHeight: 1.45,
-                      maxHeight: { md: 52 },
-                      overflow: { md: 'auto' },
-                    }}
-                  >
-                    {whatsNewItems.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
+                  <Box sx={{ minHeight: 0, overflow: { md: 'auto' } }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On Android</Typography>
+                    <Box
+                      component="ol"
+                      sx={{
+                        m: '0 0 10px',
+                        pl: 2.1,
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.78rem',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <li>Open Camera and point it at this QR code.</li>
+                      <li>Open the download. Allow installs from this site once if asked.</li>
+                      <li>Tap Install, open ATLAS Mobile, and sign in.</li>
+                    </Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On iPhone</Typography>
+                    <Box
+                      component="ol"
+                      sx={{
+                        m: 0,
+                        pl: 2.1,
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.78rem',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <li>Scan the QR code to save the app file.</li>
+                      <li>Open the downloaded file and install it.</li>
+                      <li>Open ATLAS Mobile and sign in with your ATLAS account.</li>
+                    </Box>
                   </Box>
                 </Box>
-              ) : null}
+              </GlassCard>
+            </Box>
+
+            <GlassCard style={{ marginBottom: 0 }}>
               <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.5 }}>
                 Requirements & permissions
               </Typography>
@@ -402,103 +438,123 @@ export default function FacultyAtlasMobile() {
             </GlassCard>
           </Box>
 
-          {/* Right column — full-height install card */}
-          <Box id="atlas-mobile-qr" sx={{ minHeight: 0, height: { xs: 'auto', md: '100%' } }}>
+          {/* Right column — full-height app preview */}
           <GlassCard
             fill
-            title="Install on your phone"
-            style={{
-              height: '100%',
-              minHeight: 0,
-              marginBottom: 0,
-            }}
+            title="App preview"
+            style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
           >
             <Box
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
                 height: '100%',
                 minHeight: 0,
                 flex: 1,
                 gap: 1.5,
+                textAlign: 'center',
+                px: 0.5,
               }}
             >
-              {qrDataUrl && available ? (
-                <Box
-                  component="img"
-                  src={qrDataUrl}
-                  alt="QR code to install ATLAS Mobile"
-                  sx={{
-                    width: { xs: 180, md: 'min(220px, 55%)' },
-                    height: 'auto',
-                    aspectRatio: '1',
-                    maxHeight: { md: '38%' },
-                    display: 'block',
-                    flexShrink: 1,
-                  }}
-                />
-              ) : (
-                <Box
-                  sx={{
-                    width: { xs: 180, md: 'min(220px, 55%)' },
-                    aspectRatio: '1',
-                    maxHeight: { md: '38%' },
-                    borderRadius: 2,
-                    background: 'var(--track-bg)',
-                    display: 'grid',
-                    placeItems: 'center',
-                    color: 'var(--text-tertiary)',
-                    fontSize: '0.78rem',
-                    px: 2,
-                    textAlign: 'center',
-                    flexShrink: 1,
-                  }}
-                >
-                  {loading ? 'Preparing…' : 'QR appears when a build is published'}
-                </Box>
-              )}
-              <Typography sx={{ fontWeight: 700, fontSize: '0.82rem', textAlign: 'center', flexShrink: 0 }}>
-                Scan with your phone camera
-              </Typography>
-
-              <Box sx={{ width: '100%', flex: 1, minHeight: 0, overflow: { md: 'auto' } }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On Android</Typography>
-                <Box
-                  component="ol"
-                  sx={{
-                    m: '0 0 12px',
-                    pl: 2.1,
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.8rem',
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <li>Open Camera and point it at this QR code.</li>
-                  <li>Open the download. Allow installs from this site once if asked.</li>
-                  <li>Tap Install, open ATLAS Mobile, and sign in.</li>
-                </Box>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On iPhone</Typography>
-                <Box
-                  component="ol"
-                  sx={{
-                    m: 0,
-                    pl: 2.1,
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.8rem',
-                    lineHeight: 1.45,
-                  }}
-                >
-                  <li>Scan the QR code to save the app file.</li>
-                  <li>Open the downloaded file and install it.</li>
-                  <li>Open ATLAS Mobile and sign in with your ATLAS account.</li>
-                </Box>
+              <Box
+                sx={{
+                  width: { xs: 110, md: 'min(150px, 42%)' },
+                  aspectRatio: '108 / 168',
+                  maxHeight: '58%',
+                  borderRadius: '28px',
+                  border: '3px solid var(--text-primary)',
+                  background: 'linear-gradient(160deg, rgba(226,75,74,0.14), rgba(247,249,252,0.95))',
+                  display: 'grid',
+                  placeItems: 'center',
+                  boxShadow: 'var(--shadow-card)',
+                  flexShrink: 1,
+                }}
+              >
+                <ActiveIcon sx={{ fontSize: { xs: 40, md: 52 }, color: 'var(--brand-primary)' }} />
+              </Box>
+              <Box sx={{ maxWidth: 320 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>{activePreview.title}</Typography>
+                <Typography sx={{ mt: 0.5, color: 'var(--text-secondary)', lineHeight: 1.45, fontSize: '0.84rem' }}>
+                  {activePreview.body}
+                </Typography>
+              </Box>
+              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, flexShrink: 0 }}>
+                {PREVIEWS.map((item, index) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    aria-label={`Show preview ${index + 1}`}
+                    onClick={() => setSlide(index)}
+                    style={{
+                      width: index === slide ? 22 : 8,
+                      height: 8,
+                      borderRadius: 99,
+                      border: 0,
+                      cursor: 'pointer',
+                      background: index === slide ? 'var(--brand-primary)' : 'var(--border-color)',
+                      transition: 'width 200ms, background 200ms',
+                    }}
+                  />
+                ))}
               </Box>
             </Box>
           </GlassCard>
-          </Box>
         </Box>
       </Box>
+
+      <Popover
+        open={whatsNewOpen}
+        anchorEl={whatsNewAnchor}
+        onClose={() => setWhatsNewAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: 1,
+              width: 340,
+              maxWidth: 'calc(100vw - 32px)',
+              borderRadius: 3,
+              border: '1px solid var(--border-color)',
+              boxShadow: 'var(--shadow-card)',
+              background: 'var(--bg-card)',
+              overflow: 'hidden',
+            },
+          },
+        }}
+      >
+        <Box sx={{ p: '14px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '0.95rem' }}>What’s New</Typography>
+          <IconButton
+            aria-label="Close What’s New"
+            size="small"
+            onClick={() => setWhatsNewAnchor(null)}
+            sx={{ color: 'var(--text-secondary)' }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <Box
+          component="ul"
+          sx={{
+            m: 0,
+            px: 2.5,
+            pb: 2,
+            pl: 3.25,
+            maxHeight: 280,
+            overflowY: 'auto',
+            color: 'var(--text-secondary)',
+            fontSize: '0.84rem',
+            lineHeight: 1.55,
+          }}
+        >
+          {whatsNewItems.map((item) => (
+            <li key={item} style={{ marginBottom: 6 }}>{item}</li>
+          ))}
+        </Box>
+      </Popover>
     </FacultyLayout>
   )
 }
