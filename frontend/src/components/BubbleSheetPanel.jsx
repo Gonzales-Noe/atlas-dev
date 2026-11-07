@@ -390,6 +390,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
 
   // shared across sub-panels
   const [templates, setTemplates] = useState([])
+  const [quickExams, setQuickExams] = useState([])
   const [templatesLoading, setTemplatesLoading] = useState(false)
   const [error, setError] = useState('')
   // Bumped when scorebook/mobile sync lands so Templates + Sections refetch too
@@ -402,8 +403,12 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
       setError('')
     }
     try {
-      const r = await api.get(`/grading/bubble/templates/?course_id=${courseId}`, { atlasCache: false })
-      setTemplates(r.data.templates || [])
+      const [bubbleRes, quickRes] = await Promise.all([
+        api.get(`/grading/bubble/templates/?course_id=${courseId}`, { atlasCache: false }),
+        api.get(`/grading/quick/exams/?course_id=${courseId}`, { atlasCache: false }).catch(() => ({ data: { exams: [] } })),
+      ])
+      setTemplates(bubbleRes.data.templates || [])
+      setQuickExams(quickRes.data?.exams || [])
       if (!silent) setError('')
     } catch (e) {
       if (!silent) setError(extractApiError(e))
@@ -454,6 +459,7 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
           courseId={courseId}
           assessments={assessments}
           templates={templates}
+          quickExams={quickExams}
           loading={templatesLoading}
           onRefresh={loadTemplates}
           onModifyTemplate={onModifyTemplate}
@@ -482,14 +488,16 @@ export default function BubbleSheetPanel({ courseId, assessments = [], onModifyT
 // ─────────────────────────────────────────────────────────────────────────────
 // TEMPLATES TAB
 // ─────────────────────────────────────────────────────────────────────────────
-function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, onModifyTemplate, onNotice }) {
+function TemplatesTab({ courseId, assessments, templates, quickExams = [], loading, onRefresh, onModifyTemplate, onNotice }) {
   const [creating, setCreating] = useState(false)
-  const [keyDialog, setKeyDialog] = useState(null) // template obj
+  const [keyDialog, setKeyDialog] = useState(null) // template or quick-exam adapter
+  const [questionsExam, setQuestionsExam] = useState(null)
+  const empty = templates.length === 0 && quickExams.length === 0
 
   return (
     <>
       <SCard
-        title="Answer Sheet Templates"
+        title="Major Examination Sheets"
         action={
           <Stack direction="row" spacing={1}>
             <Tooltip title="Refresh"><IconButton size="small" onClick={onRefresh}><RefreshIcon sx={{ fontSize: 16 }} /></IconButton></Tooltip>
@@ -503,9 +511,9 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
       >
         {loading
           ? <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
-          : templates.length === 0
+          : empty
             ? <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
-              No templates yet. Create one to generate a printable bubble sheet.
+              No examination sheets yet. Create a template here, or create a major examination in ATLAS Mobile.
             </Typography>
             : (
               <Stack spacing={1.5}>
@@ -514,8 +522,25 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
                     key={t.template_id}
                     template={t}
                     onRefresh={onRefresh}
-                    onSetKey={() => setKeyDialog(t)}
+                    onSetKey={() => setKeyDialog({ kind: 'bubble', ...t })}
                     onModifyTemplate={onModifyTemplate}
+                  />
+                ))}
+                {quickExams.map(exam => (
+                  <QuickExamRow
+                    key={exam.exam_id}
+                    exam={exam}
+                    onSetKey={() => setKeyDialog({
+                      kind: 'quick',
+                      template_id: exam.exam_id,
+                      exam_id: exam.exam_id,
+                      name: exam.name,
+                      total_items: exam.total_items,
+                      num_choices: exam.num_choices,
+                      answer_key: exam.answer_key || {},
+                      has_answer_key: exam.has_answer_key,
+                    })}
+                    onViewQuestions={() => setQuestionsExam(exam)}
                   />
                 ))}
               </Stack>
@@ -539,7 +564,157 @@ function TemplatesTab({ courseId, assessments, templates, loading, onRefresh, on
           onSaved={() => { setKeyDialog(null); onRefresh(); onNotice?.('Answer key saved.') }}
         />
       )}
+
+      {questionsExam && (
+        <QuickExamQuestionsDialog
+          exam={questionsExam}
+          onClose={() => setQuestionsExam(null)}
+          onEditKey={() => {
+            const exam = questionsExam
+            setQuestionsExam(null)
+            setKeyDialog({
+              kind: 'quick',
+              template_id: exam.exam_id,
+              exam_id: exam.exam_id,
+              name: exam.name,
+              total_items: exam.total_items,
+              num_choices: exam.num_choices,
+              answer_key: exam.answer_key || {},
+              has_answer_key: exam.has_answer_key,
+            })
+          }}
+        />
+      )}
     </>
+  )
+}
+
+function QuickExamRow({ exam, onSetKey, onViewQuestions }) {
+  return (
+    <Box sx={{ bgcolor: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 2, p: 1.5 }}>
+      <Stack direction="row" alignItems="flex-start" spacing={1}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="body2" sx={{ fontWeight: 700, fontSize: '0.82rem' }}>{exam.name}</Typography>
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" sx={{ mt: 0.5 }}>
+            <Chip label={`${exam.total_items} items`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            <Chip label={`${exam.num_choices} choices`} size="small" sx={{ height: 18, fontSize: '0.65rem', bgcolor: 'var(--workspace-hover)', color: TEXT, border: `1px solid ${BORDER}` }} />
+            <Chip
+              label={exam.has_answer_key ? 'Key set' : 'No key'}
+              size="small"
+              sx={{
+                height: 18, fontSize: '0.65rem',
+                bgcolor: exam.has_answer_key ? 'rgba(170,36,35,0.18)' : 'var(--workspace-hover)',
+                color: exam.has_answer_key ? 'var(--brand-accent)' : MUTED,
+                border: `1px solid ${exam.has_answer_key ? 'rgba(226,75,74,0.28)' : BORDER}`,
+              }}
+            />
+          </Stack>
+          {!exam.has_questions && (
+            <Typography sx={{ color: MUTED, fontSize: '0.75rem', mt: 0.75, lineHeight: 1.35 }}>
+              This exam was created on the mobile app. Questions were not added there yet — open Questions for details. You can still set the answer key here; results sync with mobile.
+            </Typography>
+          )}
+        </Box>
+        <Stack direction="row" spacing={0.5}>
+          <Tooltip title="Set Answer Key">
+            <IconButton size="small" onClick={onSetKey} sx={{ color: MUTED }}><KeyIcon sx={{ fontSize: 16 }} /></IconButton>
+          </Tooltip>
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={onViewQuestions}
+            sx={{
+              minWidth: 84,
+              height: 30,
+              px: 1.25,
+              color: TEXT,
+              borderColor: BORDER,
+              textTransform: 'none',
+              fontSize: '0.75rem',
+              '&:hover': { borderColor: MAROON, bgcolor: 'rgba(170,36,35,0.08)' },
+            }}
+          >
+            Questions
+          </Button>
+        </Stack>
+      </Stack>
+    </Box>
+  )
+}
+
+function QuickExamQuestionsDialog({ exam, onClose, onEditKey }) {
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState('')
+  const [detail, setDetail] = useState(null)
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      setLoading(true)
+      setErr('')
+      try {
+        const r = await api.get(`/grading/quick/exams/${exam.exam_id}/`, { atlasCache: false })
+        if (!alive) return
+        setDetail(r.data?.exam || null)
+      } catch (e) {
+        if (alive) setErr(extractApiError(e))
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [exam.exam_id])
+
+  const questions = Array.isArray(detail?.questions) ? detail.questions : []
+  const hasQuestions = questions.some(q => String(q?.question_text || '').trim())
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="sm" fullWidth PaperProps={{ sx: DIALOG_PAPER_SX }}>
+      <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
+        {exam.name}
+      </DialogTitle>
+      <DialogContent dividers>
+        <StatusNotice message={err} severity="error" />
+        {loading ? (
+          <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+        ) : !hasQuestions ? (
+          <Box sx={{ py: 2 }}>
+            <Typography variant="body2" sx={{ color: TEXT, fontSize: '0.88rem', lineHeight: 1.5, mb: 1 }}>
+              This exam was created on the mobile app. No questions were added there yet.
+            </Typography>
+            <Typography variant="body2" sx={{ color: MUTED, fontSize: '0.82rem', lineHeight: 1.45 }}>
+              Add the item texts in ATLAS Mobile if you need them here. The answer key and scanned results still sync between web and mobile for this examination.
+            </Typography>
+          </Box>
+        ) : (
+          <Stack spacing={1.25} sx={{ py: 0.5 }}>
+            {questions.map(q => (
+              <Box key={q.item_number} sx={{ borderBottom: `1px solid ${BORDER}`, pb: 1 }}>
+                <Typography sx={{ fontSize: '0.8rem', fontWeight: 700, color: TEXT }}>
+                  {q.item_number}. {q.question_text}
+                </Typography>
+                {Array.isArray(q.choices) && q.choices.length > 0 && (
+                  <Typography sx={{ fontSize: '0.72rem', color: MUTED, mt: 0.35 }}>
+                    {q.choices.map((choice, idx) => `${String.fromCharCode(65 + idx)}. ${choice}`).join(' · ')}
+                  </Typography>
+                )}
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </DialogContent>
+      <DialogActions sx={{ px: 3, py: 1.5 }}>
+        <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Close</Button>
+        <Button
+          variant="contained"
+          onClick={onEditKey}
+          startIcon={<KeyIcon sx={{ fontSize: 16 }} />}
+          sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}
+        >
+          Edit Answer Key
+        </Button>
+      </DialogActions>
+    </Dialog>
   )
 }
 
@@ -922,19 +1097,42 @@ function CreateTemplateDialog({ courseId, assessments, onClose, onCreated }) {
 const BONUS_KEY = '*'
 
 function AnswerKeyDialog({ template, onClose, onSaved }) {
-  // initialise from existing key
-  const initKey = () => {
+  const isQuick = template.kind === 'quick'
+  const totalItems = Number(template.total_items || 0)
+  const numChoices = Number(template.num_choices || 4)
+
+  const buildKey = (source = {}) => {
     const k = {}
-    for (let i = 1; i <= template.total_items; i++) {
-      k[String(i)] = template.answer_key?.[String(i)] || ''
+    for (let i = 1; i <= totalItems; i++) {
+      k[String(i)] = source?.[String(i)] || ''
     }
     return k
   }
-  const [key, setKey] = useState(initKey)
+
+  const [key, setKey] = useState(() => buildKey(template.answer_key))
+  const [loading, setLoading] = useState(isQuick)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
-  const choices = Array.from({ length: template.num_choices }, (_, i) => String.fromCharCode(65 + i))
+  useEffect(() => {
+    if (!isQuick) return undefined
+    let alive = true
+    ;(async () => {
+      setLoading(true)
+      try {
+        const r = await api.get(`/grading/quick/exams/${template.exam_id}/`, { atlasCache: false })
+        if (!alive) return
+        setKey(buildKey(r.data?.exam?.answer_key || {}))
+      } catch (e) {
+        if (alive) setErr(extractApiError(e))
+      } finally {
+        if (alive) setLoading(false)
+      }
+    })()
+    return () => { alive = false }
+  }, [isQuick, template.exam_id, totalItems])
+
+  const choices = Array.from({ length: numChoices }, (_, i) => String.fromCharCode(65 + i))
 
   function setAnswer(itemNo, val) {
     setKey(p => ({ ...p, [String(itemNo)]: val }))
@@ -944,10 +1142,17 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
     setSaving(true)
     setErr('')
     try {
-      await api.post(
-        `/grading/bubble/templates/${template.template_id}/answer-key/`,
-        { answer_key: key }
-      )
+      if (isQuick) {
+        await api.post(
+          `/grading/quick/exams/${template.exam_id}/answer-key/`,
+          { answer_key: key }
+        )
+      } else {
+        await api.post(
+          `/grading/bubble/templates/${template.template_id}/answer-key/`,
+          { answer_key: key }
+        )
+      }
       onSaved()
     } catch (e) {
       setErr(extractApiError(e))
@@ -958,8 +1163,8 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
 
   // Items in chunks of 10 for the grid
   const rows = []
-  for (let i = 1; i <= template.total_items; i += 10) {
-    rows.push(Array.from({ length: Math.min(10, template.total_items - i + 1) }, (_, j) => i + j))
+  for (let i = 1; i <= totalItems; i += 10) {
+    rows.push(Array.from({ length: Math.min(10, totalItems - i + 1) }, (_, j) => i + j))
   }
 
   return (
@@ -969,62 +1174,68 @@ function AnswerKeyDialog({ template, onClose, onSaved }) {
       </DialogTitle>
       <DialogContent dividers>
         <StatusNotice message={err} severity="error" />
-        <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
-          Click the correct answer for each item. Items with no selection will be excluded from grading.
-          The star marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
-          Saving re-scores sheets that were already scanned.
-        </Typography>
-        <Stack spacing={0.75}>
-          {rows.map((rowItems, rIdx) => (
-            <Stack key={rIdx} direction="row" spacing={0.5} flexWrap="wrap">
-              {rowItems.map(itemNo => (
-                <Box key={itemNo} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1.5 }}>
-                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: MUTED }}>
-                    {itemNo}.
-                  </Typography>
-                  {choices.map(ch => (
-                    <Box
-                      key={ch}
-                      onClick={() => setAnswer(itemNo, ch)}
-                      sx={{
-                        width: 24, height: 24, borderRadius: '50%',
-                        border: `1.5px solid ${key[String(itemNo)] === ch ? MAROON : BORDER}`,
-                        bgcolor: key[String(itemNo)] === ch ? MAROON : 'transparent',
-                        color: key[String(itemNo)] === ch ? '#fff' : TEXT,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
-                        transition: 'all 0.12s',
-                        '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === ch ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
-                      }}
-                    >
-                      {ch}
+        {loading ? (
+          <LinearProgress sx={{ height: 3, borderRadius: 2, mb: 1.5, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+        ) : (
+          <>
+            <Typography variant="caption" sx={{ color: MUTED, fontSize: '0.75rem', display: 'block', mb: 1.5 }}>
+              Click the correct answer for each item. Items with no selection will be excluded from grading.
+              The star marks a bonus item — every paper gets the point, even blank or multi-shaded answers.
+              Saving re-scores sheets that were already scanned.
+            </Typography>
+            <Stack spacing={0.75}>
+              {rows.map((rowItems, rIdx) => (
+                <Stack key={rIdx} direction="row" spacing={0.5} flexWrap="wrap">
+                  {rowItems.map(itemNo => (
+                    <Box key={itemNo} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mr: 1.5 }}>
+                      <Typography sx={{ fontSize: '0.72rem', fontWeight: 600, minWidth: 24, color: MUTED }}>
+                        {itemNo}.
+                      </Typography>
+                      {choices.map(ch => (
+                        <Box
+                          key={ch}
+                          onClick={() => setAnswer(itemNo, ch)}
+                          sx={{
+                            width: 24, height: 24, borderRadius: '50%',
+                            border: `1.5px solid ${key[String(itemNo)] === ch ? MAROON : BORDER}`,
+                            bgcolor: key[String(itemNo)] === ch ? MAROON : 'transparent',
+                            color: key[String(itemNo)] === ch ? '#fff' : TEXT,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.68rem', fontWeight: 700, cursor: 'pointer',
+                            transition: 'all 0.12s',
+                            '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === ch ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
+                          }}
+                        >
+                          {ch}
+                        </Box>
+                      ))}
+                      <Box
+                        title="Bonus — every paper gets the point"
+                        onClick={() => setAnswer(itemNo, key[String(itemNo)] === BONUS_KEY ? '' : BONUS_KEY)}
+                        sx={{
+                          width: 24, height: 24, borderRadius: '50%',
+                          border: `1.5px solid ${key[String(itemNo)] === BONUS_KEY ? MAROON : BORDER}`,
+                          bgcolor: key[String(itemNo)] === BONUS_KEY ? MAROON : 'transparent',
+                          color: key[String(itemNo)] === BONUS_KEY ? '#fff' : MUTED,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
+                          transition: 'all 0.12s',
+                          '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === BONUS_KEY ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
+                        }}
+                      >
+                        <StarIcon sx={{ fontSize: 14 }} />
+                      </Box>
                     </Box>
                   ))}
-                  <Box
-                    title="Bonus — every paper gets the point"
-                    onClick={() => setAnswer(itemNo, key[String(itemNo)] === BONUS_KEY ? '' : BONUS_KEY)}
-                    sx={{
-                      width: 24, height: 24, borderRadius: '50%',
-                      border: `1.5px solid ${key[String(itemNo)] === BONUS_KEY ? MAROON : BORDER}`,
-                      bgcolor: key[String(itemNo)] === BONUS_KEY ? MAROON : 'transparent',
-                      color: key[String(itemNo)] === BONUS_KEY ? '#fff' : MUTED,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer',
-                      transition: 'all 0.12s',
-                      '&:hover': { borderColor: 'var(--brand-accent)', bgcolor: key[String(itemNo)] === BONUS_KEY ? 'var(--brand-primary-hover)' : MAROON_LIGHT },
-                    }}
-                  >
-                    <StarIcon sx={{ fontSize: 14 }} />
-                  </Box>
-                </Box>
+                </Stack>
               ))}
             </Stack>
-          ))}
-        </Stack>
+          </>
+        )}
       </DialogContent>
       <DialogActions sx={{ px: 3, py: 1.5 }}>
         <Button onClick={onClose} sx={{ textTransform: 'none', fontSize: '0.82rem' }}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} disabled={saving}
+        <Button variant="contained" onClick={handleSave} disabled={saving || loading}
           startIcon={saving && <CircularProgress size={14} sx={{ color: '#fff' }} />}
           sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontSize: '0.82rem' }}>
           Save Answer Key
@@ -1355,10 +1566,11 @@ function ResultsTab({ courseId, onDataSynced }) {
                     {exams.map(exam => (
                       <TableCell key={exam.exam_id} align="center" sx={{ bgcolor: BG, fontWeight: 700, fontSize: '0.72rem', py: 1 }}>
                         <Box sx={{ lineHeight: 1.25 }}>{exam.name}</Box>
-                        <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
-                          {exam.source === 'mobile' ? 'Mobile' : 'Web'}
-                          {exam.max_score ? ` · ${exam.max_score}` : ''}
-                        </Box>
+                        {exam.max_score ? (
+                          <Box sx={{ fontWeight: 500, fontSize: '0.62rem', color: MUTED, mt: 0.25 }}>
+                            {exam.max_score} items
+                          </Box>
+                        ) : null}
                       </TableCell>
                     ))}
                     {exams.length === 0 && (

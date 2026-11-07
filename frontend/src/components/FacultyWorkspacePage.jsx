@@ -2436,6 +2436,10 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
   })
   const [selectedAssessment, setSelectedAssessment] = useState(null)
   const [assessmentDetail, setAssessmentDetail] = useState(null)
+  const [mobileMajorExams, setMobileMajorExams] = useState([])
+  const [mobileExamViewer, setMobileExamViewer] = useState(null) // loaded quick exam detail or stub
+  const [mobileExamViewerLoading, setMobileExamViewerLoading] = useState(false)
+  const [mobileExamViewerError, setMobileExamViewerError] = useState('')
   const [assessmentExporting, setAssessmentExporting] = useState(false)
   const [exportMenuAnchor, setExportMenuAnchor] = useState(null)
   const [copiedAssessmentId, setCopiedAssessmentId] = useState('')
@@ -3625,6 +3629,36 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
     return () => clearTimeout(timer)
   }, [docsIndexing, docsApi.data, docsUrl])
   const course = workspaceApi.data?.course
+
+  useEffect(() => {
+    if (!courseId) {
+      setMobileMajorExams([])
+      return undefined
+    }
+    let alive = true
+    api.get(`/grading/quick/exams/?course_id=${courseId}`, { atlasCache: false })
+      .then(({ data }) => {
+        if (alive) setMobileMajorExams(data?.exams || [])
+      })
+      .catch(() => {
+        if (alive) setMobileMajorExams([])
+      })
+    return () => { alive = false }
+  }, [courseId, workspaceApi.data?.assessments])
+
+  async function handleOpenMobileMajorExam(examSummary) {
+    setMobileExamViewerLoading(true)
+    setMobileExamViewerError('')
+    setMobileExamViewer({ ...examSummary, questions: null })
+    try {
+      const { data } = await api.get(`/grading/quick/exams/${examSummary.exam_id}/`, { atlasCache: false })
+      setMobileExamViewer(data?.exam || examSummary)
+    } catch (err) {
+      setMobileExamViewerError(extractApiError(err))
+    } finally {
+      setMobileExamViewerLoading(false)
+    }
+  }
 
   // Run the walkthrough once per browser; the header keeps a restart button.
   useEffect(() => {
@@ -9719,16 +9753,63 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
               </DialogActions>
             </Dialog>
 
-            {assessments.length === 0 ? (
+            {assessments.length === 0 && mobileMajorExams.length === 0 ? (
               <Box sx={{ textAlign: 'center', py: 6 }}>
                 <AssignmentIcon sx={{ fontSize: 44, color: '#ddd', display: 'block', mx: 'auto', mb: 1.5 }} />
                 <Typography variant="body2" sx={{ color: 'var(--workspace-muted)', mb: 0.5 }}>No assessments yet.</Typography>
                 <Typography variant="caption" sx={{ color: '#ccc' }}>
-                  Click Create Assessment to build items from the selected TOS exam.
+                  Click Create Assessment to build items from the selected TOS exam, or create a major examination in ATLAS Mobile.
                 </Typography>
               </Box>
             ) : (
               <Stack spacing={0.75}>
+                {mobileMajorExams.map(exam => (
+                  <Box
+                    key={`mobile-${exam.exam_id}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleOpenMobileMajorExam(exam)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleOpenMobileMajorExam(exam)
+                      }
+                    }}
+                    sx={{
+                      display: 'flex',
+                      gap: 1,
+                      alignItems: 'center',
+                      px: 1.75,
+                      py: 1.1,
+                      bgcolor: 'var(--workspace-panel)',
+                      borderRadius: 1.5,
+                      border: '1px solid var(--workspace-border)',
+                      cursor: 'pointer',
+                      userSelect: 'none',
+                      '&:hover': { borderColor: 'color-mix(in srgb, var(--brand-primary) 53%, transparent)', bgcolor: 'var(--brand-soft)' },
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ color: 'var(--workspace-text)', flex: 1, fontWeight: 500, textTransform: 'uppercase' }}>
+                      {exam.name}
+                    </Typography>
+                    <Chip
+                      label={`${exam.total_items || 0} items`}
+                      size="small"
+                      sx={{ height: 18, fontSize: '0.65rem', color: 'var(--workspace-text)', bgcolor: 'var(--workspace-hover)', border: '1px solid var(--workspace-border)' }}
+                    />
+                    <Chip
+                      label={exam.has_questions ? 'Questions' : 'No questions yet'}
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: '0.65rem',
+                        fontWeight: 700,
+                        color: exam.has_questions ? '#166534' : '#9A3412',
+                        bgcolor: exam.has_questions ? 'rgba(22,163,74,0.15)' : 'rgba(251,146,60,0.16)',
+                      }}
+                    />
+                  </Box>
+                ))}
                 {assessments.map(a => (
                   <Box
                     key={a.assessment_id}
@@ -10463,6 +10544,82 @@ export default function FacultyWorkspacePage({ activeTab: initialTab = 'syllabus
         }
         onApply={applyGeneratedTos}
       />
+      <Dialog
+        open={Boolean(mobileExamViewer)}
+        onClose={() => {
+          setMobileExamViewer(null)
+          setMobileExamViewerError('')
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ fontWeight: 700, fontSize: '1rem', color: MAROON }}>
+          {mobileExamViewer?.name || 'Major Examination'}
+        </DialogTitle>
+        <DialogContent dividers>
+          {mobileExamViewerError ? (
+            <Alert severity="error" sx={{ mb: 1.5 }}>{mobileExamViewerError}</Alert>
+          ) : null}
+          {mobileExamViewerLoading ? (
+            <LinearProgress sx={{ height: 3, borderRadius: 2, '& .MuiLinearProgress-bar': { bgcolor: MAROON } }} />
+          ) : (() => {
+            const questions = Array.isArray(mobileExamViewer?.questions) ? mobileExamViewer.questions : []
+            const hasQuestions = questions.some(q => String(q?.question_text || '').trim())
+            if (!hasQuestions) {
+              return (
+                <Box sx={{ py: 1 }}>
+                  <Typography variant="body2" sx={{ color: 'var(--workspace-text)', mb: 1, lineHeight: 1.5 }}>
+                    This exam was created on the mobile app. No questions were added there yet.
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--workspace-muted)', lineHeight: 1.45 }}>
+                    Add the item texts in ATLAS Mobile if you need them here. You can still edit the answer key and review synced results under Scoring.
+                  </Typography>
+                </Box>
+              )
+            }
+            return (
+              <Stack spacing={1.25}>
+                {questions.map(q => (
+                  <Box key={q.item_number} sx={{ borderBottom: '1px solid var(--workspace-border)', pb: 1 }}>
+                    <Typography sx={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                      {q.item_number}. {q.question_text}
+                    </Typography>
+                    {Array.isArray(q.choices) && q.choices.length > 0 && (
+                      <Typography sx={{ fontSize: '0.75rem', color: 'var(--workspace-muted)', mt: 0.35 }}>
+                        {q.choices.map((choice, idx) => `${String.fromCharCode(65 + idx)}. ${choice}`).join(' · ')}
+                      </Typography>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            )
+          })()}
+        </DialogContent>
+        <DialogActions sx={{ px: 2, pb: 2, gap: 1 }}>
+          <Button
+            size="small"
+            onClick={() => {
+              setMobileExamViewer(null)
+              setMobileExamViewerError('')
+            }}
+            sx={{ textTransform: 'none', color: '#666' }}
+          >
+            Close
+          </Button>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={() => {
+              setMobileExamViewer(null)
+              setMobileExamViewerError('')
+              setActiveTab('grading')
+            }}
+            sx={{ bgcolor: MAROON, '&:hover': { bgcolor: 'var(--brand-primary-hover)' }, textTransform: 'none', fontWeight: 600 }}
+          >
+            Open Scoring
+          </Button>
+        </DialogActions>
+      </Dialog>
       <Dialog open={Boolean(confirmDeleteAssessmentId)} onClose={() => setConfirmDeleteAssessmentId(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ fontSize: '1rem', fontWeight: 700, color: '#c62828' }}>Delete Assessment?</DialogTitle>
         <DialogContent>

@@ -22,9 +22,48 @@ from statistics import mean, median, pstdev
 
 from django.db.models import Q
 
-from apps.grading.models import BubbleSheetScan, BubbleSheetTemplate
+from apps.grading.models import BubbleSheetScan, BubbleSheetTemplate, QuickExam, QuickExamScan
 from apps.grading.services.omr_core import is_correct
 from apps.integrations.models import AssessmentItem, Block
+
+
+def quick_exam_filter_id(exam_id) -> str:
+    return f"qx:{exam_id}"
+
+
+def is_quick_exam_filter_id(value) -> bool:
+    text = str(value or "")
+    return text.startswith("qx:") and len(text) > 3
+
+
+def quick_exam_id_from_filter(value):
+    if not is_quick_exam_filter_id(value):
+        return None
+    return str(value)[3:]
+
+
+class QuickExamShell:
+    """Duck-types as BubbleSheetTemplate so shared analytics helpers can include mobile exams."""
+
+    def __init__(self, exam: QuickExam, course):
+        self.exam = exam
+        self.template_id = quick_exam_filter_id(exam.exam_id)
+        self.assessment_id = self.template_id
+        self.name = exam.name
+        self.total_items = exam.total_items
+        self.num_choices = exam.num_choices
+        self.answer_key = exam.answer_key or {}
+        self.passing_score = exam.passing_score
+        self.course_id = course.pk
+        self.course = course
+        self.assessment = type("AssessmentRef", (), {"title": exam.name})()
+        self.has_questions = bool(exam.questions)
+        self.questions = exam.questions or []
+        self.is_quick_exam = True
+
+    @property
+    def exam_id(self):
+        return self.exam.exam_id
 
 UNASSIGNED = "Unassigned"
 DEFAULT_PASSING_PERCENT = 50.0
@@ -71,7 +110,7 @@ def _to_float(value, default=None):
         return default
 
 
-def _answer_key(template: BubbleSheetTemplate) -> dict[int, str]:
+def _answer_key(template) -> dict[int, str]:
     key = {}
     for k, v in (template.answer_key or {}).items():
         try:
@@ -143,43 +182,116 @@ def block_section(block) -> str:
     return (block.section_name.strip() if block else "") or UNASSIGNED
 
 
+def _record_from_scan(*, template, scan_id, student_identifier, score_raw, max_score,
+                      score_percent, flagged, responses, scanned_at, blocks) -> dict:
+    sid = normalize_student_id(student_identifier)
+    block = blocks.get(sid)
+    max_val = _to_float(max_score) or float(getattr(template, "total_items", 0) or 0)
+    raw = _to_float(score_raw, 0.0)
+    percent = _to_float(score_percent)
+    if percent is None:
+        percent = (raw / max_val * 100) if max_val else 0.0
+    passing = _to_float(getattr(template, "passing_score", None), DEFAULT_PASSING_PERCENT)
+    return {
+        "scan_id": str(scan_id),
+        "template": template,
+        "student_id": sid,
+        "identified": is_valid_student_id(sid),
+        "grade_level": block_grade(block),
+        "section": block_section(block),
+        "score": raw,
+        "max_score": max_val,
+        "percent": round(percent, 2),
+        "passing_percent": passing,
+        "passed": percent >= passing,
+        "flagged": bool(flagged),
+        "responses": responses or {},
+        "scanned_at": scanned_at,
+    }
+
+
 def build_records(templates, identified_only=True) -> list[dict]:
     """One flat record per graded paper, enriched with block + passing info."""
-    templates = list(templates)
+    templates = [t for t in templates if not getattr(t, "is_quick_exam", False)]
     by_id = {t.template_id: t for t in templates}
     scans = latest_scans(templates)
     if identified_only:
         scans = [s for s in scans if is_valid_student_id(s.student_identifier)]
     blocks = blocks_for(s.student_identifier for s in scans)
 
+    return [
+        _record_from_scan(
+            template=by_id[scan.template_id],
+            scan_id=scan.scan_id,
+            student_identifier=scan.student_identifier,
+            score_raw=scan.score_raw,
+            max_score=scan.max_score,
+            score_percent=scan.score_percent,
+            flagged=scan.is_flagged,
+            responses=scan.responses,
+            scanned_at=scan.created_at,
+            blocks=blocks,
+        )
+        for scan in scans
+    ]
+
+
+def latest_quick_scans(shells: list[QuickExamShell]) -> list[QuickExamScan]:
+    """Latest QuickExam scan per (exam, student)."""
+    exam_ids = [s.exam_id for s in shells]
+    if not exam_ids:
+        return []
+    latest: dict[tuple, QuickExamScan] = {}
+    scans = QuickExamScan.objects.filter(exam_id__in=exam_ids).order_by("created_at")
+    for scan in scans:
+        sid = normalize_student_id(scan.student_identifier)
+        key = (scan.exam_id, sid) if sid else (scan.exam_id, str(scan.scan_id))
+        latest[key] = scan
+    return list(latest.values())
+
+
+def build_quick_records(shells, identified_only=True) -> list[dict]:
+    shells = list(shells)
+    by_exam = {s.exam_id: s for s in shells}
+    scans = latest_quick_scans(shells)
+    if identified_only:
+        scans = [s for s in scans if is_valid_student_id(s.student_identifier)]
+    blocks = blocks_for(s.student_identifier for s in scans)
     records = []
     for scan in scans:
-        template = by_id[scan.template_id]
-        sid = normalize_student_id(scan.student_identifier)
-        block = blocks.get(sid)
-        max_score = _to_float(scan.max_score) or float(template.total_items or 0)
-        score_raw = _to_float(scan.score_raw, 0.0)
-        percent = _to_float(scan.score_percent)
-        if percent is None:
-            percent = (score_raw / max_score * 100) if max_score else 0.0
-        passing = _to_float(template.passing_score, DEFAULT_PASSING_PERCENT)
-        records.append({
-            "scan_id": str(scan.scan_id),
-            "template": template,
-            "student_id": sid,
-            "identified": is_valid_student_id(sid),
-            "grade_level": block_grade(block),
-            "section": block_section(block),
-            "score": score_raw,
-            "max_score": max_score,
-            "percent": round(percent, 2),
-            "passing_percent": passing,
-            "passed": percent >= passing,
-            "flagged": bool(scan.is_flagged),
-            "responses": scan.responses or {},
-            "scanned_at": scan.created_at,
-        })
+        shell = by_exam.get(scan.exam_id)
+        if shell is None:
+            continue
+        records.append(_record_from_scan(
+            template=shell,
+            scan_id=scan.scan_id,
+            student_identifier=scan.student_identifier,
+            score_raw=scan.score_raw,
+            max_score=scan.max_score,
+            score_percent=scan.score_percent,
+            flagged=scan.is_flagged,
+            responses=scan.responses,
+            scanned_at=scan.created_at,
+            blocks=blocks,
+        ))
     return records
+
+
+def quick_exam_item_meta(shell: QuickExamShell) -> dict[int, dict]:
+    """Question text for item analysis; Bloom is never set on mobile major exams."""
+    out: dict[int, dict] = {}
+    for row in shell.questions or []:
+        if not isinstance(row, dict):
+            continue
+        try:
+            number = int(row.get("item_number"))
+        except (TypeError, ValueError):
+            continue
+        text = str(row.get("question_text") or "").strip()
+        if not text:
+            continue
+        out[number] = {"bloom": None, "question": text}
+    return out
 
 
 def filter_records(records, grade_level=None, section=None):
@@ -412,7 +524,7 @@ def reliability_label(kr20: float | None) -> str:
     return "Questionable"
 
 
-def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, dict] | None = None) -> dict:
+def item_analysis(records, template, item_meta: dict[int, dict] | None = None) -> dict:
     item_meta = item_meta or {}
     key = _answer_key(template)
     choices = [chr(ord("A") + i) for i in range(max(2, min(template.num_choices or 4, 5)))]
@@ -425,6 +537,16 @@ def item_analysis(records, template: BubbleSheetTemplate, item_meta: dict[int, d
         "choices": choices,
         "keyed_items": len(key),
     }
+    if getattr(template, "is_quick_exam", False) and not quick_exam_item_meta(template):
+        return {
+            **base,
+            "available": False,
+            "reason": (
+                "Item analysis for this examination needs the question texts. "
+                "Add them in ATLAS Mobile, then refresh analytics."
+            ),
+            "items": [],
+        }
     if not key:
         return {**base, "available": False, "reason": "This exam has no answer key yet.", "items": []}
     if n_total < 2:
