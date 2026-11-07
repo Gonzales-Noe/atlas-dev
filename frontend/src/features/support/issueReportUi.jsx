@@ -5,7 +5,7 @@ import {
   DialogContent, DialogTitle, Divider, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material'
 import useMediaQuery from '@mui/material/useMediaQuery'
-import BugReportIcon from '@mui/icons-material/BugReport'
+import FeedbackIcon from '@mui/icons-material/Feedback'
 import DoneAllIcon from '@mui/icons-material/DoneAll'
 import GridViewIcon from '@mui/icons-material/GridView'
 import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
@@ -679,7 +679,7 @@ function ReportCard({ row, index, layout, forFaculty, onOpen }) {
             '&:last-child': { pb: 1.25 },
           }}
           >
-            <BugReportIcon sx={{ fontSize: 18, color: accent, flexShrink: 0 }} />
+            <FeedbackIcon sx={{ fontSize: 18, color: accent, flexShrink: 0 }} />
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, flex: 1, minWidth: 0 }}>
               <Typography component="span" noWrap sx={{ color: 'var(--text-primary)', fontWeight: 700, fontSize: '0.84rem', lineHeight: 1 }}>
                 {title.length > 72 ? `${title.slice(0, 69)}…` : title}
@@ -697,14 +697,16 @@ function ReportCard({ row, index, layout, forFaculty, onOpen }) {
               {meta}
             </Typography>
             <Typography component="span" sx={{
-              width: 140,
+              flex: '1 1 0',
+              minWidth: 0,
               textAlign: 'right',
               color: 'var(--text-secondary)',
               fontSize: '0.75rem',
               fontWeight: 500,
               lineHeight: 1,
               whiteSpace: 'nowrap',
-              flexShrink: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
             }}
             >
               {subtitle}
@@ -754,7 +756,7 @@ function ReportCard({ row, index, layout, forFaculty, onOpen }) {
             background: 'rgba(226,75,74,0.1)',
           }}
           >
-            <BugReportIcon sx={{ color: accent }} />
+            <FeedbackIcon sx={{ color: accent }} />
           </Box>
           <Typography sx={{
             color: resolved ? '#15803d' : '#E24B4A',
