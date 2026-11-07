@@ -29,7 +29,7 @@ PY
 exec gunicorn atlas.wsgi:application \
   --bind "0.0.0.0:${PORT:-10000}" \
   --workers "${WEB_CONCURRENCY:-1}" \
-  --timeout 300 \
+  --timeout 600 \
   --graceful-timeout 120 \
   --access-logfile - \
   --error-logfile -

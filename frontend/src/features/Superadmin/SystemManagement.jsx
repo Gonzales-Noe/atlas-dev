@@ -133,6 +133,13 @@ export default function SystemManagement() {
       setError('Choose an APK file to publish.')
       return
     }
+    const sizeMb = mobileFile.size / (1024 * 1024)
+    if (sizeMb > 55) {
+      setError(
+        `This APK is ${sizeMb.toFixed(0)} MB. Uploads over ~55 MB get cut off by the host. Build a smaller install with: flutter build apk --release --split-per-abi (use the arm64-v8a file), then try again.`,
+      )
+      return
+    }
     setMobilePublishing(true)
     setNotice('')
     setError('')
@@ -145,13 +152,18 @@ export default function SystemManagement() {
       const { data } = await api.post('/auth/mobile-app/', form, {
         headers: { 'Content-Type': undefined },
         timeout: 600000,
+        skipAtlasErrorCard: true,
       })
       setMobileRelease(data || null)
       setMobileFile(null)
       setNotice(`ATLAS Mobile ${data?.version_name || ''} is live. Faculty were notified.`)
       loadMobileRelease()
     } catch (err) {
-      setError(err.response?.data?.detail || 'The APK could not be published.')
+      const detail = err.response?.data?.detail
+      if (detail) setError(detail)
+      else if (err.code === 'ECONNABORTED') setError('The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.')
+      else if (!err.response) setError('The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.')
+      else setError('The APK could not be published.')
     } finally {
       setMobilePublishing(false)
     }
@@ -437,6 +449,7 @@ export default function SystemManagement() {
       <GlassCard title="ATLAS Mobile release" style={{ marginBottom: 16 }}>
         <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
           Upload a new APK to replace the faculty download. Every publish notifies all faculty with the version notes.
+          Prefer a split build under ~55 MB (`flutter build apk --release --split-per-abi`, usually the arm64-v8a file).
         </p>
         <div style={{ display: 'grid', gap: 10, fontSize: '0.9rem', marginBottom: 14 }}>
           {[
