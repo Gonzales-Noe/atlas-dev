@@ -95,7 +95,7 @@ export function StatCard({ title, value, sub, icon, trend, trendUp, accent = '#E
 }
 
 // ── Glass card ────────────────────────────────────────────────────────────────
-export function GlassCard({ children, style = {}, title, titleAction }) {
+export function GlassCard({ children, style = {}, title, titleAction, fill = false }) {
   return (
     <div style={{
       background: 'var(--bg-card)',
@@ -105,6 +105,7 @@ export function GlassCard({ children, style = {}, title, titleAction }) {
       WebkitBackdropFilter: 'blur(16px)',
       boxShadow: 'var(--shadow-card)',
       overflow: 'hidden',
+      ...(fill ? { display: 'flex', flexDirection: 'column', minHeight: 0 } : {}),
       ...style,
     }}>
       {title && (
@@ -112,12 +113,16 @@ export function GlassCard({ children, style = {}, title, titleAction }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '18px 22px 0',
           marginBottom: 16,
+          flexShrink: 0,
         }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{title}</h3>
           {titleAction}
         </div>
       )}
-      <div style={{ padding: title ? '0 22px 20px' : 22 }}>
+      <div style={{
+        padding: title ? '0 22px 20px' : 22,
+        ...(fill ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : {}),
+      }}>
         {children}
       </div>
     </div>
