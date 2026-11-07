@@ -40,7 +40,15 @@ function MaintenanceScreen({ message, onSignOut }) {
         <img
           src={atlasMaintenance}
           alt="ATLAS holding a wrench and toolbox"
-          style={{ width: 180, height: 220, objectFit: 'contain', imageRendering: 'pixelated' }}
+          style={{
+            display: 'block',
+            margin: '0 auto',
+            width: 180,
+            height: 220,
+            objectFit: 'contain',
+            imageRendering: 'pixelated',
+            transform: 'translateX(6px)',
+          }}
         />
         <p style={{ letterSpacing: '0.14em', fontSize: '0.75rem', fontWeight: 700, color: 'var(--brand-primary, #AA2423)', marginBottom: 0 }}>
           MAINTENANCE
@@ -111,7 +119,15 @@ export default function MaintenanceGate({ children }) {
   const upcoming = !blocked && noticeIsUpcoming(theme)
 
   if (blocked) {
-    return <MaintenanceScreen message={theme.maintenance_message} onSignOut={logout} />
+    return (
+      <MaintenanceScreen
+        message={theme.maintenance_message}
+        onSignOut={() => {
+          logout()
+          window.location.assign('/')
+        }}
+      />
+    )
   }
 
   const notice = upcoming
