@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../store/authStore'
-import api from '../config/api'
 import { loadBrandTheme } from '../utils/brandTheme'
 import { MaintenanceNoticeProvider } from './MaintenanceNotice'
 import atlasMaintenance from '../assets/atlas-maintenance.png'
@@ -14,18 +13,6 @@ function noticeIsUpcoming(theme) {
 }
 
 function MaintenanceScreen({ message, onSignOut }) {
-  const [notices, setNotices] = useState([])
-
-  useEffect(() => {
-    let mounted = true
-    api.get('/auth/notifications/', { atlasCache: false, skipAtlasErrorCard: true })
-      .then(({ data }) => {
-        if (mounted) setNotices((data?.notifications || []).slice(0, 4))
-      })
-      .catch(() => {})
-    return () => { mounted = false }
-  }, [])
-
   return (
     <main style={{
       minHeight: '100vh',
@@ -57,24 +44,6 @@ function MaintenanceScreen({ message, onSignOut }) {
         <p style={{ color: 'var(--text-secondary, rgba(0,0,0,0.62))', lineHeight: 1.5 }}>
           {message || 'The IT team is performing maintenance. Please try again shortly.'}
         </p>
-        {notices.length > 0 && (
-          <div style={{ marginTop: 18, textAlign: 'left' }}>
-            {notices.map((item) => (
-              <div key={item.id} style={{
-                background: 'var(--bg-surface, #fff)',
-                border: '1px solid var(--border-color, rgba(0,0,0,0.08))',
-                borderRadius: 12,
-                padding: '10px 12px',
-                marginBottom: 8,
-              }}>
-                <div style={{ fontWeight: 800, fontSize: '0.84rem' }}>{item.title}</div>
-                {item.body && (
-                  <div style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>{item.body}</div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
         <button
           type="button"
           onClick={onSignOut}

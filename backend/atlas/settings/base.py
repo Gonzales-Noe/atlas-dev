@@ -146,6 +146,10 @@ STATIC_URL = '/static/'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# ATLAS Mobile APK publishes can reach ~112MB; nginx allows 150MB.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 157286400
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
+
 # ── Encryption at rest (AES-256-GCM) ─────────────────────────────────────────
 # Comma-separated 256-bit keys (base64url or 64-char hex). The FIRST key encrypts new
 # data; the rest are kept only to read older data while rotating.

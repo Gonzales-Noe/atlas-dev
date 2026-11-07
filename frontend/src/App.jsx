@@ -26,6 +26,7 @@ const AdminSyllabusFormat = lazy(() => import('./features/roles/Admin/SyllabusFo
 const AdminKnowledgeBase = lazy(() => import('./features/roles/Admin/KnowledgeBased.jsx'))
 const IssueReports = lazy(() => import('./features/support/IssueReports.jsx'))
 const FacultyIssueReports = lazy(() => import('./features/roles/Faculty/FacultyIssueReports.jsx'))
+const FacultyAtlasMobile = lazy(() => import('./features/roles/Faculty/FacultyAtlasMobile.jsx'))
 const BillingOnboarding = lazy(() => import('./pages/billing/BillingOnboarding.jsx'))
 const LegalPage = lazy(() => import('./pages/legal/LegalPage.jsx'))
 
@@ -206,6 +207,14 @@ function App() {
           element={
             <ProtectedRoute role="faculty">
               <FacultyIssueReports />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={ROUTES.FACULTY.ATLAS_MOBILE}
+          element={
+            <ProtectedRoute role="faculty">
+              <FacultyAtlasMobile />
             </ProtectedRoute>
           }
         />

@@ -24,6 +24,7 @@ export const ROUTES = {
     GRADING:     '/faculty/grading',
     ANALYTICS:   '/faculty/analytics',
     ISSUE_REPORTS: '/faculty/issue-reports',
+    ATLAS_MOBILE: '/faculty/atlas-mobile',
   },
 
   // Admin (Tenant Admin — per HEI)

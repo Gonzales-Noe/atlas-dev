@@ -6,6 +6,7 @@ from .notification_views import (
     PushKeyView,
     PushSubscribeView,
 )
+from .mobile_app_views import MobileAppDownloadView, MobileAppView
 from .platform_views import (
     MaintenanceScheduleView,
     PlatformAuditDetailView,
@@ -72,6 +73,8 @@ urlpatterns = [
     path('faculty/', FacultyCreateView.as_view(), name='faculty_create'),
     path('dashboard/summary/', DashboardSummaryView.as_view(), name='dashboard_summary'),
     path('platform-theme/', PlatformThemeView.as_view(), name='platform_theme'),
+    path('mobile-app/', MobileAppView.as_view(), name='mobile_app'),
+    path('mobile-app/download/', MobileAppDownloadView.as_view(), name='mobile_app_download'),
     path('maintenance-schedules/', MaintenanceScheduleView.as_view(), name='maintenance_schedules'),
     path('maintenance-schedules/<uuid:schedule_id>/', MaintenanceScheduleView.as_view(), name='maintenance_schedule_detail'),
     path('system-health/', SystemHealthView.as_view(), name='system_health'),
