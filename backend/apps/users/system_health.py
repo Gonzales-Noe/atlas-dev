@@ -564,13 +564,14 @@ def _history():
     ]
 
 
-def activity_by_day(days=14):
+def activity_by_day(days=14, queryset=None):
     days = max(1, min(int(days), 31))
     today = timezone.localdate()
     start = today - timedelta(days=days - 1)
     grouped = {}
+    base = queryset if queryset is not None else AuditLog.objects.all()
     rows = (
-        AuditLog.objects.filter(timestamp__date__gte=start)
+        base.filter(timestamp__date__gte=start)
         .annotate(day=TruncDate('timestamp'))
         .values('day')
         .annotate(total=Count('log_id'))

@@ -9,6 +9,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import indexing, rag_service
+from .audit import parse_view_reason, sanitize_audit_details
 from .document_processor import DocumentProcessor
 from .llm_service import LLMService
 from .traffic import concurrent_snapshot
@@ -578,17 +579,21 @@ def _admin_detail_value(value):
     return text
 
 
-def _admin_audit_summary(log):
+def _admin_audit_summary(log, *, disclose_identity=False):
     details = log.details if isinstance(log.details, dict) else {}
     action = log.action_type or ""
     course = " — ".join(part for part in [details.get("course_code"), details.get("course_title")] if part)
     if action == "faculty_account_created":
-        who = details.get("faculty_name") or details.get("faculty_email")
-        return f"{who} was added as faculty." if who else "A faculty account was created."
+        if disclose_identity:
+            who = details.get("faculty_name") or details.get("faculty_email")
+            return f"{who} was added as faculty." if who else "A faculty account was created."
+        return "A faculty account was created."
     if action == "course_assigned":
-        who = f" to {details['faculty_email']}" if details.get("faculty_email") else ""
-        section = f" in {details['section']}" if details.get("section") else ""
-        return f"{course} was assigned{who}{section}." if course else "A course was assigned."
+        if disclose_identity:
+            who = f" to {details['faculty_email']}" if details.get("faculty_email") else ""
+            section = f" in {details['section']}" if details.get("section") else ""
+            return f"{course} was assigned{who}{section}." if course else "A course was assigned."
+        return f"{course} was assigned." if course else "A course was assigned."
     if action == "course_request_submitted":
         return f"{course} was submitted for review." if course else "A course request was submitted."
     if action == "course_request_approved":
@@ -596,12 +601,16 @@ def _admin_audit_summary(log):
     if action == "assessment_approved":
         return "An assessment was approved."
     if action in {"account_deactivated", "account_reactivated"}:
-        who = details.get("account_name") or details.get("account_email") or "An account"
         verb = "reactivated" if action.endswith("reactivated") else "suspended"
-        return f"{who} was {verb}."
+        if disclose_identity:
+            who = details.get("account_name") or details.get("account_email") or "An account"
+            return f"{who} was {verb}."
+        return f"An account was {verb}."
     if action == "account_deleted":
-        who = details.get("deleted_name") or details.get("deleted_email") or "An account"
-        return f"{who} was deleted."
+        if disclose_identity:
+            who = details.get("deleted_name") or details.get("deleted_email") or "An account"
+            return f"{who} was deleted."
+        return "An account was deleted."
     if action in {"institution_deactivated", "institution_reactivated"}:
         name = details.get("institution_name") or "The institution"
         verb = "reactivated" if action.endswith("reactivated") else "suspended"
@@ -611,13 +620,20 @@ def _admin_audit_summary(log):
         return f"{name} was deleted."
     if action == "admin_document_upload":
         return "A document was uploaded."
+    if action == "audit_log_viewed":
+        return "An audit log detail was opened."
+
+    if not disclose_identity:
+        label = action.replace("_", " ").strip()
+        pretty = label[:1].upper() + label[1:] if label else "An activity"
+        return f"{pretty}."
 
     phrases = []
     for key, value in details.items():
         lowered = str(key).lower()
         if lowered.endswith("_id") or any(marker in lowered for marker in _HIDDEN_DETAIL_MARKERS):
             continue
-        if lowered in {"changes", "faculty_email", "faculty_name", "course_code", "course_title"}:
+        if lowered in {"changes", "faculty_email", "faculty_name", "course_code", "course_title", "allocation_note"}:
             continue
         shown = _admin_detail_value(value)
         if not shown or isinstance(value, (dict, list)):
@@ -715,6 +731,74 @@ def list_audit_logs(request):
     }
     _cache_set(cache_key, payload, _AUDIT_CACHE_SECONDS)
     return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def view_audit_log(request, log_id):
+    """Reason-gated audit detail for institution admins; records audit_log_viewed."""
+    if not _is_admin_user(request):
+        return _forbidden_admin_only_response()
+    if not request.user.institution_id:
+        return Response(
+            {"success": False, "detail": "Your account is not set up yet."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    reason, error = parse_view_reason(request.data)
+    if error:
+        return Response({"success": False, "detail": error}, status=status.HTTP_400_BAD_REQUEST)
+
+    log = (
+        AuditLog.objects
+        .select_related("user")
+        .filter(log_id=log_id, user__institution_id=request.user.institution_id)
+        .exclude(
+            Q(user__role__in=[UserRole.SUPERADMIN, "superadmin"])
+            | Q(action_type__in=[
+                "maintenance_mode_changed",
+                "platform_theme_updated",
+                "platform_settings_updated",
+            ])
+        )
+        .first()
+    )
+    if log is None:
+        return Response(
+            {"success": False, "detail": "Audit record not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+    viewed_user = ""
+    if log.user_id and log.user:
+        viewed_user = log.user.full_name or log.user.email or ""
+    AuditLog.objects.create(
+        user=request.user,
+        action_type="audit_log_viewed",
+        resource_type="AuditLog",
+        resource_id=log.log_id,
+        details={
+            "reason": reason,
+            "viewed_action": log.action_type or "",
+            "viewed_user": viewed_user,
+        },
+    )
+    return Response({
+        "success": True,
+        "log": {
+            "log_id": str(log.log_id),
+            "timestamp": log.timestamp,
+            "user": (
+                log.user.full_name or log.user.email
+                if log.user_id else "Unknown user"
+            ),
+            "action": log.action_type,
+            "resource_type": _admin_resource_label(log.resource_type),
+            "summary_resource": _admin_resource_label(log.resource_type),
+            "summary": _admin_audit_summary(log, disclose_identity=True),
+            "details": sanitize_audit_details(log.details or {}),
+        },
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(["POST"])

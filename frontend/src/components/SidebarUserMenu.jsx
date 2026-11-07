@@ -5,9 +5,11 @@
 // The name card opens one centered dialog for profile, appearance, and preferences.
 
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import LogoutIcon from '@mui/icons-material/Logout'
 import InstallAppButton from './InstallAppButton'
+import { ROUTES } from '../config/route'
 import { isStandaloneDisplay, subscribeInstallPrompt } from '../utils/pwaInstall'
 import { StatusNotice } from './StatusNotice'
 import Box from '@mui/material/Box'
@@ -582,6 +584,13 @@ export default function SidebarUserMenu({
                 />
                 <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 0.5 }}>
                   Remember the sidebar width for this account across dashboard pages.
+                </Typography>
+                <Divider sx={{ borderColor: 'var(--shell-divider)', mt: 1.5 }} />
+                <Typography variant="caption" sx={{ color: 'var(--text-tertiary)', display: 'block', mt: 1.5, lineHeight: 1.45 }}>
+                  Administrative actions are logged for security and support.{' '}
+                  <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: 'var(--brand-accent)', fontWeight: 600 }}>
+                    Privacy Policy
+                  </Link>
                 </Typography>
                 {!appInstalled && (
                   <>

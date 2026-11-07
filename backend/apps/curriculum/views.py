@@ -4292,7 +4292,7 @@ def approve_assessment(request, assessment_id):
             resource_id=assessment.assessment_id,
             details={
                 'override_count': len(report['approval']['notes']),
-                'allocation_note': allocation_note,
+                'has_allocation_note': bool(str(allocation_note or '').strip()),
             },
         )
     except Exception:

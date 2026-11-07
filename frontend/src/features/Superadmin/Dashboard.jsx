@@ -76,6 +76,20 @@ export default function SuperAdminDashboard() {
 
       <StatusNotice message={error} severity="error" />
 
+      <div style={{
+        marginBottom: 14,
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border-color)',
+        background: 'var(--bg-card)',
+        color: 'var(--text-secondary)',
+        fontSize: '0.84rem',
+        lineHeight: 1.45,
+      }}>
+        Keep Superadmin limited to system owners who run platform maintenance.
+        Campus IT should use Admin for institution audit logs.
+      </div>
+
       <div className="atlas-super-stats">
         {stats.map(card => (
           <StatCard key={card.title} title={card.title} value={valueFor(card.label)} icon={card.icon} accent={card.accent} />
