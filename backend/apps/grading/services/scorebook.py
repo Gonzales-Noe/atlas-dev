@@ -70,26 +70,16 @@ def _keep_latest(found: dict, key, scan):
 
 
 def _assign_labels(exams: list[dict]) -> None:
+    """Disambiguate duplicate titles with numbers only — no Mobile/Web tags."""
     totals: dict[str, int] = {}
     for exam in exams:
         totals[exam["name"]] = totals.get(exam["name"], 0) + 1
-    proposed = []
+    seen: dict[str, int] = {}
     for exam in exams:
         label = exam["name"]
         if totals[label] > 1:
-            source = "Mobile" if exam["source"] == "mobile" else "Web"
-            label = f"{exam['name']} ({source})"
-        proposed.append(label)
-    counts: dict[str, int] = {}
-    for label in proposed:
-        counts[label] = counts.get(label, 0) + 1
-    seen: dict[str, int] = {}
-    for exam, label in zip(exams, proposed):
-        if counts[label] > 1:
             seen[label] = seen.get(label, 0) + 1
-            exam["name"] = f"{label} {seen[label]}"
-        else:
-            exam["name"] = label
+            exam["name"] = f"{label} ({seen[label]})"
 
 
 def _cell(scan, max_score):

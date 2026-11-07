@@ -1,8 +1,7 @@
 """
-Quick exams: bubble-sheet exams created on the mobile app that live in their
-own tables and never touch course assessments, scores or reports.
-
-Every row is owned by one faculty user; nobody else can read or change it.
+Quick exams: bubble-sheet major examinations created on mobile (and editable
+on web). They live in quick_exam tables; scores also appear in the course
+scorebook beside answer-sheet templates for the same course.
 """
 
 from django.db import transaction
@@ -18,6 +17,7 @@ from apps.grading.services.bubble_sheet_scanner import (
     BubbleSheetScannerService,
     _truncate_flag_reason,
 )
+from apps.grading.services.scorebook import _subject_matches_course
 
 from apps.grading.services.omr_core import BONUS_KEY, is_correct
 from .quick_exam_serializers import (
@@ -271,7 +271,7 @@ def quick_subject_detail(request, subject_id):
 @permission_classes([IsAuthenticated])
 def quick_exams(request):
     """
-    GET  /api/grading/quick/exams/?subject_id=<uuid>
+    GET  /api/grading/quick/exams/?subject_id=<uuid>&course_id=<uuid>
     POST /api/grading/quick/exams/
     """
     faculty, err = _faculty_or_error(request)
@@ -281,9 +281,18 @@ def quick_exams(request):
     if request.method == "GET":
         qs = QuickExam.objects.filter(faculty=faculty).select_related("subject")
         subject_id = request.query_params.get("subject_id")
+        course_id = request.query_params.get("course_id")
         if subject_id:
             qs = qs.filter(subject_id=subject_id)
         exams = list(qs.order_by("-created_at"))
+        if course_id and not subject_id:
+            course = _assigned_courses(faculty).filter(pk=course_id).first()
+            if course is None:
+                return _not_found("Course")
+            exams = [
+                e for e in exams
+                if _subject_matches_course(e.subject.name if e.subject_id else "", course)
+            ]
         stats = _exam_stats_map([e.exam_id for e in exams])
         return Response({
             "success": True,

@@ -31,10 +31,11 @@ from apps.grading.models import (
     OmrJobResult,
     OmrJobStatus,
     OmrTemplateProfile,
+    QuickExam,
 )
 from apps.grading.services import analytics
 from apps.grading.services.mapper import OmrMapperService
-from apps.grading.services.scorebook import build_scorebook, export_scorebook
+from apps.grading.services.scorebook import _subject_matches_course, build_scorebook, export_scorebook
 
 from .serializers import (
     BubbleAnswerKeySerializer,
@@ -1209,6 +1210,10 @@ def grading_reports(request):
     GET /api/grading/reports/?course_id=&assessment_id=&grade_level=&section=
     Descriptive analytics: pass rates per section / subject / exam, score
     distribution, Bloom mastery, and item analysis (when one exam is in scope).
+
+    Includes mobile major examinations (QuickExam) matched to the faculty's
+    courses. Those exams have no Bloom tags; item analysis is available when
+    question texts were added on mobile.
     """
     if not _is_faculty_user(request):
         return _faculty_only_response()
@@ -1221,12 +1226,19 @@ def grading_reports(request):
     assessment_id = request.query_params.get("assessment_id", "").strip() or None
     grade_level = request.query_params.get("grade_level", "").strip() or None
     section = request.query_params.get("section", "").strip() or None
+    quick_filter_id = analytics.quick_exam_id_from_filter(assessment_id)
 
-    for value in (course_id, assessment_id):
-        if value and not _valid_uuid(value):
-            return Response({"success": False, "detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
+    if course_id and not _valid_uuid(course_id):
+        return Response({"success": False, "detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
+    if assessment_id and not (_valid_uuid(assessment_id) or quick_filter_id):
+        return Response({"success": False, "detail": "Invalid id."}, status=status.HTTP_400_BAD_REQUEST)
     if course_id and not _faculty_can_access_course(faculty, course_id):
         return Response({"success": False, "detail": "Access denied."}, status=status.HTTP_403_FORBIDDEN)
+
+    faculty_courses = {
+        str(c.pk): c
+        for c in Course.objects.filter(pk__in=course_ids)
+    }
 
     all_templates = (
         BubbleSheetTemplate.objects
@@ -1236,9 +1248,32 @@ def grading_reports(request):
     templates = all_templates
     if course_id:
         templates = templates.filter(course_id=course_id)
-    if assessment_id:
+    if assessment_id and not quick_filter_id:
         templates = templates.filter(assessment_id=assessment_id)
+    elif quick_filter_id:
+        templates = templates.none()
     templates = list(templates)
+
+    # Mobile major exams for this faculty, attached to assigned courses by subject name.
+    quick_shells_all = []
+    for exam in QuickExam.objects.filter(faculty=faculty).select_related("subject"):
+        subject_name = exam.subject.name if exam.subject_id else ""
+        matched = None
+        for course in faculty_courses.values():
+            if _subject_matches_course(subject_name, course):
+                matched = course
+                break
+        if matched is None:
+            continue
+        quick_shells_all.append(analytics.QuickExamShell(exam, matched))
+
+    quick_shells = quick_shells_all
+    if course_id:
+        quick_shells = [s for s in quick_shells if str(s.course_id) == course_id]
+    if quick_filter_id:
+        quick_shells = [s for s in quick_shells if str(s.exam_id) == quick_filter_id]
+    elif assessment_id:
+        quick_shells = []
 
     course_rows = {}
     for t in all_templates:
@@ -1247,6 +1282,15 @@ def grading_reports(request):
             "course_code": t.course.course_code,
             "course_title": t.course.course_title,
         }
+    for shell in quick_shells_all:
+        cid = str(shell.course_id)
+        if cid not in course_rows:
+            course_rows[cid] = {
+                "course_id": cid,
+                "course_code": shell.course.course_code,
+                "course_title": shell.course.course_title,
+            }
+
     assessment_options = []
     seen_assessments = set()
     for t in all_templates:
@@ -1265,8 +1309,26 @@ def grading_reports(request):
             "total_items": t.total_items,
             "passing_percent": _to_float(t.passing_score),
         })
+    for shell in quick_shells_all:
+        if course_id and str(shell.course_id) != course_id:
+            continue
+        aid = str(shell.assessment_id)
+        if aid in seen_assessments:
+            continue
+        seen_assessments.add(aid)
+        assessment_options.append({
+            "assessment_id": aid,
+            "title": shell.name,
+            "course_id": str(shell.course_id),
+            "course_code": shell.course.course_code,
+            "template_id": str(shell.template_id),
+            "total_items": shell.total_items,
+            "passing_percent": _to_float(shell.passing_score),
+            "has_questions": shell.has_questions,
+        })
 
-    scoped = analytics.build_records(templates)
+    exams_in_scope = templates + quick_shells
+    scoped = analytics.build_records(templates) + analytics.build_quick_records(quick_shells)
     grade_options = analytics.sorted_options(r["grade_level"] for r in scoped)
     section_options = analytics.sorted_options(
         r["section"] for r in analytics.filter_records(scoped, grade_level=grade_level)
@@ -1275,29 +1337,33 @@ def grading_reports(request):
 
     assessment_ids = {t.assessment_id for t in templates if t.assessment_id}
     item_meta = analytics.item_metadata_by_assessment(assessment_ids)
+    for shell in quick_shells:
+        # Questions only — never Bloom — so mastery stays empty for mobile exams.
+        item_meta[str(shell.assessment_id)] = analytics.quick_exam_item_meta(shell)
 
     item_block = None
     exam_templates = {r["template"].template_id: r["template"] for r in records}
     if assessment_id or len(exam_templates) == 1:
-        candidates = list(exam_templates.values()) or templates
+        candidates = list(exam_templates.values()) or exams_in_scope
         if candidates:
             target = max(
                 candidates,
                 key=lambda t: sum(1 for r in records if r["template"].template_id == t.template_id),
             )
-            item_block = analytics.item_analysis(
-                records, target, item_meta.get(str(target.assessment_id), {})
-            )
+            meta = item_meta.get(str(target.assessment_id), {})
+            if getattr(target, "is_quick_exam", False):
+                meta = analytics.quick_exam_item_meta(target)
+            item_block = analytics.item_analysis(records, target, meta)
 
     rosters = {}
-    for t in templates:
+    for t in exams_in_scope:
         if t.course_id not in rosters:
             loads = CourseLoad.objects.filter(course_id=t.course_id).values_list("section__code", flat=True)
             rosters[t.course_id] = analytics.course_roster(t.course_id, extra_sections=loads)
 
     passing_values = {r["passing_percent"] for r in records}
     return Response({
-        "coverage": analytics.scan_coverage(templates, records, rosters, grade_level, section),
+        "coverage": analytics.scan_coverage(exams_in_scope, records, rosters, grade_level, section),
         "success": True,
         "filters": {
             "course_id": course_id,
@@ -1306,7 +1372,7 @@ def grading_reports(request):
             "section": section,
         },
         "options": {
-            "courses": sorted(course_rows.values(), key=lambda c: c["course_code"]),
+            "courses": sorted(course_rows.values(), key=lambda c: c["course_code"] or ""),
             "assessments": assessment_options,
             "grade_levels": grade_options,
             "sections": section_options,
