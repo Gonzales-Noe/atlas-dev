@@ -18,7 +18,7 @@ from apps.users.serializers import normalize_role
 logger = logging.getLogger(__name__)
 
 APK_CONTENT_TYPE = 'application/vnd.android.package-archive'
-MAX_APK_BYTES = 150 * 1024 * 1024
+MAX_APK_BYTES = 200 * 1024 * 1024
 VERSION_NAME_RE = re.compile(r'^[0-9A-Za-z][0-9A-Za-z._+-]{0,39}$')
 
 
