@@ -5,12 +5,12 @@ import { ROUTES } from '../../../config/route';
 
 // Icons
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import BugReportIcon from '@mui/icons-material/BugReport';
+import FeedbackIcon from '@mui/icons-material/Feedback';
 
 export default function FacultyLayout({ children }) {
   const navItems = [
     { label: 'Dashboard', to: ROUTES.FACULTY.DASHBOARD, icon: <DashboardIcon /> },
-    { label: 'Issue Reports', to: ROUTES.FACULTY.ISSUE_REPORTS, icon: <BugReportIcon /> },
+    { label: 'Issue Reports', to: ROUTES.FACULTY.ISSUE_REPORTS, icon: <FeedbackIcon /> },
   ];
 
   return (

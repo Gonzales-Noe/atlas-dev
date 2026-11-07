@@ -10,7 +10,7 @@ import SecurityAuditIcon from '@mui/icons-material/Security'
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
 import PaletteIcon from '@mui/icons-material/Palette'
-import FeedbackOutlinedIcon from '@mui/icons-material/FeedbackOutlined'
+import FeedbackIcon from '@mui/icons-material/Feedback'
 
 export default function SuperAdminLayout({ children }) {
   const openIssues = useOpenIssueReportCount(true)
@@ -22,7 +22,7 @@ export default function SuperAdminLayout({ children }) {
     {
       label: 'Issue Reports',
       to: ROUTES.SUPERADMIN.ISSUE_REPORTS,
-      icon: <FeedbackOutlinedIcon />,
+      icon: <FeedbackIcon />,
       badge: openIssues > 0,
     },
     { label: 'Appearance', to: ROUTES.SUPERADMIN.APPEARANCE, icon: <PaletteIcon /> },
