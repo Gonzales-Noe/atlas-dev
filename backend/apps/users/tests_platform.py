@@ -96,12 +96,13 @@ class PlatformOpsTests(TestCase):
         self.assertGreaterEqual(health.data['disk']['percent'], 0)
 
         audit = self.client.get(
-            '/api/auth/platform-audit/?q=course',
+            '/api/auth/platform-audit/?scope=all&q=course',
             HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
         )
         self.assertEqual(audit.status_code, 200)
         self.assertGreaterEqual(audit.data['count'], 1)
         self.assertEqual(audit.data['logs'][0]['role'], 'Faculty')
+        self.assertNotIn('details', audit.data['logs'][0])
         self.assertTrue(audit.data['daily'])
 
         faculty_audit = self.client.get(
@@ -109,6 +110,75 @@ class PlatformOpsTests(TestCase):
             HTTP_AUTHORIZATION=f'Bearer {self.faculty_token}',
         )
         self.assertEqual(faculty_audit.status_code, 403)
+
+    def test_platform_audit_defaults_to_platform_scope(self):
+        AuditLog.objects.create(
+            user=self.faculty,
+            action_type='course_assigned',
+            resource_type='Course',
+            details={'course_code': 'CS 101', 'allocation_note': 'secret note'},
+        )
+        AuditLog.objects.create(
+            user=self.superadmin,
+            action_type='platform_theme_updated',
+            resource_type='Platform',
+            details={'brand_primary': '#1B3A6B', 'changes': ['brand']},
+        )
+
+        default_view = self.client.get(
+            '/api/auth/platform-audit/',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(default_view.status_code, 200)
+        self.assertEqual(default_view.data['scope'], 'platform')
+        actions = {row['action'] for row in default_view.data['logs']}
+        self.assertIn('platform_theme_updated', actions)
+        self.assertNotIn('course_assigned', actions)
+
+        all_view = self.client.get(
+            '/api/auth/platform-audit/?scope=all',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(all_view.status_code, 200)
+        all_actions = {row['action'] for row in all_view.data['logs']}
+        self.assertIn('course_assigned', all_actions)
+
+    def test_platform_audit_detail_requires_reason_and_logs_viewer(self):
+        log = AuditLog.objects.create(
+            user=self.faculty,
+            action_type='course_assigned',
+            resource_type='Course',
+            details={
+                'course_code': 'CS 101',
+                'faculty_email': 'faculty@atlas.test',
+                'allocation_note': 'do not leak',
+            },
+        )
+        missing = self.client.post(
+            f'/api/auth/platform-audit/{log.log_id}/view/',
+            {},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(missing.status_code, 400)
+
+        opened = self.client.post(
+            f'/api/auth/platform-audit/{log.log_id}/view/',
+            {'reason': 'Incident INC-42'},
+            format='json',
+            HTTP_AUTHORIZATION=f'Bearer {self.super_token}',
+        )
+        self.assertEqual(opened.status_code, 200)
+        self.assertEqual(opened.data['log']['details'].get('course_code'), 'CS 101')
+        self.assertEqual(opened.data['log']['details'].get('faculty_email'), 'faculty@atlas.test')
+        self.assertNotIn('allocation_note', opened.data['log']['details'])
+        self.assertTrue(
+            AuditLog.objects.filter(
+                action_type='audit_log_viewed',
+                user=self.superadmin,
+                resource_id=log.log_id,
+            ).exists()
+        )
 
     def test_maintenance_mode_blocks_other_roles_and_keeps_superadmin(self):
         self.client.patch(

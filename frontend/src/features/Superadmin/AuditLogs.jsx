@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import useDebouncedValue from '../../hooks/useDebouncedValue'
 import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TablePagination,
-  TextField, Dialog, DialogTitle, DialogContent, Divider, Stack,
+  TextField, Dialog, DialogTitle, DialogContent, DialogActions, Divider, Stack,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import SuperAdminLayout from './SuperAdminLayout'
 import api from '../../config/api'
-import { PageHeader, GlassCard, OutlineBtn } from '../../components/ui'
+import { PageHeader, GlassCard, OutlineBtn, PrimaryBtn } from '../../components/ui'
 import { cssColor } from '../../utils/brandTheme'
 import RouteSkeleton from '../../components/RouteSkeleton'
 import { StatusNotice } from '../../components/StatusNotice'
@@ -45,6 +45,7 @@ const ACTION_LABELS = {
   course_request_approved: 'Course request approved',
   course_request_submitted: 'Course request submitted',
   admin_document_upload: 'Document uploaded',
+  audit_log_viewed: 'Audit detail viewed',
 }
 
 const RESOURCE_LABELS = {
@@ -52,6 +53,7 @@ const RESOURCE_LABELS = {
   courseload: 'Course load',
   courserequest: 'Course request',
   course_request: 'Course request',
+  auditlog: 'Audit log',
 }
 
 function actionLabel(action) {
@@ -140,7 +142,7 @@ function describeLog(log) {
       ? `${details.course_code} now has ${details.faculty_email || 'a faculty member'} as syllabus owner.`
       : 'A syllabus owner was assigned.')
   } else if (log.action === 'assessment_approved') {
-    const note = details.allocation_note ? ` Note: ${details.allocation_note}` : ''
+    const note = details.has_allocation_note ? ' An allocation note was recorded on the assessment.' : ''
     lines.push(`The assessment was approved.${note}`)
   } else if (log.action === 'course_request_submitted' || log.action === 'course_request_approved') {
     const course = [details.course_code, details.course_title].filter(Boolean).join(' — ')
@@ -157,10 +159,14 @@ function describeLog(log) {
     lines.push('Campus data was removed.')
   } else if (log.action === 'institution_deactivated' || log.action === 'institution_reactivated') {
     lines.push(log.action.endsWith('reactivated') ? 'Campus access was restored.' : 'Campus access was paused.')
+  } else if (log.action === 'audit_log_viewed') {
+    lines.push(details.reason
+      ? `Audit detail opened. Reason: ${details.reason}`
+      : 'Audit detail was opened.')
   }
 
   if (!lines.length) {
-    const skip = new Set(['changes', 'faculty_id', 'course_id', 'section_id', 'institution_id', 'request_id', 'brand_primary', 'maintenance_enabled'])
+    const skip = new Set(['changes', 'faculty_id', 'course_id', 'section_id', 'institution_id', 'request_id', 'brand_primary', 'maintenance_enabled', 'allocation_note'])
     Object.entries(details).forEach(([key, value]) => {
       if (skip.has(key) || value === null || value === '' || key.endsWith('_id')) return
       const label = key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
@@ -180,9 +186,13 @@ export default function AuditLogs() {
   const [daily, setDaily] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [action, setAction] = useState('')
+  const [scope, setScope] = useState('platform')
   const [page, setPage] = useState(0)
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [selectedLog, setSelectedLog] = useState(null)
+  const [pendingLog, setPendingLog] = useState(null)
+  const [viewReason, setViewReason] = useState('')
+  const [viewing, setViewing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const debouncedSearch = useDebouncedValue(searchTerm, 250)
@@ -193,6 +203,7 @@ export default function AuditLogs() {
     const params = new URLSearchParams({
       page: String(page + 1),
       page_size: String(rowsPerPage),
+      scope,
     })
     const query = debouncedSearch.trim()
     if (query) params.set('q', query)
@@ -216,14 +227,53 @@ export default function AuditLogs() {
       })
       .finally(() => { if (mounted) setLoading(false) })
     return () => { mounted = false }
-  }, [page, rowsPerPage, debouncedSearch, action])
+  }, [page, rowsPerPage, debouncedSearch, action, scope])
+
+  const openReasonDialog = (log) => {
+    setPendingLog(log)
+    setViewReason('')
+    setError('')
+  }
+
+  const confirmView = async () => {
+    if (!pendingLog || !viewReason.trim()) return
+    setViewing(true)
+    try {
+      const { data } = await api.post(
+        `/auth/platform-audit/${pendingLog.log_id}/view/`,
+        { reason: viewReason.trim() },
+      )
+      setSelectedLog(data.log || { ...pendingLog, details: {} })
+      setPendingLog(null)
+      setViewReason('')
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not open audit details.')
+    } finally {
+      setViewing(false)
+    }
+  }
 
   return (
     <SuperAdminLayout>
       <PageHeader
         title="Audit Logs"
-        subtitle="Recorded actions on this campus"
+        subtitle="Platform and system actions for security and support"
       />
+
+      <div style={{
+        marginBottom: 14,
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border-color)',
+        background: 'var(--bg-card)',
+        color: 'var(--text-secondary)',
+        fontSize: '0.84rem',
+        lineHeight: 1.45,
+      }}>
+        Administrative actions are logged for security and support. Content such as syllabus or grade text is not stored here.
+        Opening details requires a reason and is itself recorded.
+      </div>
 
       <StatusNotice message={error} severity="error" />
 
@@ -292,6 +342,26 @@ export default function AuditLogs() {
             InputProps={{ startAdornment: <SearchIcon sx={{ mr: 1, color: 'var(--text-secondary)', fontSize: 18 }} /> }}
           />
           <select
+            aria-label="Scope"
+            value={scope}
+            onChange={event => { setScope(event.target.value); setAction(''); setPage(0) }}
+            style={{
+              minWidth: 240,
+              height: 40,
+              borderRadius: 8,
+              border: '1px solid var(--border-color)',
+              background: 'var(--input-bg)',
+              color: 'var(--text-primary)',
+              fontFamily: 'inherit',
+              fontSize: '0.875rem',
+              padding: '0 12px',
+              cursor: 'pointer',
+            }}
+          >
+            <option value="platform">Platform / system</option>
+            <option value="all">All events (incl. campus academic)</option>
+          </select>
+          <select
             aria-label="Action"
             value={action}
             onChange={event => { setAction(event.target.value); setPage(0) }}
@@ -349,7 +419,7 @@ export default function AuditLogs() {
                   <TableCell>{actionLabel(log.action)}</TableCell>
                   <TableCell>{resourceLabel(log.resource_type)}</TableCell>
                   <TableCell>
-                    <OutlineBtn small onClick={() => setSelectedLog(log)}>View</OutlineBtn>
+                    <OutlineBtn small onClick={() => openReasonDialog(log)}>View</OutlineBtn>
                   </TableCell>
                 </TableRow>
               ))}
@@ -366,6 +436,32 @@ export default function AuditLogs() {
           onRowsPerPageChange={event => { setRowsPerPage(parseInt(event.target.value, 10)); setPage(0) }}
         />
       </GlassCard>
+
+      <Dialog open={Boolean(pendingLog)} onClose={() => !viewing && setPendingLog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Reason required</DialogTitle>
+        <Divider />
+        <DialogContent sx={{ pt: 2 }}>
+          <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Enter why you need this audit detail (incident, ticket, or support request). This reason is logged.
+          </p>
+          <TextField
+            label="Reason"
+            fullWidth
+            multiline
+            rows={2}
+            value={viewReason}
+            onChange={event => setViewReason(event.target.value)}
+            sx={inputSx}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <OutlineBtn onClick={() => setPendingLog(null)} disabled={viewing}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={confirmView} disabled={viewing || !viewReason.trim()}>
+            {viewing ? 'Opening…' : 'Open details'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
 
       <Dialog open={Boolean(selectedLog)} onClose={() => setSelectedLog(null)} maxWidth="sm" fullWidth>
         <DialogTitle>Log details</DialogTitle>
@@ -413,6 +509,9 @@ export default function AuditLogs() {
             </Stack>
           )}
         </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <OutlineBtn onClick={() => setSelectedLog(null)}>Close</OutlineBtn>
+        </DialogActions>
       </Dialog>
       <style>{`
         @media (max-width: 900px) {

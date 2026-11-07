@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import AdminLayout from './AdminLayout'
 import api from '../../../config/api'
-import { PageHeader, GlassCard, OutlineBtn } from '../../../components/ui'
+import { PageHeader, GlassCard, OutlineBtn, PrimaryBtn } from '../../../components/ui'
 
 function ActionIcon({ action }) {
   const key = (action || '').toLowerCase()
@@ -57,6 +57,7 @@ const actionLabel = a => {
     'admin_document_upload': 'Admin Document Upload',
     'course_request_approved': 'Course Request Approved',
     'course_request_submitted': 'Course Request Submitted',
+    'audit_log_viewed': 'Audit Detail Viewed',
   }
   if (labels[action]) return labels[action]
   return action
@@ -80,6 +81,9 @@ export default function AdminAuditLogs() {
   const [rowsPerPage, setRowsPerPage] = useState(10)
   const [selectedLog, setSelectedLog] = useState(null)
   const [detailOpen, setDetailOpen]   = useState(false)
+  const [pendingLog, setPendingLog]   = useState(null)
+  const [viewReason, setViewReason]   = useState('')
+  const [viewing, setViewing]         = useState(false)
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState('')
   const debouncedSearch = useDebouncedValue(searchTerm, 250)
@@ -92,12 +96,14 @@ export default function AdminAuditLogs() {
     })
     const query = debouncedSearch.trim()
     if (query) params.set('q', query)
+    setLoading(true)
     api.get(`/integrations/audit-logs/?${params.toString()}`)
       .then(({ data }) => {
         if (!mounted) return
         const nextLogs = data.logs || []
         setLogs(nextLogs)
         setTotal(typeof data.count === 'number' ? data.count : nextLogs.length)
+        setError('')
       })
       .catch(err => {
         if (!mounted) return
@@ -111,12 +117,51 @@ export default function AdminAuditLogs() {
     return () => { mounted = false }
   }, [page, rowsPerPage, debouncedSearch])
 
+  const openReasonDialog = (log) => {
+    setPendingLog(log)
+    setViewReason('')
+    setError('')
+  }
+
+  const confirmView = async () => {
+    if (!pendingLog || !viewReason.trim()) return
+    setViewing(true)
+    try {
+      const { data } = await api.post(
+        `/integrations/audit-logs/${pendingLog.log_id}/view/`,
+        { reason: viewReason.trim() },
+      )
+      setSelectedLog(data.log || pendingLog)
+      setDetailOpen(true)
+      setPendingLog(null)
+      setViewReason('')
+      setError('')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Could not open audit details.')
+    } finally {
+      setViewing(false)
+    }
+  }
+
   return (
     <AdminLayout>
       <PageHeader
         title="Audit Logs"
         subtitle="Review recorded activity on this campus"
       />
+
+      <div style={{
+        marginBottom: 14,
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border-color)',
+        background: 'var(--bg-card)',
+        color: 'var(--text-secondary)',
+        fontSize: '0.84rem',
+        lineHeight: 1.45,
+      }}>
+        Administrative actions are logged for security and support. Opening details requires a reason and is itself recorded.
+      </div>
 
       <StatusNotice message={error} severity="error" />
 
@@ -166,7 +211,7 @@ export default function AdminAuditLogs() {
                   </TableCell>
                   <TableCell sx={{ borderBottom: '1px solid var(--border-color)' }}>
                     <button
-                      onClick={() => { setSelectedLog(log); setDetailOpen(true) }}
+                      onClick={() => openReasonDialog(log)}
                       style={{ background: 'var(--active-bg)', border: '1px solid var(--active-color)', borderRadius: 7, color: 'var(--active-color)', fontSize: '0.73rem', fontWeight: 700, cursor: 'pointer', padding: '4px 10px', fontFamily: 'var(--font-sans)', transition: 'all 200ms' }}
                       onMouseEnter={e => e.currentTarget.style.background = 'var(--active-color-hover)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'var(--active-bg)'}
@@ -194,6 +239,32 @@ export default function AdminAuditLogs() {
           sx={{ borderTop: '1px solid var(--border-color) !important' }}
         />
       </GlassCard>
+
+      <Dialog open={Boolean(pendingLog)} onClose={() => !viewing && setPendingLog(null)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ bgcolor: 'var(--bg-card)', color: 'var(--text-primary)' }}>Reason required</DialogTitle>
+        <Divider sx={{ borderColor: 'var(--border-color)' }} />
+        <DialogContent sx={{ pt: 2, bgcolor: 'var(--bg-card)' }}>
+          <p style={{ margin: '0 0 12px', color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+            Enter why you need this audit detail (incident, ticket, or support request). This reason is logged.
+          </p>
+          <TextField
+            label="Reason"
+            fullWidth
+            multiline
+            rows={2}
+            value={viewReason}
+            onChange={e => setViewReason(e.target.value)}
+            sx={inputSx}
+            autoFocus
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, bgcolor: 'var(--bg-card)' }}>
+          <OutlineBtn onClick={() => setPendingLog(null)} disabled={viewing}>Cancel</OutlineBtn>
+          <PrimaryBtn onClick={confirmView} disabled={viewing || !viewReason.trim()}>
+            {viewing ? 'Opening…' : 'Open details'}
+          </PrimaryBtn>
+        </DialogActions>
+      </Dialog>
 
       {/* Detail dialog */}
       <Dialog open={detailOpen} onClose={() => setDetailOpen(false)} maxWidth="sm" fullWidth>

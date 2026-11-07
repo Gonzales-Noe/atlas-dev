@@ -11,6 +11,12 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.integrations.audit import (
+    apply_audit_scope,
+    normalize_audit_scope,
+    parse_view_reason,
+    sanitize_audit_details,
+)
 from apps.integrations.models import AuditLog, MaintenanceSchedule, MaintenanceUpdate, PlatformSettings
 from apps.users.brand import (
     DEFAULT_MAINTENANCE_MESSAGE,
@@ -485,6 +491,7 @@ class PlatformAuditView(APIView):
 
         query = (request.query_params.get('q') or '').strip()[:120]
         action = (request.query_params.get('action') or '').strip()[:100]
+        scope = normalize_audit_scope(request.query_params.get('scope'))
         try:
             page = max(int(request.query_params.get('page') or 1), 1)
         except (TypeError, ValueError):
@@ -495,7 +502,11 @@ class PlatformAuditView(APIView):
             page_size = 25
         page_size = min(max(page_size, 1), 100)
 
-        logs = AuditLog.objects.select_related('user', 'user__institution').order_by('-timestamp')
+        scoped = apply_audit_scope(
+            AuditLog.objects.select_related('user', 'user__institution'),
+            scope,
+        ).order_by('-timestamp')
+        logs = scoped
         if action:
             logs = logs.filter(action_type=action)
         if query:
@@ -512,7 +523,7 @@ class PlatformAuditView(APIView):
         page_logs = logs[start:start + page_size]
         since = timezone.now() - timedelta(hours=24)
         actions = list(
-            AuditLog.objects.values('action_type')
+            scoped.values('action_type')
             .annotate(count=Count('log_id'))
             .order_by('-count')[:8]
         )
@@ -521,16 +532,57 @@ class PlatformAuditView(APIView):
             'count': total,
             'page': page,
             'page_size': page_size,
+            'scope': scope,
             'summary': {
-                'total': AuditLog.objects.count(),
-                'last_24h': AuditLog.objects.filter(timestamp__gte=since).count(),
+                'total': scoped.count(),
+                'last_24h': scoped.filter(timestamp__gte=since).count(),
             },
             'actions': [
                 {'action': row['action_type'] or 'Unknown', 'count': row['count']}
                 for row in actions
             ],
-            'daily': activity_by_day(14),
+            'daily': activity_by_day(14, queryset=scoped),
             'logs': [_audit_row(log) for log in page_logs],
+        })
+
+
+class PlatformAuditDetailView(APIView):
+    """Reason-gated detail view; records audit_log_viewed for the viewer."""
+
+    def post(self, request, log_id):
+        if not _is_superadmin(request):
+            return Response({'detail': 'Not permitted.'}, status=status.HTTP_403_FORBIDDEN)
+
+        reason, error = parse_view_reason(request.data)
+        if error:
+            return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+        log = (
+            AuditLog.objects
+            .select_related('user', 'user__institution')
+            .filter(log_id=log_id)
+            .first()
+        )
+        if log is None:
+            return Response({'detail': 'Audit record not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        viewed_user = ''
+        if log.user_id and log.user:
+            viewed_user = log.user.full_name or log.user.email or ''
+        AuditLog.objects.create(
+            user=request.user,
+            action_type='audit_log_viewed',
+            resource_type='AuditLog',
+            resource_id=log.log_id,
+            details={
+                'reason': reason,
+                'viewed_action': log.action_type or '',
+                'viewed_user': viewed_user,
+            },
+        )
+        return Response({
+            'success': True,
+            'log': _audit_detail_row(log),
         })
 
 
@@ -547,6 +599,7 @@ def _role_label(user):
 
 
 def _audit_row(log):
+    """List row without raw details or email (those require a justified view)."""
     user = log.user if log.user_id else None
     institution = ''
     if user is not None and user.institution_id and user.institution:
@@ -555,14 +608,20 @@ def _audit_row(log):
         'log_id': str(log.log_id),
         'timestamp': log.timestamp.isoformat() if log.timestamp else None,
         'user': (user.full_name or user.email) if user else 'Unknown user',
-        'email': user.email if user else '',
         'role': _role_label(user),
         'institution': institution or 'Platform',
         'action': log.action_type,
         'resource_type': log.resource_type or '',
         'resource_id': str(log.resource_id) if log.resource_id else None,
-        'details': log.details or {},
     }
+
+
+def _audit_detail_row(log):
+    user = log.user if log.user_id else None
+    row = _audit_row(log)
+    row['email'] = user.email if user else ''
+    row['details'] = sanitize_audit_details(log.details or {})
+    return row
 
 
 def maintenance_state():

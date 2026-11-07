@@ -651,6 +651,15 @@ export default function SignInPage({ isModal, onClose, onSwitch }) {
                   </Link>
                 )}
               </p>
+              <p style={{ textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.45)', margin: '0.75rem 0 0' }}>
+                <Link to={ROUTES.LEGAL_PRIVACY} style={{ color: 'var(--brand-accent)', fontWeight: 600, textDecoration: 'none' }}>
+                  Privacy Policy
+                </Link>
+                {' · '}
+                <Link to={ROUTES.LEGAL_TERMS} style={{ color: 'var(--brand-accent)', fontWeight: 600, textDecoration: 'none' }}>
+                  Terms
+                </Link>
+              </p>
             </div>
           </div>
 

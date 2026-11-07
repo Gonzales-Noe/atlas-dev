@@ -172,6 +172,20 @@ export default function AccountManagement() {
         action={<PrimaryBtn onClick={() => { setError(''); setCreateOpen(true) }}><AddIcon fontSize="small" /> Add admin</PrimaryBtn>}
       />
 
+      <div style={{
+        marginBottom: 14,
+        padding: '10px 14px',
+        borderRadius: 10,
+        border: '1px solid var(--border-color)',
+        background: 'var(--bg-card)',
+        color: 'var(--text-secondary)',
+        fontSize: '0.84rem',
+        lineHeight: 1.45,
+      }}>
+        Campus admins manage institution users and campus audit logs.
+        Superadmin access should stay with system owners only.
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
         <StatCard title="Admins" value={admins.length} icon={<Users size={18} color="#60AAFF" />} accent="#60AAFF" />
         <StatCard title="Active admins" value={activeAdmins} icon={<CircleCheck size={18} color="#5EDA7E" />} accent="#5EDA7E" />

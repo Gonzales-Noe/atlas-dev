@@ -8,6 +8,7 @@ from .notification_views import (
 )
 from .platform_views import (
     MaintenanceScheduleView,
+    PlatformAuditDetailView,
     PlatformAuditView,
     PlatformThemeView,
     SystemHealthView,
@@ -75,6 +76,7 @@ urlpatterns = [
     path('maintenance-schedules/<uuid:schedule_id>/', MaintenanceScheduleView.as_view(), name='maintenance_schedule_detail'),
     path('system-health/', SystemHealthView.as_view(), name='system_health'),
     path('platform-audit/', PlatformAuditView.as_view(), name='platform_audit'),
+    path('platform-audit/<uuid:log_id>/view/', PlatformAuditDetailView.as_view(), name='platform_audit_view'),
     path('accounts/', AccountManagementView.as_view(), name='account_management'),
     path('accounts/<uuid:user_id>/', AccountDetailView.as_view(), name='account_detail'),
     path('institutions/', InstitutionManagementView.as_view(), name='institution_management'),
