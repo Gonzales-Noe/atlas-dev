@@ -45,8 +45,15 @@ export default function NotificationCenter() {
   const refresh = useCallback(async () => {
     try {
       const { data } = await api.get('/auth/notifications/', { atlasCache: false, skipAtlasErrorCard: true })
-      setItems(Array.isArray(data?.notifications) ? data.notifications : [])
+      const next = Array.isArray(data?.notifications) ? data.notifications : []
+      setItems(next)
       setUnread(Number(data?.unread_count) || 0)
+      if (next.some((item) => (
+        !item?.read
+        && (item?.kind === 'mobile_app_update' || String(item?.href || '').includes('/faculty/atlas-mobile'))
+      ))) {
+        window.dispatchEvent(new CustomEvent('atlas-mobile-release-refresh'))
+      }
     } catch {
       // The bell stays quiet when the inbox cannot be reached.
     }
@@ -118,6 +125,9 @@ export default function NotificationCenter() {
   function openItem(item) {
     if (!item.read) markRead([item.id])
     setOpen(false)
+    if (item?.kind === 'mobile_app_update' || String(item?.href || '').includes('/faculty/atlas-mobile')) {
+      window.dispatchEvent(new CustomEvent('atlas-mobile-release-refresh'))
+    }
     navigateWithRefresh(navigate, item.href)
   }
 

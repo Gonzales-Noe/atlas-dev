@@ -94,6 +94,7 @@ export default function SystemManagement() {
   const [mobileNotes, setMobileNotes] = useState('')
   const [mobileFile, setMobileFile] = useState(null)
   const [mobilePublishing, setMobilePublishing] = useState(false)
+  const [mobileSavingNotes, setMobileSavingNotes] = useState(false)
 
   const load = useCallback(() => {
     api.get('/auth/system-health/')
@@ -128,9 +129,31 @@ export default function SystemManagement() {
     return () => clearInterval(timer)
   }, [load, loadMobileRelease])
 
+  async function saveMobileNotes() {
+    if (!mobileRelease?.available) {
+      setError('Publish an APK first. What’s New can be edited after a build is live.')
+      return
+    }
+    setMobileSavingNotes(true)
+    setNotice('')
+    setError('')
+    try {
+      const { data } = await api.patch('/auth/mobile-app/', {
+        release_notes: mobileNotes.trim(),
+      }, { skipAtlasErrorCard: true })
+      setMobileRelease(data || null)
+      setNotice('What’s New text was updated. Faculty see the new bullets — no APK reupload needed.')
+      loadMobileRelease()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'What’s New could not be saved.')
+    } finally {
+      setMobileSavingNotes(false)
+    }
+  }
+
   async function publishMobileApp() {
     if (!mobileFile) {
-      setError('Choose an APK file to publish.')
+      setError('Choose an APK file to publish. To fix a wrong APK, pick the correct file and publish again.')
       return
     }
     const sizeMb = mobileFile.size / (1024 * 1024)
@@ -450,6 +473,7 @@ export default function SystemManagement() {
         <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
           Upload a new APK to replace the faculty install. Every publish notifies all faculty with the version notes.
           Prefer a split build under ~55 MB (`flutter build apk --release --split-per-abi`, usually the arm64-v8a file).
+          After a build is live, you can edit What’s New text alone — reupload an APK only when the file itself is wrong.
         </p>
         <div style={{ display: 'grid', gap: 10, fontSize: '0.9rem', marginBottom: 14 }}>
           {[
@@ -490,11 +514,12 @@ export default function SystemManagement() {
           onChange={event => setMobileNotes(event.target.value)}
           fullWidth
           multiline
-          minRows={3}
+          minRows={4}
           inputProps={{ maxLength: 2000 }}
           InputLabelProps={{ shrink: true }}
           sx={{ mt: 1.5 }}
-          placeholder="Bug fixes and clearer exam scanning."
+          placeholder={'One change per line — each line becomes a bullet for faculty.\nClearer scan results\nFaster home screen'}
+          helperText="Write one item per line. Faculty see each line as a bullet."
         />
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 14 }}>
           <label style={{
@@ -518,9 +543,15 @@ export default function SystemManagement() {
             />
           </label>
           <span style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', flex: 1, minWidth: 160 }}>
-            {mobileFile ? `${mobileFile.name} · ${(mobileFile.size / (1024 * 1024)).toFixed(0)} MB` : 'No file selected'}
+            {mobileFile ? `${mobileFile.name} · ${(mobileFile.size / (1024 * 1024)).toFixed(0)} MB` : 'No file selected — required only to replace the APK'}
           </span>
-          <PrimaryBtn disabled={mobilePublishing || !mobileFile} onClick={publishMobileApp}>
+          <OutlineBtn
+            disabled={mobileSavingNotes || mobilePublishing || !mobileRelease?.available}
+            onClick={saveMobileNotes}
+          >
+            {mobileSavingNotes ? 'Saving…' : 'Save What’s New'}
+          </OutlineBtn>
+          <PrimaryBtn disabled={mobilePublishing || mobileSavingNotes || !mobileFile} onClick={publishMobileApp}>
             {mobilePublishing ? 'Publishing…' : 'Publish & notify faculty'}
           </PrimaryBtn>
         </div>

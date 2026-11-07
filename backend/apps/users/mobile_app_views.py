@@ -66,7 +66,7 @@ def release_payload(request, row=None):
 
 
 class MobileAppView(APIView):
-    """GET: public metadata. POST: superadmin publishes a new APK."""
+    """GET: public metadata. POST: publish APK. PATCH: edit What’s New text only."""
 
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -77,6 +77,25 @@ class MobileAppView(APIView):
 
     def get(self, request):
         return Response(release_payload(request))
+
+    def patch(self, request):
+        """Update release notes for the current build without replacing the APK."""
+        if not _is_superadmin(request):
+            return Response({'detail': 'Only the IT superadmin can edit ATLAS Mobile.'}, status=status.HTTP_403_FORBIDDEN)
+
+        row = _current_release()
+        if not row or not row.apk or not row.version_name:
+            return Response(
+                {'detail': 'Publish an APK first. What’s New can be edited after a build is live.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if 'release_notes' not in request.data:
+            return Response({'detail': 'Send release_notes to update What’s New.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        row.release_notes = str(request.data.get('release_notes') or '').strip()[:2000]
+        row.save(update_fields=['release_notes'])
+        return Response(release_payload(request, row), status=status.HTTP_200_OK)
 
     def post(self, request):
         if not _is_superadmin(request):

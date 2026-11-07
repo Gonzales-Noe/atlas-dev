@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Popover from '@mui/material/Popover'
@@ -7,13 +8,17 @@ import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined'
 import CloseIcon from '@mui/icons-material/Close'
 import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined'
+import QrCode2OutlinedIcon from '@mui/icons-material/QrCode2Outlined'
 import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
 import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
+import Dialog from '@mui/material/Dialog'
 import QRCode from 'qrcode'
 import FacultyLayout from './FacultyLayout'
 import api from '../../../config/api'
 import { StatusNotice } from '../../../components/StatusNotice'
 import { GlassCard } from '../../../components/ui'
+
+const MOBILE_RELEASE_REFRESH = 'atlas-mobile-release-refresh'
 
 const PREVIEWS = [
   {
@@ -68,7 +73,24 @@ function parseReleaseNotes(notes) {
     .filter(Boolean)
 }
 
+const pillBtnStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 6,
+  border: '1px solid var(--border-color)',
+  background: 'var(--bg-elevated, var(--bg-card))',
+  color: 'var(--text-primary)',
+  borderRadius: 999,
+  padding: '6px 12px',
+  cursor: 'pointer',
+  fontWeight: 700,
+  fontSize: '0.78rem',
+  lineHeight: 1,
+  flexShrink: 0,
+}
+
 export default function FacultyAtlasMobile() {
+  const location = useLocation()
   const [release, setRelease] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -76,24 +98,42 @@ export default function FacultyAtlasMobile() {
   const [slide, setSlide] = useState(0)
   const [updateBannerVisible, setUpdateBannerVisible] = useState(false)
   const [whatsNewAnchor, setWhatsNewAnchor] = useState(null)
+  const [installOpen, setInstallOpen] = useState(false)
 
-  useEffect(() => {
-    let mounted = true
-    api.get('/auth/mobile-app/', { atlasCache: false, skipAtlasErrorCard: true })
+  const loadRelease = useCallback((opts = {}) => {
+    const quiet = Boolean(opts.quiet)
+    if (!quiet) setLoading(true)
+    return api.get('/auth/mobile-app/', { atlasCache: false, skipAtlasErrorCard: true })
       .then(({ data }) => {
-        if (!mounted) return
         setRelease(data || null)
         setError('')
+        return data
       })
       .catch(() => {
-        if (!mounted) return
-        setError('Could not load the ATLAS Mobile page. Try again in a moment.')
+        if (!quiet) setError('Could not load the ATLAS Mobile page. Try again in a moment.')
       })
       .finally(() => {
-        if (mounted) setLoading(false)
+        if (!quiet) setLoading(false)
       })
-    return () => { mounted = false }
   }, [])
+
+  useEffect(() => {
+    loadRelease()
+  }, [loadRelease, location.search])
+
+  useEffect(() => {
+    const refreshQuietly = () => { loadRelease({ quiet: true }) }
+    const timer = window.setInterval(refreshQuietly, 15000)
+    const onFocus = () => refreshQuietly()
+    const onRefresh = () => refreshQuietly()
+    window.addEventListener('focus', onFocus)
+    window.addEventListener(MOBILE_RELEASE_REFRESH, onRefresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', onFocus)
+      window.removeEventListener(MOBILE_RELEASE_REFRESH, onRefresh)
+    }
+  }, [loadRelease])
 
   useEffect(() => {
     if (!release?.available || !release?.release_notes || !release?.version_name) {
@@ -205,7 +245,7 @@ export default function FacultyAtlasMobile() {
                 Update available — {versionLabel}
               </Typography>
               <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.35 }}>
-                A new build is ready. Scan the QR code below to install it, or open What’s New for details.
+                A new build is ready. Open How to Install to scan the QR code, or check What’s New for details.
               </Typography>
             </Box>
             <IconButton
@@ -239,174 +279,89 @@ export default function FacultyAtlasMobile() {
             }}
           >
             <GlassCard style={{ marginBottom: 0 }}>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-                <Box
-                  component="img"
-                  src="/mobile/ATLAS_Mobile_Logo.png"
-                  alt="ATLAS Mobile"
-                  sx={{
-                    width: 72,
-                    height: 72,
-                    borderRadius: 2.5,
-                    objectFit: 'cover',
-                    border: '1px solid var(--border-color)',
-                    flexShrink: 0,
-                  }}
-                />
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5 }}>
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.2 }}>
-                        ATLAS Mobile
-                      </Typography>
-                      <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.84rem', mt: 0.35 }}>
-                        Internal app · {versionLabel}
-                        {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
-                      </Typography>
-                      {release?.published_at ? (
-                        <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.74rem', mt: 0.35 }}>
-                          Updated {formatPublished(release.published_at)}
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+                  <Box
+                    component="img"
+                    src="/mobile/ATLAS_Mobile_Logo.png"
+                    alt="ATLAS Mobile"
+                    sx={{
+                      width: 72,
+                      height: 72,
+                      borderRadius: 2.5,
+                      objectFit: 'cover',
+                      border: '1px solid var(--border-color)',
+                      flexShrink: 0,
+                    }}
+                  />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.5 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 800, fontSize: '1.2rem', lineHeight: 1.2 }}>
+                          ATLAS Mobile
                         </Typography>
+                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.84rem', mt: 0.35 }}>
+                          Internal app · {versionLabel}
+                          {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
+                        </Typography>
+                        {release?.published_at ? (
+                          <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.74rem', mt: 0.35 }}>
+                            Updated {formatPublished(release.published_at)}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      {whatsNewItems.length ? (
+                        <button
+                          type="button"
+                          aria-haspopup="dialog"
+                          aria-expanded={whatsNewOpen}
+                          onClick={(event) => setWhatsNewAnchor(event.currentTarget)}
+                          style={pillBtnStyle}
+                        >
+                          <NewReleasesOutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
+                          What’s New
+                        </button>
                       ) : null}
                     </Box>
-                    {whatsNewItems.length ? (
-                      <button
-                        type="button"
-                        aria-haspopup="dialog"
-                        aria-expanded={whatsNewOpen}
-                        onClick={(event) => setWhatsNewAnchor(event.currentTarget)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          border: '1px solid var(--border-color)',
-                          background: 'var(--bg-elevated, var(--bg-card))',
-                          color: 'var(--text-primary)',
-                          borderRadius: 999,
-                          padding: '6px 12px',
-                          cursor: 'pointer',
-                          fontWeight: 700,
-                          fontSize: '0.78rem',
-                          lineHeight: 1,
-                          flexShrink: 0,
-                        }}
-                      >
-                        <NewReleasesOutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
-                        What’s New
-                      </button>
+                    {!available && !loading ? (
+                      <Typography sx={{ mt: 0.75, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+                        The install is not ready yet. Ask your IT team to publish ATLAS Mobile in System Health.
+                      </Typography>
                     ) : null}
                   </Box>
-                  <Typography
-                    sx={{
-                      mt: 1,
-                      color: 'var(--text-secondary)',
-                      fontSize: '0.82rem',
-                      lineHeight: 1.45,
-                      display: { xs: 'block', md: '-webkit-box' },
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: 'vertical',
-                      overflow: { xs: 'visible', md: 'hidden' },
-                    }}
+                </Box>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-expanded={installOpen}
+                    onClick={() => setInstallOpen(true)}
+                    style={pillBtnStyle}
                   >
-                    {ABOUT_APP}
-                  </Typography>
-                  {!available && !loading ? (
-                    <Typography sx={{ mt: 0.75, color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
-                      The install is not ready yet. Ask your IT team to publish ATLAS Mobile in System Health.
-                    </Typography>
-                  ) : null}
+                    <QrCode2OutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
+                    How to Install
+                  </button>
                 </Box>
               </Box>
             </GlassCard>
 
-            <Box id="atlas-mobile-qr" sx={{ minHeight: 0, height: { xs: 'auto', md: '100%' } }}>
-              <GlassCard
-                fill
-                title="Install on your phone"
-                style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
+            <GlassCard
+              fill
+              title="Install on your phone"
+              style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
+            >
+              <Typography
+                sx={{
+                  m: 0,
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.55,
+                  flex: 1,
+                }}
               >
-                <Box
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: { xs: '1fr', sm: 'auto 1fr' },
-                    gap: 2,
-                    alignItems: 'center',
-                    height: '100%',
-                    minHeight: 0,
-                    flex: 1,
-                  }}
-                >
-                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
-                    {qrDataUrl && available ? (
-                      <Box
-                        component="img"
-                        src={qrDataUrl}
-                        alt="QR code to install ATLAS Mobile"
-                        sx={{
-                          width: { xs: 160, md: 168 },
-                          height: { xs: 160, md: 168 },
-                          display: 'block',
-                          flexShrink: 0,
-                        }}
-                      />
-                    ) : (
-                      <Box
-                        sx={{
-                          width: { xs: 160, md: 168 },
-                          height: { xs: 160, md: 168 },
-                          borderRadius: 2,
-                          background: 'var(--track-bg)',
-                          display: 'grid',
-                          placeItems: 'center',
-                          color: 'var(--text-tertiary)',
-                          fontSize: '0.76rem',
-                          px: 2,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {loading ? 'Preparing…' : 'QR appears when a build is published'}
-                      </Box>
-                    )}
-                    <Typography sx={{ fontWeight: 700, fontSize: '0.78rem', textAlign: 'center' }}>
-                      Scan with your phone camera
-                    </Typography>
-                  </Box>
-
-                  <Box sx={{ minHeight: 0, overflow: { md: 'auto' } }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On Android</Typography>
-                    <Box
-                      component="ol"
-                      sx={{
-                        m: '0 0 10px',
-                        pl: 2.1,
-                        color: 'var(--text-secondary)',
-                        fontSize: '0.78rem',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      <li>Open Camera and point it at this QR code.</li>
-                      <li>Open the download. Allow installs from this site once if asked.</li>
-                      <li>Tap Install, open ATLAS Mobile, and sign in.</li>
-                    </Box>
-                    <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>On iPhone</Typography>
-                    <Box
-                      component="ol"
-                      sx={{
-                        m: 0,
-                        pl: 2.1,
-                        color: 'var(--text-secondary)',
-                        fontSize: '0.78rem',
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      <li>Scan the QR code to save the app file.</li>
-                      <li>Open the downloaded file and install it.</li>
-                      <li>Open ATLAS Mobile and sign in with your ATLAS account.</li>
-                    </Box>
-                  </Box>
-                </Box>
-              </GlassCard>
-            </Box>
+                {ABOUT_APP}
+              </Typography>
+            </GlassCard>
 
             <GlassCard style={{ marginBottom: 0 }}>
               <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.5 }}>
@@ -542,19 +497,130 @@ export default function FacultyAtlasMobile() {
             m: 0,
             px: 2.5,
             pb: 2,
-            pl: 3.25,
+            pl: 3.5,
             maxHeight: 280,
             overflowY: 'auto',
             color: 'var(--text-secondary)',
             fontSize: '0.84rem',
             lineHeight: 1.55,
+            listStyleType: 'disc',
+            listStylePosition: 'outside',
           }}
         >
-          {whatsNewItems.map((item) => (
-            <li key={item} style={{ marginBottom: 6 }}>{item}</li>
+          {whatsNewItems.map((item, index) => (
+            <Box
+              component="li"
+              key={`${index}-${item.slice(0, 40)}`}
+              sx={{ mb: 0.85, display: 'list-item', pl: 0.25 }}
+            >
+              {item}
+            </Box>
           ))}
         </Box>
       </Popover>
+
+      <Dialog
+        open={installOpen}
+        onClose={() => setInstallOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          id: 'atlas-mobile-qr',
+          sx: {
+            borderRadius: 3,
+            border: '1px solid var(--border-color)',
+            boxShadow: 'var(--shadow-card)',
+            background: 'var(--bg-card)',
+            m: 2,
+          },
+        }}
+      >
+        <Box sx={{ p: '16px 18px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>How to Install</Typography>
+          <IconButton
+            aria-label="Close How to Install"
+            size="small"
+            onClick={() => setInstallOpen(false)}
+            sx={{ color: 'var(--text-secondary)' }}
+          >
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Box>
+        <Box
+          sx={{
+            px: 2.25,
+            pb: 2.5,
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: 'auto 1fr' },
+            gap: 2.25,
+            alignItems: 'start',
+          }}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
+            {qrDataUrl && available ? (
+              <Box
+                component="img"
+                src={qrDataUrl}
+                alt="QR code to install ATLAS Mobile"
+                sx={{ width: 180, height: 180, display: 'block' }}
+              />
+            ) : (
+              <Box
+                sx={{
+                  width: 180,
+                  height: 180,
+                  borderRadius: 2,
+                  background: 'var(--track-bg)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  color: 'var(--text-tertiary)',
+                  fontSize: '0.78rem',
+                  px: 2,
+                  textAlign: 'center',
+                }}
+              >
+                {loading ? 'Preparing…' : 'QR appears when a build is published'}
+              </Box>
+            )}
+            <Typography sx={{ fontWeight: 700, fontSize: '0.8rem', textAlign: 'center' }}>
+              Scan with your phone camera
+            </Typography>
+          </Box>
+
+          <Box>
+            <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.5 }}>On Android</Typography>
+            <Box
+              component="ol"
+              sx={{
+                m: '0 0 14px',
+                pl: 2.25,
+                color: 'var(--text-secondary)',
+                fontSize: '0.84rem',
+                lineHeight: 1.5,
+              }}
+            >
+              <li>Open Camera and point it at this QR code.</li>
+              <li>Open the download. Allow installs from this site once if asked.</li>
+              <li>Tap Install, open ATLAS Mobile, and sign in.</li>
+            </Box>
+            <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.5 }}>On iPhone</Typography>
+            <Box
+              component="ol"
+              sx={{
+                m: 0,
+                pl: 2.25,
+                color: 'var(--text-secondary)',
+                fontSize: '0.84rem',
+                lineHeight: 1.5,
+              }}
+            >
+              <li>Scan the QR code to save the app file.</li>
+              <li>Open the downloaded file and install it.</li>
+              <li>Open ATLAS Mobile and sign in with your ATLAS account.</li>
+            </Box>
+          </Box>
+        </Box>
+      </Dialog>
     </FacultyLayout>
   )
 }
