@@ -1,6 +1,6 @@
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import AssessmentIcon from '@mui/icons-material/Assessment'
-import FeedbackOutlinedIcon from '@mui/icons-material/FeedbackOutlined'
+import FeedbackIcon from '@mui/icons-material/Feedback'
 import PeopleIcon from '@mui/icons-material/People'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
 import FormatAlignLeftIcon from '@mui/icons-material/FormatAlignLeft'
@@ -22,7 +22,7 @@ export default function AdminLayout({ children }) {
     {
       label: 'Issue Reports',
       to: ROUTES.ADMIN.ISSUE_REPORTS,
-      icon: <FeedbackOutlinedIcon />,
+      icon: <FeedbackIcon />,
       badge: openIssues > 0,
     },
   ]
