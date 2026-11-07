@@ -88,6 +88,12 @@ export default function SystemManagement() {
   const [pendingDelete, setPendingDelete] = useState(null)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState('')
+  const [mobileRelease, setMobileRelease] = useState(null)
+  const [mobileVersion, setMobileVersion] = useState('1.0.0')
+  const [mobileCode, setMobileCode] = useState('1')
+  const [mobileNotes, setMobileNotes] = useState('')
+  const [mobileFile, setMobileFile] = useState(null)
+  const [mobilePublishing, setMobilePublishing] = useState(false)
 
   const load = useCallback(() => {
     api.get('/auth/system-health/')
@@ -104,11 +110,52 @@ export default function SystemManagement() {
       .finally(() => setLoading(false))
   }, [])
 
+  const loadMobileRelease = useCallback(() => {
+    api.get('/auth/mobile-app/', { atlasCache: false, skipAtlasErrorCard: true })
+      .then(({ data }) => {
+        setMobileRelease(data || null)
+        if (data?.version_name) setMobileVersion(data.version_name)
+        if (data?.version_code) setMobileCode(String(data.version_code))
+        if (data?.release_notes) setMobileNotes(data.release_notes)
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     load()
+    loadMobileRelease()
     const timer = setInterval(load, 15000)
     return () => clearInterval(timer)
-  }, [load])
+  }, [load, loadMobileRelease])
+
+  async function publishMobileApp() {
+    if (!mobileFile) {
+      setError('Choose an APK file to publish.')
+      return
+    }
+    setMobilePublishing(true)
+    setNotice('')
+    setError('')
+    try {
+      const form = new FormData()
+      form.append('apk', mobileFile)
+      form.append('version_name', mobileVersion.trim())
+      form.append('version_code', String(mobileCode).trim())
+      form.append('release_notes', mobileNotes.trim())
+      const { data } = await api.post('/auth/mobile-app/', form, {
+        headers: { 'Content-Type': undefined },
+        timeout: 600000,
+      })
+      setMobileRelease(data || null)
+      setMobileFile(null)
+      setNotice(`ATLAS Mobile ${data?.version_name || ''} is live. Faculty were notified.`)
+      loadMobileRelease()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'The APK could not be published.')
+    } finally {
+      setMobilePublishing(false)
+    }
+  }
 
   async function saveMaintenance(patch = {}) {
     const nextEnabled = patch.maintenance_enabled ?? maintenance
@@ -386,6 +433,85 @@ export default function SystemManagement() {
           </div>
         </GlassCard>
       </div>
+
+      <GlassCard title="ATLAS Mobile release" style={{ marginBottom: 16 }}>
+        <p style={{ marginTop: 0, color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+          Upload a new APK to replace the faculty download. Every publish notifies all faculty with the version notes.
+        </p>
+        <div style={{ display: 'grid', gap: 10, fontSize: '0.9rem', marginBottom: 14 }}>
+          {[
+            ['Current version', mobileRelease?.available ? mobileRelease.version_name : 'Not published yet'],
+            ['Build code', mobileRelease?.available ? mobileRelease.version_code : '—'],
+            ['File size', mobileRelease?.file_size_label || '—'],
+            ['Published', mobileRelease?.published_at ? formatWhen(mobileRelease.published_at) : '—'],
+          ].map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, borderTop: '1px solid var(--border-color)', paddingTop: 8 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+              <strong>{value ?? '—'}</strong>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }} className="atlas-health-split">
+          <TextField
+            label="Version name"
+            value={mobileVersion}
+            onChange={event => setMobileVersion(event.target.value)}
+            fullWidth
+            size="small"
+            placeholder="1.0.0"
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="Version code"
+            value={mobileCode}
+            onChange={event => setMobileCode(event.target.value)}
+            fullWidth
+            size="small"
+            placeholder="1"
+            InputLabelProps={{ shrink: true }}
+          />
+        </div>
+        <TextField
+          label="What’s new"
+          value={mobileNotes}
+          onChange={event => setMobileNotes(event.target.value)}
+          fullWidth
+          multiline
+          minRows={3}
+          inputProps={{ maxLength: 2000 }}
+          InputLabelProps={{ shrink: true }}
+          sx={{ mt: 1.5 }}
+          placeholder="Bug fixes and clearer exam scanning."
+        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 14 }}>
+          <label style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            border: '1px solid var(--border-color)',
+            borderRadius: 10,
+            padding: '8px 14px',
+            cursor: 'pointer',
+            fontWeight: 700,
+            fontSize: '0.86rem',
+          }}
+          >
+            Choose APK
+            <input
+              type="file"
+              accept=".apk,application/vnd.android.package-archive"
+              hidden
+              onChange={event => setMobileFile(event.target.files?.[0] || null)}
+            />
+          </label>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '0.84rem', flex: 1, minWidth: 160 }}>
+            {mobileFile ? `${mobileFile.name} · ${(mobileFile.size / (1024 * 1024)).toFixed(0)} MB` : 'No file selected'}
+          </span>
+          <PrimaryBtn disabled={mobilePublishing || !mobileFile} onClick={publishMobileApp}>
+            {mobilePublishing ? 'Publishing…' : 'Publish & notify faculty'}
+          </PrimaryBtn>
+        </div>
+      </GlassCard>
 
       <div className="atlas-health-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         <GlassCard title="This deployment">

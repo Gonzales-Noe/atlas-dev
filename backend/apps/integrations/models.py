@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal
 
+from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
 from pgvector.django import VectorField
@@ -559,6 +560,38 @@ class AuditLog(models.Model):
             models.Index(fields=['-timestamp'], name='audit_logs_timestamp_desc_idx'),
             models.Index(fields=['user', '-timestamp'], name='audit_logs_user_ts_idx'),
         ]
+
+
+class MobileAppRelease(models.Model):
+    """Singleton: the current ATLAS Mobile APK faculty can download."""
+
+    release_id = models.PositiveSmallIntegerField(primary_key=True, default=1)
+    version_name = models.CharField(max_length=40, blank=True, default='')
+    version_code = models.PositiveIntegerField(default=0)
+    # Plain storage: APKs must stay installable and are too large to encrypt in memory.
+    apk = models.FileField(
+        upload_to='mobile/',
+        storage=FileSystemStorage(),
+        blank=True,
+        max_length=300,
+    )
+    release_notes = models.TextField(blank=True, default='')
+    file_size_bytes = models.BigIntegerField(default=0)
+    published_at = models.DateTimeField(null=True, blank=True)
+    published_by = models.ForeignKey(
+        'UserProfile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='mobile_releases_published',
+    )
+
+    class Meta:
+        db_table = 'mobile_app_releases'
+
+    def save(self, *args, **kwargs):
+        self.release_id = 1
+        super().save(*args, **kwargs)
 
 
 class PlatformSettings(models.Model):

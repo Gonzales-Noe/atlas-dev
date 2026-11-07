@@ -325,6 +325,26 @@ def notify_maintenance_cancelled(start, end):
     )
 
 
+def notify_mobile_app_updated(version_name, release_notes=''):
+    """Tell faculty a new ATLAS Mobile build is ready to install."""
+    version = (version_name or '').strip() or 'new'
+    notes = (release_notes or '').strip()
+    body = f'Version {version} is ready. Open ATLAS Mobile in the sidebar to download it.'
+    if notes:
+        body = f'{body} What’s new: {notes}'
+    faculty = list(
+        UserProfile.objects.filter(is_active=True, role__in=(UserRole.FACULTY, 'faculty'))
+    )
+    notify_users(
+        faculty,
+        kind='mobile_app_update',
+        title='ATLAS Mobile update available',
+        body=body[:800],
+        href='/faculty/atlas-mobile',
+        dedupe_key=f'mobile-app-update:{version}'[:180],
+    )
+
+
 def notify_course_request_submitted(course_request):
     who = course_request.requested_by.name if course_request.requested_by_id else 'A faculty member'
     notify_users(
