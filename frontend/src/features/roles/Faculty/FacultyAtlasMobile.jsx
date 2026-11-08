@@ -227,6 +227,7 @@ export default function FacultyAtlasMobile() {
   const available = Boolean(release?.available)
   const versionLabel = release?.version_name ? `Version ${release.version_name}` : 'Not published yet'
   const activePreview = PREVIEWS[slide]
+  const backPreview = PREVIEWS[(slide + PREVIEWS.length - 1) % PREVIEWS.length]
   const whatsNewOpen = Boolean(whatsNewAnchor)
 
   function dismissUpdateBanner() {
@@ -252,15 +253,6 @@ export default function FacultyAtlasMobile() {
           overflow: { xs: 'visible', md: 'hidden' },
         }}
       >
-        <Box sx={{ flexShrink: 0 }}>
-          <Typography sx={{ fontWeight: 800, fontSize: '1.35rem', letterSpacing: '-0.02em', lineHeight: 1.2, m: 0 }}>
-            ATLAS Mobile
-          </Typography>
-          <Typography sx={{ mt: 0.25, color: 'var(--text-secondary)', fontSize: '0.84rem', lineHeight: 1.4 }}>
-            Install the internal phone app for Major Examination MCQ scanning.
-          </Typography>
-        </Box>
-
         <StatusNotice message={error} severity="error" />
 
         {updateBannerVisible ? (
@@ -300,313 +292,22 @@ export default function FacultyAtlasMobile() {
             flex: 1,
             minHeight: 0,
             display: 'grid',
-            gridTemplateRows: { xs: 'auto', md: 'minmax(0, 1.35fr) auto' },
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(280px, 0.95fr) minmax(0, 1.35fr)' },
+            gridTemplateRows: { xs: 'auto', md: '1fr' },
             gap: 1.5,
           }}
         >
-          {/* Store-style ATLAS preview banner */}
+          {/* Column 1 — info cards */}
           <Box
             sx={{
-              position: 'relative',
-              minHeight: { xs: 520, md: 0 },
-              borderRadius: '20px',
-              border: '1px solid var(--border-color)',
-              boxShadow: 'var(--shadow-card)',
-              overflow: 'hidden',
-              background: 'linear-gradient(135deg, rgba(18,14,16,0.98) 0%, rgba(28,14,16,0.96) 55%, rgba(40,16,18,0.98) 100%)',
-              'body.atlas-light &': {
-                background: 'linear-gradient(135deg, #FFFFFF 0%, #FFF9F9 45%, #F8EEEE 100%)',
-              },
-            }}
-          >
-            <Box
-              aria-hidden
-              sx={{
-                pointerEvents: 'none',
-                position: 'absolute',
-                inset: 0,
-                backgroundImage: `
-                  radial-gradient(circle at 22% 48%, rgba(226,75,74,0.14) 0 90px, transparent 91px),
-                  radial-gradient(circle at 22% 48%, rgba(170,36,35,0.10) 0 160px, transparent 161px),
-                  radial-gradient(circle at 22% 48%, rgba(226,75,74,0.07) 0 240px, transparent 241px),
-                  radial-gradient(circle at 86% 78%, rgba(226,75,74,0.18) 0 70px, transparent 71px)
-                `,
-                'body.atlas-light &': {
-                  backgroundImage: `
-                    radial-gradient(circle at 22% 48%, rgba(226,75,74,0.08) 0 90px, transparent 91px),
-                    radial-gradient(circle at 22% 48%, rgba(170,36,35,0.06) 0 160px, transparent 161px),
-                    radial-gradient(circle at 22% 48%, rgba(226,75,74,0.05) 0 240px, transparent 241px),
-                    radial-gradient(circle at 86% 78%, rgba(243,180,179,0.35) 0 80px, transparent 81px)
-                  `,
-                },
-              }}
-            />
-
-            <Box
-              sx={{
-                position: 'relative',
-                zIndex: 1,
-                height: '100%',
-                minHeight: 0,
-                display: 'grid',
-                gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1.05fr) minmax(0, 0.95fr)' },
-                gap: { xs: 2, md: 1 },
-                alignItems: 'center',
-                px: { xs: 2, md: 3 },
-                py: { xs: 2.5, md: 2 },
-              }}
-            >
-              <Box sx={{ textAlign: { xs: 'center', md: 'left' }, maxWidth: 520, mx: { xs: 'auto', md: 0 } }}>
-                <Box
-                  component="img"
-                  src="/mobile/ATLAS_Mobile_Logo.png"
-                  alt=""
-                  sx={{
-                    width: 64,
-                    height: 64,
-                    borderRadius: 2.5,
-                    objectFit: 'cover',
-                    border: '1px solid var(--border-color)',
-                    mb: 1.5,
-                    boxShadow: '0 8px 24px rgba(170,36,35,0.25)',
-                  }}
-                />
-                <Typography sx={{ fontWeight: 800, fontSize: { xs: '1rem', md: '1.05rem' }, color: 'var(--text-primary)', lineHeight: 1.3 }}>
-                  Scan Major Exam sheets anywhere
-                </Typography>
-                <Typography sx={{ mt: 0.4, fontWeight: 700, fontSize: { xs: '0.92rem', md: '0.98rem' }, color: 'var(--text-secondary)', lineHeight: 1.35 }}>
-                  Your phone companion for ATLAS Web classroom grading
-                </Typography>
-                <Typography
-                  sx={{
-                    mt: 1.25,
-                    fontWeight: 900,
-                    fontSize: { xs: '2rem', md: '2.45rem' },
-                    letterSpacing: '-0.03em',
-                    lineHeight: 0.95,
-                    color: 'var(--brand-accent)',
-                    'body.atlas-light &': { color: 'var(--brand-primary)' },
-                  }}
-                >
-                  ATLAS
-                  {' '}
-                  <Box component="span" sx={{ color: 'var(--text-primary)' }}>MOBILE</Box>
-                </Typography>
-                <Typography
-                  sx={{
-                    mt: 1.5,
-                    color: 'var(--text-secondary)',
-                    fontSize: '0.84rem',
-                    lineHeight: 1.55,
-                    maxWidth: 420,
-                    mx: { xs: 'auto', md: 0 },
-                  }}
-                >
-                  Grade printed MCQ Major Examinations in the room, review scores on your phone,
-                  and keep exams in sync with ATLAS Web — even when the signal drops.
-                </Typography>
-                <Typography
-                  sx={{
-                    mt: 1.25,
-                    fontWeight: 800,
-                    fontSize: '0.86rem',
-                    color: 'var(--brand-accent)',
-                    'body.atlas-light &': { color: 'var(--brand-primary)' },
-                  }}
-                >
-                  {activePreview.title}
-                </Typography>
-                <Typography sx={{ mt: 0.35, color: 'var(--text-secondary)', fontSize: '0.8rem', lineHeight: 1.4 }}>
-                  {activePreview.body}
-                </Typography>
-              </Box>
-
-              <Box
-                sx={{
-                  position: 'relative',
-                  height: { xs: 360, md: '100%' },
-                  minHeight: { md: 0 },
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  justifyContent: 'center',
-                  pb: { xs: 1, md: 1.5 },
-                }}
-              >
-                <IconButton
-                  aria-label="Previous preview"
-                  onClick={() => setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)}
-                  sx={{
-                    position: 'absolute',
-                    left: { xs: 0, md: 8 },
-                    top: '42%',
-                    zIndex: 3,
-                    width: 34,
-                    height: 34,
-                    bgcolor: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-color)',
-                    color: 'var(--brand-accent)',
-                    '&:hover': { bgcolor: 'var(--bg-header)' },
-                    'body.atlas-light &': {
-                      bgcolor: 'rgba(255,255,255,0.9)',
-                      color: 'var(--brand-primary)',
-                      '&:hover': { bgcolor: '#fff' },
-                    },
-                  }}
-                >
-                  <ChevronLeftIcon fontSize="small" />
-                </IconButton>
-
-                {/* Back phone */}
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    left: { xs: '12%', md: '18%' },
-                    bottom: { xs: 36, md: 44 },
-                    width: { xs: 118, md: 'min(150px, 34%)' },
-                    aspectRatio: '908 / 2048',
-                    transform: 'rotate(-8deg)',
-                    borderRadius: '24px',
-                    p: '5px',
-                    background: 'linear-gradient(160deg, #3A3A40, #141416)',
-                    boxShadow: '0 16px 36px rgba(0,0,0,0.35)',
-                    opacity: 0.88,
-                    zIndex: 1,
-                  }}
-                >
-                  <Box sx={{ width: '100%', height: '100%', borderRadius: '19px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
-                    <Box
-                      component="img"
-                      src={PREVIEWS[0].image}
-                      alt=""
-                      sx={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
-                    />
-                  </Box>
-                </Box>
-
-                {/* Front phone on pedestal */}
-                <Box sx={{ position: 'relative', zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Box
-                    sx={{
-                      width: { xs: 148, md: 'min(190px, 42%)' },
-                      aspectRatio: '908 / 2048',
-                      maxHeight: { xs: 300, md: '78%' },
-                      transform: 'rotate(7deg)',
-                      borderRadius: '28px',
-                      p: '6px',
-                      background: 'linear-gradient(160deg, #3A3A40, #141416)',
-                      boxShadow: '0 22px 44px rgba(0,0,0,0.42), 0 2px 0 rgba(255,255,255,0.1) inset',
-                      'body.atlas-light &': {
-                        boxShadow: '0 22px 44px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.12) inset',
-                      },
-                    }}
-                  >
-                    <Box sx={{ position: 'relative', width: '100%', height: '100%', borderRadius: '22px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
-                      <Box
-                        sx={{
-                          position: 'absolute',
-                          top: 7,
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: '34%',
-                          height: 8,
-                          borderRadius: 99,
-                          bgcolor: '#000',
-                          zIndex: 2,
-                        }}
-                      />
-                      <Box
-                        component="img"
-                        src={activePreview.image}
-                        alt={activePreview.title}
-                        sx={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
-                      />
-                    </Box>
-                  </Box>
-                  <Box
-                    aria-hidden
-                    sx={{
-                      mt: -0.5,
-                      width: { xs: 150, md: 180 },
-                      height: 18,
-                      borderRadius: '50%',
-                      background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%)',
-                      'body.atlas-light &': {
-                        background: 'radial-gradient(ellipse at center, rgba(63,10,10,0.28) 0%, transparent 70%)',
-                      },
-                    }}
-                  />
-                </Box>
-
-                <IconButton
-                  aria-label="Next preview"
-                  onClick={() => setSlide((current) => (current + 1) % PREVIEWS.length)}
-                  sx={{
-                    position: 'absolute',
-                    right: { xs: 0, md: 8 },
-                    top: '42%',
-                    zIndex: 3,
-                    width: 34,
-                    height: 34,
-                    bgcolor: 'var(--bg-elevated)',
-                    border: '1px solid var(--border-color)',
-                    color: 'var(--brand-accent)',
-                    '&:hover': { bgcolor: 'var(--bg-header)' },
-                    'body.atlas-light &': {
-                      bgcolor: 'rgba(255,255,255,0.9)',
-                      color: 'var(--brand-primary)',
-                      '&:hover': { bgcolor: '#fff' },
-                    },
-                  }}
-                >
-                  <ChevronRightIcon fontSize="small" />
-                </IconButton>
-
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    bottom: 6,
-                    left: 0,
-                    right: 0,
-                    display: 'flex',
-                    justifyContent: 'center',
-                    flexWrap: 'wrap',
-                    gap: 0.65,
-                    zIndex: 3,
-                  }}
-                >
-                  {PREVIEWS.map((item, index) => (
-                    <button
-                      key={item.title}
-                      type="button"
-                      aria-label={`Show preview: ${item.title}`}
-                      onClick={() => setSlide(index)}
-                      style={{
-                        width: index === slide ? 16 : 6,
-                        height: 6,
-                        borderRadius: 99,
-                        border: 0,
-                        cursor: 'pointer',
-                        background: index === slide ? 'var(--brand-accent)' : 'rgba(226,75,74,0.28)',
-                        transition: 'width 200ms, background 200ms',
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            </Box>
-          </Box>
-
-          {/* Detail cards under the banner */}
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: '1fr 1.2fr 1fr' },
-              gap: 1.5,
               minHeight: 0,
+              display: 'grid',
+              gridTemplateRows: { xs: 'auto', md: 'auto minmax(0, 1fr) auto' },
+              gap: 1.25,
             }}
           >
             <GlassCard style={{ marginBottom: 0 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.1 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
                 <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
                   <Box
                     component="img"
@@ -622,42 +323,38 @@ export default function FacultyAtlasMobile() {
                     }}
                   />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.2 }}>
-                          ATLAS Mobile
-                        </Typography>
-                        <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.78rem', mt: 0.3 }}>
-                          Internal app · {versionLabel}
-                          {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
-                        </Typography>
-                        {release?.published_at ? (
-                          <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.72rem', mt: 0.25 }}>
-                            Updated {formatPublished(release.published_at)}
-                          </Typography>
-                        ) : null}
-                      </Box>
-                      {whatsNewItems.length ? (
-                        <button
-                          type="button"
-                          aria-haspopup="dialog"
-                          aria-expanded={whatsNewOpen}
-                          onClick={(event) => setWhatsNewAnchor(event.currentTarget)}
-                          style={pillBtnStyle}
-                        >
-                          <NewReleasesOutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
-                          What’s New
-                        </button>
-                      ) : null}
-                    </Box>
+                    <Typography sx={{ fontWeight: 800, fontSize: '1.05rem', lineHeight: 1.2 }}>
+                      ATLAS Mobile
+                    </Typography>
+                    <Typography sx={{ color: 'var(--text-secondary)', fontSize: '0.78rem', mt: 0.3 }}>
+                      Internal app · {versionLabel}
+                      {release?.file_size_label ? ` · ${release.file_size_label}` : ''}
+                    </Typography>
+                    {release?.published_at ? (
+                      <Typography sx={{ color: 'var(--text-tertiary)', fontSize: '0.72rem', mt: 0.25 }}>
+                        Updated {formatPublished(release.published_at)}
+                      </Typography>
+                    ) : null}
                     {!available && !loading ? (
-                      <Typography sx={{ mt: 0.6, color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
-                        The install is not ready yet. Ask your IT team to publish ATLAS Mobile in System Health.
+                      <Typography sx={{ mt: 0.5, color: 'var(--text-secondary)', fontSize: '0.76rem' }}>
+                        Not published yet — ask IT to publish in System Health.
                       </Typography>
                     ) : null}
                   </Box>
                 </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, flexWrap: 'wrap' }}>
+                  {whatsNewItems.length ? (
+                    <button
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded={whatsNewOpen}
+                      onClick={(event) => setWhatsNewAnchor(event.currentTarget)}
+                      style={pillBtnStyle}
+                    >
+                      <NewReleasesOutlinedIcon sx={{ fontSize: 16, color: 'var(--brand-primary)' }} />
+                      What’s New
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     aria-haspopup="dialog"
@@ -672,32 +369,36 @@ export default function FacultyAtlasMobile() {
               </Box>
             </GlassCard>
 
-            <GlassCard title="Description" style={{ marginBottom: 0 }}>
-              <Typography sx={{ m: 0, mb: 1.1, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                {ABOUT_APP}
-              </Typography>
-              <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>Features</Typography>
-              <Box
-                component="ul"
-                sx={{
-                  m: 0,
-                  pl: 2.25,
-                  color: 'var(--text-primary)',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  lineHeight: 1.45,
-                  listStyleType: 'disc',
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  columnGap: 1.5,
-                  rowGap: 0.25,
-                }}
-              >
-                {CORE_FEATURES.map((feature) => (
-                  <Box component="li" key={feature} sx={{ display: 'list-item' }}>
-                    {feature}
+            <GlassCard fill title="Description" style={{ height: '100%', minHeight: 0, marginBottom: 0 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.1, height: '100%', minHeight: 0, flex: 1 }}>
+                <Typography sx={{ m: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+                  {ABOUT_APP}
+                </Typography>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>Features</Typography>
+                  <Box
+                    component="ul"
+                    sx={{
+                      m: 0,
+                      pl: 2.25,
+                      color: 'var(--text-primary)',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      lineHeight: 1.45,
+                      listStyleType: 'disc',
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr',
+                      columnGap: 1.25,
+                      rowGap: 0.25,
+                    }}
+                  >
+                    {CORE_FEATURES.map((feature) => (
+                      <Box component="li" key={feature} sx={{ display: 'list-item' }}>
+                        {feature}
+                      </Box>
+                    ))}
                   </Box>
-                ))}
+                </Box>
               </Box>
             </GlassCard>
 
@@ -722,6 +423,284 @@ export default function FacultyAtlasMobile() {
                 <li>Internet — sign in & update exams online</li>
               </Box>
             </GlassCard>
+          </Box>
+
+          {/* Column 2 — preview card */}
+          <Box
+            sx={{
+              position: 'relative',
+              height: { xs: 'auto', md: '100%' },
+              minHeight: { xs: 520, md: 0 },
+              borderRadius: '22px',
+              border: '1px solid var(--border-color)',
+              boxShadow: 'var(--shadow-card)',
+              overflow: 'hidden',
+              background: 'radial-gradient(120% 80% at 50% 18%, rgba(226,75,74,0.18) 0%, transparent 46%), linear-gradient(180deg, #121014 0%, #1A1012 55%, #241014 100%)',
+              'body.atlas-light &': {
+                background: 'radial-gradient(120% 80% at 50% 18%, rgba(226,75,74,0.10) 0%, transparent 46%), linear-gradient(180deg, #FFFFFF 0%, #FFF7F7 55%, #F7EAEA 100%)',
+              },
+            }}
+          >
+            <Box
+              aria-hidden
+              sx={{
+                pointerEvents: 'none',
+                position: 'absolute',
+                inset: 0,
+                backgroundImage: `
+                  radial-gradient(circle at 50% 28%, transparent 0 70px, rgba(226,75,74,0.14) 71px 72px, transparent 73px),
+                  radial-gradient(circle at 50% 28%, transparent 0 120px, rgba(226,75,74,0.10) 121px 122px, transparent 123px),
+                  radial-gradient(circle at 50% 28%, transparent 0 175px, rgba(170,36,35,0.08) 176px 177px, transparent 178px),
+                  radial-gradient(ellipse at 50% 100%, rgba(226,75,74,0.22) 0 100px, transparent 101px)
+                `,
+                'body.atlas-light &': {
+                  backgroundImage: `
+                    radial-gradient(circle at 50% 28%, transparent 0 70px, rgba(226,75,74,0.11) 71px 72px, transparent 73px),
+                    radial-gradient(circle at 50% 28%, transparent 0 120px, rgba(226,75,74,0.08) 121px 122px, transparent 123px),
+                    radial-gradient(circle at 50% 28%, transparent 0 175px, rgba(170,36,35,0.06) 176px 177px, transparent 178px),
+                    radial-gradient(ellipse at 50% 100%, rgba(243,180,179,0.4) 0 110px, transparent 111px)
+                  `,
+                },
+              }}
+            />
+
+            <Box
+              sx={{
+                position: 'relative',
+                zIndex: 1,
+                height: '100%',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                px: 2,
+                pt: 2,
+                pb: 1.5,
+              }}
+            >
+              <Typography
+                sx={{
+                  fontWeight: 900,
+                  fontSize: { xs: '1.35rem', md: '1.5rem' },
+                  letterSpacing: '-0.03em',
+                  lineHeight: 1,
+                  textAlign: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Box
+                  component="span"
+                  sx={{ color: 'var(--brand-accent)', 'body.atlas-light &': { color: 'var(--brand-primary)' } }}
+                >
+                  ATLAS
+                </Box>
+                {' '}
+                <Box component="span" sx={{ color: 'var(--text-primary)' }}>MOBILE</Box>
+              </Typography>
+              <Typography
+                sx={{
+                  mt: 0.6,
+                  mb: 1,
+                  fontWeight: 800,
+                  fontSize: '0.88rem',
+                  textAlign: 'center',
+                  color: 'var(--brand-accent)',
+                  'body.atlas-light &': { color: 'var(--brand-primary)' },
+                  flexShrink: 0,
+                }}
+              >
+                {activePreview.title}
+              </Typography>
+
+              <Box
+                sx={{
+                  position: 'relative',
+                  flex: 1,
+                  minHeight: 0,
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconButton
+                  aria-label="Previous preview"
+                  onClick={() => setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)}
+                  sx={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 4,
+                    width: 36,
+                    height: 36,
+                    bgcolor: 'rgba(255,255,255,0.08)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--brand-accent)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.14)' },
+                    'body.atlas-light &': {
+                      bgcolor: 'rgba(255,255,255,0.92)',
+                      color: 'var(--brand-primary)',
+                      boxShadow: '0 6px 18px rgba(63,10,10,0.12)',
+                      '&:hover': { bgcolor: '#fff' },
+                    },
+                  }}
+                >
+                  <ChevronLeftIcon fontSize="small" />
+                </IconButton>
+
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: '10%',
+                    bottom: '8%',
+                    width: { xs: 110, md: 'min(140px, 32%)' },
+                    aspectRatio: '908 / 2048',
+                    transform: 'rotate(-5deg)',
+                    borderRadius: '24px',
+                    p: '5px',
+                    background: 'linear-gradient(160deg, #4A4A50, #1A1A1E)',
+                    boxShadow: '0 16px 36px rgba(0,0,0,0.35)',
+                    opacity: 0.7,
+                    zIndex: 1,
+                  }}
+                >
+                  <Box sx={{ width: '100%', height: '100%', borderRadius: '19px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
+                    <Box
+                      component="img"
+                      src={backPreview.image}
+                      alt=""
+                      sx={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box sx={{ position: 'relative', zIndex: 2, ml: '12%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <Box
+                    sx={{
+                      width: { xs: 150, md: 'min(200px, 48%)' },
+                      aspectRatio: '908 / 2048',
+                      maxHeight: '86%',
+                      transform: 'rotate(6deg)',
+                      borderRadius: '28px',
+                      p: '6px',
+                      background: 'linear-gradient(160deg, #3A3A40, #111114)',
+                      boxShadow: '0 24px 44px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.12) inset',
+                      'body.atlas-light &': {
+                        boxShadow: '0 24px 44px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.14) inset',
+                      },
+                    }}
+                  >
+                    <Box sx={{ position: 'relative', width: '100%', height: '100%', borderRadius: '22px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: 7,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: '34%',
+                          height: 8,
+                          borderRadius: 99,
+                          bgcolor: '#000',
+                          zIndex: 2,
+                        }}
+                      />
+                      <Box
+                        component="img"
+                        key={activePreview.image}
+                        src={activePreview.image}
+                        alt={activePreview.title}
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          objectPosition: 'top center',
+                          display: 'block',
+                          animation: 'atlasPreviewFade 320ms ease',
+                          '@keyframes atlasPreviewFade': {
+                            from: { opacity: 0.35 },
+                            to: { opacity: 1 },
+                          },
+                        }}
+                      />
+                    </Box>
+                  </Box>
+                  <Box
+                    aria-hidden
+                    sx={{
+                      mt: 0.25,
+                      width: { xs: 160, md: 190 },
+                      height: 18,
+                      borderRadius: '50%',
+                      background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, transparent 70%)',
+                      'body.atlas-light &': {
+                        background: 'radial-gradient(ellipse at center, rgba(63,10,10,0.28) 0%, transparent 70%)',
+                      },
+                    }}
+                  />
+                </Box>
+
+                <IconButton
+                  aria-label="Next preview"
+                  onClick={() => setSlide((current) => (current + 1) % PREVIEWS.length)}
+                  sx={{
+                    position: 'absolute',
+                    right: 0,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    zIndex: 4,
+                    width: 36,
+                    height: 36,
+                    bgcolor: 'rgba(255,255,255,0.08)',
+                    border: '1px solid var(--border-color)',
+                    color: 'var(--brand-accent)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.14)' },
+                    'body.atlas-light &': {
+                      bgcolor: 'rgba(255,255,255,0.92)',
+                      color: 'var(--brand-primary)',
+                      boxShadow: '0 6px 18px rgba(63,10,10,0.12)',
+                      '&:hover': { bgcolor: '#fff' },
+                    },
+                  }}
+                >
+                  <ChevronRightIcon fontSize="small" />
+                </IconButton>
+              </Box>
+
+              <Typography
+                sx={{
+                  mt: 0.75,
+                  mb: 0.75,
+                  maxWidth: 300,
+                  textAlign: 'center',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.4,
+                  flexShrink: 0,
+                }}
+              >
+                {activePreview.body}
+              </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.65, flexShrink: 0 }}>
+                {PREVIEWS.map((item, index) => (
+                  <button
+                    key={item.title}
+                    type="button"
+                    aria-label={`Show preview: ${item.title}`}
+                    onClick={() => setSlide(index)}
+                    style={{
+                      width: index === slide ? 16 : 6,
+                      height: 6,
+                      borderRadius: 99,
+                      border: 0,
+                      cursor: 'pointer',
+                      background: index === slide ? 'var(--brand-accent)' : 'rgba(226,75,74,0.28)',
+                      transition: 'width 200ms, background 200ms',
+                    }}
+                  />
+                ))}
+              </Box>
+            </Box>
           </Box>
         </Box>
       </Box>
