@@ -94,6 +94,7 @@ export default function SystemManagement() {
   const [mobileNotes, setMobileNotes] = useState('')
   const [mobileFile, setMobileFile] = useState(null)
   const [mobilePublishing, setMobilePublishing] = useState(false)
+  const [mobileUploadPct, setMobileUploadPct] = useState(null)
   const [mobileSavingNotes, setMobileSavingNotes] = useState(false)
 
   const load = useCallback(() => {
@@ -164,6 +165,7 @@ export default function SystemManagement() {
       return
     }
     setMobilePublishing(true)
+    setMobileUploadPct(0)
     setNotice('')
     setError('')
     try {
@@ -176,7 +178,13 @@ export default function SystemManagement() {
         headers: { 'Content-Type': undefined },
         timeout: 600000,
         skipAtlasErrorCard: true,
+        onUploadProgress: (event) => {
+          if (!event.total) return
+          // Cap at 99 until the server finishes saving the APK.
+          setMobileUploadPct(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+        },
       })
+      setMobileUploadPct(100)
       setMobileRelease(data || null)
       setMobileFile(null)
       setNotice(`ATLAS Mobile ${data?.version_name || ''} is live. Faculty were notified.`)
@@ -189,6 +197,7 @@ export default function SystemManagement() {
       else setError('The APK could not be published.')
     } finally {
       setMobilePublishing(false)
+      setMobileUploadPct(null)
     }
   }
 
@@ -529,9 +538,10 @@ export default function SystemManagement() {
             border: '1px solid var(--border-color)',
             borderRadius: 10,
             padding: '8px 14px',
-            cursor: 'pointer',
+            cursor: mobilePublishing ? 'not-allowed' : 'pointer',
             fontWeight: 700,
             fontSize: '0.86rem',
+            opacity: mobilePublishing ? 0.6 : 1,
           }}
           >
             Choose APK
@@ -539,6 +549,7 @@ export default function SystemManagement() {
               type="file"
               accept=".apk,application/vnd.android.package-archive"
               hidden
+              disabled={mobilePublishing}
               onChange={event => setMobileFile(event.target.files?.[0] || null)}
             />
           </label>
@@ -552,9 +563,26 @@ export default function SystemManagement() {
             {mobileSavingNotes ? 'Saving…' : 'Save What’s New'}
           </OutlineBtn>
           <PrimaryBtn disabled={mobilePublishing || mobileSavingNotes || !mobileFile} onClick={publishMobileApp}>
-            {mobilePublishing ? 'Publishing…' : 'Publish & notify faculty'}
+            {mobilePublishing
+              ? (mobileUploadPct != null && mobileUploadPct < 100
+                  ? `Uploading… ${mobileUploadPct}%`
+                  : 'Saving on server…')
+              : 'Publish & notify faculty'}
           </PrimaryBtn>
         </div>
+        {mobilePublishing && mobileUploadPct != null && (
+          <div style={{ marginTop: 12 }}>
+            <ProgressBar
+              label={mobileUploadPct < 100 ? 'Uploading APK' : 'Finishing publish'}
+              value={mobileUploadPct}
+            />
+            <p style={{ margin: '8px 0 0', color: 'var(--text-secondary)', fontSize: '0.8rem' }}>
+              {mobileFile
+                ? `This ${(mobileFile.size / (1024 * 1024)).toFixed(0)} MB APK can take a few minutes on a typical connection — keep this tab open until it finishes.`
+                : 'Large APK uploads can take a few minutes — keep this tab open until it finishes.'}
+            </p>
+          </div>
+        )}
       </GlassCard>
 
       <div className="atlas-health-split" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

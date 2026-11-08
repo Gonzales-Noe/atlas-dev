@@ -3,7 +3,11 @@
 import logging
 import os
 import re
+import threading
 
+from django.core.files.move import file_move_safe
+from django.core.files.uploadedfile import TemporaryUploadedFile
+from django.db import close_old_connections
 from django.http import FileResponse, Http404
 from django.utils import timezone
 from rest_framework import permissions, status
@@ -20,6 +24,55 @@ logger = logging.getLogger(__name__)
 APK_CONTENT_TYPE = 'application/vnd.android.package-archive'
 MAX_APK_BYTES = 200 * 1024 * 1024
 VERSION_NAME_RE = re.compile(r'^[0-9A-Za-z][0-9A-Za-z._+-]{0,39}$')
+APK_STORAGE_NAME = 'mobile/atlas-mobile.apk'
+
+
+def _notify_faculty_async(version_name, release_notes):
+    """Faculty alerts after the APK is live — do not block the publish HTTP response."""
+    close_old_connections()
+    try:
+        notify_mobile_app_updated(version_name, release_notes)
+    except Exception:
+        logger.exception('Faculty were not notified about the mobile app update')
+    finally:
+        close_old_connections()
+
+
+def _store_apk(row, upload):
+    """
+    Put the uploaded APK into media storage.
+
+    Large multipart uploads already land as TemporaryUploadedFile on disk; move that
+    tempfile into place instead of re-copying ~50 MB through Python.
+    """
+    if row.apk:
+        try:
+            row.apk.delete(save=False)
+        except Exception:
+            logger.debug('Previous APK could not be deleted', exc_info=True)
+
+    if isinstance(upload, TemporaryUploadedFile):
+        storage = row.apk.storage
+        # Prefer the stable name; old file was deleted above.
+        if storage.exists(APK_STORAGE_NAME):
+            storage.delete(APK_STORAGE_NAME)
+        dest_path = storage.path(APK_STORAGE_NAME)
+        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+        src = upload.temporary_file_path()
+        # Close without unlinking so Windows can move the path; Linux can rename open fds.
+        try:
+            upload.file.delete = False
+        except Exception:
+            pass
+        try:
+            upload.file.close()
+        except Exception:
+            pass
+        file_move_safe(src, dest_path, allow_overwrite=True)
+        row.apk.name = APK_STORAGE_NAME
+        return
+
+    row.apk.save('atlas-mobile.apk', upload, save=False)
 
 
 def _is_superadmin(request):
@@ -140,14 +193,7 @@ class MobileAppView(APIView):
         release_notes = str(request.data.get('release_notes') or '').strip()[:2000]
 
         row, _created = MobileAppRelease.objects.get_or_create(pk=1)
-        if row.apk:
-            try:
-                row.apk.delete(save=False)
-            except Exception:
-                logger.debug('Previous APK could not be deleted', exc_info=True)
-
-        # Stable filename on disk; UploadedFile streams to storage without a full memory copy.
-        row.apk.save('atlas-mobile.apk', upload, save=False)
+        _store_apk(row, upload)
         row.version_name = version_name
         row.version_code = version_code
         row.release_notes = release_notes
@@ -157,10 +203,12 @@ class MobileAppView(APIView):
         row.published_by = profile
         row.save()
 
-        try:
-            notify_mobile_app_updated(version_name, release_notes)
-        except Exception:
-            logger.exception('Faculty were not notified about the mobile app update')
+        # Respond as soon as the APK is on disk; faculty alerts run in the background.
+        threading.Thread(
+            target=_notify_faculty_async,
+            args=(version_name, release_notes),
+            daemon=True,
+        ).start()
 
         return Response(release_payload(request, row), status=status.HTTP_200_OK)
 
