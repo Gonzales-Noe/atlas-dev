@@ -557,25 +557,25 @@ export default function FacultyAtlasMobile() {
                   <ChevronLeftIcon fontSize="small" />
                 </IconButton>
 
-                {/* Spotlight carousel: tilted/dull · grow/bright · tilted/dull */}
+                {/* Stable keys so each phone morphs small/dim → big/bright without remount pulse */}
                 {[
-                  { item: prevPreview, role: 'prev' },
-                  { item: activePreview, role: 'active' },
-                  { item: nextPreview, role: 'next' },
-                ].map(({ item, role }) => {
-                  const active = role === 'active'
-                  const sideTilt = role === 'prev'
-                    ? 'rotateY(28deg) rotateZ(-4deg) scale(0.82) translateY(14px) translateX(6px)'
-                    : 'rotateY(-28deg) rotateZ(4deg) scale(0.82) translateY(14px) translateX(-6px)'
-                  const hoverTilt = role === 'prev'
-                    ? 'rotateY(20deg) rotateZ(-3deg) scale(0.9) translateY(8px) translateX(4px)'
-                    : 'rotateY(-20deg) rotateZ(3deg) scale(0.9) translateY(8px) translateX(-4px)'
+                  { item: prevPreview, offset: -1 },
+                  { item: activePreview, offset: 0 },
+                  { item: nextPreview, offset: 1 },
+                ].map(({ item, offset }) => {
+                  const active = offset === 0
+                  const sideTilt = offset < 0
+                    ? 'rotateY(26deg) rotateZ(-4deg) scale(0.84) translateY(12px) translateX(4px)'
+                    : 'rotateY(-26deg) rotateZ(4deg) scale(0.84) translateY(12px) translateX(-4px)'
+                  const hoverTilt = offset < 0
+                    ? 'rotateY(18deg) rotateZ(-3deg) scale(0.9) translateY(8px) translateX(2px)'
+                    : 'rotateY(-18deg) rotateZ(3deg) scale(0.9) translateY(8px) translateX(-2px)'
 
                   return (
                     <Box
-                      key={`${role}-${slide}-${item.title}`}
+                      key={item.title}
                       onClick={active ? undefined : () => {
-                        if (role === 'prev') setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)
+                        if (offset < 0) setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)
                         else setSlide((current) => (current + 1) % PREVIEWS.length)
                       }}
                       sx={{
@@ -587,7 +587,7 @@ export default function FacultyAtlasMobile() {
                         maxHeight: active ? '94%' : '56%',
                         borderRadius: active ? '30px' : '20px',
                         p: active ? '7px' : '3px',
-                        transformOrigin: active ? 'center center' : (role === 'prev' ? 'right center' : 'left center'),
+                        transformOrigin: active ? 'center center' : (offset < 0 ? 'right center' : 'left center'),
                         background: active
                           ? 'linear-gradient(160deg, #4A4A52, #16161A)'
                           : 'linear-gradient(160deg, #2A2A30, #0E0E12)',
@@ -601,37 +601,23 @@ export default function FacultyAtlasMobile() {
                           : sideTilt,
                         transformStyle: 'preserve-3d',
                         transition: [
-                          'width 420ms cubic-bezier(0.22, 1, 0.36, 1)',
-                          'max-height 420ms cubic-bezier(0.22, 1, 0.36, 1)',
-                          'opacity 420ms ease',
-                          'transform 420ms cubic-bezier(0.22, 1, 0.36, 1)',
-                          'filter 420ms ease',
-                          'box-shadow 420ms ease',
+                          'width 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'max-height 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'padding 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'border-radius 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'opacity 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'transform 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'filter 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'box-shadow 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          'background 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                         ].join(', '),
-                        animation: active ? 'atlasSpotlightGrow 520ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
-                        '@keyframes atlasSpotlightGrow': {
-                          '0%': {
-                            opacity: 0.45,
-                            filter: 'brightness(0.7) saturate(0.65)',
-                            transform: 'rotateY(0deg) scale(0.78) translateY(18px)',
-                          },
-                          '60%': {
-                            opacity: 1,
-                            filter: 'brightness(1.12) saturate(1.1)',
-                            transform: 'rotateY(0deg) scale(1.04) translateY(-10px)',
-                          },
-                          '100%': {
-                            opacity: 1,
-                            filter: 'brightness(1.1) saturate(1.08)',
-                            transform: 'rotateY(0deg) scale(1) translateY(-8px)',
-                          },
-                        },
                         cursor: active ? 'default' : 'pointer',
                         flexShrink: 1,
                         zIndex: active ? 3 : 1,
+                        willChange: 'transform, opacity, filter, width',
                         '&:hover': active ? undefined : {
-                          opacity: 0.58,
-                          filter: 'brightness(0.78) saturate(0.72)',
+                          opacity: 0.55,
+                          filter: 'brightness(0.75) saturate(0.7)',
                           transform: hoverTilt,
                         },
                         'body.atlas-light &': {
@@ -649,23 +635,24 @@ export default function FacultyAtlasMobile() {
                           borderRadius: active ? '23px' : '17px',
                           overflow: 'hidden',
                           bgcolor: '#0B0B0B',
+                          transition: 'border-radius 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                         }}
                       >
-                        {active ? (
-                          <Box
-                            sx={{
-                              position: 'absolute',
-                              top: 8,
-                              left: '50%',
-                              transform: 'translateX(-50%)',
-                              width: '34%',
-                              height: 8,
-                              borderRadius: 99,
-                              bgcolor: '#000',
-                              zIndex: 2,
-                            }}
-                          />
-                        ) : null}
+                        <Box
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: '34%',
+                            height: 8,
+                            borderRadius: 99,
+                            bgcolor: '#000',
+                            zIndex: 2,
+                            opacity: active ? 1 : 0,
+                            transition: 'opacity 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                          }}
+                        />
                         <Box
                           component="img"
                           src={item.image}
