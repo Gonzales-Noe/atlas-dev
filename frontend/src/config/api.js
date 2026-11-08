@@ -176,6 +176,17 @@ function refreshAccessToken() {
   return refreshPromise
 }
 
+/** Refresh JWT before long uploads so auth still passes after the body finishes streaming. */
+export async function ensureFreshAccessToken() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken || isDemoToken(refreshToken)) return getAccessToken()
+  try {
+    return await refreshAccessToken()
+  } catch {
+    return getAccessToken()
+  }
+}
+
 function clearJsonContentType(headers) {
   if (!headers) return
   if (typeof headers.delete === 'function') {
