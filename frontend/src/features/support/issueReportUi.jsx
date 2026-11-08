@@ -806,7 +806,8 @@ export function IssueReportsBoard({
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+        {toolbarEnd}
         <ToggleButtonGroup
           exclusive
           size="small"
@@ -833,7 +834,6 @@ export function IssueReportsBoard({
           <ToggleButton value="list" aria-label="Single list"><ViewListIcon fontSize="small" /></ToggleButton>
           <ToggleButton value="list-2" aria-label="Two-column list"><ViewColumnIcon fontSize="small" /></ToggleButton>
         </ToggleButtonGroup>
-        {toolbarEnd}
       </Box>
 
       {loading && reports.length === 0 ? (
