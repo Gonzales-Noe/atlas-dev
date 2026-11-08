@@ -4,6 +4,7 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Popover from '@mui/material/Popover'
 import Typography from '@mui/material/Typography'
+import useMediaQuery from '@mui/material/useMediaQuery'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
@@ -128,6 +129,7 @@ const pillBtnStyle = {
 
 export default function FacultyAtlasMobile() {
   const location = useLocation()
+  const shortViewport = useMediaQuery('(max-height: 900px)', { noSsr: true })
   const [release, setRelease] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -136,6 +138,7 @@ export default function FacultyAtlasMobile() {
   const [updateBannerVisible, setUpdateBannerVisible] = useState(false)
   const [whatsNewAnchor, setWhatsNewAnchor] = useState(null)
   const [installOpen, setInstallOpen] = useState(false)
+  const compact = updateBannerVisible || shortViewport
 
   const loadRelease = useCallback((opts = {}) => {
     const quiet = Boolean(opts.quiet)
@@ -250,7 +253,7 @@ export default function FacultyAtlasMobile() {
           minHeight: { xs: 'auto', md: 0 },
           display: 'flex',
           flexDirection: 'column',
-          gap: 1.25,
+          gap: compact ? 1 : 1.25,
           overflow: { xs: 'visible', md: 'hidden' },
         }}
       >
@@ -304,7 +307,7 @@ export default function FacultyAtlasMobile() {
               minHeight: 0,
               display: 'grid',
               gridTemplateRows: { xs: 'auto', md: 'auto minmax(0, 1fr) auto' },
-              gap: 1.25,
+              gap: compact ? 1 : 1.25,
             }}
           >
             <GlassCard style={{ marginBottom: 0 }}>
@@ -371,12 +374,28 @@ export default function FacultyAtlasMobile() {
             </GlassCard>
 
             <GlassCard fill title="Description" style={{ height: '100%', minHeight: 0, marginBottom: 0 }}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.1, height: '100%', minHeight: 0, flex: 1 }}>
-                <Typography sx={{ m: 0, color: 'var(--text-secondary)', fontSize: '0.82rem', lineHeight: 1.5 }}>
+              <Box
+                sx={{
+                  flex: 1,
+                  minHeight: 0,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: compact ? 0.85 : 1.1,
+                }}
+              >
+                <Typography
+                  sx={{
+                    m: 0,
+                    color: 'var(--text-secondary)',
+                    fontSize: compact ? '0.78rem' : '0.82rem',
+                    lineHeight: compact ? 1.4 : 1.5,
+                  }}
+                >
                   {ABOUT_APP}
                 </Typography>
                 <Box>
-                  <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: 0.5 }}>Features</Typography>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.84rem', mb: compact ? 0.35 : 0.5 }}>Features</Typography>
                   <Box
                     component="ul"
                     sx={{
@@ -390,7 +409,7 @@ export default function FacultyAtlasMobile() {
                       display: 'grid',
                       gridTemplateColumns: '1fr 1fr',
                       columnGap: 1.25,
-                      rowGap: 0.25,
+                      rowGap: compact ? 0.15 : 0.25,
                     }}
                   >
                     {CORE_FEATURES.map((feature) => (
@@ -412,16 +431,21 @@ export default function FacultyAtlasMobile() {
                   color: 'var(--text-secondary)',
                   fontSize: '0.8rem',
                   lineHeight: 1.5,
+                  listStyleType: 'disc',
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', md: compact ? '1fr 1fr' : '1fr' },
+                  columnGap: 1.25,
+                  rowGap: compact ? 0.2 : 0.35,
                 }}
               >
-                <li>Android 9+ / iPhone installer support</li>
-                <li>
+                <Box component="li" sx={{ display: 'list-item' }}>Android 9+ / iPhone installer support</Box>
+                <Box component="li" sx={{ display: 'list-item' }}>
                   Storage:
                   {' '}
                   {release?.file_size_label || 'about 50 MB'}
-                </li>
-                <li>Camera — scan Major Exam MCQ sheets</li>
-                <li>Internet — sign in & update exams online</li>
+                </Box>
+                <Box component="li" sx={{ display: 'list-item' }}>Camera — scan Major Exam MCQ sheets</Box>
+                <Box component="li" sx={{ display: 'list-item' }}>Internet — sign in & update exams online</Box>
               </Box>
             </GlassCard>
           </Box>
