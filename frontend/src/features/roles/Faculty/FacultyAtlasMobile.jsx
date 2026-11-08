@@ -4,13 +4,9 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Popover from '@mui/material/Popover'
 import Typography from '@mui/material/Typography'
-import CameraAltOutlinedIcon from '@mui/icons-material/CameraAltOutlined'
 import CloseIcon from '@mui/icons-material/Close'
-import FactCheckOutlinedIcon from '@mui/icons-material/FactCheckOutlined'
 import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined'
 import QrCode2OutlinedIcon from '@mui/icons-material/QrCode2Outlined'
-import SchoolOutlinedIcon from '@mui/icons-material/SchoolOutlined'
-import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
 import Dialog from '@mui/material/Dialog'
 import QRCode from 'qrcode'
 import FacultyLayout from './FacultyLayout'
@@ -22,24 +18,54 @@ const MOBILE_RELEASE_REFRESH = 'atlas-mobile-release-refresh'
 
 const PREVIEWS = [
   {
-    title: 'Scan exam sheets',
-    body: 'Point your phone at a printed Major Examination MCQ sheet. ATLAS reads the answers in the room.',
-    icon: CameraAltOutlinedIcon,
+    title: 'Get started',
+    body: 'ATLAS Mobile branding on the landing screen — first impression.',
+    image: '/mobile/previews/00-landing.jpg',
   },
   {
-    title: 'Review scores on your phone',
-    body: 'Check scan results on the device. Scores and answer keys stay in sync with ATLAS Web class records.',
-    icon: FactCheckOutlinedIcon,
+    title: 'Sign in',
+    body: 'Faculty sign-in with email or Google.',
+    image: '/mobile/previews/01-login.jpg',
   },
   {
-    title: 'Your courses on the go',
-    body: 'Open the same courses you use on ATLAS Web — handy between classes.',
-    icon: SchoolOutlinedIcon,
+    title: 'Home',
+    body: 'Greeting, active course, and the main Scan Exam Sheets action.',
+    image: '/mobile/previews/02-home.jpg',
   },
   {
-    title: 'Works offline in the room',
-    body: 'If the signal drops, scans wait on your phone and continue when you reconnect.',
-    icon: StorageOutlinedIcon,
+    title: 'Live scanner',
+    body: 'Point the camera at a printed MCQ bubble sheet — the hero shot.',
+    image: '/mobile/previews/03-scanner.jpg',
+  },
+  {
+    title: 'Instant score',
+    body: 'Student ID and score appear right after each scan.',
+    image: '/mobile/previews/04-score-result.jpg',
+  },
+  {
+    title: 'Course scores',
+    body: 'Section progress and scanned scores for your roster.',
+    image: '/mobile/previews/05-course-scores.jpg',
+  },
+  {
+    title: 'Reports',
+    body: 'Class performance — mean, pass rate, and score distribution.',
+    image: '/mobile/previews/06-reports.jpg',
+  },
+  {
+    title: 'Major Exams',
+    body: 'Exam list and sheets hub — create and open major examinations.',
+    image: '/mobile/previews/07-major-exams.jpg',
+  },
+  {
+    title: 'Works offline',
+    body: 'Courses and exams stay ready when the room has no signal.',
+    image: '/mobile/previews/08-offline.jpg',
+  },
+  {
+    title: 'Scan detail',
+    body: 'Open a student result and review flagged or invalid items.',
+    image: '/mobile/previews/09-scan-detail.jpg',
   },
 ]
 
@@ -199,7 +225,6 @@ export default function FacultyAtlasMobile() {
   const available = Boolean(release?.available)
   const versionLabel = release?.version_name ? `Version ${release.version_name}` : 'Not published yet'
   const activePreview = PREVIEWS[slide]
-  const ActiveIcon = activePreview.icon
   const whatsNewOpen = Boolean(whatsNewAnchor)
 
   function dismissUpdateBanner() {
@@ -431,7 +456,7 @@ export default function FacultyAtlasMobile() {
             </GlassCard>
           </Box>
 
-          {/* Right column — full-height app preview */}
+          {/* Right column — App Store–style screenshot carousel */}
           <GlassCard
             fill
             title="App preview"
@@ -446,43 +471,54 @@ export default function FacultyAtlasMobile() {
                 height: '100%',
                 minHeight: 0,
                 flex: 1,
-                gap: 1.5,
+                gap: 1.1,
                 textAlign: 'center',
                 px: 0.5,
               }}
             >
               <Box
                 sx={{
-                  width: { xs: 110, md: 'min(150px, 42%)' },
-                  aspectRatio: '108 / 168',
-                  maxHeight: '58%',
-                  borderRadius: '28px',
+                  width: { xs: 148, md: 'min(210px, 58%)' },
+                  aspectRatio: '908 / 2048',
+                  maxHeight: '68%',
+                  borderRadius: '22px',
                   border: '3px solid var(--text-primary)',
-                  background: 'linear-gradient(160deg, rgba(226,75,74,0.14), rgba(247,249,252,0.95))',
-                  display: 'grid',
-                  placeItems: 'center',
+                  overflow: 'hidden',
+                  background: '#111',
                   boxShadow: 'var(--shadow-card)',
                   flexShrink: 1,
+                  position: 'relative',
                 }}
               >
-                <ActiveIcon sx={{ fontSize: { xs: 40, md: 52 }, color: 'var(--brand-primary)' }} />
+                <Box
+                  component="img"
+                  src={activePreview.image}
+                  alt={activePreview.title}
+                  sx={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    objectPosition: 'top center',
+                    display: 'block',
+                  }}
+                />
               </Box>
-              <Box sx={{ maxWidth: 320 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '1.05rem' }}>{activePreview.title}</Typography>
-                <Typography sx={{ mt: 0.5, color: 'var(--text-secondary)', lineHeight: 1.45, fontSize: '0.84rem' }}>
+              <Box sx={{ maxWidth: 320, flexShrink: 0 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: '0.98rem' }}>{activePreview.title}</Typography>
+                <Typography sx={{ mt: 0.35, color: 'var(--text-secondary)', lineHeight: 1.4, fontSize: '0.8rem' }}>
                   {activePreview.body}
                 </Typography>
               </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, flexShrink: 0 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.75, flexShrink: 0 }}>
                 {PREVIEWS.map((item, index) => (
                   <button
                     key={item.title}
                     type="button"
-                    aria-label={`Show preview ${index + 1}`}
+                    aria-label={`Show preview: ${item.title}`}
                     onClick={() => setSlide(index)}
                     style={{
-                      width: index === slide ? 22 : 8,
-                      height: 8,
+                      width: index === slide ? 18 : 7,
+                      height: 7,
                       borderRadius: 99,
                       border: 0,
                       cursor: 'pointer',
