@@ -6,7 +6,7 @@ import atlasMaintenance from '../../assets/atlas-maintenance.png'
 import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
-import api from '../../config/api'
+import api, { ensureFreshAccessToken } from '../../config/api'
 import { cssColor, loadBrandTheme } from '../../utils/brandTheme'
 import LlmHealthPanel from './LlmHealthPanel'
 
@@ -177,6 +177,9 @@ export default function SystemManagement() {
     setNotice('')
     setError('')
     try {
+      // Access tokens last 15 minutes; Django checks auth after the full APK arrives.
+      // Refresh first so a slow upload does not 401 and restart (or fail) at ~90%.
+      await ensureFreshAccessToken()
       const form = new FormData()
       form.append('apk', mobileFile)
       form.append('version_name', mobileVersion.trim())
@@ -186,13 +189,13 @@ export default function SystemManagement() {
         headers: { 'Content-Type': undefined },
         timeout: 600000,
         skipAtlasErrorCard: true,
-        // Do not re-POST the APK after a mid-upload 401 refresh — that restarts progress at 0%.
+        // Do not re-POST the APK after a mid-upload 401 — that restarts progress at 0%.
         atlasNoRetry: true,
         onUploadProgress: (event) => {
           const total = event.total || mobileFile.size || 0
           if (!total) return
           // Cap at 99 until the server finishes saving the APK.
-          // Never move backwards (retries / odd XHR totals caused 89% → 2%).
+          // Never move backwards (auth retries / odd XHR totals caused 89% → 2%).
           const next = Math.min(99, Math.round((event.loaded / total) * 100))
           setMobileUploadPct((prev) => Math.max(prev ?? 0, next))
         },
@@ -211,9 +214,15 @@ export default function SystemManagement() {
     } catch (err) {
       const detail = err.response?.data?.detail
       let message = 'The APK could not be published.'
-      if (typeof detail === 'string' && detail.trim()) message = detail
-      else if (err.code === 'ECONNABORTED') message = 'The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.'
-      else if (!err.response) message = 'The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.'
+      if (err.response?.status === 401) {
+        message = 'Your session expired during the upload. Choose the APK again and publish — it was not saved.'
+      } else if (typeof detail === 'string' && detail.trim()) {
+        message = detail
+      } else if (err.code === 'ECONNABORTED') {
+        message = 'The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.'
+      } else if (!err.response) {
+        message = 'The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.'
+      }
       showStatusNotice(message, 'error')
     } finally {
       setMobilePublishing(false)
