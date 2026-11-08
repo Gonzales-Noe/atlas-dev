@@ -7,8 +7,41 @@ import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
 import SuperAdminLayout from './SuperAdminLayout'
 import { StatCard, GlassCard, PageHeader, StatusChip, ProgressBar, PrimaryBtn, OutlineBtn } from '../../components/ui'
 import api, { ensureFreshAccessToken } from '../../config/api'
+import { extractApiError } from '../../utils'
 import { cssColor, loadBrandTheme } from '../../utils/brandTheme'
 import LlmHealthPanel from './LlmHealthPanel'
+
+function publishApkErrorMessage(err) {
+  const status = err?.response?.status
+  if (status === 401) {
+    return 'Your session expired during the upload. Choose the APK again and publish — it was not saved.'
+  }
+  if (status === 403) {
+    return 'Only the IT superadmin can publish ATLAS Mobile.'
+  }
+  if (status === 413) {
+    return 'The APK was rejected as too large by the server. Use a split build under ~55 MB (arm64-v8a).'
+  }
+  if (status === 502 || status === 504) {
+    return 'The server timed out while receiving the APK. Keep this tab open and try again on a stronger connection.'
+  }
+  if (err?.code === 'ECONNABORTED') {
+    return 'The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.'
+  }
+  if (!err?.response) {
+    return 'The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.'
+  }
+  const extracted = extractApiError(err)
+  if (extracted && !/<html|<!doctype/i.test(extracted) && extracted.length < 280) {
+    return extracted
+  }
+  if (status === 500) {
+    return 'The server could not save the APK. Check VPS disk space, then try again.'
+  }
+  return status
+    ? `The APK could not be published (error ${status}).`
+    : 'The APK could not be published.'
+}
 
 const scheduleFieldSx = {
   '& .MuiInputBase-root.Mui-disabled': { background: '#F3F4F6' },
@@ -185,8 +218,8 @@ export default function SystemManagement() {
       form.append('version_name', mobileVersion.trim())
       form.append('version_code', String(mobileCode).trim())
       form.append('release_notes', mobileNotes.trim())
+      // Let the browser set multipart Content-Type + boundary (do not force Content-Type).
       const { data } = await api.post('/auth/mobile-app/', form, {
-        headers: { 'Content-Type': undefined },
         timeout: 600000,
         skipAtlasErrorCard: true,
         // Do not re-POST the APK after a mid-upload 401 — that restarts progress at 0%.
@@ -212,18 +245,8 @@ export default function SystemManagement() {
       )
       loadMobileRelease()
     } catch (err) {
-      const detail = err.response?.data?.detail
-      let message = 'The APK could not be published.'
-      if (err.response?.status === 401) {
-        message = 'Your session expired during the upload. Choose the APK again and publish — it was not saved.'
-      } else if (typeof detail === 'string' && detail.trim()) {
-        message = detail
-      } else if (err.code === 'ECONNABORTED') {
-        message = 'The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.'
-      } else if (!err.response) {
-        message = 'The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.'
-      }
-      showStatusNotice(message, 'error')
+      console.error('[publishMobileApp]', err?.response?.status, err?.response?.data || err)
+      showStatusNotice(publishApkErrorMessage(err), 'error')
     } finally {
       setMobilePublishing(false)
       setMobileUploadPct(null)

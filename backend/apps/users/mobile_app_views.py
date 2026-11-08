@@ -42,9 +42,11 @@ def _store_apk(row, upload):
     """
     Put the uploaded APK into media storage.
 
-    Large multipart uploads already land as TemporaryUploadedFile on disk; move that
-    tempfile into place instead of re-copying ~50 MB through Python.
+    Large multipart uploads already land as TemporaryUploadedFile on disk; prefer a
+    fast filesystem move/copy, then fall back to FileField.save if that fails.
     """
+    import shutil
+
     if row.apk:
         try:
             row.apk.delete(save=False)
@@ -52,25 +54,28 @@ def _store_apk(row, upload):
             logger.debug('Previous APK could not be deleted', exc_info=True)
 
     if isinstance(upload, TemporaryUploadedFile):
-        storage = row.apk.storage
-        # Prefer the stable name; old file was deleted above.
-        if storage.exists(APK_STORAGE_NAME):
-            storage.delete(APK_STORAGE_NAME)
-        dest_path = storage.path(APK_STORAGE_NAME)
-        os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-        src = upload.temporary_file_path()
-        # Close without unlinking so Windows can move the path; Linux can rename open fds.
         try:
-            upload.file.delete = False
+            storage = row.apk.storage
+            # Prefer the stable name; old file was deleted above.
+            if storage.exists(APK_STORAGE_NAME):
+                storage.delete(APK_STORAGE_NAME)
+            dest_path = storage.path(APK_STORAGE_NAME)
+            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+            src = upload.temporary_file_path()
+            try:
+                # Same-volume rename when possible.
+                file_move_safe(src, dest_path, allow_overwrite=True)
+                try:
+                    upload.file.delete = False
+                except Exception:
+                    pass
+            except OSError:
+                # Cross-device or locked tempfile — copy while the upload handle is valid.
+                shutil.copyfile(src, dest_path)
+            row.apk.name = APK_STORAGE_NAME
+            return
         except Exception:
-            pass
-        try:
-            upload.file.close()
-        except Exception:
-            pass
-        file_move_safe(src, dest_path, allow_overwrite=True)
-        row.apk.name = APK_STORAGE_NAME
-        return
+            logger.exception('Fast APK place failed; falling back to FileField.save')
 
     row.apk.save('atlas-mobile.apk', upload, save=False)
 
@@ -193,15 +198,27 @@ class MobileAppView(APIView):
         release_notes = str(request.data.get('release_notes') or '').strip()[:2000]
 
         row, _created = MobileAppRelease.objects.get_or_create(pk=1)
-        _store_apk(row, upload)
-        row.version_name = version_name
-        row.version_code = version_code
-        row.release_notes = release_notes
-        row.file_size_bytes = size
-        row.published_at = timezone.now()
-        profile = UserProfile.objects.filter(pk=getattr(request.user, 'pk', None)).first()
-        row.published_by = profile
-        row.save()
+        try:
+            _store_apk(row, upload)
+            row.version_name = version_name
+            row.version_code = version_code
+            row.release_notes = release_notes
+            row.file_size_bytes = size
+            row.published_at = timezone.now()
+            profile = UserProfile.objects.filter(pk=getattr(request.user, 'pk', None)).first()
+            row.published_by = profile
+            row.save()
+        except Exception:
+            logger.exception('ATLAS Mobile APK publish failed while saving')
+            return Response(
+                {
+                    'detail': (
+                        'The server could not save the APK. '
+                        'Check VPS disk space under /opt/atlas media, then try again.'
+                    ),
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         # Respond as soon as the APK is on disk; faculty alerts run in the background.
         threading.Thread(
