@@ -49,6 +49,15 @@ const ABOUT_APP = (
   + 'Exams, answer keys, and scores stay in sync with ATLAS Web. It is an internal app — not listed on the public app stores.'
 )
 
+const CORE_FEATURES = [
+  'Scan MCQ sheets',
+  'Review scores',
+  'Sync with Web',
+  'Works offline',
+  'In-App Assessment Analytics',
+  'Create Major exams',
+]
+
 function formatPublished(iso) {
   if (!iso) return ''
   const date = new Date(iso)
@@ -347,20 +356,49 @@ export default function FacultyAtlasMobile() {
 
             <GlassCard
               fill
-              title="Install on your phone"
+              title="Description"
               style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
             >
-              <Typography
-                sx={{
-                  m: 0,
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.9rem',
-                  lineHeight: 1.55,
-                  flex: 1,
-                }}
-              >
-                {ABOUT_APP}
-              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, height: '100%', minHeight: 0, flex: 1 }}>
+                <Typography
+                  sx={{
+                    m: 0,
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.9rem',
+                    lineHeight: 1.55,
+                  }}
+                >
+                  {ABOUT_APP}
+                </Typography>
+                <Box>
+                  <Typography sx={{ fontWeight: 800, fontSize: '0.88rem', mb: 0.65 }}>
+                    Features
+                  </Typography>
+                  <Box
+                    component="ul"
+                    sx={{
+                      m: 0,
+                      pl: 2.5,
+                      color: 'var(--text-primary)',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      lineHeight: 1.55,
+                      listStyleType: 'disc',
+                      listStylePosition: 'outside',
+                      display: 'grid',
+                      gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' },
+                      columnGap: 2,
+                      rowGap: 0.35,
+                    }}
+                  >
+                    {CORE_FEATURES.map((feature) => (
+                      <Box component="li" key={feature} sx={{ display: 'list-item' }}>
+                        {feature}
+                      </Box>
+                    ))}
+                  </Box>
+                </Box>
+              </Box>
             </GlassCard>
 
             <GlassCard style={{ marginBottom: 0 }}>
