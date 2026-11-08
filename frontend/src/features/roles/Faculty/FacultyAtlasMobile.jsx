@@ -4,6 +4,8 @@ import Box from '@mui/material/Box'
 import IconButton from '@mui/material/IconButton'
 import Popover from '@mui/material/Popover'
 import Typography from '@mui/material/Typography'
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
+import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import CloseIcon from '@mui/icons-material/Close'
 import NewReleasesOutlinedIcon from '@mui/icons-material/NewReleasesOutlined'
 import QrCode2OutlinedIcon from '@mui/icons-material/QrCode2Outlined'
@@ -18,53 +20,53 @@ const MOBILE_RELEASE_REFRESH = 'atlas-mobile-release-refresh'
 
 const PREVIEWS = [
   {
-    title: 'Get started',
-    body: 'ATLAS Mobile branding on the landing screen — first impression.',
+    title: 'Get Started',
+    body: 'Welcome to ATLAS Mobile — scan Major Exam MCQ sheets in class.',
     image: '/mobile/previews/00-landing.jpg',
   },
   {
-    title: 'Sign in',
-    body: 'Faculty sign-in with email or Google.',
+    title: 'Sign In',
+    body: 'Faculty access with your ATLAS account or Google.',
     image: '/mobile/previews/01-login.jpg',
   },
   {
-    title: 'Home',
-    body: 'Greeting, active course, and the main Scan Exam Sheets action.',
+    title: 'Home & Scan',
+    body: 'Open your course and start Scan Exam Sheets in one tap.',
     image: '/mobile/previews/02-home.jpg',
   },
   {
-    title: 'Live scanner',
-    body: 'Point the camera at a printed MCQ bubble sheet — the hero shot.',
+    title: 'Live Scanner',
+    body: 'Lock onto a printed bubble sheet and capture answers in the room.',
     image: '/mobile/previews/03-scanner.jpg',
   },
   {
-    title: 'Instant score',
-    body: 'Student ID and score appear right after each scan.',
+    title: 'Instant Score',
+    body: 'See student ID, score, and marked answers right after the scan.',
     image: '/mobile/previews/04-score-result.jpg',
   },
   {
-    title: 'Course scores',
-    body: 'Section progress and scanned scores for your roster.',
+    title: 'Course Scores',
+    body: 'Track section progress and scanned scores on the roster.',
     image: '/mobile/previews/05-course-scores.jpg',
   },
   {
-    title: 'Reports',
-    body: 'Class performance — mean, pass rate, and score distribution.',
+    title: 'Assessment Analytics',
+    body: 'Pass rate, mean score, and distribution for the class.',
     image: '/mobile/previews/06-reports.jpg',
   },
   {
     title: 'Major Exams',
-    body: 'Exam list and sheets hub — create and open major examinations.',
+    body: 'Create and open major examinations from one hub.',
     image: '/mobile/previews/07-major-exams.jpg',
   },
   {
-    title: 'Works offline',
-    body: 'Courses and exams stay ready when the room has no signal.',
+    title: 'Works Offline',
+    body: 'Keep scanning when the room has no signal — sync later.',
     image: '/mobile/previews/08-offline.jpg',
   },
   {
-    title: 'Scan detail',
-    body: 'Open a student result and review flagged or invalid items.',
+    title: 'Scan Detail',
+    body: 'Review flagged items, blanks, and double marks per paper.',
     image: '/mobile/previews/09-scan-detail.jpg',
   },
 ]
@@ -456,60 +458,196 @@ export default function FacultyAtlasMobile() {
             </GlassCard>
           </Box>
 
-          {/* Right column — App Store–style screenshot carousel */}
-          <GlassCard
-            fill
-            title="App preview"
-            style={{ height: '100%', minHeight: 0, marginBottom: 0 }}
+          {/* Right column — App Store–style marketing mockup carousel */}
+          <Box
+            sx={{
+              height: { xs: 'auto', md: '100%' },
+              minHeight: { xs: 520, md: 0 },
+              borderRadius: '20px',
+              border: '1px solid var(--border-color)',
+              boxShadow: 'var(--shadow-card)',
+              overflow: 'hidden',
+              backdropFilter: 'blur(16px)',
+            }}
           >
             <Box
               sx={{
+                position: 'relative',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                justifyContent: 'center',
                 height: '100%',
                 minHeight: 0,
-                flex: 1,
-                gap: 1.1,
-                textAlign: 'center',
-                px: 0.5,
+                px: { xs: 1.5, md: 2 },
+                pt: { xs: 1.5, md: 2 },
+                pb: 1.25,
+                overflow: 'hidden',
+                background: 'linear-gradient(180deg, #FFFFFF 0%, #FFF8F8 55%, #FCEDED 100%)',
               }}
             >
+              {/* Soft brand circles like the store mockup backdrop */}
               <Box
+                aria-hidden
                 sx={{
-                  width: { xs: 148, md: 'min(210px, 58%)' },
-                  aspectRatio: '908 / 2048',
-                  maxHeight: '68%',
-                  borderRadius: '22px',
-                  border: '3px solid var(--text-primary)',
-                  overflow: 'hidden',
-                  background: '#111',
-                  boxShadow: 'var(--shadow-card)',
-                  flexShrink: 1,
+                  pointerEvents: 'none',
+                  position: 'absolute',
+                  inset: 0,
+                  backgroundImage: `
+                    radial-gradient(circle at 12% 88%, rgba(226,75,74,0.16) 0 42px, transparent 43px),
+                    radial-gradient(circle at 28% 96%, rgba(170,36,35,0.12) 0 28px, transparent 29px),
+                    radial-gradient(circle at 88% 92%, rgba(226,75,74,0.18) 0 56px, transparent 57px),
+                    radial-gradient(circle at 72% 98%, rgba(170,36,35,0.10) 0 34px, transparent 35px),
+                    radial-gradient(circle at 50% 100%, rgba(243,180,179,0.35) 0 70px, transparent 71px)
+                  `,
+                }}
+              />
+
+              <Typography
+                sx={{
                   position: 'relative',
+                  zIndex: 1,
+                  flexShrink: 0,
+                  fontWeight: 800,
+                  fontSize: { xs: '1.05rem', md: '1.15rem' },
+                  color: 'var(--brand-primary)',
+                  letterSpacing: '-0.02em',
+                  textAlign: 'center',
+                  lineHeight: 1.2,
+                  mb: 0.75,
                 }}
               >
-                <Box
-                  component="img"
-                  src={activePreview.image}
-                  alt={activePreview.title}
+                {activePreview.title}
+              </Typography>
+
+              <Box
+                sx={{
+                  position: 'relative',
+                  zIndex: 1,
+                  flex: 1,
+                  minHeight: 0,
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconButton
+                  aria-label="Previous preview"
+                  onClick={() => setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)}
                   sx={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    objectPosition: 'top center',
-                    display: 'block',
+                    position: 'absolute',
+                    left: { xs: -4, md: 0 },
+                    zIndex: 2,
+                    width: 36,
+                    height: 36,
+                    bgcolor: 'rgba(255,255,255,0.88)',
+                    border: '1px solid rgba(170,36,35,0.18)',
+                    boxShadow: '0 4px 14px rgba(63,10,10,0.12)',
+                    color: 'var(--brand-primary)',
+                    '&:hover': { bgcolor: '#fff' },
                   }}
-                />
+                >
+                  <ChevronLeftIcon />
+                </IconButton>
+
+                <Box
+                  sx={{
+                    width: { xs: 150, md: 'min(200px, 62%)' },
+                    aspectRatio: '908 / 2048',
+                    maxHeight: '100%',
+                    borderRadius: '28px',
+                    p: '7px',
+                    background: 'linear-gradient(160deg, #2A2A2A, #111111)',
+                    boxShadow: '0 18px 40px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.12) inset',
+                    flexShrink: 1,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      position: 'relative',
+                      width: '100%',
+                      height: '100%',
+                      borderRadius: '22px',
+                      overflow: 'hidden',
+                      background: '#0B0B0B',
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 7,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: '34%',
+                        height: 8,
+                        borderRadius: 99,
+                        bgcolor: '#000',
+                        zIndex: 2,
+                      }}
+                    />
+                    <Box
+                      component="img"
+                      src={activePreview.image}
+                      alt={activePreview.title}
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        objectPosition: 'top center',
+                        display: 'block',
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <IconButton
+                  aria-label="Next preview"
+                  onClick={() => setSlide((current) => (current + 1) % PREVIEWS.length)}
+                  sx={{
+                    position: 'absolute',
+                    right: { xs: -4, md: 0 },
+                    zIndex: 2,
+                    width: 36,
+                    height: 36,
+                    bgcolor: 'rgba(255,255,255,0.88)',
+                    border: '1px solid rgba(170,36,35,0.18)',
+                    boxShadow: '0 4px 14px rgba(63,10,10,0.12)',
+                    color: 'var(--brand-primary)',
+                    '&:hover': { bgcolor: '#fff' },
+                  }}
+                >
+                  <ChevronRightIcon />
+                </IconButton>
               </Box>
-              <Box sx={{ maxWidth: 320, flexShrink: 0 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: '0.98rem' }}>{activePreview.title}</Typography>
-                <Typography sx={{ mt: 0.35, color: 'var(--text-secondary)', lineHeight: 1.4, fontSize: '0.8rem' }}>
-                  {activePreview.body}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 0.75, flexShrink: 0 }}>
+
+              <Typography
+                sx={{
+                  position: 'relative',
+                  zIndex: 1,
+                  mt: 1,
+                  mb: 0.75,
+                  maxWidth: 280,
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.78rem',
+                  lineHeight: 1.4,
+                  textAlign: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {activePreview.body}
+              </Typography>
+
+              <Box
+                sx={{
+                  position: 'relative',
+                  zIndex: 1,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  flexWrap: 'wrap',
+                  gap: 0.7,
+                  flexShrink: 0,
+                }}
+              >
                 {PREVIEWS.map((item, index) => (
                   <button
                     key={item.title}
@@ -522,14 +660,14 @@ export default function FacultyAtlasMobile() {
                       borderRadius: 99,
                       border: 0,
                       cursor: 'pointer',
-                      background: index === slide ? 'var(--brand-primary)' : 'var(--border-color)',
+                      background: index === slide ? 'var(--brand-primary)' : 'rgba(170,36,35,0.22)',
                       transition: 'width 200ms, background 200ms',
                     }}
                   />
                 ))}
               </Box>
             </Box>
-          </GlassCard>
+          </Box>
         </Box>
       </Box>
 
