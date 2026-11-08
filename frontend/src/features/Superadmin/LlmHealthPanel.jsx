@@ -265,9 +265,6 @@ export default function LlmHealthPanel() {
           )}
           style={{ marginBottom: 0, minWidth: 0, height: '100%' }}
         >
-          <p style={{ margin: '0 0 14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-            NVIDIA, Groq, OpenRouter, Cloudflare, and Ollama. Only the main key is shown for each.
-          </p>
           <StatusNotice message={error} severity="error" />
           {!error && !loading && accounts.length === 0 && (
             <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.85rem' }}>No accounts are configured.</p>
