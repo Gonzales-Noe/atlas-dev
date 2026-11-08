@@ -65,20 +65,12 @@ function providerId(row) {
 function monitoredAccounts(rows) {
   return rows
     .filter(row => MONITOR_ORDER.includes(providerId(row)))
-    .sort((a, b) => {
-      const order = MONITOR_ORDER.indexOf(providerId(a)) - MONITOR_ORDER.indexOf(providerId(b))
-      if (order !== 0) return order
-      return (Number(a.instance) || 0) - (Number(b.instance) || 0)
-    })
+    .filter(row => (Number(row.instance) || 1) <= 1)
+    .sort((a, b) => MONITOR_ORDER.indexOf(providerId(a)) - MONITOR_ORDER.indexOf(providerId(b)))
 }
 
 function accountName(row) {
-  const id = providerId(row)
-  const base = ACCOUNT_TITLES[id] || row.label
-  if (id !== 'groq' && id !== 'openrouter') return base
-  const index = Number(row.instance) || 1
-  if (index <= 1) return `${base} (original)`
-  return `${base} ${index - 1}`
+  return ACCOUNT_TITLES[providerId(row)] || row.label
 }
 
 function accountMeta(row) {
@@ -274,7 +266,7 @@ export default function LlmHealthPanel() {
           style={{ marginBottom: 0, minWidth: 0, height: '100%' }}
         >
           <p style={{ margin: '0 0 14px', color: 'var(--text-secondary)', fontSize: '0.82rem' }}>
-            Groq and OpenRouter list the original key, then key 1 and key 2. Cloudflare and Ollama follow.
+            NVIDIA, Groq, OpenRouter, Cloudflare, and Ollama. Only the main key is shown for each.
           </p>
           <StatusNotice message={error} severity="error" />
           {!error && !loading && accounts.length === 0 && (
