@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Switch, FormControlLabel, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material'
-import { StatusNotice } from '../../components/StatusNotice'
+import { StatusNotice, showStatusNotice } from '../../components/StatusNotice'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import atlasMaintenance from '../../assets/atlas-maintenance.png'
 import { Cpu, HardDrive, MemoryStick, Activity } from 'lucide-react'
@@ -132,7 +132,7 @@ export default function SystemManagement() {
 
   async function saveMobileNotes() {
     if (!mobileRelease?.available) {
-      setError('Publish an APK first. What’s New can be edited after a build is live.')
+      showStatusNotice('Publish an APK first. What’s New can be edited after a build is live.', 'error')
       return
     }
     setMobileSavingNotes(true)
@@ -143,10 +143,14 @@ export default function SystemManagement() {
         release_notes: mobileNotes.trim(),
       }, { skipAtlasErrorCard: true })
       setMobileRelease(data || null)
-      setNotice('What’s New text was updated. Faculty see the new bullets — no APK reupload needed.')
+      showStatusNotice('What’s New text was updated. Faculty see the new bullets — no APK reupload needed.', 'success')
       loadMobileRelease()
     } catch (err) {
-      setError(err.response?.data?.detail || 'What’s New could not be saved.')
+      const detail = err.response?.data?.detail
+      showStatusNotice(
+        typeof detail === 'string' && detail.trim() ? detail : 'What’s New could not be saved.',
+        'error',
+      )
     } finally {
       setMobileSavingNotes(false)
     }
@@ -154,13 +158,17 @@ export default function SystemManagement() {
 
   async function publishMobileApp() {
     if (!mobileFile) {
-      setError('Choose an APK file to publish. To fix a wrong APK, pick the correct file and publish again.')
+      showStatusNotice(
+        'Choose an APK file to publish. To fix a wrong APK, pick the correct file and publish again.',
+        'error',
+      )
       return
     }
     const sizeMb = mobileFile.size / (1024 * 1024)
     if (sizeMb > 55) {
-      setError(
+      showStatusNotice(
         `This APK is ${sizeMb.toFixed(0)} MB. Uploads over ~55 MB get cut off by the host. Build a smaller install with: flutter build apk --release --split-per-abi (use the arm64-v8a file), then try again.`,
+        'error',
       )
       return
     }
@@ -187,14 +195,21 @@ export default function SystemManagement() {
       setMobileUploadPct(100)
       setMobileRelease(data || null)
       setMobileFile(null)
-      setNotice(`ATLAS Mobile ${data?.version_name || ''} is live. Faculty were notified.`)
+      const version = data?.version_name || mobileVersion.trim() || ''
+      showStatusNotice(
+        version
+          ? `ATLAS Mobile ${version} is live. Faculty were notified.`
+          : 'ATLAS Mobile is live. Faculty were notified.',
+        'success',
+      )
       loadMobileRelease()
     } catch (err) {
       const detail = err.response?.data?.detail
-      if (detail) setError(detail)
-      else if (err.code === 'ECONNABORTED') setError('The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.')
-      else if (!err.response) setError('The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.')
-      else setError('The APK could not be published.')
+      let message = 'The APK could not be published.'
+      if (typeof detail === 'string' && detail.trim()) message = detail
+      else if (err.code === 'ECONNABORTED') message = 'The upload timed out. Try a smaller APK (split-per-abi) or a stronger connection.'
+      else if (!err.response) message = 'The upload was interrupted. Use a smaller APK (flutter build apk --release --split-per-abi) and try again.'
+      showStatusNotice(message, 'error')
     } finally {
       setMobilePublishing(false)
       setMobileUploadPct(null)
