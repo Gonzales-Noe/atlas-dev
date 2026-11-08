@@ -237,6 +237,7 @@ api.interceptors.response.use(
       error.response?.status !== 401
       || !originalRequest
       || originalRequest._retry
+      || originalRequest.atlasNoRetry
       || isPublicAuthRequest(originalRequest)
     ) {
       return Promise.reject(error)
