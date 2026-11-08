@@ -503,8 +503,10 @@ export default function FacultyAtlasMobile() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: { xs: 0.75, md: 1.25 },
+                  gap: { xs: 0.5, md: 0.75 },
                   px: { xs: 4.5, md: 5.5 },
+                  perspective: '1100px',
+                  transformStyle: 'preserve-3d',
                 }}
               >
                 {/* Spotlight behind the active phone */}
@@ -516,14 +518,15 @@ export default function FacultyAtlasMobile() {
                     left: '50%',
                     top: '46%',
                     transform: 'translate(-50%, -50%)',
-                    width: { xs: 220, md: 280 },
-                    height: { xs: 320, md: 400 },
+                    width: { xs: 240, md: 300 },
+                    height: { xs: 340, md: 420 },
                     borderRadius: '50%',
-                    background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.34) 0%, rgba(226,75,74,0.12) 42%, transparent 72%)',
+                    background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.38) 0%, rgba(226,75,74,0.14) 42%, transparent 72%)',
                     filter: 'blur(2px)',
                     zIndex: 0,
+                    transition: 'opacity 380ms ease',
                     'body.atlas-light &': {
-                      background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.22) 0%, rgba(243,180,179,0.28) 40%, transparent 72%)',
+                      background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.24) 0%, rgba(243,180,179,0.3) 40%, transparent 72%)',
                     },
                   }}
                 />
@@ -554,16 +557,23 @@ export default function FacultyAtlasMobile() {
                   <ChevronLeftIcon fontSize="small" />
                 </IconButton>
 
-                {/* Spotlight carousel: dull/small · bright/big · dull/small */}
+                {/* Spotlight carousel: tilted/dull · grow/bright · tilted/dull */}
                 {[
                   { item: prevPreview, role: 'prev' },
                   { item: activePreview, role: 'active' },
                   { item: nextPreview, role: 'next' },
                 ].map(({ item, role }) => {
                   const active = role === 'active'
+                  const sideTilt = role === 'prev'
+                    ? 'rotateY(28deg) rotateZ(-4deg) scale(0.82) translateY(14px) translateX(6px)'
+                    : 'rotateY(-28deg) rotateZ(4deg) scale(0.82) translateY(14px) translateX(-6px)'
+                  const hoverTilt = role === 'prev'
+                    ? 'rotateY(20deg) rotateZ(-3deg) scale(0.9) translateY(8px) translateX(4px)'
+                    : 'rotateY(-20deg) rotateZ(3deg) scale(0.9) translateY(8px) translateX(-4px)'
+
                   return (
                     <Box
-                      key={`${role}-${item.title}`}
+                      key={`${role}-${slide}-${item.title}`}
                       onClick={active ? undefined : () => {
                         if (role === 'prev') setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)
                         else setSlide((current) => (current + 1) % PREVIEWS.length)
@@ -571,33 +581,62 @@ export default function FacultyAtlasMobile() {
                       sx={{
                         position: 'relative',
                         width: active
-                          ? { xs: 168, md: 'min(220px, 48%)' }
-                          : { xs: 84, md: 'min(112px, 22%)' },
+                          ? { xs: 172, md: 'min(228px, 50%)' }
+                          : { xs: 86, md: 'min(116px, 23%)' },
                         aspectRatio: '908 / 2048',
-                        maxHeight: active ? '92%' : '58%',
+                        maxHeight: active ? '94%' : '56%',
                         borderRadius: active ? '30px' : '20px',
                         p: active ? '7px' : '3px',
+                        transformOrigin: active ? 'center center' : (role === 'prev' ? 'right center' : 'left center'),
                         background: active
                           ? 'linear-gradient(160deg, #4A4A52, #16161A)'
                           : 'linear-gradient(160deg, #2A2A30, #0E0E12)',
                         boxShadow: active
-                          ? '0 0 0 1px rgba(226,75,74,0.35), 0 0 36px rgba(226,75,74,0.28), 0 28px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.14) inset'
+                          ? '0 0 0 1px rgba(226,75,74,0.4), 0 0 40px rgba(226,75,74,0.32), 0 28px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.14) inset'
                           : '0 10px 20px rgba(0,0,0,0.28)',
-                        opacity: active ? 1 : 0.38,
-                        filter: active ? 'brightness(1.08) saturate(1.05)' : 'brightness(0.62) saturate(0.55)',
-                        transform: active ? 'scale(1) translateY(-6px)' : 'scale(0.9) translateY(10px)',
-                        transition: 'width 380ms cubic-bezier(0.22,1,0.36,1), max-height 380ms cubic-bezier(0.22,1,0.36,1), opacity 380ms ease, transform 380ms cubic-bezier(0.22,1,0.36,1), filter 380ms ease, box-shadow 380ms ease',
+                        opacity: active ? 1 : 0.36,
+                        filter: active ? 'brightness(1.1) saturate(1.08)' : 'brightness(0.58) saturate(0.5)',
+                        transform: active
+                          ? 'rotateY(0deg) rotateZ(0deg) scale(1) translateY(-8px)'
+                          : sideTilt,
+                        transformStyle: 'preserve-3d',
+                        transition: [
+                          'width 420ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          'max-height 420ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          'opacity 420ms ease',
+                          'transform 420ms cubic-bezier(0.22, 1, 0.36, 1)',
+                          'filter 420ms ease',
+                          'box-shadow 420ms ease',
+                        ].join(', '),
+                        animation: active ? 'atlasSpotlightGrow 520ms cubic-bezier(0.16, 1, 0.3, 1)' : 'none',
+                        '@keyframes atlasSpotlightGrow': {
+                          '0%': {
+                            opacity: 0.45,
+                            filter: 'brightness(0.7) saturate(0.65)',
+                            transform: 'rotateY(0deg) scale(0.78) translateY(18px)',
+                          },
+                          '60%': {
+                            opacity: 1,
+                            filter: 'brightness(1.12) saturate(1.1)',
+                            transform: 'rotateY(0deg) scale(1.04) translateY(-10px)',
+                          },
+                          '100%': {
+                            opacity: 1,
+                            filter: 'brightness(1.1) saturate(1.08)',
+                            transform: 'rotateY(0deg) scale(1) translateY(-8px)',
+                          },
+                        },
                         cursor: active ? 'default' : 'pointer',
                         flexShrink: 1,
                         zIndex: active ? 3 : 1,
                         '&:hover': active ? undefined : {
-                          opacity: 0.55,
-                          filter: 'brightness(0.78) saturate(0.7)',
-                          transform: 'scale(0.94) translateY(6px)',
+                          opacity: 0.58,
+                          filter: 'brightness(0.78) saturate(0.72)',
+                          transform: hoverTilt,
                         },
                         'body.atlas-light &': {
                           boxShadow: active
-                            ? '0 0 0 1px rgba(170,36,35,0.28), 0 0 34px rgba(226,75,74,0.22), 0 28px 48px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.16) inset'
+                            ? '0 0 0 1px rgba(170,36,35,0.3), 0 0 36px rgba(226,75,74,0.24), 0 28px 48px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.16) inset'
                             : '0 10px 18px rgba(63,10,10,0.12)',
                         },
                       }}
