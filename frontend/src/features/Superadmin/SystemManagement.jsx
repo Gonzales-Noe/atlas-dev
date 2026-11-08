@@ -186,10 +186,15 @@ export default function SystemManagement() {
         headers: { 'Content-Type': undefined },
         timeout: 600000,
         skipAtlasErrorCard: true,
+        // Do not re-POST the APK after a mid-upload 401 refresh — that restarts progress at 0%.
+        atlasNoRetry: true,
         onUploadProgress: (event) => {
-          if (!event.total) return
+          const total = event.total || mobileFile.size || 0
+          if (!total) return
           // Cap at 99 until the server finishes saving the APK.
-          setMobileUploadPct(Math.min(99, Math.round((event.loaded / event.total) * 100)))
+          // Never move backwards (retries / odd XHR totals caused 89% → 2%).
+          const next = Math.min(99, Math.round((event.loaded / total) * 100))
+          setMobileUploadPct((prev) => Math.max(prev ?? 0, next))
         },
       })
       setMobileUploadPct(100)
