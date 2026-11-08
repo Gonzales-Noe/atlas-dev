@@ -227,7 +227,8 @@ export default function FacultyAtlasMobile() {
   const available = Boolean(release?.available)
   const versionLabel = release?.version_name ? `Version ${release.version_name}` : 'Not published yet'
   const activePreview = PREVIEWS[slide]
-  const backPreview = PREVIEWS[(slide + PREVIEWS.length - 1) % PREVIEWS.length]
+  const prevPreview = PREVIEWS[(slide + PREVIEWS.length - 1) % PREVIEWS.length]
+  const nextPreview = PREVIEWS[(slide + 1) % PREVIEWS.length]
   const whatsNewOpen = Boolean(whatsNewAnchor)
 
   function dismissUpdateBanner() {
@@ -474,39 +475,20 @@ export default function FacultyAtlasMobile() {
                 flexDirection: 'column',
                 alignItems: 'center',
                 px: 2,
-                pt: 2,
+                pt: 2.25,
                 pb: 1.5,
               }}
             >
               <Typography
                 sx={{
-                  fontWeight: 900,
-                  fontSize: { xs: '1.35rem', md: '1.5rem' },
-                  letterSpacing: '-0.03em',
-                  lineHeight: 1,
-                  textAlign: 'center',
-                  flexShrink: 0,
-                }}
-              >
-                <Box
-                  component="span"
-                  sx={{ color: 'var(--brand-accent)', 'body.atlas-light &': { color: 'var(--brand-primary)' } }}
-                >
-                  ATLAS
-                </Box>
-                {' '}
-                <Box component="span" sx={{ color: 'var(--text-primary)' }}>MOBILE</Box>
-              </Typography>
-              <Typography
-                sx={{
-                  mt: 0.6,
-                  mb: 1,
+                  mb: 0.5,
                   fontWeight: 800,
-                  fontSize: '0.88rem',
+                  fontSize: { xs: '1.2rem', md: '1.35rem' },
                   textAlign: 'center',
                   color: 'var(--brand-accent)',
                   'body.atlas-light &': { color: 'var(--brand-primary)' },
                   flexShrink: 0,
+                  lineHeight: 1.2,
                 }}
               >
                 {activePreview.title}
@@ -521,8 +503,31 @@ export default function FacultyAtlasMobile() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  gap: { xs: 0.75, md: 1.25 },
+                  px: { xs: 4.5, md: 5.5 },
                 }}
               >
+                {/* Spotlight behind the active phone */}
+                <Box
+                  aria-hidden
+                  sx={{
+                    pointerEvents: 'none',
+                    position: 'absolute',
+                    left: '50%',
+                    top: '46%',
+                    transform: 'translate(-50%, -50%)',
+                    width: { xs: 220, md: 280 },
+                    height: { xs: 320, md: 400 },
+                    borderRadius: '50%',
+                    background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.34) 0%, rgba(226,75,74,0.12) 42%, transparent 72%)',
+                    filter: 'blur(2px)',
+                    zIndex: 0,
+                    'body.atlas-light &': {
+                      background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.22) 0%, rgba(243,180,179,0.28) 40%, transparent 72%)',
+                    },
+                  }}
+                />
+
                 <IconButton
                   aria-label="Previous preview"
                   onClick={() => setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)}
@@ -531,7 +536,7 @@ export default function FacultyAtlasMobile() {
                     left: 0,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    zIndex: 4,
+                    zIndex: 5,
                     width: 36,
                     height: 36,
                     bgcolor: 'rgba(255,255,255,0.08)',
@@ -549,96 +554,95 @@ export default function FacultyAtlasMobile() {
                   <ChevronLeftIcon fontSize="small" />
                 </IconButton>
 
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    left: '10%',
-                    bottom: '8%',
-                    width: { xs: 110, md: 'min(140px, 32%)' },
-                    aspectRatio: '908 / 2048',
-                    transform: 'rotate(-5deg)',
-                    borderRadius: '24px',
-                    p: '5px',
-                    background: 'linear-gradient(160deg, #4A4A50, #1A1A1E)',
-                    boxShadow: '0 16px 36px rgba(0,0,0,0.35)',
-                    opacity: 0.7,
-                    zIndex: 1,
-                  }}
-                >
-                  <Box sx={{ width: '100%', height: '100%', borderRadius: '19px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
+                {/* Spotlight carousel: dull/small · bright/big · dull/small */}
+                {[
+                  { item: prevPreview, role: 'prev' },
+                  { item: activePreview, role: 'active' },
+                  { item: nextPreview, role: 'next' },
+                ].map(({ item, role }) => {
+                  const active = role === 'active'
+                  return (
                     <Box
-                      component="img"
-                      src={backPreview.image}
-                      alt=""
-                      sx={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top center', display: 'block' }}
-                    />
-                  </Box>
-                </Box>
-
-                <Box sx={{ position: 'relative', zIndex: 2, ml: '12%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <Box
-                    sx={{
-                      width: { xs: 150, md: 'min(200px, 48%)' },
-                      aspectRatio: '908 / 2048',
-                      maxHeight: '86%',
-                      transform: 'rotate(6deg)',
-                      borderRadius: '28px',
-                      p: '6px',
-                      background: 'linear-gradient(160deg, #3A3A40, #111114)',
-                      boxShadow: '0 24px 44px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.12) inset',
-                      'body.atlas-light &': {
-                        boxShadow: '0 24px 44px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.14) inset',
-                      },
-                    }}
-                  >
-                    <Box sx={{ position: 'relative', width: '100%', height: '100%', borderRadius: '22px', overflow: 'hidden', bgcolor: '#0B0B0B' }}>
+                      key={`${role}-${item.title}`}
+                      onClick={active ? undefined : () => {
+                        if (role === 'prev') setSlide((current) => (current - 1 + PREVIEWS.length) % PREVIEWS.length)
+                        else setSlide((current) => (current + 1) % PREVIEWS.length)
+                      }}
+                      sx={{
+                        position: 'relative',
+                        width: active
+                          ? { xs: 168, md: 'min(220px, 48%)' }
+                          : { xs: 84, md: 'min(112px, 22%)' },
+                        aspectRatio: '908 / 2048',
+                        maxHeight: active ? '92%' : '58%',
+                        borderRadius: active ? '30px' : '20px',
+                        p: active ? '7px' : '3px',
+                        background: active
+                          ? 'linear-gradient(160deg, #4A4A52, #16161A)'
+                          : 'linear-gradient(160deg, #2A2A30, #0E0E12)',
+                        boxShadow: active
+                          ? '0 0 0 1px rgba(226,75,74,0.35), 0 0 36px rgba(226,75,74,0.28), 0 28px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.14) inset'
+                          : '0 10px 20px rgba(0,0,0,0.28)',
+                        opacity: active ? 1 : 0.38,
+                        filter: active ? 'brightness(1.08) saturate(1.05)' : 'brightness(0.62) saturate(0.55)',
+                        transform: active ? 'scale(1) translateY(-6px)' : 'scale(0.9) translateY(10px)',
+                        transition: 'width 380ms cubic-bezier(0.22,1,0.36,1), max-height 380ms cubic-bezier(0.22,1,0.36,1), opacity 380ms ease, transform 380ms cubic-bezier(0.22,1,0.36,1), filter 380ms ease, box-shadow 380ms ease',
+                        cursor: active ? 'default' : 'pointer',
+                        flexShrink: 1,
+                        zIndex: active ? 3 : 1,
+                        '&:hover': active ? undefined : {
+                          opacity: 0.55,
+                          filter: 'brightness(0.78) saturate(0.7)',
+                          transform: 'scale(0.94) translateY(6px)',
+                        },
+                        'body.atlas-light &': {
+                          boxShadow: active
+                            ? '0 0 0 1px rgba(170,36,35,0.28), 0 0 34px rgba(226,75,74,0.22), 0 28px 48px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.16) inset'
+                            : '0 10px 18px rgba(63,10,10,0.12)',
+                        },
+                      }}
+                    >
                       <Box
                         sx={{
-                          position: 'absolute',
-                          top: 7,
-                          left: '50%',
-                          transform: 'translateX(-50%)',
-                          width: '34%',
-                          height: 8,
-                          borderRadius: 99,
-                          bgcolor: '#000',
-                          zIndex: 2,
-                        }}
-                      />
-                      <Box
-                        component="img"
-                        key={activePreview.image}
-                        src={activePreview.image}
-                        alt={activePreview.title}
-                        sx={{
+                          position: 'relative',
                           width: '100%',
                           height: '100%',
-                          objectFit: 'cover',
-                          objectPosition: 'top center',
-                          display: 'block',
-                          animation: 'atlasPreviewFade 320ms ease',
-                          '@keyframes atlasPreviewFade': {
-                            from: { opacity: 0.35 },
-                            to: { opacity: 1 },
-                          },
+                          borderRadius: active ? '23px' : '17px',
+                          overflow: 'hidden',
+                          bgcolor: '#0B0B0B',
                         }}
-                      />
+                      >
+                        {active ? (
+                          <Box
+                            sx={{
+                              position: 'absolute',
+                              top: 8,
+                              left: '50%',
+                              transform: 'translateX(-50%)',
+                              width: '34%',
+                              height: 8,
+                              borderRadius: 99,
+                              bgcolor: '#000',
+                              zIndex: 2,
+                            }}
+                          />
+                        ) : null}
+                        <Box
+                          component="img"
+                          src={item.image}
+                          alt={item.title}
+                          sx={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            objectPosition: 'top center',
+                            display: 'block',
+                          }}
+                        />
+                      </Box>
                     </Box>
-                  </Box>
-                  <Box
-                    aria-hidden
-                    sx={{
-                      mt: 0.25,
-                      width: { xs: 160, md: 190 },
-                      height: 18,
-                      borderRadius: '50%',
-                      background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, transparent 70%)',
-                      'body.atlas-light &': {
-                        background: 'radial-gradient(ellipse at center, rgba(63,10,10,0.28) 0%, transparent 70%)',
-                      },
-                    }}
-                  />
-                </Box>
+                  )
+                })}
 
                 <IconButton
                   aria-label="Next preview"
@@ -648,7 +652,7 @@ export default function FacultyAtlasMobile() {
                     right: 0,
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    zIndex: 4,
+                    zIndex: 5,
                     width: 36,
                     height: 36,
                     bgcolor: 'rgba(255,255,255,0.08)',
@@ -669,13 +673,13 @@ export default function FacultyAtlasMobile() {
 
               <Typography
                 sx={{
-                  mt: 0.75,
-                  mb: 0.75,
-                  maxWidth: 300,
+                  mt: 1,
+                  mb: 0.85,
+                  maxWidth: 360,
                   textAlign: 'center',
                   color: 'var(--text-secondary)',
-                  fontSize: '0.78rem',
-                  lineHeight: 1.4,
+                  fontSize: { xs: '0.9rem', md: '0.95rem' },
+                  lineHeight: 1.45,
                   flexShrink: 0,
                 }}
               >
