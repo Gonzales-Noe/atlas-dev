@@ -521,12 +521,12 @@ export default function FacultyAtlasMobile() {
                     width: { xs: 240, md: 300 },
                     height: { xs: 340, md: 420 },
                     borderRadius: '50%',
-                    background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.38) 0%, rgba(226,75,74,0.14) 42%, transparent 72%)',
+                    background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.22) 0%, rgba(226,75,74,0.08) 45%, transparent 72%)',
                     filter: 'blur(2px)',
                     zIndex: 0,
                     transition: 'opacity 380ms ease',
                     'body.atlas-light &': {
-                      background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.24) 0%, rgba(243,180,179,0.3) 40%, transparent 72%)',
+                      background: 'radial-gradient(ellipse at center, rgba(226,75,74,0.14) 0%, rgba(243,180,179,0.2) 42%, transparent 72%)',
                     },
                   }}
                 />
@@ -580,6 +580,7 @@ export default function FacultyAtlasMobile() {
                       }}
                       sx={{
                         position: 'relative',
+                        isolation: 'isolate',
                         width: active
                           ? { xs: 172, md: 'min(228px, 50%)' }
                           : { xs: 86, md: 'min(116px, 23%)' },
@@ -588,41 +589,36 @@ export default function FacultyAtlasMobile() {
                         borderRadius: active ? '30px' : '20px',
                         p: active ? '7px' : '3px',
                         transformOrigin: active ? 'center center' : (offset < 0 ? 'right center' : 'left center'),
-                        background: active
-                          ? 'linear-gradient(160deg, #4A4A52, #16161A)'
-                          : 'linear-gradient(160deg, #2A2A30, #0E0E12)',
+                        // Solid bezel — avoid translucent fades that let the red spotlight bleed through mid-morph
+                        background: '#1A1A1E',
                         boxShadow: active
-                          ? '0 0 0 1px rgba(226,75,74,0.4), 0 0 40px rgba(226,75,74,0.32), 0 28px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.14) inset'
+                          ? '0 0 0 1px rgba(226,75,74,0.35), 0 28px 48px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.12) inset'
                           : '0 10px 20px rgba(0,0,0,0.28)',
-                        opacity: active ? 1 : 0.36,
-                        filter: active ? 'brightness(1.1) saturate(1.08)' : 'brightness(0.58) saturate(0.5)',
+                        // Keep fully opaque; dim with overlay instead of opacity/filter (those caused the red half tint)
+                        opacity: 1,
                         transform: active
                           ? 'rotateY(0deg) rotateZ(0deg) scale(1) translateY(-8px)'
                           : sideTilt,
                         transformStyle: 'preserve-3d',
+                        backfaceVisibility: 'hidden',
                         transition: [
                           'width 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                           'max-height 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                           'padding 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                           'border-radius 560ms cubic-bezier(0.4, 0, 0.2, 1)',
-                          'opacity 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                           'transform 560ms cubic-bezier(0.4, 0, 0.2, 1)',
-                          'filter 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                           'box-shadow 560ms cubic-bezier(0.4, 0, 0.2, 1)',
-                          'background 560ms cubic-bezier(0.4, 0, 0.2, 1)',
                         ].join(', '),
                         cursor: active ? 'default' : 'pointer',
                         flexShrink: 1,
                         zIndex: active ? 3 : 1,
-                        willChange: 'transform, opacity, filter, width',
+                        willChange: 'transform, width',
                         '&:hover': active ? undefined : {
-                          opacity: 0.55,
-                          filter: 'brightness(0.75) saturate(0.7)',
                           transform: hoverTilt,
                         },
                         'body.atlas-light &': {
                           boxShadow: active
-                            ? '0 0 0 1px rgba(170,36,35,0.3), 0 0 36px rgba(226,75,74,0.24), 0 28px 48px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.16) inset'
+                            ? '0 0 0 1px rgba(170,36,35,0.28), 0 28px 48px rgba(63,10,10,0.22), 0 2px 0 rgba(255,255,255,0.14) inset'
                             : '0 10px 18px rgba(63,10,10,0.12)',
                         },
                       }}
@@ -663,6 +659,22 @@ export default function FacultyAtlasMobile() {
                             objectFit: 'cover',
                             objectPosition: 'top center',
                             display: 'block',
+                            // Prevent subpixel compositing streaks during 3D morph
+                            backfaceVisibility: 'hidden',
+                            transform: 'translateZ(0)',
+                          }}
+                        />
+                        {/* Dim overlay for side phones — fades out as it enters the spotlight */}
+                        <Box
+                          aria-hidden
+                          sx={{
+                            position: 'absolute',
+                            inset: 0,
+                            bgcolor: 'rgba(12, 8, 10, 0.55)',
+                            opacity: active ? 0 : 1,
+                            transition: 'opacity 560ms cubic-bezier(0.4, 0, 0.2, 1)',
+                            pointerEvents: 'none',
+                            zIndex: 3,
                           }}
                         />
                       </Box>
